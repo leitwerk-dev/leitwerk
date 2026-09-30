@@ -1,4 +1,4 @@
-import { codingActionIds, createRepositoryChangeProcess } from "@leitwerk-dev/coding";
+import { createRepositoryChangeProcess } from "@leitwerk-dev/coding";
 import { commitAndPushWorkBranch } from "@leitwerk-dev/coding/finalization-git";
 import {
 	createRepositoryChangeParamsCodec,
@@ -46,12 +46,5 @@ export const sandboxRepositoryChangeProcess = createRepositoryChangeProcess({
 	processId: sandboxRepositoryChangeProcessId,
 	displayName: "Sandbox Repository Change",
 	paramsCodec,
-	finalizeLabel: "Publish change",
-	finalizeForm: {
-		id: codingActionIds.finalizeChange,
-		title: "Publish change",
-		fields: [],
-		submitLabel: "Publish change",
-	},
 	publication: { entryTurnId: publishTurnId, fragment: publication, happyPath: [publishTurnId] },
 }).process;

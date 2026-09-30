@@ -102,13 +102,6 @@ export function createGitLabRepoChangeProcess(
 		paramsCodec: gitlabRepoChangeParamsCodec,
 		launcher: launcher.launcher,
 		workflow: launcher.workflow,
-		finalizeLabel: "Publish merge request",
-		finalizeForm: {
-			id: "gitlab_publish",
-			title: "Publish merge request",
-			fields: [],
-			submitLabel: "Publish",
-		},
 		repositoryCredentials: ({ params, projects }) =>
 			projects.map((project) => {
 				if (!params.gitSshProfile) throw new Error("Missing Git SSH profile");

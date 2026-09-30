@@ -52,4 +52,15 @@ it("defaults both bypasses off and preserves them on relaunch with SSH-only work
 		).toEqual([{ projectKey: "repo", kind: "git_ssh", credentialRef: "writer" }]);
 	}
 	expect(first.launchConfig.params.workBranch).not.toBe(replay.launchConfig.params.workBranch);
+	const issue = provider.createIssue(repository.id, "Change", ["leitwerk-skip-simplification"]);
+	const params = { ...first.launchConfig.params, origin: "issue" as const, issueNumber: issue.iid };
+	expect(await launcher.workflow.planDecision?.(params)).toMatchObject({ skip: false });
+	expect(await launcher.workflow.simplification?.(params)).toMatchObject({ skip: true });
+	await expect(
+		launcher.workflow.simplification?.({
+			...params,
+			gitlabOrigin: "https://other.test",
+			issueNumber: -1,
+		}),
+	).rejects.toThrow("installation changed");
 });

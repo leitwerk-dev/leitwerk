@@ -361,6 +361,7 @@ export interface PiTurnRecord {
 }
 
 interface PiFixtureOptions {
+	noChanges?: boolean;
 	ciRepairBlockedOnce?: boolean;
 	feedbackOutcome?: "no_changes" | "cannot_repair" | "changes_ready";
 	ciRestart?: boolean;
@@ -523,18 +524,24 @@ function createScript(
 			) {
 				git.run(cwd, ["config", "user.name", "Leitwerk Fixture"]);
 				git.run(cwd, ["config", "user.email", "fixture@leitwerk.invalid"]);
-				replaceWorkspaceText(
-					"k8s/deployment.yaml",
-					"        image: example/service:old",
-					"        image: example/service:new",
-				);
+				if (!options.noChanges)
+					replaceWorkspaceText(
+						"k8s/deployment.yaml",
+						"        image: example/service:old",
+						"        image: example/service:new",
+					);
 				records.push({ kind: "implementation", sessionId, prompt, toolNames });
 				return markdownCall(
-					"markdown_result",
+					"implementation_ready",
 					"## Implementation\n\nUpdated the service deployment image.",
 				);
 			}
 
+			if (
+				promptText.includes("Review all uncommitted") ||
+				promptText.includes("Apply justified simplifications")
+			)
+				return markdownCall("markdown_result", "No simplifications needed.");
 			if (names.has("markdown_result") || prompt.includes("commit message")) {
 				records.push({ kind: "commit-message", sessionId, prompt, toolNames });
 				return markdownCall("markdown_result", "feat: update service deployment image");
@@ -805,15 +812,10 @@ export async function createRemoteRepoChangeFixture(
 			},
 			async approvePlan(instanceId: string) {
 				await action(instanceId, codingActionIds.approvePlan);
-				await waitForTurn(instanceId, "implementation_decision");
-			},
-			async approveImplementation(instanceId: string) {
-				await action(instanceId, codingActionIds.finalizeChange);
 				await waitForTurn(instanceId, "deliver_change");
 			},
 			async publishChange(instanceId: string): Promise<string> {
 				await this.approvePlan(instanceId);
-				await this.approveImplementation(instanceId);
 				return instanceId;
 			},
 			action,

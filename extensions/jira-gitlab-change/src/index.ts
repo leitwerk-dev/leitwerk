@@ -196,16 +196,8 @@ export function createJiraGitLabChange(options: {
 		processId: "jira_gitlab_change_process",
 		displayName: "Jira GitLab Change",
 		paramsCodec: jiraGitLabParamsCodec,
-		finalizeLabel: "Publish merge requests",
-		finalizeForm: {
-			id: "jira_publish",
-			title: "Publish merge requests",
-			fields: [],
-			submitLabel: "Publish",
-		},
 		publication,
 		workflow: {
-			variant: "streamlined",
 			multiRepository: true,
 			async planDecision(params) {
 				const issue = await launcher.readIssue(params);

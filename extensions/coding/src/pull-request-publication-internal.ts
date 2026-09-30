@@ -1,5 +1,6 @@
 import type {
 	defineExternalActionSource,
+	ProcessWatcherDefinition,
 	RepositoryFeedbackSourceConfig,
 	RepositoryIssueCancelledSourceConfig,
 	RepositoryPullRequestSourceConfig,
@@ -20,6 +21,7 @@ import type {
 	RepositoryChangePublicationAdapter,
 } from "./repository-change-publication.js";
 import {
+	createRepositoryChangePublication,
 	publicationObject as object,
 	readPublicationState,
 } from "./repository-change-publication.js";
@@ -27,27 +29,37 @@ import type { RepositoryChangeState } from "./repository-change-state.js";
 
 /** Shared process defaults for SSH-backed pull-request publication. @internal */
 export function createPullRequestChangeProcess<
-	P extends {
+	P extends PublicationParams & {
 		/** @internal */
 		sshCredentialRef: string;
 	},
+	E,
+	C,
 >(
 	provider: string,
 	label: string,
 	docker: boolean,
-	config: Pick<RepositoryChangeProcessConfig<P>, "paramsCodec" | "launcher" | "publication">,
+	config: Pick<RepositoryChangeProcessConfig<P>, "paramsCodec" | "launcher" | "workflow"> & {
+		/** @internal */ publication: RepositoryChangePublicationAdapter<P>;
+		/** @internal */ watcher: Omit<
+			ProcessWatcherDefinition<P, E, C>,
+			"id" | "label" | "description"
+		>;
+	},
 ) {
+	const { watcher, publication: adapter, ...definition } = config;
+	const publication = createRepositoryChangePublication(adapter);
+	publication.fragment.watcher({
+		...watcher,
+		id: "use_leitwerk",
+		label: `${label} use-leitwerk issues`,
+		description: `Launch a remote repository change for ${label} issues carrying the trigger label`,
+	});
 	const { process } = createRepositoryChangeProcess({
-		...config,
+		...definition,
+		publication,
 		processId: `${provider}_repo_change_process`,
 		displayName: `${label} Repo Change`,
-		finalizeLabel: "Publish pull request",
-		finalizeForm: {
-			id: `${provider}_publish`,
-			title: "Publish pull request",
-			fields: [],
-			submitLabel: "Publish",
-		},
 		repositoryCredentials: ({ params }) => [
 			{ projectKey: "repo", kind: "git_ssh", credentialRef: params.sshCredentialRef },
 		],
@@ -57,7 +69,7 @@ export function createPullRequestChangeProcess<
 }
 
 /** Tools implementing the shared pull-request publication protocol. @internal */
-export function pullRequestDeliveryTools(provider: string): string[] {
+function pullRequestDeliveryTools(provider: string): string[] {
 	return [
 		"get_pull_request",
 		"add_pull_request_comment",
@@ -82,22 +94,24 @@ export async function resolvePullRequestGitIdentity<P>(
 	ctx: PublicationContext<P>,
 	provider: string,
 	profile: string,
+	allowLookup = true,
 ): Promise<GitIdentity> {
-	const project = ctx.projects.find((candidate) => candidate.key === "repo");
-	const identity = object(object(project?.metadata)["leitwerk.gitIdentity"]);
+	const project = ctx.repo.get("repo");
+	const metadata = ctx.projects.find((candidate) => candidate.key === project.key)?.metadata;
+	const identity = object(metadata?.["leitwerk.gitIdentity"]);
 	if (
 		identity.provider === provider &&
 		identity.profile === profile &&
-		[identity.login, identity.name, identity.email].every(
-			(value) => typeof value === "string" && value.trim(),
-		)
+		(!allowLookup || (typeof identity.login === "string" && identity.login.trim())) &&
+		[identity.name, identity.email].every((value) => typeof value === "string" && value.trim())
 	)
 		return identity as unknown as GitIdentity;
+	if (!allowLookup) throw new Error(`Pinned ${provider} Git identity is unavailable`);
 	return callFor(ctx, provider)<GitIdentity>("resolve_git_identity", {});
 }
 
 /** @internal */
-export function readPullRequestFeedback(
+function readPullRequestFeedback(
 	current: PublicationState,
 	event: unknown,
 ): Extract<PublicationEvidence, { kind: "feedback" }> {
@@ -109,45 +123,6 @@ export function readPullRequestFeedback(
 		reviewCursor: Number(cursors.reviewCursor ?? current.reviewCursor),
 		inlineCursor: Number(cursors.inlineCursor ?? current.inlineCursor),
 		feedbackIds: (value.feedbackIds ?? []) as PublicationState["feedbackIds"],
-	};
-}
-
-/** @internal */
-export function reconcilePullRequestSourceIssue<P extends PublicationParams>(
-	provider: string,
-	labelKey: "id" | "name",
-	issueOrigin: (
-		params: P,
-	) => Pick<RepositoryIssueOriginParams, "issueNumber" | "triggerLabel" | "doneLabel"> | undefined,
-): RepositoryChangePublicationAdapter<P>["reconcileTerminal"] {
-	return async (ctx, _current, pr) => {
-		const params = issueOrigin(ctx.params);
-		if (!params) return;
-		const call = callFor(ctx, provider);
-		const issue = await call<{ labels: Array<{ id: number; name: string }> }>("get_issue", {
-			issueNumber: params.issueNumber,
-		});
-		let labels = issue.labels
-			.filter((label) => label.name !== params.triggerLabel)
-			.map((label) => label[labelKey]);
-		if (pr.merged) {
-			const done = await call<{ id: number; name: string }>("ensure_label", {
-				name: params.doneLabel,
-			});
-			labels = [...new Set([...labels, done[labelKey]])];
-		}
-		await call("update_issue", {
-			issueNumber: params.issueNumber,
-			patch: { labels, ...(pr.merged ? { state: "closed" } : {}) },
-			writeKey: `${provider}:${ctx.process.id}:${pr.merged ? "complete-source-issue" : "remove-source-trigger"}`,
-		});
-		await call("add_issue_comment", {
-			issueNumber: params.issueNumber,
-			body: pr.merged
-				? `Merged ${pr.html_url}${pr.merge_commit_sha ? ` at ${pr.merge_commit_sha}` : ""}.`
-				: `Leitwerk stopped because ${pr.html_url} was closed without merge.`,
-			writeKey: `${provider}:${ctx.process.id}:${pr.merged ? "merged" : "closed"}-pr-comment`,
-		});
 	};
 }
 
@@ -171,6 +146,12 @@ export function pullRequestPublicationDefaults<P extends PublicationParams>(
 	profile: (params: P) => string,
 	issueOrigin: (params: P) => RepositoryIssueOriginParams | undefined,
 	labelKey: "id" | "name",
+	ci: {
+		/** @internal */ id: string;
+		/** @internal */ label: string;
+		/** @internal */ tools: readonly string[];
+		/** @internal */ prompt(current: PublicationState): string;
+	},
 ) {
 	const remote = (state: RepositoryChangeState) =>
 		readPublicationState(state, `${provider}RepoChange`);
@@ -241,39 +222,65 @@ export function pullRequestPublicationDefaults<P extends PublicationParams>(
 		}),
 		read: () => ({ kind: "cancelled" }),
 	};
-	return {
-		/** @internal */ adapter: {
-			/** @internal */ namespace: `${provider}RepoChange`,
-			/** @internal */ label: `${label} PR`,
-			/** @internal */ identity: (ctx: PublicationContext<P>) =>
-				resolvePullRequestGitIdentity(ctx, provider, profile(ctx.params)),
-			/** @internal */ reconcileTerminal: reconcilePullRequestSourceIssue(
-				provider,
-				labelKey,
-				issueOrigin,
-			),
-			...pullRequestPublicationCallbacks(provider, label, issueOrigin),
-		},
-		/** @internal */ requirePr,
-		/** @internal */ feedback,
-		/** @internal */ terminal,
-		/** @internal */ cancelled,
-	};
-}
-
-/** Callbacks for providers implementing the shared pull-request tool protocol. @internal */
-export function pullRequestPublicationCallbacks<P extends PublicationParams>(
-	provider: string,
-	label: string,
-	issueOrigin: (
-		params: P,
-	) => Pick<RepositoryIssueOriginParams, "issueNumber" | "issueUrl"> | undefined,
-): Pick<
-	RepositoryChangePublicationAdapter<P>,
-	"ensureRequest" | "linkIssue" | "reply" | "acknowledge" | "head" | "afterRebase"
-> {
+	async function finalizeIssue(ctx: PublicationContext<P>, pr: PublicationRequest | null) {
+		const params = issueOrigin(ctx.params);
+		if (!params) return;
+		const call = callFor(ctx, provider);
+		const issue = await call<{ labels: Array<{ id: number; name: string }> }>("get_issue", {
+			issueNumber: params.issueNumber,
+		});
+		let labels = issue.labels
+			.filter((label) => label.name !== params.triggerLabel)
+			.map((label) => label[labelKey]);
+		if (pr?.merged) {
+			const done = await call<{ id: number; name: string }>("ensure_label", {
+				name: params.doneLabel,
+			});
+			labels = [...new Set([...labels, done[labelKey]])];
+		}
+		await call("update_issue", {
+			issueNumber: params.issueNumber,
+			patch: { labels, ...(pr?.merged ? { state: "closed" } : {}) },
+			writeKey: `${provider}:${ctx.process.id}:${pr?.merged ? "complete-source-issue" : pr ? "remove-source-trigger" : "no-changes-trigger"}`,
+		});
+		await call("add_issue_comment", {
+			issueNumber: params.issueNumber,
+			body: !pr
+				? "No repository changes were needed. No pull request was opened."
+				: pr.merged
+					? `Merged ${pr.html_url}${pr.merge_commit_sha ? ` at ${pr.merge_commit_sha}` : ""}.`
+					: `Leitwerk stopped because ${pr.html_url} was closed without merge.`,
+			writeKey: `${provider}:${ctx.process.id}:${pr ? `${pr.merged ? "merged" : "closed"}-pr-comment` : "no-changes-comment"}`,
+		});
+	}
 	const call = (ctx: PublicationContext<P>) => callFor(ctx, provider);
-	return {
+	const adapter: Omit<RepositoryChangePublicationAdapter<P>, "sources"> = {
+		/** @internal */ namespace: `${provider}RepoChange`,
+		/** @internal */ label: `${label} PR`,
+		/** @internal */ ids: {
+			/** @internal */ deliver: "deliver_change",
+			/** @internal */ feedback: "revise_from_pull_request_feedback",
+			/** @internal */ ciRepair: ci.id,
+			/** @internal */ operator: "ci_operator_action",
+		},
+		/** @internal */ tools: {
+			/** @internal */ delivery: pullRequestDeliveryTools(provider),
+			/** @internal */ feedback: [
+				`${provider}_get_pull_request`,
+				`${provider}_list_pull_request_feedback`,
+			],
+			/** @internal */ ci: ci.tools,
+		},
+		/** @internal */ commitMessage: (kind: "feedback" | "ci") =>
+			kind === "feedback" ? `fix: address ${label} review feedback` : `fix: repair ${ci.label}`,
+		/** @internal */ prompt: (kind: "feedback" | "ci", current: PublicationState) =>
+			kind === "feedback"
+				? `Address the unseen ${label} pull-request feedback batch for PR #${current.prNumber}. Feedback identifiers: ${JSON.stringify(current.feedbackIds)}. Inspect the current checkout and use ${label} tools to read the full feedback. Do not rely on an earlier plan or conversation. Make only justified repository changes. Call changes_ready if files need publishing, no_changes after an explicit diagnosis that no repository change is needed, or cannot_repair when operator action is required.`
+				: ci.prompt(current),
+		/** @internal */ identity: (ctx: PublicationContext<P>) =>
+			resolvePullRequestGitIdentity(ctx, provider, profile(ctx.params)),
+		/** @internal */ reconcileTerminal: (ctx, _current, pr) => finalizeIssue(ctx, pr),
+		/** @internal */ unchanged: (ctx) => finalizeIssue(ctx, null),
 		async ensureRequest(ctx) {
 			const project = ctx.repo.get("repo");
 			const issue = issueOrigin(ctx.params);
@@ -334,5 +341,24 @@ export function pullRequestPublicationCallbacks<P extends PublicationParams>(
 				writeKey: `rebase:${ctx.process.id}:${current.lastConflictKey}:${current.headSha}`,
 			});
 		},
+	};
+	return {
+		/** @internal */ adapter,
+		/** @internal */ conflict(source: PublicationSource<P>["source"]): PublicationSource<P> {
+			return {
+				id: `${provider}_merge_conflict`,
+				kind: "conflict",
+				label: "Rebase conflicting pull request",
+				source,
+				read: ({ event }) => ({
+					kind: "conflict",
+					conflict: object(event).conflict as NonNullable<PublicationState["conflict"]>,
+				}),
+			};
+		},
+		/** @internal */ requirePr,
+		/** @internal */ feedback,
+		/** @internal */ terminal,
+		/** @internal */ cancelled,
 	};
 }

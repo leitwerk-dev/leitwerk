@@ -9,8 +9,6 @@ test("publication reconciles a lost PR response and concurrent control replays r
 	await control(f, "lost-pr-response", { enabled: true });
 	await f.wait(id, "plan_decision");
 	await f.action(id, "approve_plan");
-	await f.wait(id, "implementation_decision");
-	await f.action(id, "finalize_change");
 	await waitForValue(
 		() => f.context.deps.processes.getById(id),
 		(p) =>

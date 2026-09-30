@@ -1,33 +1,22 @@
 import {
-	publicationObject as object,
 	type PublicationContext,
 	type PublicationEvidence,
+	type PublicationParams,
 	type PublicationRequest,
 	type PublicationSource,
 	type RepositoryChangePublicationAdapter,
+	resolvePullRequestGitIdentity,
 } from "@leitwerk-dev/coding/repository-change-publication";
 import type { GitLabMergeRequest } from "./client.js";
 import type { GitLabDeliveryObservation } from "./external.js";
 
 /** @public */
-export interface GitLabPublicationParams {
+export interface GitLabPublicationParams extends PublicationParams {
 	/** @internal */
 	gitlabProfile: string;
 
 	/** @internal */
 	projectId: number;
-
-	/** @internal */
-	owner: string;
-
-	/** @internal */
-	repo: string;
-
-	/** @internal */
-	baseBranch: string;
-
-	/** @internal */
-	workBranch: string;
 
 	/** @internal */
 	origin: string;
@@ -91,6 +80,26 @@ export function createGitLabPublicationAdapter<P extends GitLabPublicationParams
 	sources: PublicationSource<P>[],
 	namespace = "gitlabRepoChange",
 ): RepositoryChangePublicationAdapter<P> {
+	async function finalizeIssue(ctx: PublicationContext<P>, pr: PublicationRequest | null) {
+		if (ctx.params.origin !== "issue") return;
+		const call = callFor(ctx);
+		await call("gitlab_finalize_source_issue", {
+			issueNumber: ctx.params.issueNumber,
+			merged: pr?.merged ?? false,
+			triggerLabel: ctx.params.triggerLabel,
+			doneLabel: ctx.params.doneLabel,
+			writeKey: `gitlab:${ctx.process.id}:${pr?.merged ? "complete-source-issue" : pr ? "remove-source-trigger" : "no-changes-trigger"}`,
+		});
+		await call("gitlab_add_issue_comment", {
+			issueNumber: ctx.params.issueNumber,
+			body: !pr
+				? "No repository changes were needed. No merge request was opened."
+				: pr.merged
+					? `Merged ${pr.html_url}${pr.merge_commit_sha ? ` at ${pr.merge_commit_sha}` : ""}.`
+					: `Leitwerk stopped because ${pr.html_url} was closed without merge.`,
+			writeKey: `gitlab:${ctx.process.id}:${pr ? `${pr.merged ? "merged" : "closed"}-mr-comment` : "no-changes-comment"}`,
+		});
+	}
 	return {
 		namespace,
 		label: "GitLab MR",
@@ -101,21 +110,6 @@ export function createGitLabPublicationAdapter<P extends GitLabPublicationParams
 			operator: "ci_operator_action",
 		},
 		sources,
-		async unchanged(ctx) {
-			if (ctx.params.origin !== "issue") return;
-			await callFor(ctx)("gitlab_add_issue_comment", {
-				issueNumber: ctx.params.issueNumber,
-				body: "No repository changes were needed. No merge request was opened.",
-				writeKey: `gitlab:${ctx.process.id}:no-changes-comment`,
-			});
-			await callFor(ctx)("gitlab_finalize_source_issue", {
-				issueNumber: ctx.params.issueNumber,
-				merged: false,
-				triggerLabel: ctx.params.triggerLabel,
-				doneLabel: ctx.params.doneLabel,
-				writeKey: `gitlab:${ctx.process.id}:no-changes-trigger`,
-			});
-		},
 		tools: {
 			delivery: [
 				"gitlab_ensure_merge_request",
@@ -134,21 +128,8 @@ export function createGitLabPublicationAdapter<P extends GitLabPublicationParams
 			],
 			ci: ["gitlab_observe_merge_request", "gitlab_list_failed_jobs", "gitlab_get_job_trace"],
 		},
-		async identity(ctx) {
-			const pinned = object(
-				ctx.projects.find((p) => p.key === ctx.repo.get("repo").key)?.metadata?.[
-					"leitwerk.gitIdentity"
-				],
-			);
-			if (
-				pinned.provider !== "gitlab" ||
-				pinned.profile !== ctx.params.gitlabProfile ||
-				typeof pinned.name !== "string" ||
-				typeof pinned.email !== "string"
-			)
-				throw new Error("Pinned GitLab Git identity is unavailable");
-			return { name: pinned.name, email: pinned.email };
-		},
+		identity: (ctx) =>
+			resolvePullRequestGitIdentity(ctx, "gitlab", ctx.params.gitlabProfile, false),
 		async ensureRequest(ctx) {
 			const mr = await callFor(ctx)<GitLabMergeRequest>("gitlab_ensure_merge_request", {
 				title: ctx.process.title ?? "Leitwerk change",
@@ -156,24 +137,8 @@ export function createGitLabPublicationAdapter<P extends GitLabPublicationParams
 			});
 			return request(mr);
 		},
-		async reconcileTerminal(ctx, _current, pr) {
-			if (ctx.params.origin !== "issue") return;
-			const call = callFor(ctx);
-			await call("gitlab_finalize_source_issue", {
-				issueNumber: ctx.params.issueNumber,
-				merged: pr.merged,
-				triggerLabel: ctx.params.triggerLabel,
-				doneLabel: ctx.params.doneLabel,
-				writeKey: `gitlab:${ctx.process.id}:${pr.merged ? "complete-source-issue" : "remove-source-trigger"}`,
-			});
-			await call("gitlab_add_issue_comment", {
-				issueNumber: ctx.params.issueNumber,
-				body: pr.merged
-					? `Merged ${pr.html_url}${pr.merge_commit_sha ? ` at ${pr.merge_commit_sha}` : ""}.`
-					: `Leitwerk stopped because ${pr.html_url} was closed without merge.`,
-				writeKey: `gitlab:${ctx.process.id}:${pr.merged ? "merged" : "closed"}-mr-comment`,
-			});
-		},
+		reconcileTerminal: (ctx, _current, pr) => finalizeIssue(ctx, pr),
+		unchanged: (ctx) => finalizeIssue(ctx, null),
 		async linkIssue(ctx, current) {
 			if (ctx.params.origin === "issue")
 				await callFor(ctx)("gitlab_add_issue_comment", {

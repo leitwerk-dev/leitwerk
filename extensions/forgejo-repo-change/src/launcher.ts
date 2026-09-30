@@ -1,7 +1,7 @@
 import {
-	createRepositoryChangeUiLauncher,
+	createRepositoryChangeLauncher,
+	type PullRequestChangeLaunchInput,
 	repositoryIssueChangeLaunchConfig,
-	repositoryVisibilityCheck,
 } from "@leitwerk-dev/coding/repository-change-launch";
 import type {
 	ForgejoGitIdentity,
@@ -9,7 +9,7 @@ import type {
 	ForgejoRepository,
 } from "@leitwerk-dev/forgejo";
 import { createGitSshPreparationCheck, type GitSshIntegration } from "@leitwerk-dev/git-ssh";
-import type { LaunchPreparationCheck, ProcessLaunchConfig } from "@leitwerk-dev/process-sdk";
+import type { ProcessLaunchConfig } from "@leitwerk-dev/process-sdk";
 import type { WoodpeckerIntegration } from "@leitwerk-dev/woodpecker";
 import { type ForgejoRepoChangeParams, isIssueOrigin } from "./params.js";
 import { type ProfileBindings, resolveProfileBinding } from "./profile-bindings.js";
@@ -20,17 +20,9 @@ export const forgejoRepoChangeUiLauncherId = "forgejo_repo_change_process.ui_lau
 /** @internal */
 export function forgejoRepoChangeParams(
 	repository: ForgejoRepository,
-	input: {
-		/** @internal */
-		profile: string;
+	input: PullRequestChangeLaunchInput & {
 		/** @internal */
 		woodpeckerProfile: string;
-		/** @internal */
-		sshCredentialRef: string;
-		/** @internal */
-		prompt: string;
-		/** @internal */
-		workBranch: string;
 	},
 ): ForgejoRepoChangeParams {
 	return {
@@ -70,13 +62,7 @@ export function forgejoRepoChangeLaunchConfig(
 			woodpecker: { owner, repo, profile: woodpeckerProfile },
 			"leitwerk.gitIdentity": gitIdentity,
 		},
-		repository?.id !== undefined
-			? {
-					origin: new URL(repository.html_url).origin,
-					repositoryId: repository.id,
-					aliases: [repository.ssh_url, ...(repository.clone_url ? [repository.clone_url] : [])],
-				}
-			: undefined,
+		repository,
 	);
 }
 
@@ -94,86 +80,27 @@ export interface LauncherDependencies {
 
 /** @internal */
 export function createForgejoRepoChangeLauncher() {
-	let dependencies: LauncherDependencies | null = null;
-
-	/** @internal */
-	function configureForgejoRepoChangeLauncher(value: LauncherDependencies | null): void {
-		dependencies = value;
-	}
-
-	function requireDependencies(): LauncherDependencies {
-		if (!dependencies) throw new Error("Forgejo repository launcher is not configured");
-		return dependencies;
-	}
-
-	/** @internal */
-	function forgejoRepositoryPreparationChecks(
-		_input: unknown,
-		{ params }: ProcessLaunchConfig<ForgejoRepoChangeParams>,
-	): readonly LaunchPreparationCheck<ForgejoRepoChangeParams>[] {
-		return [
-			repositoryVisibilityCheck("Forgejo", async () =>
-				(await repositories(params.forgejoProfile)).some(
-					(candidate) => candidate.full_name === `${params.owner}/${params.repo}`,
-				),
-			),
-			createGitSshPreparationCheck("read", params, () => requireDependencies().gitSsh),
-			createGitSshPreparationCheck("write", params, () => requireDependencies().gitSsh),
-		];
-	}
-
-	/** @internal */
-	function resolveProfiles(profile: string) {
-		const { forgejo, woodpecker, gitSsh, profileBindings = {} } = requireDependencies();
-		if (!forgejo.profiles().includes(profile)) throw new Error("Forgejo profile is not available");
-		const binding = resolveProfileBinding(profileBindings, profile);
-		try {
-			woodpecker.client(binding.woodpeckerProfile);
-		} catch {
-			throw new Error(`Woodpecker profile '${binding.woodpeckerProfile}' is not available`);
-		}
-		if (!gitSsh.profiles().includes(binding.sshCredentialRef))
-			throw new Error(`Git SSH profile '${binding.sshCredentialRef}' is not available`);
-		return binding;
-	}
-
-	/** @internal */
-	async function resolveForgejoGitIdentity(profile: string): Promise<ForgejoGitIdentity> {
-		if (!profile) throw new Error("A Forgejo profile is required to resolve Git identity");
-		return requireDependencies().forgejo.client(profile).resolveGitIdentity(profile);
-	}
-
-	async function repositories(profile: string): Promise<readonly ForgejoRepository[]> {
-		if (!profile) return [];
-		const { forgejo } = requireDependencies();
-		if (!forgejo.profiles().includes(profile)) return [];
-		return forgejo.client(profile).listRepositories();
-	}
-
-	const forgejoRepoChangeUiLauncher = createRepositoryChangeUiLauncher({
+	return createRepositoryChangeLauncher({
 		id: forgejoRepoChangeUiLauncherId,
 		provider: "Forgejo",
 		providerId: "forgejo",
-		assertConfigured: requireDependencies,
-		profiles: () => requireDependencies().forgejo.profiles(),
-		repositories,
-		resolveProfiles,
-		resolveGitIdentity: resolveForgejoGitIdentity,
+		integration: (deps: LauncherDependencies) => deps.forgejo,
+		profile: (params: ForgejoRepoChangeParams) => params.forgejoProfile,
 		params: forgejoRepoChangeParams,
 		launchConfig: forgejoRepoChangeLaunchConfig,
-		preparationChecks: forgejoRepositoryPreparationChecks,
+		resolveProfiles(profile, { woodpecker, gitSsh, profileBindings = {} }) {
+			const binding = resolveProfileBinding(profileBindings, profile);
+			try {
+				woodpecker.client(binding.woodpeckerProfile);
+			} catch {
+				throw new Error(`Woodpecker profile '${binding.woodpeckerProfile}' is not available`);
+			}
+			if (!gitSsh.profiles().includes(binding.sshCredentialRef))
+				throw new Error(`Git SSH profile '${binding.sshCredentialRef}' is not available`);
+			return binding;
+		},
+		preparationChecks: (params, dependencies) => [
+			createGitSshPreparationCheck("write", params, () => dependencies().gitSsh),
+		],
 	});
-
-	return {
-		/** @internal */
-		configure: configureForgejoRepoChangeLauncher,
-		/** @internal */
-		preparationChecks: forgejoRepositoryPreparationChecks,
-		/** @internal */
-		resolveProfiles,
-		/** @internal */
-		resolveGitIdentity: resolveForgejoGitIdentity,
-		/** @internal */
-		launcher: forgejoRepoChangeUiLauncher,
-	};
 }

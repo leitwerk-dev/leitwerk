@@ -10,6 +10,23 @@ import { useRemoteRepoChangeSeed } from "./testing/remote-repo-change-seed.js";
 
 const seed = useRemoteRepoChangeSeed();
 
+it("completes unchanged work without a PR and reconciles the source once across restart", async () => {
+	const f = await createRemoteRepoChangeFixture(undefined, { seed: seed(), noChanges: true });
+	const id = await f.exposeTriggeredIssue();
+	await f.action(id, "approve_plan");
+	await f.waitForTurn(id, null, "completed");
+	expect(f.forgejo.pullRequests).toEqual([]);
+	expect(f.forgejo.issue()).toMatchObject({ state: "open", labels: [] });
+	expect(f.forgejo.comments()).toEqual([
+		expect.stringContaining("No repository changes were needed"),
+	]);
+	const writes = f.harness.process(id).snapshot().writeReceipts;
+	await f.restart();
+	await f.pollFeedback();
+	expect(f.harness.process(id).snapshot().writeReceipts).toEqual(writes);
+	expect(f.forgejo.comments()).toHaveLength(1);
+}, 15000);
+
 async function publishIssue(f: RemoteRepoChangeFixture) {
 	const id = await f.publishChange(await f.exposeTriggeredIssue());
 	await waitForValue(

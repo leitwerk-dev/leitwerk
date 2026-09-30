@@ -12,6 +12,7 @@ import jira, {
 	type JiraClientLike,
 	type JiraComment,
 	type JiraIssue,
+	type JiraSourceConfig,
 	setupJiraIntegration,
 } from "@leitwerk-dev/jira";
 import { createJiraGitLabChange, type JiraGitLabParams } from "@leitwerk-dev/jira-gitlab-change";
@@ -362,6 +363,19 @@ export async function jiraFixture(
 		git,
 		state,
 		poll,
+		waitForPlanBypass: (id: string, planRevision: number) =>
+			waitForValue(
+				() =>
+					(harness.ctx.deps.externalSourceService as CoreServerSetupDeps["externalSources"])
+						.listArmed("@leitwerk-dev/jira.issue-policy")
+						.some(
+							(s) =>
+								s.instanceId === id &&
+								(s.resolved as JiraSourceConfig).planRevision === planRevision,
+						),
+				Boolean,
+				12000,
+			),
 		get harness() {
 			return harness;
 		},

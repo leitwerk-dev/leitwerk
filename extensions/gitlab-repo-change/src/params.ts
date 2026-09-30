@@ -18,12 +18,6 @@ export type GitLabRepoChangeParams = RepositoryChangeLaunchParams<
 		gitSshProfile?: string;
 
 		/** @public */
-		skipPlanDecision?: boolean;
-
-		/** @public */
-		skipSimplification?: boolean;
-
-		/** @public */
 		gitlabOrigin: string;
 
 		/** @public */
@@ -53,8 +47,6 @@ export const gitlabRepoChangeParamsCodec =
 				...normalizeRepositoryChangeParamsInput(value, "GitLab Repo Change"),
 				gitlabProfile: text("gitlabProfile"),
 				gitSshProfile: trimString(r.gitSshProfile),
-				skipPlanDecision: r.skipPlanDecision === true,
-				skipSimplification: r.skipSimplification === true,
 				gitlabOrigin: text("gitlabOrigin"),
 				projectId: r.projectId,
 				owner: text("owner"),

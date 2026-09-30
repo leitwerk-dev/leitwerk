@@ -1,8 +1,66 @@
 import { parseRepoLocator, trimString } from "@leitwerk-dev/domain";
-import type { Codec, ProcessLaunchConfig } from "@leitwerk-dev/process-sdk";
+import type { Codec, FormDefinition, ProcessLaunchConfig } from "@leitwerk-dev/process-sdk";
+import type { RepositoryChangeWorkflow } from "./repository-change-process.js";
 
 /** @public */
-export interface RepositoryChangeParamsBase {
+export interface RepositoryChangeOptions {
+	/** @public */
+	skipPlanDecision?: boolean;
+	/** @public */
+	skipSimplification?: boolean;
+}
+
+/** @internal */
+export const repositoryChangeOptionFields: FormDefinition["fields"] = [
+	{
+		id: "skipPlanDecision",
+		label: "Skip plan approval",
+		kind: "boolean",
+		description: "Generate a plan, then implement and publish automatically.",
+	},
+	{
+		id: "skipSimplification",
+		label: "Skip simplification",
+		kind: "boolean",
+		description: "Publish after implementation without the simplification pass.",
+	},
+];
+
+/** @internal */
+export function repositoryChangeOptions(input: RepositoryChangeOptions): RepositoryChangeOptions {
+	return {
+		skipPlanDecision: input.skipPlanDecision === true,
+		skipSimplification: input.skipSimplification === true,
+	};
+}
+
+/** Provider label reads happen only at the implementation route boundary. @internal */
+export function repositoryChangeWorkflow<
+	P extends RepositoryChangeOptions & {
+		/** @internal */
+		origin: string;
+	},
+>(readLabels: (params: P) => Promise<readonly string[]>): RepositoryChangeWorkflow<P> {
+	return {
+		async planDecision(params) {
+			return {
+				skip: params.origin === "ui" && params.skipPlanDecision === true,
+				reason: "Launcher option",
+			};
+		},
+		async simplification(params) {
+			return params.origin === "ui"
+				? { skip: params.skipSimplification === true, reason: "Launcher option" }
+				: {
+						skip: (await readLabels(params)).includes("leitwerk-skip-simplification"),
+						reason: "Source labels",
+					};
+		},
+	};
+}
+
+/** @public */
+export interface RepositoryChangeParamsBase extends RepositoryChangeOptions {
 	/** @public */
 	repoLocator: string;
 	/** @public */
@@ -45,6 +103,13 @@ export interface RepositoryUiOriginParams {
 	doneLabel: null;
 }
 
+/** Input shared by SSH-backed pull-request launchers. @public */
+export interface PullRequestChangeLaunchInput
+	extends Pick<RepositoryChangeParamsBase, "prompt" | "workBranch"> {
+	/** @public */ profile: string;
+	/** @public */ sshCredentialRef: string;
+}
+
 /** Shared launch envelope; providers retain ownership of project metadata. @internal */
 export function repositoryIssueChangeLaunchConfig<
 	P extends RepositoryChangeParamsBase & (RepositoryIssueOriginParams | RepositoryUiOriginParams),
@@ -54,11 +119,22 @@ export function repositoryIssueChangeLaunchConfig<
 	title: string,
 	repository: string,
 	metadata: Record<string, unknown>,
-	settingsRepository?: NonNullable<
-		ProcessLaunchConfig<P>["projects"]
-	>[number]["settingsRepository"],
+	source?: {
+		/** @internal */ id?: number;
+		/** @internal */ html_url: string;
+		/** @internal */ ssh_url: string;
+		/** @internal */ clone_url?: string;
+	},
 ): ProcessLaunchConfig<P> {
 	const issue = params.origin === "issue";
+	const settingsRepository =
+		source?.id !== undefined
+			? {
+					origin: new URL(source.html_url).origin,
+					repositoryId: source.id,
+					aliases: [source.ssh_url, ...(source.clone_url ? [source.clone_url] : [])],
+				}
+			: undefined;
 	return {
 		processId: `${provider}_repo_change_process`,
 		params,
@@ -111,16 +187,7 @@ export function normalizeRepositoryIssueOrigin(
 }
 
 /** @public */
-export interface NormalizedRepositoryChangeParamsInput {
-	/** @internal */
-	repoLocator: string;
-	/** @internal */
-	baseBranch: string;
-	/** @internal */
-	workBranch: string;
-	/** @internal */
-	prompt: string;
-}
+export interface NormalizedRepositoryChangeParamsInput extends RepositoryChangeParamsBase {}
 
 /** @public */
 export function repositoryChangeParamsRecord(
@@ -141,6 +208,7 @@ export function normalizeRepositoryChangeParamsInput(
 	const record = repositoryChangeParamsRecord(value, displayName);
 	const rawRepoLocator = trimString(record.repoLocator);
 	return {
+		...repositoryChangeOptions(record),
 		repoLocator: parseRepoLocator(rawRepoLocator)?.value ?? rawRepoLocator,
 		baseBranch: trimString(record.baseBranch) || "main",
 		workBranch: trimString(record.workBranch),

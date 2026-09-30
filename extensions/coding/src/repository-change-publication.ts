@@ -18,11 +18,7 @@ import { codingPurposes } from "./settings.js";
 
 export {
 	createPullRequestChangeProcess,
-	pullRequestDeliveryTools,
-	pullRequestPublicationCallbacks,
 	pullRequestPublicationDefaults,
-	readPullRequestFeedback,
-	reconcilePullRequestSourceIssue,
 	resolvePullRequestGitIdentity,
 } from "./pull-request-publication-internal.js";
 

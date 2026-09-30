@@ -1,10 +1,7 @@
 import {
 	createPullRequestChangeProcess,
-	createRepositoryChangePublication,
 	publicationObject as object,
 	type PublicationSource,
-	type PublicationState,
-	pullRequestDeliveryTools,
 	pullRequestPublicationDefaults,
 	readPublicationState,
 } from "@leitwerk-dev/coding/repository-change-publication";
@@ -17,12 +14,6 @@ import {
 	isIssueOrigin,
 } from "./params.js";
 
-const ids = {
-	deliver: "deliver_change",
-	feedback: "revise_from_pull_request_feedback",
-	ciRepair: "repair_github_checks",
-	operator: "ci_operator_action",
-};
 const remote = (state: RepositoryChangeState) => readPublicationState(state, "githubRepoChange");
 
 /** @public */
@@ -37,6 +28,13 @@ export function createGitHubRepoChangeProcess(
 		(params) => params.githubProfile,
 		(params) => (isIssueOrigin(params) ? params : undefined),
 		"name",
+		{
+			id: "repair_github_checks",
+			label: "GitHub checks",
+			tools: ["github_get_ci_diagnostics"],
+			prompt: (current) =>
+				`Diagnose failed GitHub checks for request #${current.prNumber}, head ${current.headSha}. Use github_get_ci_diagnostics with pullRequestNumber and headSha to inspect failed check annotations and bounded Actions job logs before changing anything. Fix repository causes. Call changes_ready for repository changes, no_changes only after an explicit provider restart or a justified diagnosis that no repository change is needed, or cannot_repair when operator action is required.`,
+		},
 	);
 	const { requirePr } = sharedSources;
 	const failedPipeline = githubExternal.checks<GitHubRepoChangeParams, RepositoryChangeState>(
@@ -51,11 +49,8 @@ export function createGitHubRepoChangeProcess(
 	);
 
 	const sources: PublicationSource<GitHubRepoChangeParams>[] = [
-		{
-			id: "github_merge_conflict",
-			kind: "conflict",
-			label: "Rebase conflicting pull request",
-			source: githubExternal.pullRequestState(({ params, state }) => ({
+		sharedSources.conflict(
+			githubExternal.pullRequestState(({ params, state }) => ({
 				profile: params.githubProfile,
 				owner: params.owner,
 				repo: params.repo,
@@ -66,11 +61,7 @@ export function createGitHubRepoChangeProcess(
 				eventKinds: ["merge_conflict"],
 				pollInterval: "30s",
 			})),
-			read: ({ event }) => ({
-				kind: "conflict",
-				conflict: object(event).conflict as NonNullable<PublicationState["conflict"]>,
-			}),
-		},
+		),
 		sharedSources.feedback,
 		{
 			id: "github_failure_repair",
@@ -97,36 +88,15 @@ export function createGitHubRepoChangeProcess(
 		...sharedSources.terminal,
 		sharedSources.cancelled,
 	];
-	const publicationConfig = createRepositoryChangePublication<GitHubRepoChangeParams>({
-		...sharedSources.adapter,
-		ids,
-		sources,
-		tools: {
-			delivery: pullRequestDeliveryTools("github"),
-			feedback: ["github_get_pull_request", "github_list_pull_request_feedback"],
-			ci: ["github_get_ci_diagnostics"],
-		},
-		commitMessage: (kind) =>
-			kind === "feedback" ? "fix: address GitHub review feedback" : "fix: repair GitHub checks",
-		prompt(kind, current) {
-			return kind === "feedback"
-				? `Address the unseen GitHub pull-request feedback batch for PR #${current.prNumber}. Feedback identifiers: ${JSON.stringify(current.feedbackIds)}. Inspect the current checkout and use GitHub tools to read the full feedback. Do not rely on an earlier plan or conversation. Make only justified repository changes. Call changes_ready if files need publishing, no_changes after an explicit diagnosis that no repository change is needed, or cannot_repair when operator action is required.`
-				: `Diagnose failed GitHub checks for request #${current.prNumber}, head ${current.headSha}. Use github_get_ci_diagnostics with pullRequestNumber and headSha to inspect failed check annotations and bounded Actions job logs before changing anything. Fix repository causes. Call changes_ready for repository changes, no_changes only after an explicit provider restart or a justified diagnosis that no repository change is needed, or cannot_repair when operator action is required.`;
-		},
-	});
-	const publication = publicationConfig.fragment;
-	publication.watcher({
-		id: "use_leitwerk",
-		label: "GitHub use-leitwerk issues",
-		description: "Launch a remote repository change for GitHub issues carrying the trigger label",
-		source: githubIssueWatcherSource,
-		preparationChecks: launcher.preparationChecks,
-		resolveLaunchConfig: launcher.launcher.resolveIssueLaunchConfig,
-	});
-
 	return createPullRequestChangeProcess("github", "GitHub", docker, {
 		paramsCodec: githubRepoChangeParamsCodec,
 		launcher: launcher.launcher,
-		publication: publicationConfig,
+		workflow: launcher.workflow,
+		publication: { ...sharedSources.adapter, sources },
+		watcher: {
+			source: githubIssueWatcherSource,
+			preparationChecks: launcher.preparationChecks,
+			resolveLaunchConfig: launcher.launcher.resolveIssueLaunchConfig,
+		},
 	});
 }

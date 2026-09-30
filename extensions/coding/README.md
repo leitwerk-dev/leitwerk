@@ -78,22 +78,28 @@ or replace inherited blocks when selected. Empty replacement clears them.
 
 Plan uses `coding.planning`; implementation, commit-message generation, feedback
 revisions, CI repairs, and rebase repairs use `coding.implementation`;
-plan review, implementation review, and simplification
-use `coding.review`. Each new step captures current values. Prepared starts and
+simplification analysis uses `coding.review`. Each new step captures current values. Prepared starts and
 worker recovery retain their snapshots. Multi-repository instruction blocks are
 labelled separately; model defaults use the primary repository.
 
 ## Streamlined coordinated changes
 
-`createRepositoryChangeProcess` accepts an optional `workflow` with variant
-`streamlined`. GitLab and Jira GitLab use this variant; other callers keep their
-existing approval flow. It registers six planning/implementation turns plus four
-publication/repair turns. Plan decisions support approval and human-comment revisions.
+GitLab, GitHub, Forgejo, and Jira GitLab share six planning/implementation turns
+plus four publication/repair turns. Plan decisions support approval and human-comment
+revisions; implementation proceeds automatically to simplification and publication.
+The optional `workflow` supplies server policies; `variant`, `finalizeLabel`, and
+`finalizeForm` are deprecated and no longer select gates.
 Server-side policies decide plan bypass and simplification routing. Decisions are
 persisted with the plan revision or implementation boundary before routing.
 
 Simplification uses a read-only analysis product and a separate application turn
 that consumes both the findings and plan. Multi-repository sessions operate from the
 workspace root, identify each checkout, and persist commit messages by project key.
+Before upgrading, finish or abort instances parked on removed plan-review,
+implementation-review, implementation-approval, or simplification-approval turns.
+Retain their history; existing delivery turns and state remain supported.
+
 Publication adapters can coordinate repository-specific state and report aggregate
 terminal outcomes while reusing the same publication, feedback, CI, and rebase logic.
+GitLab, GitHub, and Forgejo adapters use `unchanged` to complete without publication,
+removing the source trigger without closing the issue.

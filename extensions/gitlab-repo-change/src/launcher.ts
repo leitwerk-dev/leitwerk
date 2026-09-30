@@ -1,6 +1,11 @@
 import { buildAutoWorkBranchFromSeed } from "@leitwerk-dev/coding/auto-work-branch";
+import {
+	repositoryChangeOptionFields,
+	repositoryChangeOptions,
+	repositoryChangeWorkflow,
+} from "@leitwerk-dev/coding/repository-change-launch";
 import { trimString } from "@leitwerk-dev/domain";
-import type { GitSshIntegration } from "@leitwerk-dev/git-ssh";
+import { createGitSshPreparationCheck, type GitSshIntegration } from "@leitwerk-dev/git-ssh";
 import {
 	type GitLabIntegration,
 	type GitLabIssueWatcherEvent,
@@ -56,8 +61,7 @@ export function createGitLabRepoChangeLauncher() {
 		const common = {
 			gitlabProfile: profile,
 			gitSshProfile,
-			skipPlanDecision: options.skipPlanDecision === true,
-			skipSimplification: options.skipSimplification === true,
+			...repositoryChangeOptions(options),
 			gitlabOrigin: client.baseUrl,
 			projectId: repository.id,
 			owner: repository.path_with_namespace.slice(0, split),
@@ -140,7 +144,7 @@ export function createGitLabRepoChangeLauncher() {
 	): readonly LaunchPreparationCheck<GitLabRepoChangeParams>[] => [
 		{
 			id: "gitlab_repository_access",
-			label: "Verify GitLab repository and SSH read/write access",
+			label: "Verify GitLab repository access",
 			async run({ signal }) {
 				const client = requireIntegration().client(params.gitlabProfile);
 				const repository = await client.getProject(params.projectId, signal);
@@ -153,20 +157,16 @@ export function createGitLabRepoChangeLauncher() {
 						"Repository changed or is archived",
 						"Select an active GitLab project and launch again.",
 					);
-				if (!params.gitSshProfile || !ssh) throw new Error("Git SSH profile is unavailable");
-				const result = await ssh.preflight({
-					credentialRef: params.gitSshProfile,
-					repoLocator: params.repoLocator,
-					baseBranch: params.baseBranch,
-					requireWrite: true,
-				});
-				if (!result.ok)
-					throw new SafeLaunchPreparationError(
-						`Git SSH ${result.access} access failed`,
-						result.detail,
-					);
 			},
 		},
+		createGitSshPreparationCheck(
+			"write",
+			{ ...params, sshCredentialRef: params.gitSshProfile ?? "" },
+			() => {
+				if (!params.gitSshProfile || !ssh) throw new Error("Git SSH profile is unavailable");
+				return ssh;
+			},
+		),
 	];
 	const launcher: ProcessLauncherDefinition<GitLabRepoChangeParams> = {
 		id: "gitlab_repo_change_process.ui_launcher",
@@ -192,18 +192,7 @@ export function createGitLabRepoChangeLauncher() {
 						options: [],
 					},
 					{ id: "prompt", label: "Requested change", kind: "textarea", required: true },
-					{
-						id: "skipPlanDecision",
-						label: "Skip plan approval",
-						kind: "boolean",
-						description: "Generate a plan, then implement and publish automatically.",
-					},
-					{
-						id: "skipSimplification",
-						label: "Skip simplification",
-						kind: "boolean",
-						description: "Publish after implementation without the simplification pass.",
-					},
+					...repositoryChangeOptionFields,
 				],
 				submitLabel: "Start change",
 			},
@@ -213,8 +202,7 @@ export function createGitLabRepoChangeLauncher() {
 					repository: "",
 					gitSshProfile: ssh?.profiles()[0] ?? "",
 					prompt: "",
-					skipPlanDecision: false,
-					skipSimplification: false,
+					...repositoryChangeOptions({}),
 				};
 			},
 			async resolveOptions(input) {
@@ -239,8 +227,7 @@ export function createGitLabRepoChangeLauncher() {
 					repository: trimString(input.repository),
 					prompt: trimString(input.prompt),
 					gitSshProfile: trimString(input.gitSshProfile),
-					skipPlanDecision: input.skipPlanDecision === true,
-					skipSimplification: input.skipSimplification === true,
+					...repositoryChangeOptions(input),
 				};
 			},
 			async resolveLaunchConfig(input) {
@@ -289,8 +276,7 @@ export function createGitLabRepoChangeLauncher() {
 					ok: true,
 					launchConfig: await launch(repository, profile, prompt, undefined, {
 						gitSshProfile: trimString(input.gitSshProfile),
-						skipPlanDecision: input.skipPlanDecision === true,
-						skipSimplification: input.skipSimplification === true,
+						...repositoryChangeOptions(input),
 					}),
 				};
 			},
@@ -303,41 +289,13 @@ export function createGitLabRepoChangeLauncher() {
 		/** @public */
 		launcher,
 		/** Server-side routing policies. @public */
-		workflow: {
-			/** @internal */
-			variant: "streamlined" as const,
-
-			/** @internal */
-			async planDecision(params: GitLabRepoChangeParams) {
-				return {
-					/** @internal */
-					skip: params.origin === "ui" && params.skipPlanDecision === true,
-
-					/** @internal */
-					reason: "Launcher option",
-				};
-			},
-
-			/** @internal */
-			async simplification(params: GitLabRepoChangeParams) {
-				if (params.origin === "ui")
-					return {
-						/** @internal */
-						skip: params.skipSimplification === true,
-
-						/** @internal */
-						reason: "Launcher option",
-					};
-				const client = requireIntegration().client(params.gitlabProfile);
-				if (client.baseUrl !== params.gitlabOrigin)
-					throw new Error("GitLab profile installation changed from the source issue");
-				const issue = await client.getIssue(params.projectId, params.issueNumber);
-				return {
-					skip: issue.labels.includes("leitwerk-skip-simplification"),
-					reason: "GitLab source labels",
-				};
-			},
-		},
+		workflow: repositoryChangeWorkflow(async (params: GitLabRepoChangeParams) => {
+			if (params.origin !== "issue") throw new Error("Missing GitLab source issue");
+			const client = requireIntegration().client(params.gitlabProfile);
+			if (client.baseUrl !== params.gitlabOrigin)
+				throw new Error("GitLab profile installation changed from the source issue");
+			return (await client.getIssue(params.projectId, params.issueNumber)).labels;
+		}),
 
 		/** @public */
 		preparationChecks,

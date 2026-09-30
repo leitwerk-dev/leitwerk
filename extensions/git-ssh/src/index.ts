@@ -71,7 +71,7 @@ export function createGitSshPreparationCheck<
 ): LaunchPreparationCheck<P> {
 	return {
 		id: `ssh_${access}`,
-		label: `Verify SSH ${access} access`,
+		label: `Verify SSH ${access === "write" ? "read/write" : "read"} access`,
 		async run({ signal, logger }) {
 			signal.throwIfAborted();
 			const result = await integration().preflight({

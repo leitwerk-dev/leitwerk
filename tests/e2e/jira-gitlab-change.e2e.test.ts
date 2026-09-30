@@ -65,6 +65,8 @@ describe("Jira coordinated GitLab change", () => {
 		await f.action(id, "request_revision", { message: "Keep the client compatible" });
 		await f.wait(id, "plan_decision");
 		expect(f.harness.ctx.deps.processes.getById(id)?.planRevision).toBe(2);
+		// Durable waiting state can precede reconciliation of the revised plan's subscription.
+		await f.waitForPlanBypass(id, 2);
 		f.issue.fields.labels.push("leitwerk-skip-plan-decision");
 		await f.poll();
 		await f.wait(id, "deliver_change");

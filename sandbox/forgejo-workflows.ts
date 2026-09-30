@@ -225,7 +225,9 @@ export function forgejoScripts(
 					}),
 					call("changes_ready", { markdown: "Added the requested watering notes." }),
 				);
-			return response(markdown("Updated notes.txt with the weekly review."));
+			return response(
+				call("implementation_ready", { markdown: "Updated notes.txt with the weekly review." }),
+			);
 		}
 		return response(markdown("docs: document weekly garden review"));
 	};

@@ -96,4 +96,5 @@ plan-bypass label. Neither skip label replaces the watcher launch trigger.
 
 Before deployment, finish or abort active instances using the removed plan-review,
 implementation-review, implementation-approval, or simplification-approval turns.
-Their history must be retained. Other provider workflows retain their current gates.
+Their history must be retained. GitHub and Forgejo use the same workflow and
+upgrade boundary; provider-specific publication and CI semantics remain separate.

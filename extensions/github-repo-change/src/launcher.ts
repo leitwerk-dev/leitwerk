@@ -1,11 +1,11 @@
 import {
-	createRepositoryChangeUiLauncher,
+	createRepositoryChangeLauncher,
+	type PullRequestChangeLaunchInput,
 	repositoryIssueChangeLaunchConfig,
-	repositoryVisibilityCheck,
 } from "@leitwerk-dev/coding/repository-change-launch";
 import { createGitSshPreparationCheck, type GitSshIntegration } from "@leitwerk-dev/git-ssh";
 import type { GitHubGitIdentity, GitHubIntegration, GitHubRepository } from "@leitwerk-dev/github";
-import type { LaunchPreparationCheck, ProcessLaunchConfig } from "@leitwerk-dev/process-sdk";
+import type { ProcessLaunchConfig } from "@leitwerk-dev/process-sdk";
 import { type GitHubRepoChangeParams, isIssueOrigin } from "./params.js";
 import { type ProfileBindings, resolveProfileBinding } from "./profile-bindings.js";
 
@@ -15,16 +15,7 @@ export const githubRepoChangeUiLauncherId = "github_repo_change_process.ui_launc
 /** @public */
 export function githubRepoChangeParams(
 	repository: GitHubRepository,
-	input: {
-		/** @public */
-		profile: string;
-		/** @public */
-		sshCredentialRef: string;
-		/** @public */
-		prompt: string;
-		/** @public */
-		workBranch: string;
-	},
+	input: PullRequestChangeLaunchInput,
 ): GitHubRepoChangeParams {
 	return {
 		repoLocator: repository.ssh_url,
@@ -61,13 +52,7 @@ export function githubRepoChangeLaunchConfig(
 			github: { owner, repo, profile, ...(issue ? { issueNumber: params.issueNumber } : {}) },
 			"leitwerk.gitIdentity": gitIdentity,
 		},
-		repository?.id !== undefined
-			? {
-					origin: new URL(repository.html_url).origin,
-					repositoryId: repository.id,
-					aliases: [repository.ssh_url, ...(repository.clone_url ? [repository.clone_url] : [])],
-				}
-			: undefined,
+		repository,
 	);
 }
 
@@ -83,83 +68,22 @@ export interface LauncherDependencies {
 
 /** @public */
 export function createGitHubRepoChangeLauncher() {
-	let dependencies: LauncherDependencies | null = null;
-
-	/** @public */
-	function configureGitHubRepoChangeLauncher(value: LauncherDependencies | null): void {
-		dependencies = value;
-	}
-
-	function requireDependencies(): LauncherDependencies {
-		if (!dependencies) throw new Error("GitHub repository launcher is not configured");
-		return dependencies;
-	}
-
-	/** @public */
-	function githubRepositoryPreparationChecks(
-		_input: unknown,
-		{ params }: ProcessLaunchConfig<GitHubRepoChangeParams>,
-	): readonly LaunchPreparationCheck<GitHubRepoChangeParams>[] {
-		return [
-			repositoryVisibilityCheck("GitHub", async () =>
-				(await repositories(params.githubProfile)).some(
-					(candidate) => candidate.full_name === `${params.owner}/${params.repo}`,
-				),
-			),
-			createGitSshPreparationCheck("read", params, () => requireDependencies().gitSsh),
-			createGitSshPreparationCheck("write", params, () => requireDependencies().gitSsh),
-		];
-	}
-
-	/** @public */
-	function resolveProfiles(profile: string) {
-		const { github, gitSsh, profileBindings = {} } = requireDependencies();
-		if (!(github.profiles?.() ?? []).includes(profile))
-			throw new Error("GitHub profile is not available");
-		const binding = resolveProfileBinding(profileBindings, profile);
-
-		if (!gitSsh.profiles().includes(binding.sshCredentialRef))
-			throw new Error(`Git SSH profile '${binding.sshCredentialRef}' is not available`);
-		return binding;
-	}
-
-	/** @public */
-	async function resolveGitHubGitIdentity(profile: string): Promise<GitHubGitIdentity> {
-		if (!profile) throw new Error("A GitHub profile is required to resolve Git identity");
-		return requireDependencies().github.client(profile).resolveGitIdentity(profile);
-	}
-
-	async function repositories(profile: string): Promise<readonly GitHubRepository[]> {
-		if (!profile) return [];
-		const { github } = requireDependencies();
-		if (!(github.profiles?.() ?? []).includes(profile)) return [];
-		return github.client(profile).listRepositories();
-	}
-
-	const githubRepoChangeUiLauncher = createRepositoryChangeUiLauncher({
+	return createRepositoryChangeLauncher({
 		id: githubRepoChangeUiLauncherId,
 		provider: "GitHub",
 		providerId: "github",
-		assertConfigured: requireDependencies,
-		profiles: () => requireDependencies().github.profiles?.() ?? [],
-		repositories,
-		resolveProfiles,
-		resolveGitIdentity: resolveGitHubGitIdentity,
+		integration: (deps: LauncherDependencies) => deps.github,
+		profile: (params: GitHubRepoChangeParams) => params.githubProfile,
 		params: githubRepoChangeParams,
 		launchConfig: githubRepoChangeLaunchConfig,
-		preparationChecks: githubRepositoryPreparationChecks,
+		resolveProfiles(profile, { gitSsh, profileBindings = {} }) {
+			const binding = resolveProfileBinding(profileBindings, profile);
+			if (!gitSsh.profiles().includes(binding.sshCredentialRef))
+				throw new Error(`Git SSH profile '${binding.sshCredentialRef}' is not available`);
+			return binding;
+		},
+		preparationChecks: (params, dependencies) => [
+			createGitSshPreparationCheck("write", params, () => dependencies().gitSsh),
+		],
 	});
-
-	return {
-		/** @public */
-		configure: configureGitHubRepoChangeLauncher,
-		/** @public */
-		preparationChecks: githubRepositoryPreparationChecks,
-		/** @public */
-		resolveProfiles,
-		/** @public */
-		resolveGitIdentity: resolveGitHubGitIdentity,
-		/** @public */
-		launcher: githubRepoChangeUiLauncher,
-	};
 }
