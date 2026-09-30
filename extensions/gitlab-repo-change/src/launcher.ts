@@ -11,6 +11,7 @@ import {
 	type GitLabIssueWatcherEvent,
 	type GitLabProject,
 	gitlabIssueExternalId,
+	resolveGitLabLaunchProject,
 } from "@leitwerk-dev/gitlab";
 import {
 	type LaunchPreparationCheck,
@@ -55,27 +56,20 @@ export function createGitLabRepoChangeLauncher() {
 			(ssh?.profiles().length === 1 ? ssh.profiles()[0] : "");
 		if (!gitSshProfile || !ssh?.profiles().includes(gitSshProfile))
 			throw new Error("Select a matching Git SSH profile");
-		if (!repository.ssh_url_to_repo) throw new Error("GitLab repository has no SSH clone URL");
-		const split = repository.path_with_namespace.lastIndexOf("/");
-		if (split < 1) throw new Error("Invalid GitLab project path");
-		const common = {
-			gitlabProfile: profile,
-			gitSshProfile,
-			...repositoryChangeOptions(options),
-			gitlabOrigin: client.baseUrl,
-			projectId: repository.id,
-			owner: repository.path_with_namespace.slice(0, split),
-			repo: repository.path_with_namespace.slice(split + 1),
-			repoLocator: repository.ssh_url_to_repo,
-			baseBranch: repository.default_branch,
-			workBranch: issue
+		const { params: binding, project } = await resolveGitLabLaunchProject(
+			client,
+			profile,
+			repository,
+			issue
 				? `leitwerk/issue-${issue.issue.iid}`
 				: buildAutoWorkBranchFromSeed(
 						prompt,
 						`${repository.http_url_to_repo}:${repository.default_branch}`,
 					),
-			prompt,
-		};
+		);
+		project.settingsRepository.origin = new URL(repository.web_url).origin;
+		if (issue) Object.assign(project.metadata.gitlab, { issueIid: issue.issue.iid });
+		const common = { ...binding, gitSshProfile, ...repositoryChangeOptions(options), prompt };
 		const params: GitLabRepoChangeParams = issue
 			? {
 					...common,
@@ -93,7 +87,6 @@ export function createGitLabRepoChangeLauncher() {
 					triggerLabel: null,
 					doneLabel: null,
 				};
-		const identity = await client.resolveGitIdentity();
 		return {
 			processId: "gitlab_repo_change_process",
 			title: issue?.issue.title ?? prompt,
@@ -105,37 +98,7 @@ export function createGitLabRepoChangeLauncher() {
 						externalUrl: issue.issue.web_url,
 					}
 				: {}),
-			projects: [
-				{
-					key: "repo",
-					repoLocator: params.repoLocator,
-					settingsRepository: {
-						origin: new URL(repository.web_url).origin,
-						repositoryId: repository.id,
-						aliases: [
-							repository.http_url_to_repo,
-							...(repository.ssh_url_to_repo ? [repository.ssh_url_to_repo] : []),
-						],
-					},
-					baseBranch: params.baseBranch,
-					workBranch: params.workBranch,
-					metadata: {
-						gitlab: {
-							origin: client.baseUrl,
-							profile,
-							projectId: repository.id,
-							...(issue ? { issueIid: issue.issue.iid } : {}),
-						},
-						"leitwerk.gitIdentity": {
-							provider: "gitlab",
-							profile,
-							login: identity.username,
-							name: identity.name,
-							email: identity.email,
-						},
-					},
-				},
-			],
+			projects: [project],
 		};
 	}
 	const preparationChecks = (

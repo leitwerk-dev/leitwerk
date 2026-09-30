@@ -170,7 +170,7 @@ export function notebookScriptResolver(
 				call("implementation_ready", { markdown: "Updated notes.txt with the weekly review." }),
 			]);
 		}
-		return markdown("docs: document weekly garden review");
+		return markdown('{"repo":"docs: document weekly garden review"}');
 	};
 	return resolve;
 }

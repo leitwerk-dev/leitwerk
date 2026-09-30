@@ -51,8 +51,9 @@ export interface GitSshIntegration {
 }
 
 /** Shared repository launch check; integration lookup stays lazy across reconfiguration. @internal */
-export function createGitSshPreparationCheck<
-	P extends {
+export function createGitSshPreparationCheck(
+	access: "read" | "write",
+	params: {
 		/** @internal */
 		sshCredentialRef: string;
 		/** @internal */
@@ -64,11 +65,8 @@ export function createGitSshPreparationCheck<
 		/** @internal */
 		repo: string;
 	},
->(
-	access: "read" | "write",
-	params: P,
 	integration: () => GitSshIntegration,
-): LaunchPreparationCheck<P> {
+): LaunchPreparationCheck {
 	return {
 		id: `ssh_${access}`,
 		label: `Verify SSH ${access === "write" ? "read/write" : "read"} access`,

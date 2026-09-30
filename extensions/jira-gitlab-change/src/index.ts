@@ -12,6 +12,7 @@ import {
 	gitlabExternal,
 	gitlabIntegration,
 	gitlabPublicationEvidenceForRequest,
+	gitlabPublicationSource,
 } from "@leitwerk-dev/gitlab";
 import {
 	type JiraIssue,
@@ -48,26 +49,7 @@ export function createJiraGitLabChange(options: {
 				repositories: params.repositories.flatMap((repo) => {
 					const c = remote(state, repo.key);
 					return c.prNumber && c.headSha && !c.delivery.terminalPullRequest
-						? [
-								{
-									projectKey: repo.key,
-									origin: repo.gitlabOrigin,
-									profile: repo.gitlabProfile,
-									projectId: repo.projectId,
-									iid: c.prNumber,
-									afterKey: c.observationKey,
-									pollInterval: "30s",
-									feedback: { afterId: c.conversationCursor, quietPeriodMs: 120000 },
-									delivery: {
-										headSha: c.headSha,
-										owner: repo.owner,
-										repo: repo.repo,
-										headBranch: repo.workBranch,
-										baseBranch: repo.baseBranch,
-										lastConflictKey: c.lastConflictKey,
-									},
-								},
-							]
+						? [{ projectKey: repo.key, ...gitlabPublicationSource(repo, c) }]
 						: [];
 				}),
 			})),
@@ -102,7 +84,10 @@ export function createJiraGitLabChange(options: {
 			read: () => ({ kind: "observed" }),
 		},
 	];
-	const adapter = createGitLabPublicationAdapter(sources, namespace);
+	const adapter = createGitLabPublicationAdapter(sources, namespace, (ctx) => ({
+		title: `${ctx.params.issueKey}: ${ctx.params.issue.fields.summary}`,
+		body: `Implements ${ctx.params.issueUrl}\n\nLeitwerk process: ${ctx.process.id}`,
+	}));
 	adapter.repositories = (params) =>
 		params.repositories.map((repo) => ({
 			key: repo.key,
@@ -114,35 +99,6 @@ export function createJiraGitLabChange(options: {
 		"jira_comment",
 		"jira_finalize_source_issue",
 	];
-	adapter.ensureRequest = async (ctx) => {
-		const observed = (await ctx.callIntegrationTool("gitlab_ensure_merge_request", {
-			projectKey: "repo",
-			title: `${ctx.params.issueKey}: ${ctx.params.issue.fields.summary}`,
-			body: `Implements ${ctx.params.issueUrl}\n\nLeitwerk process: ${ctx.process.id}`,
-		})) as GitLabDeliveryObservation["mr"];
-		return {
-			number: observed.iid,
-			html_url: observed.web_url,
-			merged: observed.state === "merged",
-			merge_commit_sha: observed.merge_commit_sha,
-		};
-	};
-	adapter.observeTerminal = async (ctx, current) => {
-		const project = ctx.projects.find((project) => project.key === ctx.repo.get("repo").key);
-		if (!current.prNumber && !(project?.metadata?.gitlab as { iid?: number } | undefined)?.iid)
-			return null;
-		const { mr } = (await ctx.callIntegrationTool("gitlab_observe_merge_request", {
-			projectKey: "repo",
-		})) as GitLabDeliveryObservation;
-		return mr.state === "opened"
-			? null
-			: {
-					number: mr.iid,
-					html_url: mr.web_url,
-					merged: mr.state === "merged",
-					merge_commit_sha: mr.merge_commit_sha,
-				};
-	};
 	adapter.sourceCancelled = async (ctx) =>
 		!jiraEligible(
 			(await ctx.callIntegrationTool("jira_get_source_issue", {

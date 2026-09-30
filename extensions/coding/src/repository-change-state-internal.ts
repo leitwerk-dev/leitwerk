@@ -36,15 +36,6 @@ export interface RepositoryChangeState extends StructuralProcessState {
 	extensionState?: Record<string, unknown>;
 }
 
-/** @internal */
-export function createEmptyRepositoryChangeFinalizationState(): RepositoryChangeFinalizationState {
-	return { generatedCommitMessage: null };
-}
-
-function stringOrNull(value: unknown): string | null {
-	return typeof value === "string" ? value : null;
-}
-
 function toRecord(value: unknown): Record<string, unknown> {
 	return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
 }
@@ -52,7 +43,8 @@ function toRecord(value: unknown): Record<string, unknown> {
 function parseFinalizationState(value: unknown): RepositoryChangeFinalizationState {
 	const record = toRecord(value);
 	return {
-		generatedCommitMessage: stringOrNull(record.generatedCommitMessage),
+		generatedCommitMessage:
+			typeof record.generatedCommitMessage === "string" ? record.generatedCommitMessage : null,
 		...(record.commitMessages
 			? {
 					commitMessages: Object.fromEntries(
@@ -80,13 +72,3 @@ export const repositoryChangeStateCodec: Codec<RepositoryChangeState> = {
 		return value;
 	},
 };
-
-/** @internal */
-export function clearReviewRefs(
-	semanticEntryRefs: RepositoryChangeState["semanticEntryRefs"],
-): RepositoryChangeState["semanticEntryRefs"] {
-	return {
-		...semanticEntryRefs,
-		review: null,
-	};
-}

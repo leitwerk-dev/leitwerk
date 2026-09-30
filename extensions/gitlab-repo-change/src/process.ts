@@ -12,6 +12,7 @@ import {
 	gitlabExternal,
 	gitlabIssueWatcherSource,
 	gitlabPublicationEvidenceForRequest,
+	gitlabPublicationSource,
 } from "@leitwerk-dev/gitlab";
 import type { createGitLabRepoChangeLauncher } from "./launcher.js";
 import { type GitLabRepoChangeParams, gitlabRepoChangeParamsCodec } from "./params.js";
@@ -29,7 +30,7 @@ export function gitlabPublicationEvidence(
 	state: RepositoryChangeState,
 	event: GitLabDeliveryObservation,
 ): PublicationEvidence {
-	return gitlabPublicationEvidenceForRequest(requireRequest(state), event);
+	return gitlabPublicationEvidenceForRequest(remote(state), event);
 }
 
 /** @public */
@@ -42,26 +43,9 @@ export function createGitLabRepoChangeProcess(
 			id: "gitlab_merge_request",
 			kind: "observation",
 			label: "GitLab merge request evidence",
-			source: gitlabExternal.mergeRequest(({ params, state }) => {
-				const c = requireRequest(state);
-				return {
-					profile: params.gitlabProfile,
-					origin: params.gitlabOrigin,
-					projectId: params.projectId,
-					iid: c.prNumber,
-					pollInterval: "30s",
-					afterKey: c.observationKey,
-					feedback: { afterId: c.conversationCursor, quietPeriodMs: 120000 },
-					delivery: {
-						headSha: c.headSha,
-						owner: params.owner,
-						repo: params.repo,
-						headBranch: params.workBranch,
-						baseBranch: params.baseBranch,
-						lastConflictKey: c.lastConflictKey,
-					},
-				};
-			}),
+			source: gitlabExternal.mergeRequest(({ params, state }) =>
+				gitlabPublicationSource(params, remote(state)),
+			),
 			read: ({ state, event }) =>
 				gitlabPublicationEvidence(state, event as GitLabDeliveryObservation),
 		},

@@ -1,7 +1,6 @@
 import { trimString as normalizeMessage } from "@leitwerk-dev/domain";
 import {
 	type Codec,
-	createEmptyStructuralProcessState,
 	type ExternalActionSource,
 	type FlowFragmentBuilder,
 	type FormDefinition,
@@ -14,16 +13,12 @@ import {
 } from "@leitwerk-dev/process-sdk";
 import { codingActionIds, requestRevisionForm } from "./actions.js";
 import {
-	clearReviewRefs,
-	createEmptyRepositoryChangeFinalizationState,
 	type RepositoryChangeState,
 	repositoryChangeStateCodec,
 } from "./repository-change-state-internal.js";
 import { codingPurposes } from "./settings.js";
 import {
-	buildGenerateCommitMessagePrompt,
 	buildRepositoryCommitMessagesPrompt,
-	normalizeGeneratedCommitMessage,
 	parseRepositoryCommitMessages,
 } from "./turns/generate-commit-message.js";
 import { buildGeneratePlanPrompt } from "./turns/generate-plan.js";
@@ -96,12 +91,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 	config: RepositoryChangeProcessConfig<TParams>,
 ) {
 	const tools = ["read", "bash", "edit", "write"] as const;
-	function clearReviewState(state: RepositoryChangeState): RepositoryChangeState {
-		const productRefs = { ...state.productRefs };
-		delete productRefs.review;
-		delete productRefs["simplification-plan"];
-		return { ...state, semanticEntryRefs: clearReviewRefs(state.semanticEntryRefs), productRefs };
-	}
 	const planDecision = humanTurn<TParams, RepositoryChangeState>({
 		description: "Review Plan",
 		reviewSemanticRef: "plan",
@@ -124,7 +113,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 					if (!ctx.state.semanticEntryRefs.plan?.turnRecordId?.trim())
 						throw new Error("No plan is available for approval");
 					return {
-						state: clearReviewState(ctx.state),
 						emit: [
 							{
 								type: "plan_approved",
@@ -145,8 +133,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				schedulable: true,
 				to: "generate_plan",
 				queueTarget: { semanticRef: "currentPrimaryPathLeaf" },
-				effect: ({ ctx, input }) => ({
-					state: clearReviewState(ctx.state),
+				effect: ({ input }) => ({
 					emit: [
 						{ type: "plan_revision_requested", data: { message: normalizeMessage(input.message) } },
 					],
@@ -225,7 +212,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 						: [];
 					return {
 						state: {
-							...clearReviewState(ctx.state),
+							...ctx.state,
 							routing: { ...ctx.state.routing, plan: { ...policy, planRevision } },
 						},
 						processPatch: { planRevision },
@@ -274,11 +261,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		.executionPurpose(codingPurposes.implementation)
 		.tools(...tools)
 		.freshSeededPrimary()
-		.continueFromProductBranch("simplification-plan", {
-			kind: "semantic_ref",
-			ref: "review",
-			fallback: { kind: "session_root" },
-		})
+		.startFromRoot()
 		.consume("plan")
 		.buildPrompt(buildImplementPrompt)
 		.outcomeTool("implementation_ready", (tool) =>
@@ -341,25 +324,17 @@ ${ctx.input["simplification-plan"]}`,
 		.rootBranchReview()
 		.startFromRoot()
 		.consume("plan")
-		.buildPrompt((ctx) =>
-			config.workflow?.multiRepository
-				? buildRepositoryCommitMessagesPrompt(ctx)
-				: buildGenerateCommitMessagePrompt(ctx),
-		)
+		.buildPrompt(buildRepositoryCommitMessagesPrompt)
 		.publish("commit-message")
 		.to(config.publication.entryTurnId)
 		.state(({ ctx }) => ({
 			...ctx.state,
 			finalization: {
 				...ctx.state.finalization,
-				...(config.workflow?.multiRepository
-					? {
-							commitMessages: parseRepositoryCommitMessages(
-								ctx.output?.content,
-								ctx.projects.map((p) => p.key),
-							),
-						}
-					: { generatedCommitMessage: normalizeGeneratedCommitMessage(ctx.output?.content) }),
+				commitMessages: parseRepositoryCommitMessages(
+					ctx.output?.content,
+					ctx.projects.map((p) => p.key),
+				),
 			},
 		}));
 	const builder = flow
@@ -376,11 +351,7 @@ ${ctx.input["simplification-plan"]}`,
 		)
 		.piConfig(config.workflow?.multiRepository ? {} : { sessionCwdTemplate: "{{{projectKey}}}" })
 		.codecs({ params: config.paramsCodec, state: repositoryChangeStateCodec })
-		.initialState(() => ({
-			...createEmptyStructuralProcessState(),
-			finalization: createEmptyRepositoryChangeFinalizationState(),
-			extensionState: {},
-		}))
+		.initialState(() => repositoryChangeStateCodec.parse({}))
 		.turn(generatePlan)
 		.turn({ id: "plan_decision", definition: planDecision })
 		.turn(implement)

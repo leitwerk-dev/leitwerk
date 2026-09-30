@@ -229,6 +229,6 @@ export function forgejoScripts(
 				call("implementation_ready", { markdown: "Updated notes.txt with the weekly review." }),
 			);
 		}
-		return response(markdown("docs: document weekly garden review"));
+		return response(markdown('{"repo":"docs: document weekly garden review"}'));
 	};
 }

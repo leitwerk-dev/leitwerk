@@ -16,13 +16,8 @@ import jira, {
 	setupJiraIntegration,
 } from "@leitwerk-dev/jira";
 import { createJiraGitLabChange, type JiraGitLabParams } from "@leitwerk-dev/jira-gitlab-change";
-import {
-	type CapabilityToken,
-	type CoreServerSetupDeps,
-	coreHostCapabilities,
-	type LeitwerkExtensionModule,
-} from "@leitwerk-dev/process-sdk";
-import { fixtureModelProviders } from "@leitwerk-dev/test-support";
+import type { CoreServerSetupDeps } from "@leitwerk-dev/process-sdk";
+import { createPollingTestExtension, fixtureModelProviders } from "@leitwerk-dev/test-support";
 import {
 	createIntegrationHarness,
 	createProcessDriver,
@@ -198,58 +193,50 @@ export async function jiraFixture(
 		flow = createJiraGitLabChange({ docker: false });
 		// Owned local fixture uses file transport; production sends only git-ssh references.
 		flow.process.repositoryCredentials = () => [];
-		const providers: LeitwerkExtensionModule = {
-			manifest: { id: "jira", version: "1.0.0" },
-			scopedSettings: jira.scopedSettings,
-			setupServer(api) {
-				const deps = api.require(coreHostCapabilities.serverSetup) as CoreServerSetupDeps;
-				const manualApi = {
-					...api,
-					get<T>(token: CapabilityToken<T>): T | T[] | undefined {
-						return token === coreHostCapabilities.serverSetup
-							? ({
-									...deps,
-									polling: {
-										create({ pollOnce }: { pollOnce: () => Promise<{ errors: string[] }> }) {
-											polls.push(pollOnce);
-											return { poll: pollOnce };
-										},
-									},
-								} as T)
-							: api.get(token);
-					},
-				};
-				setupJiraIntegration(
-					manualApi,
-					{ profiles: () => ["team"], client: () => jiraClient },
-					{ now: () => clock },
-				);
-				setupGitLabIntegration(
-					manualApi,
-					{
-						profiles: () => ["team"],
-						client: () => {
-							const client = gitlab.client();
-							return {
-								...client,
-								async createMergeRequest(...args: Parameters<typeof client.createMergeRequest>) {
-									if (failPublication && args[0] === 2)
-										throw new Error("Second repository publication unavailable");
-									const mr = await client.createMergeRequest(...args);
-									if (options.cancelAfterFirstPublication) issue.fields.labels = [];
-									return mr;
-								},
-							};
-						},
-					},
-					{ now: () => clock },
-				);
+		const providers = [
+			{
+				...createPollingTestExtension(
+					jira.manifest,
+					(api) =>
+						setupJiraIntegration(
+							api,
+							{ profiles: () => ["team"], client: () => jiraClient },
+							{ now: () => clock },
+						),
+					true,
+				),
+				scopedSettings: jira.scopedSettings,
 			},
-		};
+			createPollingTestExtension(
+				{ id: "gitlab", version: "1.0.0" },
+				(api) =>
+					setupGitLabIntegration(
+						api,
+						{
+							profiles: () => ["team"],
+							client: () => {
+								const client = gitlab.client();
+								return {
+									...client,
+									async createMergeRequest(...args: Parameters<typeof client.createMergeRequest>) {
+										if (failPublication && args[0] === 2)
+											throw new Error("Second repository publication unavailable");
+										const mr = await client.createMergeRequest(...args);
+										if (options.cancelAfterFirstPublication) issue.fields.labels = [];
+										return mr;
+									},
+								};
+							},
+						},
+						{ now: () => clock },
+					),
+				true,
+			),
+		];
+		polls = providers.map((provider) => () => provider.poll());
 		const catalog = await buildExtensionCatalogFromModules([
 			coding,
-			providers,
-			{ manifest: { id: "gitlab", version: "1.0.0" } },
+			...providers,
 			{
 				manifest: { id: "git-ssh", version: "1.0.0" },
 				setupServer(api) {

@@ -4,11 +4,12 @@ import {
 	type PublicationParams,
 	type PublicationRequest,
 	type PublicationSource,
+	type PublicationState,
 	type RepositoryChangePublicationAdapter,
 	resolvePullRequestGitIdentity,
 } from "@leitwerk-dev/coding/repository-change-publication";
 import type { GitLabMergeRequest } from "./client.js";
-import type { GitLabDeliveryObservation } from "./external.js";
+import type { GitLabDeliveryObservation, GitLabSourceConfig } from "./external.js";
 
 /** @public */
 export interface GitLabPublicationParams extends PublicationParams {
@@ -44,9 +45,38 @@ const callFor =
 	<T>(name: string, args: Record<string, unknown> = {}) =>
 		ctx.callIntegrationTool(name, { projectKey: "repo", ...args }) as Promise<T>;
 
+/** Shared observation policy for direct and coordinated GitLab delivery. @internal */
+export function gitlabPublicationSource(
+	params: GitLabPublicationParams & {
+		/** @internal */
+		gitlabOrigin: string;
+	},
+	current: PublicationState,
+): GitLabSourceConfig {
+	if (!current.prNumber || !current.headSha)
+		throw new Error("Merge request delivery state is incomplete");
+	return {
+		profile: params.gitlabProfile,
+		origin: params.gitlabOrigin,
+		projectId: params.projectId,
+		iid: current.prNumber,
+		pollInterval: "30s",
+		afterKey: current.observationKey,
+		feedback: { afterId: current.conversationCursor, quietPeriodMs: 120000 },
+		delivery: {
+			headSha: current.headSha,
+			owner: params.owner,
+			repo: params.repo,
+			headBranch: params.workBranch,
+			baseBranch: params.baseBranch,
+			lastConflictKey: current.lastConflictKey,
+		},
+	};
+}
+
 /** @public */
 export function gitlabPublicationEvidenceForRequest(
-	state: import("@leitwerk-dev/coding/repository-change-publication").PublicationState,
+	state: PublicationState,
 	event: GitLabDeliveryObservation,
 ): PublicationEvidence {
 	const current = state;
@@ -79,6 +109,12 @@ export function gitlabPublicationEvidenceForRequest(
 export function createGitLabPublicationAdapter<P extends GitLabPublicationParams>(
 	sources: PublicationSource<P>[],
 	namespace = "gitlabRepoChange",
+	describeRequest = (ctx: PublicationContext<P>) => ({
+		/** @internal */
+		title: ctx.process.title ?? "Leitwerk change",
+		/** @internal */
+		body: `${ctx.params.origin === "issue" ? `Implements ${ctx.params.issueUrl}\n\n` : ""}Leitwerk process: ${ctx.process.id}`,
+	}),
 ): RepositoryChangePublicationAdapter<P> {
 	async function finalizeIssue(ctx: PublicationContext<P>, pr: PublicationRequest | null) {
 		if (ctx.params.origin !== "issue") return;
@@ -131,11 +167,16 @@ export function createGitLabPublicationAdapter<P extends GitLabPublicationParams
 		identity: (ctx) =>
 			resolvePullRequestGitIdentity(ctx, "gitlab", ctx.params.gitlabProfile, false),
 		async ensureRequest(ctx) {
-			const mr = await callFor(ctx)<GitLabMergeRequest>("gitlab_ensure_merge_request", {
-				title: ctx.process.title ?? "Leitwerk change",
-				body: `${ctx.params.origin === "issue" ? `Implements ${ctx.params.issueUrl}\n\n` : ""}Leitwerk process: ${ctx.process.id}`,
-			});
-			return request(mr);
+			return request(
+				await callFor(ctx)<GitLabMergeRequest>("gitlab_ensure_merge_request", describeRequest(ctx)),
+			);
+		},
+		async observeTerminal(ctx, current) {
+			const project = ctx.projects.find((project) => project.key === ctx.repo.get("repo").key);
+			if (!current.prNumber && !(project?.metadata?.gitlab as { iid?: number } | undefined)?.iid)
+				return null;
+			const { mr } = await callFor(ctx)<GitLabDeliveryObservation>("gitlab_observe_merge_request");
+			return mr.state === "opened" ? null : request(mr);
 		},
 		reconcileTerminal: (ctx, _current, pr) => finalizeIssue(ctx, pr),
 		unchanged: (ctx) => finalizeIssue(ctx, null),

@@ -243,22 +243,10 @@ export function createGitLabProvider(
 			} catch (error) {
 				result.errors.push(error instanceof Error ? error.message : "GitLab discovery failed");
 			}
-			const reporter = createExternalSourcePollReporter(deps.externalSources, result, {
+			const report = createExternalSourcePollReporter(deps.externalSources, result, {
 				forwardGeneration: true,
+				currentKinds: [GITLAB_MR_KIND, GITLAB_ISSUE_CANCELLED_KIND],
 			});
-			const current = (armed: ExternalSourceArmingLike) =>
-				[GITLAB_MR_KIND, GITLAB_ISSUE_CANCELLED_KIND].some((kind) =>
-					reporter.isCurrent(kind, armed),
-				);
-			const report = {
-				...reporter,
-				fire(armed: ExternalSourceArmingLike, event: Record<string, unknown>, mergeKey: string) {
-					return current(armed) ? reporter.fire(armed, event, mergeKey) : Promise.resolve(false);
-				},
-				observe(armed: ExternalSourceArmingLike, input: Parameters<typeof reporter.observe>[1]) {
-					if (current(armed)) return reporter.observe(armed, input);
-				},
-			};
 			const pollRepository = async (
 				armed: ExternalSourceArmingLike,
 				c: GitLabSourceConfig & { projectKey?: string },
@@ -381,7 +369,7 @@ export function createGitLabProvider(
 					repositories?: (GitLabSourceConfig & { projectKey: string })[];
 				};
 				for (const source of config.repositories ?? [config]) {
-					if (!reporter.isCurrent(GITLAB_MR_KIND, armed)) break;
+					if (!report.isCurrent(GITLAB_MR_KIND, armed)) break;
 					await pollRepository(armed, source);
 				}
 			});

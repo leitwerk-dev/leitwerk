@@ -28,6 +28,10 @@ function fixture() {
 		workflow: repositoryChangeWorkflow(readLabels),
 		publication: { entryTurnId: "deliver_change", fragment: publication },
 	});
+	expect(process.turns.get("implement")).toHaveProperty(
+		"definition.startFrom.kind",
+		"session_root",
+	);
 	const handlers = buildServerProcessForTest(process)?.turnOutcomeHandlers;
 	async function outcome(
 		turnId: "generate_plan" | "implement",

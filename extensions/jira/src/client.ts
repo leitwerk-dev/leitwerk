@@ -67,31 +67,7 @@ export interface JiraComment {
 }
 
 /** @public */
-export interface JiraClientLike {
-	/** @internal */
-	readonly baseUrl: string;
-
-	/** @internal */
-	listProjects(): Promise<JiraProject[]>;
-
-	/** @internal */
-	listComponents(projectId: string): Promise<JiraComponent[]>;
-
-	/** @internal */
-	searchIssues(projectIds: readonly string[]): Promise<JiraIssue[]>;
-
-	/** @internal */
-	getIssue(id: string): Promise<JiraIssue>;
-
-	/** @internal */
-	listComments(id: string): Promise<JiraComment[]>;
-
-	/** @internal */
-	addComment(id: string, body: string): Promise<JiraComment>;
-
-	/** @internal */
-	updateLabels(id: string, remove: string[], add: string[]): Promise<void>;
-}
+export interface JiraClientLike extends Pick<JiraClient, keyof JiraClient> {}
 
 /** @internal */
 export function jiraBaseUrl(raw: string): string {
@@ -131,7 +107,7 @@ export function parseJiraProfiles(raw: unknown): Map<
 	);
 }
 /** Jira Data Center REST v2. Credentials never appear in errors or public fields. @public */
-export class JiraClient implements JiraClientLike {
+export class JiraClient {
 	/** @internal */
 	readonly baseUrl: string;
 	#token: string;

@@ -64,11 +64,7 @@ export function jiraGitLabScripts(
 				const messages = Object.fromEntries(
 					projects.map((project) => [project.key, "docs: clarify delivery-window wording"]),
 				);
-				return markdown(
-					process.processId === "jira_gitlab_change_process"
-						? JSON.stringify(messages)
-						: "docs: clarify delivery-window wording",
-				);
+				return markdown(JSON.stringify(messages));
 			}
 			if (turn === "implement" || turn === "apply_simplification") {
 				for (const project of projects) {

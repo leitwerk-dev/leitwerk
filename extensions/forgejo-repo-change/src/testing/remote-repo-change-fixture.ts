@@ -544,7 +544,7 @@ function createScript(
 				return markdownCall("markdown_result", "No simplifications needed.");
 			if (names.has("markdown_result") || prompt.includes("commit message")) {
 				records.push({ kind: "commit-message", sessionId, prompt, toolNames });
-				return markdownCall("markdown_result", "feat: update service deployment image");
+				return markdownCall("markdown_result", '{"repo":"feat: update service deployment image"}');
 			}
 
 			throw new Error(`Unexpected fixture Pi turn with tools: ${toolNames.join(", ")}`);

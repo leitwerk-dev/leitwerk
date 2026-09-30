@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import { asUnknownRecord, type SettingsSource } from "@leitwerk-dev/domain";
-import type { GitSshIntegration } from "@leitwerk-dev/git-ssh";
-import type { GitLabIntegration, GitLabPublicationParams } from "@leitwerk-dev/gitlab";
+import { createGitSshPreparationCheck, type GitSshIntegration } from "@leitwerk-dev/git-ssh";
+import {
+	type GitLabIntegration,
+	type GitLabPublicationParams,
+	resolveGitLabLaunchProject,
+} from "@leitwerk-dev/gitlab";
 import {
 	type JiraIntegration,
 	type JiraIssue,
@@ -99,6 +103,9 @@ function parseMapping(value: unknown): RepositoryMapping {
 	} catch {
 		throw new Error("Invalid repository mapping; reselect it in Settings");
 	}
+	return validateMapping(r);
+}
+function validateMapping(r: Record<string, unknown> | null): RepositoryMapping {
 	if (
 		!r ||
 		typeof r.origin !== "string" ||
@@ -133,14 +140,7 @@ export const jiraGitLabParamsCodec: Codec<JiraGitLabParams> = {
 			const repo = asUnknownRecord(item);
 			if (!repo || typeof repo.key !== "string" || !/^[a-zA-Z0-9_-]+$/.test(repo.key))
 				throw new Error("Invalid repository key");
-			parseMapping(
-				JSON.stringify({
-					origin: repo.gitlabOrigin,
-					projectId: repo.projectId,
-					gitlabProfile: repo.gitlabProfile,
-					sshProfile: repo.sshProfile,
-				}),
-			);
+			validateMapping({ ...repo, origin: repo.gitlabOrigin });
 			for (const key of ["repoLocator", "owner", "repo", "baseBranch", "workBranch"])
 				if (typeof repo[key] !== "string" || !repo[key])
 					throw new Error(`Missing repository ${key}`);
@@ -280,47 +280,20 @@ export function createJiraGitLabLauncher() {
 				throw new Error(
 					`GitLab project ${entry.projectId} must be active and provide an SSH clone URL`,
 				);
-			const slash = repo.path_with_namespace.lastIndexOf("/");
-			if (slash < 1) throw new Error("Invalid GitLab repository path");
 			const key = `repo_${repositories.length + 1}`;
-			const binding: RepositoryBinding = {
+			const { params: binding, project } = await resolveGitLabLaunchProject(
+				provider,
+				entry.gitlabProfile,
+				{ ...repo, id: entry.projectId },
+				`leitwerk/jira-${createHash("sha256").update(client.baseUrl).digest("hex").slice(0, 10)}-${issue.id}`,
 				key,
-				origin: "jira",
-				gitlabProfile: entry.gitlabProfile,
-				gitlabOrigin: entry.origin,
-				sshProfile: entry.sshProfile,
-				projectId: entry.projectId,
-				owner: repo.path_with_namespace.slice(0, slash),
-				repo: repo.path_with_namespace.slice(slash + 1),
-				repoLocator: repo.ssh_url_to_repo,
-				baseBranch: repo.default_branch,
-				workBranch: `leitwerk/jira-${createHash("sha256").update(client.baseUrl).digest("hex").slice(0, 10)}-${issue.id}`,
-			};
-			const identity = await provider.resolveGitIdentity();
-			repositories.push(binding);
+			);
+			repositories.push({ ...binding, key, origin: "jira", sshProfile: entry.sshProfile });
 			projects.push({
-				key,
-				repoLocator: binding.repoLocator,
-				baseBranch: binding.baseBranch,
-				workBranch: binding.workBranch,
-				settingsRepository: {
-					origin: entry.origin,
-					repositoryId: entry.projectId,
-					aliases: [repo.http_url_to_repo, repo.ssh_url_to_repo],
-				},
+				...project,
 				metadata: {
-					gitlab: {
-						profile: entry.gitlabProfile,
-						projectId: entry.projectId,
-						origin: entry.origin,
-					},
+					...project.metadata,
 					jira: { profile: event.profile, baseUrl: client.baseUrl, issueId: issue.id },
-					"leitwerk.gitIdentity": {
-						provider: "gitlab",
-						profile: entry.gitlabProfile,
-						name: identity.name,
-						email: identity.email,
-					},
 				},
 			});
 		}
@@ -353,10 +326,10 @@ export function createJiraGitLabLauncher() {
 		event: JiraWatcherEvent,
 		launch: ProcessLaunchConfig<JiraGitLabParams>,
 	): readonly LaunchPreparationCheck<JiraGitLabParams>[] => [
-		...launch.params.repositories.map((repo) => ({
+		...launch.params.repositories.map<LaunchPreparationCheck<JiraGitLabParams>>((repo) => ({
 			id: `ssh_${repo.key}`,
 			label: `Verify ${repo.owner}/${repo.repo} SSH read/write access`,
-			async run() {
+			async run(ctx) {
 				const { gitlab, ssh } = requireServices();
 				const fresh = await gitlab.client(repo.gitlabProfile).getProject(repo.projectId);
 				if (
@@ -368,17 +341,11 @@ export function createJiraGitLabLauncher() {
 						"Repository changed",
 						"Refresh the component mapping and retry launch.",
 					);
-				const result = await ssh.preflight({
-					credentialRef: repo.sshProfile,
-					repoLocator: repo.repoLocator,
-					baseBranch: repo.baseBranch,
-					requireWrite: true,
-				});
-				if (!result.ok)
-					throw new SafeLaunchPreparationError(
-						`SSH ${result.access} access failed for ${repo.owner}/${repo.repo}`,
-						result.detail,
-					);
+				await createGitSshPreparationCheck(
+					"write",
+					{ ...repo, sshCredentialRef: repo.sshProfile },
+					() => ssh,
+				).run(ctx);
 			},
 		})),
 		{
