@@ -10,6 +10,11 @@
 		"discover": false
 	},
 	"exports": {
+		"./testing": {
+			"source": "./src/testing.ts",
+			"import": "./dist/testing.js",
+			"types": "./dist/testing.d.ts"
+		},
 		".": {
 			"source": "./src/index.ts",
 			"import": "./dist/index.js",

@@ -31,5 +31,6 @@
 	"extensions/gitlab-repo-change": "0.3.1",
 	"packages/dev-tools": "0.3.1",
 	"extensions/jira": "0.3.1",
-	"extensions/jira-gitlab-change": "0.3.1"
+	"extensions/jira-gitlab-change": "0.3.1",
+	"extensions/jira-epic-split": "0.3.1"
 }

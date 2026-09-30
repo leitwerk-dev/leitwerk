@@ -16,6 +16,7 @@ import {
 	dispatchBrowserUiExtensionWsFrame,
 	loadBrowserUiExtensions,
 } from "./lib/ui-extensions.svelte.js";
+import { notifyWikiUpdated } from "./lib/wiki.js";
 import { connect, onWsEvent } from "./lib/ws.svelte";
 import AppShell from "./shell/AppShell.svelte";
 
@@ -61,6 +62,10 @@ $effect(() => {
 	realtimeStarted = true;
 	void loadBrowserUiExtensions();
 	onWsEvent((frame) => {
+		if (frame.type === "wiki.updated") {
+			notifyWikiUpdated(frame.payload.topicId);
+			return;
+		}
 		if (frame.type === "settings.updated") {
 			window.dispatchEvent(new Event("leitwerk:settings-changed"));
 			return;

@@ -82,6 +82,13 @@ Behavioral rules belong in the linked references, not in a second glossary.
 
 ---
 
+## Topic solution wikis
+
+**Topic solution wiki** is a server-owned collection of reusable, evidence-backed
+findings scoped to one topic, such as a Jira epic. It is not general agent memory.
+A **wiki page** records applicability, evidence revisions, and contributing process
+and turn; a **tombstone** prevents restoring its deleted page ID. See [topic wikis](topic-wiki.md).
+
 ## Avoid ambiguous terms
 
 | Avoid | Use Instead | Reason |

@@ -65,6 +65,11 @@ Model provider sets resolve before server setup. Each provider parses only its
 owner-supplied configuration fragment. See [extension-defined providers](models.md#extension-defined-providers).
 Browser result renderers use a separate [UI manifest](extension-ui.md).
 
+The internal `topicWikiCapability` provides server-owned, revision-checked
+[topic solution wikis](topic-wiki.md). Extensions bind tools to a process topic;
+workers never access the store directly. `.runtime({ repositoryCheckout: "on_demand" })`
+opts a process into [lazy full clones](process-workspace.md#2-repository-management).
+
 ## Turn types
 
 A process declares its graph in code. Configuration supplies runtime defaults;

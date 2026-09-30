@@ -20,8 +20,10 @@ import {
 	parseJiraProfiles,
 } from "./client.js";
 import { registerJiraTools } from "./tools.js";
+import { registerJiraWikiTools } from "./wiki.js";
 
 export * from "./client.js";
+export { ensureEpicWiki, jiraEpicRevision } from "./wiki.js";
 
 /** @public */
 export interface JiraIntegration {
@@ -145,6 +147,7 @@ export function setupJiraIntegration(
 	const now = options.now ?? Date.now;
 	api.provide(jiraIntegration, integration);
 	registerJiraTools(api, integration);
+	registerJiraWikiTools(api, integration);
 	const settings = api.get(scopedSettingsCapability);
 	if (settings && !Array.isArray(settings)) {
 		settings.registerDiscovery("jira.project", async () => {

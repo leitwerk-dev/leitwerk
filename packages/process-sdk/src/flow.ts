@@ -2613,6 +2613,7 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 	private processPiConfig: ProcessPiConfig | undefined;
 	private developmentTools = false;
 	private docker = false;
+	private repositoryCheckout: "eager" | "on_demand" | undefined;
 
 	/** @internal */
 	constructor(processId: string) {
@@ -2698,9 +2699,12 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 		developmentTools?: boolean;
 		/** @public */
 		docker?: boolean;
+		/** @internal */
+		repositoryCheckout?: "eager" | "on_demand";
 	}): this {
 		this.developmentTools = capabilities.developmentTools === true;
 		this.docker = capabilities.docker === true;
+		this.repositoryCheckout = capabilities.repositoryCheckout;
 		return this;
 	}
 
@@ -2748,11 +2752,12 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 			paramsCodec: this.paramsCodec,
 			stateCodec: this.stateCodec,
 			initialState: this.initialStateFn,
-			...(this.developmentTools || this.docker
+			...(this.developmentTools || this.docker || this.repositoryCheckout
 				? {
 						runtime: {
 							...(this.developmentTools ? { developmentTools: true } : {}),
 							...(this.docker ? { docker: true } : {}),
+							...(this.repositoryCheckout ? { repositoryCheckout: this.repositoryCheckout } : {}),
 						},
 					}
 				: {}),

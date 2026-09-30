@@ -1,8 +1,8 @@
 import { createApiTokenRepo } from "./api-token-repo.js";
 import { createExecutionInspectionRepo } from "./execution-inspection-repo.js";
-
 import { createScopedSettingsRepo } from "./scoped-settings-repo.js";
 import { createStartupObservationRepo } from "./startup-observation-repo.js";
+import { createTopicWikiRepo } from "./topic-wiki-repo.js";
 import { createTurnSummaryRepo } from "./turn-summary-repo.js";
 
 export * from "./api-token-repo.js";
@@ -69,6 +69,8 @@ import { createWorkerLeaseRepo } from "./worker-lease-repo.js";
 
 /** @public */
 export interface RepositoryBundle {
+	/** @internal */
+	topicWiki: ReturnType<typeof createTopicWikiRepo>;
 	/** @internal */
 	executionInspections: ReturnType<typeof createExecutionInspectionRepo>;
 	/** @internal */
@@ -147,6 +149,7 @@ export function createAllRepos(
 ): RepositoryBundle {
 	const credentialCipher = options.credentialCipher ?? createUnavailableCredentialCipher();
 	const bundle: RepositoryBundle = {
+		topicWiki: createTopicWikiRepo(db),
 		executionInspections: createExecutionInspectionRepo(db),
 
 		scopedSettings: createScopedSettingsRepo(db),

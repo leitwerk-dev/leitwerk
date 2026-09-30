@@ -295,6 +295,8 @@ $effect(() => {
 				load={import("../pages/HomePage.svelte")}
 				props={{ launcherId: route.params.launcher ?? null }}
 			/>
+		{:else if route.page === "wiki"}
+			<RouteLoadBoundary load={import("../pages/WikiPage.svelte")} props={{ topicId: route.params.topicId ?? "", pageId: route.params.pageId ?? "" }} />
 		{:else if route.page === "settings"}
 			<RouteLoadBoundary load={import("../pages/SettingsPage.svelte")} props={{ subjectId: route.params.scope ?? "instance" }} />
 		{:else if route.page === "api-tokens"}

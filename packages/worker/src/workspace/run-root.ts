@@ -272,6 +272,35 @@ export async function materializeRunRoot(
 	return finalizeRunRoot(plan, git, entries, errors);
 }
 
+/** @internal */
+export async function prepareOnDemandRunRoot(
+	plan: RunRootPlan,
+	git: RunRootGitOps,
+	projectKey?: string,
+): Promise<MaterializeResult> {
+	if (
+		projectKey !== undefined &&
+		!plan.components.some((component) => component.key === projectKey)
+	)
+		throw new Error("Repository is outside this process's authorized scope");
+	const validation = await validateRunRoot(plan.workspaceRoot, plan.components, git);
+	const existingKeys = new Set(
+		validation.existingManifest?.components.map((component) => component.key) ?? [],
+	);
+	const selected = {
+		...plan,
+		components: plan.components.filter(
+			(component) => existingKeys.has(component.key) || component.key === projectKey,
+		),
+	};
+	return repairRunRoot(
+		plan.workspaceRoot,
+		await validateRunRoot(plan.workspaceRoot, selected.components, git),
+		selected,
+		git,
+	);
+}
+
 export async function validateRunRoot(
 	workspaceRoot: string,
 	serverProjects: ComponentCheckoutPlan[],

@@ -1,0 +1,56 @@
+{
+	"name": "@leitwerk-dev/jira-epic-split",
+	"version": "0.3.1",
+	"type": "module",
+	"leitwerk": {
+		"extension": {
+			"source": "./src/index.ts",
+			"import": "./dist/index.js"
+		},
+		"discover": false
+	},
+	"exports": {
+		".": {
+			"source": "./src/index.ts",
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		}
+	},
+	"scripts": {
+		"build": "tsup && tsc -p tsconfig.tsup.json --emitDeclarationOnly"
+	},
+	"dependencies": {
+		"@leitwerk-dev/domain": "0.3.1",
+		"@leitwerk-dev/process-sdk": "0.3.1",
+		"@leitwerk-dev/jira": "0.3.1",
+		"@leitwerk-dev/gitlab": "0.3.1",
+		"@leitwerk-dev/git-ssh": "0.3.1",
+		"@leitwerk-dev/jira-gitlab-change": "0.3.1",
+		"@leitwerk-dev/watcher-utils": "0.3.1"
+	},
+	"devDependencies": {
+		"@leitwerk-dev/server": "0.3.1",
+		"@leitwerk-dev/extension-runtime": "0.3.1",
+		"@leitwerk-dev/test-support": "0.3.1",
+		"tsup": "^8.5.1",
+		"@types/node": "^26.2.0"
+	},
+	"license": "Apache-2.0",
+	"publishConfig": {
+		"access": "public"
+	},
+	"engines": {
+		"node": ">=26 <27"
+	},
+	"files": [
+		"dist/**",
+		"src/**",
+		"!dist/**/*.test.*",
+		"!src/**/*.test.ts"
+	],
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
+		"directory": "extensions/jira-epic-split"
+	}
+}

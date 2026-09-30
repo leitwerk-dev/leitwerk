@@ -57,11 +57,19 @@ no capacity quota. See [storage configuration](configuration.md#per-process-stor
 
 ## Repository management {#2-repository-management}
 
-A process can target zero, one, or several repositories. Each declared repository
+A process can target zero, one, or several repositories. By default, each declared repository
 gets a full clone checked out to its assigned work branch. Clone, checkout, branch,
 manifest, or aggregate failure fails preparation. Workers cannot report readiness
 or accept a turn with a partial workspace. Retry repairs missing or stale components
 before reporting readiness.
+
+Processes can opt into `.runtime({ repositoryCheckout: "on_demand" })`. Their initial
+workspace has no clones. `checkout_repository({ projectKey })` materializes one
+authorized full clone and updates the component manifest and aggregated instructions.
+Previously materialized repositories survive worker replacement; unrequested
+repositories do not block readiness. A failed requested checkout fails that tool call.
+The returned HEAD describes the local checkout, not necessarily today's remote head.
+Agents must read newly materialized repository instructions before inspection.
 
 A process may opt into development-tool preparation. The worker then runs stock `mise install`
 and `mise ls --current --json` sequentially at each repository root in repository-key order. It

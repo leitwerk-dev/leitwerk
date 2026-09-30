@@ -8,6 +8,7 @@ import { createPiEventReporter } from "../pi-event-reporter.js";
 import { WorkerQuestionBridge } from "../question-bridge.js";
 import { resolveRootEntryIdFromHandle } from "../turn-tree-strategy.js";
 import { createWorkerIpcReporter } from "../worker-ipc-reporter.js";
+import { createCheckoutTool } from "../workspace/checkout-tool.js";
 import type { WorkerRuntimeOptions, WorkerRuntimeTimer } from "./adapters.js";
 import { sampleCredentialFiles, WorkerLiveResources } from "./bootstrap-session.js";
 import {
@@ -256,10 +257,23 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 						executeSelectedTurn({
 							session: command.session,
 							requestQuestions: (request) => questionBridge.request(request),
-							integrationTools: integrationToolBridge.createTools(
-								command.session.integrationTools,
-								command.turnRecordId,
-							),
+							integrationTools: [
+								...integrationToolBridge.createTools(
+									command.session.integrationTools,
+									command.turnRecordId,
+								),
+								...(command.session.resolvedWorkerProcess.runtime?.repositoryCheckout ===
+								"on_demand"
+									? [
+											createCheckoutTool(
+												command.session.workspaceRoot,
+												command.session.processSnapshot.id,
+												command.session.projectSnapshots,
+												adapters.gitOps,
+											),
+										]
+									: []),
+							],
 							piHandle: resources.piHandle,
 							turnRecordId: command.turnRecordId,
 							targetedInputs: command.targetedInputs,

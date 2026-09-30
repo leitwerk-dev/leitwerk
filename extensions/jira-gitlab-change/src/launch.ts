@@ -7,6 +7,7 @@ import {
 	resolveGitLabLaunchProject,
 } from "@leitwerk-dev/gitlab";
 import {
+	ensureEpicWiki,
 	type JiraIntegration,
 	type JiraIssue,
 	type JiraWatcherEvent,
@@ -22,6 +23,7 @@ import {
 	SafeLaunchPreparationError,
 	type ScopedSettingsResolver,
 	type SettingDefinition,
+	type TopicWikiStore,
 } from "@leitwerk-dev/process-sdk";
 
 /** @public */
@@ -59,6 +61,8 @@ export interface RepositoryBinding extends GitLabPublicationParams {
 
 /** @public */
 export interface JiraGitLabParams extends GitLabPublicationParams {
+	/** @internal */
+	wikiTopicId?: string;
 	/** @internal */
 	origin: "jira";
 
@@ -167,6 +171,8 @@ export function createJiraGitLabLauncher() {
 
 		/** @internal */
 		settings: ScopedSettingsResolver;
+		/** @internal */
+		wiki?: TopicWikiStore;
 	} | null = null;
 	const requireServices = () => {
 		if (!services) throw new Error("Jira GitLab integration is not configured");
@@ -217,7 +223,7 @@ export function createJiraGitLabLauncher() {
 
 	/** @internal */
 	async function resolve(event: JiraWatcherEvent): Promise<ProcessLaunchConfig<JiraGitLabParams>> {
-		const { jira, gitlab, ssh, settings } = requireServices();
+		const { jira, gitlab, ssh, settings, wiki } = requireServices();
 		const client = jira.client(event.profile);
 		const issue = await client.getIssue(event.issue.id);
 		if (
@@ -263,6 +269,25 @@ export function createJiraGitLabLauncher() {
 				selected.set(key, entry);
 			}
 		}
+		const publication = wiki?.publicationByExternalId(
+			jiraIssueExternalId(client.baseUrl, issue.id),
+		);
+		if (publication) {
+			const binding = publication.binding;
+			const exact = [...selected.entries()].find(
+				([, entry]) =>
+					entry.origin === binding.origin &&
+					entry.projectId === binding.projectId &&
+					entry.gitlabProfile === binding.gitlabProfile &&
+					entry.sshProfile === binding.sshProfile,
+			);
+			if (!exact)
+				throw new Error(
+					"Generated ticket's repository binding no longer matches its component mappings",
+				);
+			selected.clear();
+			selected.set(...exact);
+		}
 		if (!selected.size)
 			throw new Error(
 				`No repositories mapped for ${issue.key}. Map at least one component in Settings → Jira components.`,
@@ -280,6 +305,12 @@ export function createJiraGitLabLauncher() {
 				throw new Error(
 					`GitLab project ${entry.projectId} must be active and provide an SSH clone URL`,
 				);
+			if (
+				publication &&
+				(repo.ssh_url_to_repo !== publication.binding.repoLocator ||
+					repo.default_branch !== publication.binding.baseBranch)
+			)
+				throw new Error("Generated ticket's repository checkout binding changed");
 			const key = `repo_${repositories.length + 1}`;
 			const { params: binding, project } = await resolveGitLabLaunchProject(
 				provider,
@@ -298,7 +329,12 @@ export function createJiraGitLabLauncher() {
 			});
 		}
 		const first = repositories[0];
+		const epic = wiki && client.getEpic ? await client.getEpic(issue) : null;
+		if (publication && (!epic || epic.id !== publication.binding.epicId))
+			throw new Error("Generated ticket's epic binding changed");
+		const topic = wiki && epic ? ensureEpicWiki(wiki, client, epic) : null;
 		const params: JiraGitLabParams = {
+			...(topic ? { wikiTopicId: topic.id } : {}),
 			...first,
 			origin: "jira",
 			jiraProfile: event.profile,
@@ -313,6 +349,18 @@ export function createJiraGitLabLauncher() {
 		};
 		return {
 			processId: "jira_gitlab_change_process",
+			...(topic && epic
+				? {
+						metadata: {
+							wiki: {
+								topicId: topic.id,
+								profile: event.profile,
+								baseUrl: client.baseUrl,
+								epicId: epic.id,
+							},
+						},
+					}
+				: {}),
 			title: `${issue.key}: ${issue.fields.summary}`,
 			params,
 			projects,

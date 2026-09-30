@@ -44,6 +44,10 @@ export class DatabaseSchemaMismatchError extends Error {
 }
 
 const ALL_TABLES = [
+	schema.wikiTopics,
+	schema.wikiPages,
+	schema.wikiRevisions,
+	schema.topicPublications,
 	schema.inspectionContents,
 	schema.executionInspections,
 
@@ -346,6 +350,21 @@ interface KnownMigration {
 }
 
 const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
+	{
+		id: "20260930_add_topic_wiki",
+		tableNames: ["wiki_topics", "wiki_pages", "wiki_revisions", "topic_publications"],
+		matches: (sqlite) =>
+			hasExistingSchema(sqlite) && existingTableSql(sqlite, "wiki_topics") === null,
+		apply(sqlite) {
+			for (const table of [
+				schema.wikiTopics,
+				schema.wikiPages,
+				schema.wikiRevisions,
+				schema.topicPublications,
+			])
+				createTableWithIndexes(sqlite, table);
+		},
+	},
 	{
 		id: "20260925_add_execution_inspections",
 		tableNames: ["inspection_contents", "execution_inspections"],

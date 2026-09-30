@@ -21,7 +21,12 @@ import {
 	jiraIssuePolicy,
 	jiraIssueWatcherSource,
 } from "@leitwerk-dev/jira";
-import { type LeitwerkExtensionModule, scopedSettingsCapability } from "@leitwerk-dev/process-sdk";
+import {
+	type LeitwerkExtensionModule,
+	scopedSettingsCapability,
+	topicWikiCapability,
+	wikiInstructions,
+} from "@leitwerk-dev/process-sdk";
 import {
 	createJiraGitLabLauncher,
 	type JiraGitLabParams,
@@ -185,6 +190,18 @@ export function createJiraGitLabChange(options: {
 			})),
 	});
 	process.runtime = { ...process.runtime, docker: options.docker };
+	for (const binding of process.turns.values()) {
+		const turn = binding.definition;
+		if (turn.kind !== "llm") continue;
+		const originalPrompt = turn.prompt;
+		const originalTools = turn.resolveIntegrationTools;
+		turn.resolveIntegrationTools = (params, state) => [
+			...(originalTools?.(params, state) ?? turn.integrationTools ?? []),
+			...(params.wikiTopicId ? ["wiki_index", "wiki_read", "wiki_share"] : []),
+		];
+		turn.prompt = async (ctx) =>
+			`${await originalPrompt(ctx)}${ctx.params.wikiTopicId ? `\n\n${wikiInstructions}\nWiki: /wiki/${ctx.params.wikiTopicId}` : ""}`;
+	}
 	const extension: LeitwerkExtensionModule = {
 		manifest: {
 			id: "jira-gitlab-change",
@@ -207,7 +224,14 @@ export function createJiraGitLabChange(options: {
 				Array.isArray(settings)
 			)
 				throw new Error("Integration capabilities must be singular");
-			launcher.configure({ jira, gitlab, ssh, settings });
+			const wiki = api.get(topicWikiCapability);
+			launcher.configure({
+				jira,
+				gitlab,
+				ssh,
+				settings,
+				...(wiki && !Array.isArray(wiki) ? { wiki } : {}),
+			});
 			api.onStop(() => launcher.configure(null));
 		},
 	};

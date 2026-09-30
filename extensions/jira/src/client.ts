@@ -32,6 +32,19 @@ export interface JiraIssue {
 	/** @internal */
 	fields: {
 		/** @internal */
+		issuetype?: {
+			/** @internal */
+			id: string;
+			/** @internal */
+			name: string;
+			/** @internal */
+			subtask?: boolean;
+		};
+		/** @internal */
+		parent?: JiraIssueReceipt;
+		/** @internal */
+		updated?: string;
+		/** @internal */
 		summary: string;
 
 		/** @internal */
@@ -70,6 +83,45 @@ export interface JiraComment {
 export interface JiraClientLike extends Pick<JiraClient, keyof JiraClient> {}
 
 /** @internal */
+export interface JiraCreateMetadata {
+	/** @internal */ epicLinkField: string;
+	/** @internal */
+	issueTypes: {
+		/** @internal */
+		id: string;
+		/** @internal */
+		name: string;
+		/** @internal */
+		fields: Record<
+			string,
+			{
+				/** @internal */
+				required?: boolean;
+				/** @internal */
+				hasDefaultValue?: boolean;
+			}
+		>;
+	}[];
+}
+
+/** @internal */
+export class JiraRequestError extends Error {
+	/** @internal */
+	readonly status: number;
+	/** @internal */
+	constructor(status: number) {
+		super(`Jira request failed (${status})`);
+		this.status = status;
+	}
+}
+
+/** @internal */
+export interface JiraIssueReceipt {
+	/** @internal */ id: string;
+	/** @internal */ key: string;
+}
+
+/** @internal */
 export function jiraBaseUrl(raw: string): string {
 	const url = new URL(raw);
 	if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash)
@@ -85,6 +137,8 @@ export function parseJiraProfiles(raw: unknown): Map<
 		baseUrl: string;
 		/** @internal */
 		token: string;
+		/** @internal */
+		epicLinkField?: string;
 	}
 > {
 	const profiles = asUnknownRecord(asUnknownRecord(raw)?.profiles) ?? {};
@@ -102,7 +156,22 @@ export function parseJiraProfiles(raw: unknown): Map<
 				: profile.token;
 			if (!token || /[\r\n\0]/.test(token))
 				throw new Error(`Jira profile '${id}' requires a valid PAT`);
-			return [id, { baseUrl: jiraBaseUrl(profile.base_url), token }];
+			if (
+				profile.epic_link_field !== undefined &&
+				(typeof profile.epic_link_field !== "string" ||
+					!/^customfield_\d+$/.test(profile.epic_link_field))
+			)
+				throw new Error("epic_link_field must identify a Jira custom field");
+			return [
+				id,
+				{
+					baseUrl: jiraBaseUrl(profile.base_url),
+					token,
+					...(typeof profile.epic_link_field === "string"
+						? { epicLinkField: profile.epic_link_field }
+						: {}),
+				},
+			];
 		}),
 	);
 }
@@ -112,6 +181,7 @@ export class JiraClient {
 	readonly baseUrl: string;
 	#token: string;
 	#fetch: typeof fetch;
+	#epicLinkField: string | undefined;
 
 	/** @internal */
 	constructor(
@@ -120,12 +190,15 @@ export class JiraClient {
 			baseUrl: string;
 			/** @internal */
 			token: string;
+			/** @internal */
+			epicLinkField?: string;
 		},
 		fetcher: typeof fetch = fetch,
 	) {
 		this.#fetch = fetcher;
 		this.baseUrl = jiraBaseUrl(profile.baseUrl);
 		this.#token = profile.token;
+		this.#epicLinkField = profile.epicLinkField;
 	}
 	async #request<T>(path: string, init: RequestInit = {}): Promise<T> {
 		let response: Response;
@@ -143,7 +216,7 @@ export class JiraClient {
 		} catch {
 			throw new Error("Jira request unavailable");
 		}
-		if (!response.ok) throw new Error(`Jira request failed (${response.status})`);
+		if (!response.ok) throw new JiraRequestError(response.status);
 		if (response.status === 204) return undefined as T;
 		try {
 			return (await response.json()) as T;
@@ -202,9 +275,74 @@ export class JiraClient {
 
 	/** @internal */
 	getIssue(id: string) {
-		return this.#request<JiraIssue>(
-			`issue/${encodeURIComponent(id)}?fields=summary,description,labels,project,components,status`,
+		return this.#request<JiraIssue>(`issue/${encodeURIComponent(id)}?fields=*all`);
+	}
+
+	async #resolveEpicLinkField(): Promise<string | null> {
+		if (this.#epicLinkField) return this.#epicLinkField;
+		const fields = await this.#request<{ id: string; schema?: { custom?: string } }[]>("field");
+		const matches = fields.filter(
+			(field) => field.schema?.custom === "com.pyxis.greenhopper.jira:gh-epic-link",
 		);
+		if (!matches.length) return null;
+		if (matches.length !== 1)
+			throw new Error(
+				"Configure this Jira profile's epic_link_field; Epic Link discovery is ambiguous",
+			);
+		this.#epicLinkField = matches[0].id;
+		return this.#epicLinkField;
+	}
+
+	/** @internal */
+	async getEpic(issue: JiraIssue): Promise<JiraIssue | null> {
+		if (issue.fields.issuetype?.name.toLowerCase() === "epic") return issue;
+		const field = await this.#resolveEpicLinkField();
+		if (!field) return null;
+		const key = (issue.fields as unknown as Record<string, unknown>)[field];
+		return typeof key === "string" && key ? this.getIssue(key) : null;
+	}
+
+	/** @internal */
+	searchEpics(projectIds: readonly string[]): Promise<JiraIssue[]> {
+		if (!projectIds.length || projectIds.some((id) => !/^\d+$/.test(id)))
+			throw new Error("Select explicit Jira project IDs");
+		const jql = `project in (${projectIds.join(",")}) AND labels = "leitwerk-epic-split" AND issuetype = Epic AND statusCategory != Done ORDER BY id ASC`;
+		return this.#pages(`search?jql=${encodeURIComponent(jql)}&fields=*all`, "issues");
+	}
+
+	/** @internal */
+	async createMetadata(projectId: string): Promise<JiraCreateMetadata> {
+		const metadata = await this.#request<{
+			projects: { id: string; issuetypes: JiraCreateMetadata["issueTypes"] }[];
+		}>(
+			`issue/createmeta?projectIds=${encodeURIComponent(projectId)}&expand=projects.issuetypes.fields`,
+		);
+		const project = metadata.projects.find((candidate) => candidate.id === projectId);
+		if (!project) throw new Error("Jira issue creation is unavailable for this project");
+		const epicLinkField = await this.#resolveEpicLinkField();
+		if (!epicLinkField) throw new Error("Jira epic splitting requires an Epic Link field");
+		return { epicLinkField, issueTypes: project.issuetypes };
+	}
+
+	/** @internal */
+	createIssue(fields: Record<string, unknown>): Promise<JiraIssueReceipt> {
+		return this.#request("issue", { method: "POST", body: JSON.stringify({ fields }) });
+	}
+
+	/** @internal */
+	async findSplitIssue(projectId: string, marker: string): Promise<JiraIssue | null> {
+		if (!/^\d+$/.test(projectId) || !/^leitwerk-split-[a-f0-9]{64}$/.test(marker))
+			throw new Error("Invalid split ticket identity");
+		const jql = `project = ${projectId} AND labels = "${marker}" ORDER BY id ASC`;
+		const matches = await this.#pages<JiraIssue>(
+			`search?jql=${encodeURIComponent(jql)}&fields=*all`,
+			"issues",
+		);
+		if (matches.length > 1)
+			throw new Error(
+				"Multiple Jira tickets share the split identity; operator reconciliation required",
+			);
+		return matches[0] ?? null;
 	}
 
 	/** @internal */

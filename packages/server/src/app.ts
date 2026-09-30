@@ -36,6 +36,7 @@ import {
 	type LeitwerkDb,
 } from "./db/database.js";
 import { createAllRepos, createCredentialCipherFromEnvironment } from "./db/repositories.js";
+import { createTopicWikiRepo } from "./db/topic-wiki-repo.js";
 import { buildExtensionUiCatalog, type ExtensionUiCatalog } from "./extension-ui/catalog.js";
 import { createExtensionHost, type ExtensionHost } from "./extensions/extension-host.js";
 import { createExternalSourceService } from "./external-source-service.js";
@@ -469,6 +470,9 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		markStartup("model_providers");
 
 		const broadcaster = createBroadcaster();
+		repos.topicWiki = createTopicWikiRepo(db, (topicId) =>
+			broadcaster.sendDurable("wiki.updated", { topicId }),
+		);
 		const processOperations = createProcessOperationCoordinator();
 		const processGraphs = extensionCatalog.processes;
 		const processActionRegistry = buildProcessActionRegistry(extensionCatalog);

@@ -147,6 +147,7 @@ See [Security](security.md), [Docker](docker-deployment-guide.md), and
 | Credential delivery and trust boundaries | [Security](security.md) |
 | Browser snapshot authority and reconnect ordering | [WebSocket protocol](websocket.md) |
 | Storage migration and disaster recovery | [Backup and upgrades](operations.md) |
+| Evidence-scoped solutions, revision conflicts, and deletion tombstones | [Topic solution wikis](topic-wiki.md) |
 
 ## 9 Decisions
 

@@ -498,6 +498,9 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 				</span>
 				<span class="rail-control-label">Watch</span>
 			</a>
+			<a href="/wiki" class="rail-icon-control" class:is-active={currentRoute.page === "wiki"} aria-current={currentRoute.page === "wiki" ? "page" : undefined} aria-label="Solution wikis" title="Solution wikis" onclick={(event) => followLink(event, "/wiki")}>
+				<span class="rail-control-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v15M12 5C9 3 5 3 2 4v15c3-1 7-1 10 1 3-2 7-2 10-1V4c-3-1-7-1-10 1Z"></path></svg></span><span class="rail-control-label">Wikis</span>
+			</a>
 
 			<a
 				href={processesPath}
@@ -706,6 +709,10 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 				>
 					<span class="sidebar-nav-icon" aria-hidden="true">⌘</span>
 					<span class="sidebar-nav-label">All processes</span>
+				</a>
+				<a href="/wiki" class="sidebar-nav-link" class:is-active={currentRoute.page === "wiki"} aria-current={currentRoute.page === "wiki" ? "page" : undefined} onclick={(event) => followLink(event, "/wiki")}>
+					<span class="sidebar-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v15M12 5C9 3 5 3 2 4v15c3-1 7-1 10 1 3-2 7-2 10-1V4c-3-1-7-1-10 1Z"></path></svg></span>
+					<span class="sidebar-nav-label">Solution wikis</span>
 				</a>
 				<a href="/settings" class="sidebar-nav-link" data-action="view-settings" data-pressable="true" class:is-active={currentRoute.page === "settings"} aria-current={currentRoute.page === "settings" ? "page" : undefined} onclick={(event) => followLink(event, "/settings")}>
 					<span class="sidebar-nav-icon" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none"><path d="M4 5h12M4 10h12M4 15h12M7 3v4M13 8v4M8 13v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg></span><span class="sidebar-nav-label">Settings</span>

@@ -11,6 +11,8 @@ extensions:
       team:
         base_url: https://jira.example.org/jira
         token: env:JIRA_PAT
+        # Optional when Epic Link schema discovery is ambiguous:
+        epic_link_field: customfield_10014
 ```
 
 Use a server-side personal access token that can read the selected projects and
@@ -33,3 +35,12 @@ reports a refresh error. All issue comments and label updates use durable extern
 writes. Comments carry reconciliation markers; retries after a lost response find
 the existing comment. Label updates preserve unrelated labels. No Jira status
 transition is performed.
+
+Epic splitting additionally needs issue creation and create-metadata access.
+`jira-epic-split` supplies its own labeled-epic watcher and reviewed creation workflow.
+Epic membership uses the configured or schema-discovered Data Center Epic Link field.
+Without that field, ordinary Jira changes remain available without epic wiki membership;
+epic splitting requires the field. Ambiguous discovery requires an explicit override.
+Topic-bound `wiki_index`, `wiki_read`, and `wiki_share` tools provide evidence-backed
+sharing; each call refreshes the source epic and derives provenance from its accepted
+process turn, not model-supplied identities. See [topic wikis](../../docs/topic-wiki.md).
