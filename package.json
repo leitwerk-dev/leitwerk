@@ -16,7 +16,7 @@
 		"extensions/*"
 	],
 	"overrides": {
-		"@mistralai/mistralai": "2.2.1",
+		"@mistralai/mistralai": "2.7.0",
 		"tsup": {
 			"esbuild": "0.28.1"
 		}
