@@ -93,6 +93,7 @@ nav:
       - Operate a process: operator-guide.md
       - API tokens: api-tokens.md
       - Scoped settings: scoped-settings.md
+      - Solution wiki: topic-wiki.md
   - Build:
       - Write your first process: first-process.md
       - Process SDK: process-sdk.md
