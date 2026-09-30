@@ -64,7 +64,14 @@ async function main(): Promise<void> {
 		LEITWERK_LOCAL_WORKER_COMMAND: process.env.LEITWERK_LOCAL_WORKER_COMMAND ?? process.execPath,
 		LEITWERK_LOCAL_WORKER_ARGS_JSON:
 			process.env.LEITWERK_LOCAL_WORKER_ARGS_JSON ??
-			JSON.stringify(["--conditions=source", "--import", "tsx", "../worker/src/worker-entry.ts"]),
+			JSON.stringify([
+				"--conditions=source",
+				"--import",
+				path.join(repoRoot, "scripts/pi-source-conditions.mjs"),
+				"--import",
+				"tsx",
+				"../worker/src/worker-entry.ts",
+			]),
 	};
 
 	const backendEntry = process.env.LEITWERK_DEV_BACKEND_ENTRY

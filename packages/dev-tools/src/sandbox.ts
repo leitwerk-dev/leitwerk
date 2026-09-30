@@ -17,6 +17,8 @@ export async function runSandbox(options: DevelopmentOptions, args: string[]): P
 		[
 			"--conditions=source",
 			"--import",
+			path.join(selection.checkout, "scripts/pi-source-conditions.mjs"),
+			"--import",
 			"tsx",
 			path.join(selection.checkout, "scripts/sandbox/cli.ts"),
 			`--composition=${compositionPath(options)}`,
