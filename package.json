@@ -18,7 +18,7 @@
 	"overrides": {
 		"@mistralai/mistralai": "2.7.0",
 		"tsup": {
-			"esbuild": "0.28.1"
+			"esbuild": "0.28.2"
 		}
 	},
 	"scripts": {
