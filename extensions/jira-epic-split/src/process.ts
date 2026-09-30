@@ -1,6 +1,7 @@
 import { asUnknownRecord } from "@leitwerk-dev/domain";
-import { type JiraIssue, jiraEpicRevision } from "@leitwerk-dev/jira";
+import type { JiraIssue } from "@leitwerk-dev/jira";
 import {
+	type AutomaticOutcomeBuilder,
 	type Codec,
 	flow,
 	type ProcessLauncherDefinition,
@@ -24,7 +25,6 @@ interface PreparedBatch {
 	drafts: SplitDraft[];
 	epic: JiraIssue;
 	epicRevision: string;
-	changed: boolean;
 }
 const inspectionTools = [
 	"gitlab_inspect_project",
@@ -62,6 +62,16 @@ function publicationState(state: SplitState, input: unknown): SplitState {
 	};
 }
 
+function recordPublication(outcome: AutomaticOutcomeBuilder<SplitParams, SplitState>) {
+	return outcome
+		.parameter("results", {
+			type: "array",
+			description: "Publication receipts",
+			items: { type: "object" },
+		})
+		.effect(({ ctx, event }) => ({ state: publicationState(ctx.state, event.params.results) }));
+}
+
 /** @internal */
 export function createSplitProcess(
 	launcher: ProcessLauncherDefinition<SplitParams>,
@@ -72,7 +82,7 @@ export function createSplitProcess(
 		) => Promise<import("@leitwerk-dev/process-sdk").ProcessLaunchConfig<SplitParams>>;
 	},
 ) {
-	const process = flow
+	return flow
 		.process<SplitParams, SplitState>("jira_epic_split_process")
 		.displayName("Jira Issue Split")
 		.entry("read_epic")
@@ -214,9 +224,7 @@ export function createSplitProcess(
 						.description("Save repository assessment and draft")
 						.requiredString("assessment", `JSON ${draftShape}`)
 						.yield(({ ctx, event }) => {
-							const draft = parseDraft(JSON.parse(String(event.params.assessment)));
-							if ((draft.issueType === "Sub-task") !== Boolean(ctx.params.subtaskType))
-								throw new Error("Ticket type does not match the source issue's child relationship");
+							const draft = parseDraft(JSON.parse(String(event.params.assessment)), ctx.params);
 							if (draft.repositoryKey !== ctx.item.key)
 								throw new Error("Assessment repository mismatch");
 							return draft;
@@ -415,13 +423,7 @@ export function createSplitProcess(
 						.effect(({ ctx, event }) => {
 							const value: unknown = JSON.parse(String(event.params.drafts));
 							if (!Array.isArray(value)) throw new Error("Expected draft array");
-							const drafts = value.map(parseDraft);
-							if (
-								drafts.some(
-									(draft) => (draft.issueType === "Sub-task") !== Boolean(ctx.params.subtaskType),
-								)
-							)
-								throw new Error("Ticket type does not match the source issue's child relationship");
+							const drafts = value.map((draft) => parseDraft(draft, ctx.params));
 							const pending = ctx.state.drafts.filter((draft) => !draft.receipt);
 							if (
 								drafts.length !== pending.length ||
@@ -438,7 +440,7 @@ export function createSplitProcess(
 									drafts: [...ctx.state.drafts.filter((draft) => draft.receipt), ...drafts],
 									approved: [],
 									epic: prepared.epic,
-									epicRevision: jiraEpicRevision(prepared.epic),
+									epicRevision: prepared.epicRevision,
 								},
 							};
 						})
@@ -468,29 +470,13 @@ export function createSplitProcess(
 					return { outcome: pending ? "published" : "finished", params: { results } };
 				})
 				.outcome("published", (outcome) =>
-					outcome
+					recordPublication(outcome)
 						.description("Partial ticket publication recorded")
-						.parameter("results", {
-							type: "array",
-							description: "Publication receipts",
-							items: { type: "object" },
-						})
-						.effect(({ ctx, event }) => ({
-							state: publicationState(ctx.state, event.params.results),
-						}))
 						.to("prepare_review"),
 				)
 				.outcome("finished", (outcome) =>
-					outcome
+					recordPublication(outcome)
 						.description("All ticket dispositions recorded")
-						.parameter("results", {
-							type: "array",
-							description: "Publication receipts",
-							items: { type: "object" },
-						})
-						.effect(({ ctx, event }) => ({
-							state: publicationState(ctx.state, event.params.results),
-						}))
 						.to("complete_split"),
 				),
 		)
@@ -510,5 +496,4 @@ export function createSplitProcess(
 				),
 		)
 		.define();
-	return process;
 }

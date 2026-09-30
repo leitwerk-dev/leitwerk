@@ -10,7 +10,7 @@ import {
 	type ServerExtensionAPI,
 	scopedSettingsCapability,
 } from "@leitwerk-dev/process-sdk";
-import { emptyPollResult, parseDurationMs } from "@leitwerk-dev/watcher-utils";
+import { createPollSchedule, emptyPollResult, parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import {
 	JiraClient,
 	type JiraClientLike,
@@ -23,7 +23,7 @@ import { registerJiraTools } from "./tools.js";
 import { registerJiraWikiTools } from "./wiki.js";
 
 export * from "./client.js";
-export { ensureEpicWiki, ensureIssueWiki, jiraEpicRevision } from "./wiki.js";
+export { ensureIssueWiki, jiraEpicRevision } from "./wiki.js";
 
 /** @public */
 export interface JiraIntegration {
@@ -187,7 +187,7 @@ export function setupJiraIntegration(
 	}
 	const deps = api.get(coreHostCapabilities.serverSetup);
 	if (!deps || Array.isArray(deps)) return;
-	const due = new Map<string, number>();
+	const shouldPoll = createPollSchedule(now);
 	return deps.polling.create({
 		id: "jira",
 		pollInterval: () => "5s",
@@ -197,8 +197,7 @@ export function setupJiraIntegration(
 			const result = emptyPollResult();
 			for (const watcher of deps.processWatchers?.listBySource(jiraIssueWatcherSource) ?? []) {
 				const key = `${watcher.processId}:${watcher.watcherId}`;
-				if (!watcher.enabled || (due.get(key) ?? 0) > now()) continue;
-				due.set(key, now() + parseDurationMs(watcher.config.pollInterval, 30000));
+				if (!watcher.enabled || !shouldPoll(key, watcher.config.pollInterval)) continue;
 				try {
 					const client = integration.client(watcher.config.profile);
 					for (const issue of await client.searchIssues(watcher.config.projects)) {
@@ -227,8 +226,7 @@ export function setupJiraIntegration(
 			});
 			await report.poll(ISSUE_POLICY, async (armed) => {
 				const key = `${armed.instanceId}:${armed.id}:${armed.generation}`;
-				if ((due.get(key) ?? 0) > now()) return;
-				due.set(key, now() + 30000);
+				if (!shouldPoll(key)) return;
 				const c = armed.resolved as unknown as JiraSourceConfig;
 				try {
 					const client = integration.client(c.profile);

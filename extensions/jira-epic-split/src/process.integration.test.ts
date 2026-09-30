@@ -3,16 +3,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { SettingsSubject, WikiPage, WikiTopic } from "@leitwerk-dev/domain";
 import { gitSshIntegration } from "@leitwerk-dev/git-ssh";
-import { LocalGitLabAdapter, setupGitLabIntegration } from "@leitwerk-dev/gitlab/testing";
+import { setupGitLabIntegration } from "@leitwerk-dev/gitlab/testing";
 import jiraExtension, { setupJiraIntegration } from "@leitwerk-dev/jira";
-import { LocalJiraAdapter } from "@leitwerk-dev/jira/testing";
 import { createJiraGitLabLauncher } from "@leitwerk-dev/jira-gitlab-change";
 import { buildProcessWatchers } from "@leitwerk-dev/process-sdk";
 import { fixtureModelProviders } from "@leitwerk-dev/test-support";
 import { createExtensionIntegrationHarness } from "@leitwerk-dev/test-support/integration";
-import { LocalGit } from "@leitwerk-dev/test-support/local-git";
 import { expect, it, onTestFinished } from "vitest";
 import splitter, { jiraEpicSplitProcess } from "./index.js";
+import { createSplitSources } from "./test-fixture.js";
 
 it.each([
 	"Epic",
@@ -20,27 +19,7 @@ it.each([
 ])("reviews a %s batch, shares evidence, survives restart, and publishes only approved tickets", async (sourceType) => {
 	const root = mkdtempSync(join(tmpdir(), "epic-flow-"));
 	onTestFinished(() => rmSync(root, { recursive: true, force: true }));
-	const git = new LocalGit(root);
-	const gitlab = new LocalGitLabAdapter(root);
-	for (const name of ["one", "two"])
-		gitlab.addProject(
-			`team/${name}`,
-			git.seed({ owner: "team", name, files: { "README.md": "Old template" } }).bare,
-		);
-	const jira = new LocalJiraAdapter();
-	jira.seedIssue({
-		id: "10",
-		key: "APP-10",
-		fields: {
-			summary: "Standardize readmes",
-			description: "Use the shared sections",
-			issuetype: { id: sourceType.toLowerCase(), name: sourceType, subtask: false },
-			project: { id: "100", key: "APP", name: "App" },
-			components: [],
-			labels: [],
-			status: { statusCategory: { key: "new" } },
-		},
-	});
+	const { gitlab, jira } = createSplitSources(root, sourceType);
 	const originalCredentials = jiraEpicSplitProcess.repositoryCredentials;
 	jiraEpicSplitProcess.repositoryCredentials = () => [];
 	onTestFinished(() => {

@@ -16,7 +16,7 @@ import {
 	stringArg,
 	topicWikiCapability,
 } from "@leitwerk-dev/process-sdk";
-import { emptyPollResult, parseDurationMs } from "@leitwerk-dev/watcher-utils";
+import { createPollSchedule, emptyPollResult, parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import type { SplitParams } from "./model.js";
 import { createSplitProcess } from "./process.js";
 import {
@@ -208,7 +208,7 @@ const extension: LeitwerkExtensionModule = {
 			throw new Error("Issue split integration capabilities must be singular");
 		services = { jira, gitlab, ssh, settings, wiki, serverBaseUrl: host.serverBaseUrl };
 		registerSplitTools(api, services);
-		const due = new Map<string, number>();
+		const shouldPoll = createPollSchedule();
 		host.polling.create({
 			id: "jira-epic-split",
 			pollInterval: () => "5s",
@@ -218,8 +218,7 @@ const extension: LeitwerkExtensionModule = {
 				const result = emptyPollResult();
 				for (const watcher of host.processWatchers?.listBySource(epicSplitSource) ?? []) {
 					const key = `${watcher.processId}:${watcher.watcherId}`;
-					if (!watcher.enabled || (due.get(key) ?? 0) > Date.now()) continue;
-					due.set(key, Date.now() + parseDurationMs(String(watcher.config.pollInterval), 30000));
+					if (!watcher.enabled || !shouldPoll(key, String(watcher.config.pollInterval))) continue;
 					try {
 						const client = jira.client(String(watcher.config.jiraProfile));
 						if (!client.searchSplitIssues)

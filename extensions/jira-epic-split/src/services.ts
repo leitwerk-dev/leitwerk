@@ -384,7 +384,6 @@ export function registerSplitTools(api: ServerExtensionAPI, services: SplitServi
 						drafts,
 						epic,
 						epicRevision: revision,
-						changed: Boolean(state.epicRevision && revision !== state.epicRevision),
 					};
 				}
 				const repositoryKey = stringArg(args, "repositoryKey");
@@ -411,6 +410,7 @@ export function registerSplitTools(api: ServerExtensionAPI, services: SplitServi
 					sourceIssueId: params.epic.id,
 					relationship: jiraIsEpic(params.epic) ? ("epic" as const) : ("subtask" as const),
 				};
+				const reservation = { key, topicId: params.topicId, binding, externalId: null, url: null };
 				const existing = services.wiki.publication(key);
 				if (
 					existing &&
@@ -454,14 +454,7 @@ export function registerSplitTools(api: ServerExtensionAPI, services: SplitServi
 					)
 						throw new Error("Created issue no longer belongs to this source issue");
 					const url = `${client.baseUrl}/browse/${encodeURIComponent(issue.key)}`;
-					if (!recorded)
-						services.wiki.reservePublication({
-							key,
-							topicId: params.topicId,
-							binding,
-							externalId: null,
-							url: null,
-						});
+					if (!recorded) services.wiki.reservePublication(reservation);
 					services.wiki.finishPublication(key, jiraIssueExternalId(client.baseUrl, issue.id), url);
 					return { id: issue.id, key: issue.key, url };
 				};
@@ -470,37 +463,32 @@ export function registerSplitTools(api: ServerExtensionAPI, services: SplitServi
 						`Jira creation outcome is uncertain. Find the ticket with label ${marker} and retry after it is searchable; another POST is blocked`,
 					);
 				};
+				const ensureTicket = (execute: () => Promise<NonNullable<SplitDraft["receipt"]>>) =>
+					ctx.externalWrites.ensure(
+						{ writeType: "jira.create_issue", dedupKey: `jira-split:${key}` },
+						{ reconcile: readRemote, execute, toMetadata: (value) => value },
+					);
+				const wantsTrigger = state.labels.includes("use-leitwerk");
+				const triggerPending = () => wantsTrigger && !services.wiki.publication(key)?.triggered;
+				const reconcileTrigger = async (id: string, recorded = false) => {
+					const { labels } = (await client.getIssue(id)).fields;
+					const triggered =
+						services.wiki.publication(key)?.triggered ||
+						recorded ||
+						labels.includes("use-leitwerk") ||
+						labels.includes("leitwerk-done");
+					if (triggered) services.wiki.markPublicationTriggered(key);
+					return triggered;
+				};
 				let receipt: NonNullable<SplitDraft["receipt"]> | null = null;
 				if (existing) {
-					receipt = await ctx.externalWrites.ensure(
-						{ writeType: "jira.create_issue", dedupKey: `jira-split:${key}` },
-						{
-							reconcile: readRemote,
-							execute: async () => uncertainPublication(),
-							toMetadata: (value) => value,
-						},
-					);
-					if (state.labels.includes("use-leitwerk") && !services.wiki.publication(key)?.triggered) {
-						const issue = await client.getIssue(receipt.id);
-						if (
-							issue.fields.labels.some(
-								(label) => label === "use-leitwerk" || label === "leitwerk-done",
-							)
-						)
-							services.wiki.markPublicationTriggered(key);
-					}
+					receipt = await ensureTicket(async () => uncertainPublication());
+					if (triggerPending()) await reconcileTrigger(receipt.id);
 				}
-				if (
-					!receipt ||
-					(state.labels.includes("use-leitwerk") && !services.wiki.publication(key)?.triggered)
-				) {
+				if (!receipt || triggerPending()) {
 					if (sourceBlocked) return { reviewRequired: sourceBlocked };
 					const mapping = await componentMapping(services, params, repository);
-					if (
-						revision !== state.epicRevision ||
-						mapping.mappingRevision !== draft.mappingRevision ||
-						epic.fields.status.statusCategory.key === "done"
-					)
+					if (revision !== state.epicRevision || mapping.mappingRevision !== draft.mappingRevision)
 						return {
 							reviewRequired: "Source issue or component mapping changed; review the batch again",
 						};
@@ -534,61 +522,34 @@ export function registerSplitTools(api: ServerExtensionAPI, services: SplitServi
 							throw new Error(
 								`Jira requires field ${field}; configure its default before publishing`,
 							);
-					receipt = await ctx.externalWrites.ensure(
-						{ writeType: "jira.create_issue", dedupKey: `jira-split:${key}` },
-						{
-							reconcile: readRemote,
-							execute: async () => {
-								if (
-									!services.wiki.reservePublication({
-										key,
-										topicId: params.topicId,
-										binding,
-										externalId: null,
-										url: null,
-									})
-								)
-									uncertainPublication();
-								let created: JiraIssueReceipt;
-								try {
-									created = await createIssue(fields);
-								} catch (error) {
-									if (
-										error instanceof JiraRequestError &&
-										[400, 401, 403, 404, 422].includes(error.status)
-									)
-										services.wiki.releaseRejectedPublication(key);
-									throw error;
-								}
-								const url = `${client.baseUrl}/browse/${encodeURIComponent(created.key)}`;
-								services.wiki.finishPublication(
-									key,
-									jiraIssueExternalId(client.baseUrl, created.id),
-									url,
-								);
-								return { ...created, url };
-							},
-							toMetadata: (receipt) => receipt,
-						},
-					);
+					receipt = await ensureTicket(async () => {
+						if (!services.wiki.reservePublication(reservation)) uncertainPublication();
+						let created: JiraIssueReceipt;
+						try {
+							created = await createIssue(fields);
+						} catch (error) {
+							if (
+								error instanceof JiraRequestError &&
+								[400, 401, 403, 404, 422].includes(error.status)
+							)
+								services.wiki.releaseRejectedPublication(key);
+							throw error;
+						}
+						const url = `${client.baseUrl}/browse/${encodeURIComponent(created.key)}`;
+						services.wiki.finishPublication(
+							key,
+							jiraIssueExternalId(client.baseUrl, created.id),
+							url,
+						);
+						return { ...created, url };
+					});
 				}
-				if (state.labels.includes("use-leitwerk"))
+				if (wantsTrigger)
 					await ctx.externalWrites.ensure(
 						{ writeType: "jira.split_trigger", dedupKey: `jira-split-trigger:${key}` },
 						{
-							reconcile: async (phase) => {
-								const issue = await client.getIssue(receipt.id);
-								if (
-									services.wiki.publication(key)?.triggered ||
-									phase === "already_recorded" ||
-									issue.fields.labels.includes("use-leitwerk") ||
-									issue.fields.labels.includes("leitwerk-done")
-								) {
-									services.wiki.markPublicationTriggered(key);
-									return receipt;
-								}
-								return null;
-							},
+							reconcile: async (phase) =>
+								(await reconcileTrigger(receipt.id, phase === "already_recorded")) ? receipt : null,
 							execute: async () => {
 								await client.updateLabels(receipt.id, [], ["use-leitwerk"]);
 								services.wiki.markPublicationTriggered(key);

@@ -87,8 +87,6 @@ describe("materializeRunRoot", () => {
 			},
 		]);
 		const result = await materializeRunRoot(plan, git);
-		expect(result.ok).toBe(true);
-		expect(result.errors).toEqual([]);
 		expect(result.loadedSkills).toEqual(["sa"]);
 
 		const manifestPath = path.join(".leitwerk", "components.json");
@@ -202,7 +200,7 @@ describe("repairRunRoot", () => {
 
 		expect(validation.diff.missing).toEqual(["repo"]);
 		await expect(
-			repairRunRoot(ws, validation, planRunRoot(ws, "ag-resumed", projects), git),
+			repairRunRoot(validation, planRunRoot(ws, "ag-resumed", projects), git),
 		).rejects.toThrow(/Workspace preparation failed: repo: unknown repo/);
 	});
 
@@ -269,8 +267,7 @@ describe("repairRunRoot", () => {
 		expect(validation.diff.stale).toEqual(["stale"]);
 
 		const plan = planRunRoot(ws, "a2", server);
-		const repaired = await repairRunRoot(ws, validation, plan, git);
-		expect(repaired.ok).toBe(true);
+		const repaired = await repairRunRoot(validation, plan, git);
 
 		const staleEntry = repaired.manifest.components.find((c) => c.key === "stale");
 		expect(staleEntry?.repoLocator).toBe("https://new.git");

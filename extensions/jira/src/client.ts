@@ -305,14 +305,6 @@ export class JiraClient {
 	}
 
 	/** @internal */
-	searchEpics(projectIds: readonly string[]): Promise<JiraIssue[]> {
-		if (!projectIds.length || projectIds.some((id) => !/^\d+$/.test(id)))
-			throw new Error("Select explicit Jira project IDs");
-		const jql = `project in (${projectIds.join(",")}) AND labels = "leitwerk-epic-split" AND issuetype = Epic AND statusCategory != Done ORDER BY id ASC`;
-		return this.#pages(`search?jql=${encodeURIComponent(jql)}&fields=*all`, "issues");
-	}
-
-	/** @internal */
 	searchSplitIssues(projectIds: readonly string[]): Promise<JiraIssue[]> {
 		if (!projectIds.length || projectIds.some((id) => !/^\d+$/.test(id)))
 			throw new Error("Select explicit Jira project IDs");
@@ -418,7 +410,6 @@ export async function jiraSplitChildMatches(
 		return issue.fields.issuetype?.subtask === true && issue.fields.parent?.id === sourceIssueId;
 	return (
 		issue.fields.issuetype?.subtask !== true &&
-		Boolean(client.getEpic) &&
 		(await client.getEpic?.(issue))?.id === sourceIssueId
 	);
 }

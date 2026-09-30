@@ -33,6 +33,16 @@ export function createTopicWikiRepo(
 			.values({ id: `${id}:${page.revision}`, pageId: id, data })
 			.run();
 	}
+	function invalidateDependents(topicId: string, pageId: string, updatedAt: string): void {
+		for (const page of store.listPages(topicId))
+			if (page.links.includes(pageId))
+				storePage({
+					...page,
+					status: "needs_revalidation",
+					revision: page.revision + 1,
+					updatedAt,
+				});
+	}
 	const store: TopicWikiStore = {
 		ensureTopic(input) {
 			const id = digest(input.key);
@@ -116,15 +126,7 @@ export function createTopicWikiRepo(
 					deleted: false,
 				};
 				storePage(next);
-				if (current)
-					for (const dependent of store.listPages(input.topicId))
-						if (dependent.links.includes(input.id))
-							storePage({
-								...dependent,
-								status: "needs_revalidation",
-								revision: dependent.revision + 1,
-								updatedAt: next.updatedAt,
-							});
+				if (current) invalidateDependents(input.topicId, input.id, next.updatedAt);
 				return next;
 			});
 			changed(input.topicId);
@@ -146,14 +148,7 @@ export function createTopicWikiRepo(
 					instanceId: actor,
 					turnRecordId: "",
 				});
-				for (const page of store.listPages(topicId))
-					if (page.links.includes(pageId))
-						storePage({
-							...page,
-							status: "needs_revalidation",
-							revision: page.revision + 1,
-							updatedAt: new Date().toISOString(),
-						});
+				invalidateDependents(topicId, pageId, new Date().toISOString());
 			});
 			changed(topicId);
 		},

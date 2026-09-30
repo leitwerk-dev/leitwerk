@@ -710,6 +710,7 @@ export const WS_FRAME_DURABILITY = {
 	"launch.updated": "durable",
 	/** @internal */
 	"settings.updated": "durable",
+	/** @internal */
 	"wiki.updated": "durable",
 	/** @internal */
 	"process.updated": "durable",

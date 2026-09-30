@@ -85,7 +85,7 @@ export function initialSplitState(params: SplitParams): SplitState {
 }
 
 /** @internal */
-export function parseDraft(value: unknown): SplitDraft {
+export function parseDraft(value: unknown, params?: SplitParams): SplitDraft {
 	const record = asUnknownRecord(value);
 	if (
 		!record ||
@@ -116,6 +116,8 @@ export function parseDraft(value: unknown): SplitDraft {
 			!/^[a-f0-9]{40,64}$/i.test(draft.revision))
 	)
 		throw new Error("Applicable repositories require a ticket draft and inspected commit ID");
+	if (params && (draft.issueType === "Sub-task") !== Boolean(params.subtaskType))
+		throw new Error("Ticket type does not match the source issue's child relationship");
 	return draft;
 }
 

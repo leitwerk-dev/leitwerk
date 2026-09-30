@@ -52,6 +52,16 @@ const statusLabel = (value: WikiPage["status"]) =>
 		needs_revalidation: "Needs revalidation",
 	})[value];
 
+function resetEntry() {
+	historyGeneration++;
+	history = [];
+	historyLoading = false;
+	historyError = null;
+	deleteError = null;
+	deleteConflict = false;
+	confirmation = null;
+}
+
 async function load() {
 	const request = ++generation;
 	const requestedTopic = topicId;
@@ -63,13 +73,7 @@ async function load() {
 			if (request !== generation) return;
 			topic = result.topic;
 			pages = result.pages;
-			history = [];
-			historyGeneration++;
-			historyLoading = false;
-			historyError = null;
-			deleteError = null;
-			deleteConflict = false;
-			confirmation = null;
+			resetEntry();
 		} else {
 			const result = await fetchWikiTopics();
 			if (request !== generation) return;
@@ -137,13 +141,7 @@ $effect(() => {
 $effect(() => {
 	void pageId;
 	void topicId;
-	historyGeneration++;
-	history = [];
-	historyLoading = false;
-	historyError = null;
-	deleteError = null;
-	deleteConflict = false;
-	confirmation = null;
+	resetEntry();
 });
 onMount(() =>
 	onWikiUpdated((updatedTopicId) => {

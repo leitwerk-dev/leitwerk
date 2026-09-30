@@ -9,12 +9,12 @@ import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtim
 import { gitSshIntegration } from "@leitwerk-dev/git-ssh";
 import { LocalGitLabAdapter, setupGitLabIntegration } from "@leitwerk-dev/gitlab/testing";
 import jira, {
-	type JiraClientLike,
 	type JiraComment,
 	type JiraIssue,
 	type JiraSourceConfig,
 	setupJiraIntegration,
 } from "@leitwerk-dev/jira";
+import { LocalJiraAdapter } from "@leitwerk-dev/jira/testing";
 import { createJiraGitLabChange, type JiraGitLabParams } from "@leitwerk-dev/jira-gitlab-change";
 import type { CoreServerSetupDeps } from "@leitwerk-dev/process-sdk";
 import { createPollingTestExtension, fixtureModelProviders } from "@leitwerk-dev/test-support";
@@ -78,30 +78,23 @@ export async function jiraFixture(
 		},
 	};
 	const comments: JiraComment[] = [];
-	const jiraClient: JiraClientLike = {
-		baseUrl: "https://jira.test/context",
-		listProjects: async () => [issue.fields.project],
-		listComponents: async () => issue.fields.components,
-		searchIssues: async () => [structuredClone(issue)],
-		getIssue: async () => {
-			if (issueUnavailable) throw new Error("Jira unavailable");
-			return structuredClone(issue);
-		},
-		listComments: async () => structuredClone(comments),
-		addComment: async (_id, body) => {
-			const comment = { id: String(comments.length + 1), body };
-			comments.push(comment);
-			if (loseComment) {
-				loseComment = false;
-				throw new Error("Response lost after Jira write");
-			}
-			return comment;
-		},
-		updateLabels: async (_id, remove, add) => {
-			issue.fields.labels = [
-				...new Set([...issue.fields.labels.filter((label) => !remove.includes(label)), ...add]),
-			];
-		},
+	const jiraClient = new LocalJiraAdapter();
+	jiraClient.issues.set(issue.id, issue);
+	jiraClient.comments.set(issue.id, comments);
+	jiraClient.components = issue.fields.components;
+	const getIssue = jiraClient.getIssue.bind(jiraClient);
+	jiraClient.getIssue = async (id) => {
+		if (issueUnavailable) throw new Error("Jira unavailable");
+		return getIssue(id);
+	};
+	const addComment = jiraClient.addComment.bind(jiraClient);
+	jiraClient.addComment = async (id, body) => {
+		const comment = await addComment(id, body);
+		if (loseComment) {
+			loseComment = false;
+			throw new Error("Response lost after Jira write");
+		}
+		return comment;
 	};
 	const prompts: { tools: string[]; prompt: string }[] = [];
 	const pi = new StubPiTreeHandleFactory({

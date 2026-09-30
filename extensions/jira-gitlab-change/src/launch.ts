@@ -111,6 +111,7 @@ function parseMapping(value: unknown): RepositoryMapping {
 	}
 	return validateMapping(r);
 }
+
 function validateMapping(r: Record<string, unknown> | null): RepositoryMapping {
 	if (
 		!r ||

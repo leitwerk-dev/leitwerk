@@ -26,11 +26,6 @@ export function jiraEpicRevision(epic: JiraIssue): string {
 }
 
 /** @internal */
-export function ensureEpicWiki(store: TopicWikiStore, client: JiraClientLike, epic: JiraIssue) {
-	return ensureIssueWiki(store, client, epic);
-}
-
-/** @internal */
 export function ensureIssueWiki(store: TopicWikiStore, client: JiraClientLike, issue: JiraIssue) {
 	return store.ensureTopic({
 		key: JSON.stringify([jiraIsEpic(issue) ? "jira.epic" : "jira.issue", client.baseUrl, issue.id]),

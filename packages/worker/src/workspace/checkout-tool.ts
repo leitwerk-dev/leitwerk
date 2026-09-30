@@ -34,7 +34,6 @@ export function createCheckoutTool(
 				})),
 			);
 			const result = await prepareOnDemandRunRoot(plan, git, args.projectKey);
-			if (!result.ok) throw new Error(result.errors.join("; "));
 			const entry = result.manifest.components.find(
 				(component) => component.key === args.projectKey,
 			);

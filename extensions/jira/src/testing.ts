@@ -54,17 +54,6 @@ export class LocalJiraAdapter implements JiraClientLike {
 			.filter((issue) => projectIds.includes(issue.fields.project.id) && jiraEligible(issue))
 			.map((issue) => structuredClone(issue));
 	}
-	/** @internal */ async searchEpics(projectIds: readonly string[]) {
-		return [...this.issues.values()]
-			.filter(
-				(issue) =>
-					projectIds.includes(issue.fields.project.id) &&
-					issue.fields.issuetype?.name === "Epic" &&
-					issue.fields.labels.includes("leitwerk-epic-split") &&
-					issue.fields.status.statusCategory.key !== "done",
-			)
-			.map((issue) => structuredClone(issue));
-	}
 	/** @internal */ async searchSplitIssues(projectIds: readonly string[]) {
 		return [...this.issues.values()]
 			.filter((issue) => projectIds.includes(issue.fields.project.id) && jiraSplitEligible(issue))
