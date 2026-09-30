@@ -492,12 +492,12 @@ export function createScopedSettingsService(input: {
 			let error: string | null = null;
 			let choices: SettingFieldView["choices"] = [];
 			try {
+				inherited = resolveDefinition(definition, context, undefined, subject.id);
+				effective = resolveDefinition(definition, context, draft);
 				choices =
 					definition.form.control === "model"
 						? (input.modelChoices?.() ?? [])
 						: ((await definition.choices?.(context)) ?? []);
-				inherited = resolveDefinition(definition, context, undefined, subject.id);
-				effective = resolveDefinition(definition, context, draft);
 				if (definition.form.control === "model" && effective.value !== null) {
 					const selected = choices.find((choice) => choice.value === effective?.value);
 					if (selected?.disabledReason)
@@ -557,11 +557,23 @@ export function createScopedSettingsService(input: {
 	}
 	function listScopes(): SettingsScopesResponse {
 		discoverLocal();
+		const scopesWithFields = new Set(
+			[...definitions.values()].flatMap(({ definition }) => definition.scopes),
+		);
+		const subjectsWithInactiveOverrides = new Set(
+			repos.scopedSettings
+				.listOverrides()
+				.filter((row) => !row.reset && !definitions.has(row.key))
+				.map((row) => row.subjectId),
+		);
 		return {
 			scopes: [...scopes.values()],
-			subjects: repos.scopedSettings
-				.listSubjects()
-				.map((subject) => ({ ...subject, active: scopes.has(subject.scopeType) })),
+			subjects: repos.scopedSettings.listSubjects().map((subject) => ({
+				...subject,
+				active: scopes.has(subject.scopeType),
+				hasSettings:
+					scopesWithFields.has(subject.scopeType) || subjectsWithInactiveOverrides.has(subject.id),
+			})),
 		};
 	}
 	function discoverLocal() {

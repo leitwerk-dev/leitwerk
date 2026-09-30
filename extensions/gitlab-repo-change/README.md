@@ -1,19 +1,25 @@
 # GitLab repository change
 
-`@leitwerk-dev/gitlab-repo-change` plans, implements, reviews, and publishes a
-repository change as a new GitLab merge request. Load `gitlab`, `coding`, and this
-extension on the server and worker. The extension is opt-in.
+`@leitwerk-dev/gitlab-repo-change` plans, implements, simplifies, and publishes a
+repository change as a new GitLab merge request. Load `gitlab`, `git-ssh`, `coding`,
+and this extension on the server and worker. The extension is opt-in.
 
 The UI launcher selects a GitLab profile, a visible project, and a requested change.
-It checks project visibility and HTTPS Git read/write admission, pins the bot Git
-identity, and targets the default branch. Replaying a UI launch generates a new
-work branch. Planning and implementation require operator approval.
+It selects a matching Git SSH profile, checks project visibility and SSH read/write
+admission, pins the bot Git identity, and targets the default branch. Replaying a UI
+launch generates a new work branch. Plan approval starts implementation and MR
+publication automatically. The launcher offers unchecked **Skip plan approval**
+and **Skip simplification** options and preserves both on relaunch. Skipping
+approval still generates and retains a plan.
+
+[Generated process graph](process.mmd). Dashed edges are external triggers; terminal
+outcomes are separate from the ten registered turns.
 
 ## Configuration
 
-Use the same [GitLab profile](../gitlab/README.md) for API and HTTPS repository
-access. No separate Git SSH profile is required. Configure issue discovery on the
-process:
+Use a server-side [GitLab profile](../gitlab/README.md) for API access and a matching
+[Git SSH profile](../git-ssh/README.md) for cloning and pushing. Configure issue
+discovery on the process:
 
 ```yaml
 process_configs:
@@ -22,6 +28,7 @@ process_configs:
       use_leitwerk:
         enabled: true
         profile: team
+        git_ssh_profile: team
         poll_interval: 30s
         projects:
           include: [team/service]
@@ -68,6 +75,26 @@ precedence. UI-origin processes never require a source issue.
 
 The default extension requires Docker. Trusted local compositions can use
 `createGitLabRepoChange({ docker: false })`; load exactly one variant. Both retain
-`gitlab_repo_change_process`. Credentials remain in the owning integration except
-for the existing repository-scoped worker Git credential delivery. Automatic
-merging, existing-MR adoption, fork publication, and release delivery are not provided.
+`gitlab_repo_change_process`. GitLab API tokens remain server-side. Git SSH
+credential delivery is repository-scoped. Automatic merging, existing-MR adoption,
+fork publication, and release delivery are not provided.
+
+## Shared workflow
+
+This process uses the [ten-turn workflow](../jira-gitlab-change/README.md#workflow)
+from `coding`. Plan decisions offer approval or revisions with human comments.
+Implementation, simplification analysis, simplification application, commit-message
+generation, and publication then proceed automatically. The simplification analysis
+covers staged, unstaged, and untracked changes and hands durable findings to the
+separate application turn. Both turns run once before first publication.
+
+For issue launches, `leitwerk-skip-simplification` is read immediately after
+implementation. UI launches use the checkbox. A failed source lookup pauses for
+retry; recovery reuses completed routing decisions. Later labels do not interrupt
+simplification that already started. GitLab source issues do not use the Jira
+plan-bypass label. Neither skip label replaces the watcher launch trigger.
+
+Before deployment, finish or abort active instances using the removed plan-review,
+implementation-review, implementation-approval, or simplification-approval turns.
+Their history must be retained. GitHub and Forgejo use the same workflow and
+upgrade boundary; provider-specific publication and CI semantics remain separate.

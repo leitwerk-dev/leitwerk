@@ -31,12 +31,36 @@ it("pins server SSH wiring, rejects unknown profiles, and generates a fresh repl
 		repository: "team/repo",
 		prompt: "Change readme",
 		sshCredentialRef: "attacker",
+		skipPlanDecision: true,
+		skipSimplification: true,
 	};
 	const first = await ui.resolveLaunchConfig(input, {});
 	const second = await ui.resolveLaunchConfig(await ui.resolveRelaunchInput(input, {}), {});
 	if (!first.ok || !second.ok) throw new Error("Launch failed");
 	expect(first.launchConfig.params).toMatchObject({ sshCredentialRef: "writer", origin: "ui" });
 	expect(first.launchConfig.params.workBranch).not.toBe(second.launchConfig.params.workBranch);
+	for (const launch of [first, second]) {
+		const params = process.paramsCodec.parse(launch.launchConfig.params);
+		expect(await launcher.workflow.planDecision?.(params)).toMatchObject({ skip: true });
+		expect(await launcher.workflow.simplification?.(params)).toMatchObject({ skip: true });
+	}
+	const repo = provider.repo("team", "repo");
+	const issue = provider.createIssue(repo, { title: "Change readme" });
+	provider.setIssueLabel(repo, issue.number, "leitwerk-skip-simplification", "developer");
+	const params = {
+		...first.launchConfig.params,
+		origin: "issue" as const,
+		issueNumber: issue.number,
+		issueUrl: issue.html_url,
+		triggerLabel: "use-leitwerk",
+		doneLabel: "done",
+	};
+	expect(await launcher.workflow.planDecision?.(params)).toMatchObject({ skip: false });
+	expect(await launcher.workflow.simplification?.(params)).toMatchObject({ skip: true });
+	await expect(
+		launcher.workflow.simplification?.({ ...params, issueUrl: "https://other.test/issue/1" }),
+	).rejects.toThrow("installation changed");
+	expect([...process.turns.keys()]).toHaveLength(10);
 	const repository = (await provider.client().listRepositories())[0];
 	expect(first.launchConfig.projects?.[0].settingsRepository).toMatchObject({
 		origin: "https://github.test",

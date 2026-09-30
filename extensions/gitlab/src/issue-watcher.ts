@@ -12,6 +12,7 @@ import { type GitLabSelection, parseGitLabSelection, selectGitLabProjects } from
 export interface GitLabIssueWatcherConfig extends GitLabSelection {
 	/** @public */
 	profile: string;
+	/** @public */ gitSshProfile?: string;
 	/** @public */
 	pollInterval: string;
 	/** @public */
@@ -25,6 +26,7 @@ export interface GitLabIssueWatcherConfig extends GitLabSelection {
 export interface GitLabIssueWatcherEvent {
 	/** @public */
 	profile: string;
+	/** @public */ gitSshProfile?: string;
 	/** @public */
 	repository: GitLabProject;
 	/** @public */
@@ -66,6 +68,7 @@ export const gitlabIssueWatcherSource = defineProcessWatcherSource<
 			config: {
 				...parseGitLabSelection(c),
 				profile: text(c.profile, "profile"),
+				...(typeof c.git_ssh_profile === "string" ? { gitSshProfile: c.git_ssh_profile } : {}),
 				pollInterval,
 				labels: { trigger, done },
 			},
@@ -133,7 +136,13 @@ export function createGitLabIssueDiscovery(
 					};
 					const launched = await deps.launchRuns.startWatcher(
 						guarded,
-						{ profile: c.profile, repository, issue, labels: c.labels },
+						{
+							profile: c.profile,
+							gitSshProfile: c.gitSshProfile,
+							repository,
+							issue,
+							labels: c.labels,
+						},
 						{ idempotencyKey: id },
 					);
 					if (launched.error) result.errors.push(`${id}:launch_failed`);

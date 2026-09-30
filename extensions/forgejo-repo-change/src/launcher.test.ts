@@ -8,6 +8,8 @@ describe("Forgejo repository-change UI launcher", () => {
 			forgejoProfile: "team",
 			repository: "",
 			prompt: "",
+			skipPlanDecision: false,
+			skipSimplification: false,
 		});
 		await expect(ui.resolveOptions?.({ forgejoProfile: "team" }, {})).resolves.toEqual({
 			forgejoProfile: [{ value: "team", label: "team" }],
@@ -21,9 +23,20 @@ describe("Forgejo repository-change UI launcher", () => {
 
 	it("builds a ticketless launch from authoritative repository metadata", async () => {
 		const f = launcherFixture();
-		const result = await f.launch({ prompt: "Improve the deployment status" });
+		const input = {
+			forgejoProfile: "team",
+			repository: f.repository.full_name,
+			prompt: "Improve the deployment status",
+			skipPlanDecision: true,
+			skipSimplification: true,
+		};
+		const result = await f.launch(await f.ui.resolveRelaunchInput?.(input, {}));
 		if (!result.ok) throw new Error("expected launch resolution");
 		const { launchConfig } = result;
+		const params = f.process.paramsCodec.parse(launchConfig.params);
+		expect(await f.launcher.workflow.planDecision?.(params)).toMatchObject({ skip: true });
+		expect(await f.launcher.workflow.simplification?.(params)).toMatchObject({ skip: true });
+		expect([...f.process.turns.keys()]).toHaveLength(10);
 		expect(launchConfig).toMatchObject({
 			processId: "forgejo_repo_change_process",
 			startTurnId: "generate_plan",
@@ -69,11 +82,7 @@ describe("Forgejo repository-change UI launcher", () => {
 		if (!result.ok) throw new Error("expected launch resolution");
 		const { launchConfig } = result;
 		const checks = f.ui.preparationChecks?.({}, launchConfig) ?? [];
-		expect(checks.map((check) => check.id)).toEqual([
-			"repository_visibility",
-			"ssh_read",
-			"ssh_write",
-		]);
+		expect(checks.map((check) => check.id)).toEqual(["repository_visibility", "ssh_write"]);
 		const warn = vi.fn();
 		const context = {
 			signal: new AbortController().signal,
@@ -81,8 +90,7 @@ describe("Forgejo repository-change UI launcher", () => {
 			logger: { info() {}, warn },
 		};
 		await checks[0]?.run(context);
-		await checks[1]?.run(context);
-		await expect(checks[2]?.run(context)).rejects.toMatchObject({
+		await expect(checks[1]?.run(context)).rejects.toMatchObject({
 			message: "SSH write access failed: repository key is read-only",
 			safeSummary: expect.stringContaining(
 				"Authorize Git SSH profile 'team' for 'examples/garden' with read/write access",
@@ -91,7 +99,9 @@ describe("Forgejo repository-change UI launcher", () => {
 		expect(warn).toHaveBeenCalledWith(
 			"Git SSH write preflight failed: repository key is read-only",
 		);
-		expect(f.preflight).toHaveBeenNthCalledWith(2, expect.objectContaining({ requireWrite: true }));
+		expect(f.preflight).toHaveBeenCalledExactlyOnceWith(
+			expect.objectContaining({ requireWrite: true }),
+		);
 	});
 
 	it("rejects a repository that is not returned by Forgejo", async () => {

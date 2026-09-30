@@ -42,13 +42,6 @@ const browserRepositoryChangeProcess = createRepositoryChangeProcess({
 	paramsCodec: createRepositoryChangeParamsCodec<RepositoryChangeLaunchParams>({
 		normalize: (value) => normalizeRepositoryChangeParamsInput(value, "Browser Repository Change"),
 	}),
-	finalizeLabel: "Publish change",
-	finalizeForm: {
-		id: "finalize_change",
-		title: "Publish change",
-		fields: [],
-		submitLabel: "Publish change",
-	},
 	publication: {
 		entryTurnId: browserPublicationTurnId,
 		fragment: browserPublication,

@@ -13,8 +13,6 @@ test("public-only composition commits and publishes a real notebook change after
 	expect(f.notebook.state.scenarios[id]).toEqual(progress);
 	expect(f.context.deps.turnRecords.listByInstance(id)).toEqual(records);
 	await f.action(id, "approve_plan");
-	await f.wait(id, "implementation_decision");
-	await f.action(id, "finalize_change");
 	await f.wait(id, null, "completed");
 	const project = f.context.deps.projects.listByInstance(id)[0];
 	if (!project?.workBranch) throw new Error("Missing sandbox work branch");

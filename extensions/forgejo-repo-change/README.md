@@ -36,12 +36,16 @@ changes; mappings affect future launches.
 
 The UI starts without a source issue. Each replay generates a new work branch.
 Issue launches retain their external issue identity and `leitwerk/issue-N` branch.
-Plans and implementations require operator approval. Optional review,
-simplification, and imported-plan routes share the coding process contracts.
+The [shared workflow](../coding/README.md#streamlined-coordinated-changes) requires
+plan approval, then simplifies and publishes automatically. UI launches can skip
+plan approval or simplification; relaunch preserves both choices. Issue launches
+read `leitwerk-skip-simplification` after implementation, never use labels to bypass
+plan approval, and retain completed routing decisions on recovery.
 
 ## Delivery and recovery
 
-The automatic `deliver_change` turn commits with the server-pinned Forgejo Git
+Unchanged work completes without a PR; source issues stay open, lose the trigger,
+and receive a comment. Otherwise `deliver_change` commits with the server-pinned Forgejo Git
 identity, pushes a feature branch, and creates or reconciles one pull request.
 It records delivery progress, feedback acknowledgements/replies, and provider
 write receipts. External writes are durable and safe to retry.
@@ -85,20 +89,7 @@ At operator action, **Retry repair** retains the pending evidence. **Resume wait
 dismisses the pending feedback and adjustment, retaining accepted feedback cursors
 and remote delivery state while waiting for new evidence.
 
-## Integration tests
-
-The composed workflow tests copy a pristine Git seed into independent repositories
-and own their storage per scenario. They retain real Git, HTTP actions and worker
-IPC without repeating repository initialization. Failures report process and turn
-state before cleanup.
-
-## Restart verification
-
-The provider sandbox's file-backed restart fixtures retain legacy issue/UI params,
-Forgejo-only project metadata, completed write receipts and waiting subscriptions.
-They reopen feedback, CI, conflict, operator and terminal deliveries, compare project,
-turn and session identities, and verify that changed profile mappings do not rebind
-existing work. A remote merge while the server is stopped completes after rearming.
+A remote merge while the server is stopped completes after rearming.
 Lost PR responses and publication retries reconcile one PR without duplicate comments.
 
 ## API support

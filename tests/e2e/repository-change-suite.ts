@@ -19,9 +19,7 @@ import {
 } from "@leitwerk-dev/gitlab/testing";
 import { createGitLabRepoChange } from "@leitwerk-dev/gitlab-repo-change";
 import {
-	type CapabilityToken,
 	type CoreServerSetupDeps,
-	coreHostCapabilities,
 	createEmptyStructuralProcessState,
 	type LeitwerkExtensionModule,
 } from "@leitwerk-dev/process-sdk";
@@ -73,6 +71,16 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 					},
 				],
 			};
+		if (tools.includes("implementation_ready"))
+			return {
+				content: "",
+				toolCalls: [
+					{
+						name: "implementation_ready",
+						arguments: { markdown: "Updated the readme and ran checks" },
+					},
+				],
+			};
 		if (tools.includes("changes_ready"))
 			return {
 				content: "",
@@ -96,7 +104,7 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 					arguments: {
 						markdown: prompt.includes("Follow this plan:")
 							? "Updated the readme"
-							: "docs: update readme",
+							: JSON.stringify({ repo: "docs: update readme" }),
 					},
 				},
 			],
@@ -168,34 +176,22 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 				: createGitLabRepoChange({ docker: false });
 		// Only this owned local composition replaces production credential delivery.
 		flow.process.repositoryCredentials = () => [];
-		const polling = createPollingTestExtension({ id: provider, version: "1.0.0" }, (api) => {
-			const deps = api.get(coreHostCapabilities.serverSetup);
-			if (!deps || Array.isArray(deps)) throw new Error("Missing server setup capability");
-			// Drive the real provider's poll explicitly. A scheduled poll can otherwise
-			// coalesce with our call before newly added evidence is visible, leaving
-			// the test waiting for the next five-second timer tick.
-			const manualDeps: CoreServerSetupDeps = {
-				...deps,
-				polling: { create: ({ pollOnce }) => ({ poll: pollOnce }) },
-			};
-			const manualApi = {
-				...api,
-				get<T>(token: CapabilityToken<T>): T | T[] | undefined {
-					return token === coreHostCapabilities.serverSetup ? (manualDeps as T) : api.get(token);
-				},
-			};
-			return provider === "github"
-				? setupGitHubIntegration(
-						manualApi,
-						{ profiles: () => ["team"], client: () => github.client() },
-						{ now: () => clock },
-					)
-				: setupGitLabIntegration(
-						manualApi,
-						{ profiles: () => ["team"], client: () => gitlab.client() },
-						{ now: () => clock },
-					);
-		});
+		const polling = createPollingTestExtension(
+			{ id: provider, version: "1.0.0" },
+			(api) =>
+				provider === "github"
+					? setupGitHubIntegration(
+							api,
+							{ profiles: () => ["team"], client: () => github.client() },
+							{ now: () => clock },
+						)
+					: setupGitLabIntegration(
+							api,
+							{ profiles: () => ["team"], client: () => gitlab.client() },
+							{ now: () => clock },
+						),
+			true,
+		);
 		pollProvider = () => polling.poll();
 		const ssh: LeitwerkExtensionModule = {
 			manifest: { id: "git-ssh", version: "1.0.0" },
@@ -356,6 +352,7 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 						[`${provider}Profile`]: "team",
 						repository: provider === "github" ? "team/repo" : "1",
 						prompt: "Update readme",
+						gitSshProfile: "team",
 					},
 				});
 				const body = (await response.json()) as { process: { id: string } };
@@ -364,8 +361,6 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 			}
 			await driver.wait(id, "plan_decision");
 			await driver.action(id, "approve_plan");
-			await driver.wait(id, "implementation_decision");
-			await driver.action(id, "finalize_change");
 			await armed(id);
 			return id;
 		},

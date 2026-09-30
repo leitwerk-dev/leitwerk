@@ -1,5 +1,10 @@
 import { describeConflict } from "@leitwerk-dev/coding/repository-rebase";
-import { defineExternalActionSource } from "@leitwerk-dev/process-sdk";
+import {
+	defineExternalActionSource,
+	type RepositoryFeedbackSourceConfig,
+	type RepositoryIssueCancelledSourceConfig,
+	type RepositoryPullRequestSourceConfig,
+} from "@leitwerk-dev/process-sdk";
 
 /** @internal */
 export const FORGEJO_PR_CONFLICT_KIND = "@leitwerk-private/forgejo.pr_conflict";
@@ -20,50 +25,21 @@ export const FORGEJO_PR_FEEDBACK_KIND = "@leitwerk-private/forgejo.pr_feedback";
 export const FORGEJO_ISSUE_CANCELLED_KIND = "@leitwerk-private/forgejo.issue_cancelled";
 
 /** @internal */
-export interface ForgejoPullRequestSourceConfig {
-	/** @internal */
-	profile: string;
-	/** @internal */
-	owner: string;
-	/** @internal */
-	repo: string;
-	/** @internal */
-	prNumber: number;
-	/** @internal */
-	pollInterval?: string;
-	/** @internal */
-	terminalOutcome?: "merged" | "closed";
-	/** @internal */
-	disabled?: boolean;
-}
+export interface ForgejoPullRequestSourceConfig
+	extends Pick<RepositoryPullRequestSourceConfig, "profile" | "owner" | "repo" | "prNumber">,
+		Partial<
+			Pick<RepositoryPullRequestSourceConfig, "pollInterval" | "terminalOutcome" | "disabled">
+		> {}
 
 /** @internal */
-export interface ForgejoFeedbackSourceConfig extends ForgejoPullRequestSourceConfig {
-	/** @internal */
-	conversationCursor: number;
-	/** @internal */
-	reviewCursor: number;
-	/** @internal */
-	inlineCursor: number;
-	/** @internal */
-	quietPeriodMs: number;
-}
+export interface ForgejoFeedbackSourceConfig
+	extends ForgejoPullRequestSourceConfig,
+		Omit<RepositoryFeedbackSourceConfig, keyof RepositoryPullRequestSourceConfig> {}
 
 /** @internal */
-export interface ForgejoIssueCancelledSourceConfig {
-	/** @internal */
-	profile: string;
-	/** @internal */
-	owner: string;
-	/** @internal */
-	repo: string;
-	/** @internal */
-	issueNumber: number;
-	/** @internal */
-	triggerLabel: string;
-	/** @internal */
-	pollInterval?: string;
-}
+export interface ForgejoIssueCancelledSourceConfig
+	extends Omit<RepositoryIssueCancelledSourceConfig, "pollInterval">,
+		Partial<Pick<RepositoryIssueCancelledSourceConfig, "pollInterval">> {}
 
 /** @internal */
 export const forgejoExternal = {

@@ -1,7 +1,9 @@
 export { parseRepositoryProfileBindings } from "./profile-bindings-internal.js";
 export type {
 	NormalizedRepositoryChangeParamsInput,
+	PullRequestChangeLaunchInput,
 	RepositoryChangeLaunchParams,
+	RepositoryChangeOptions,
 	RepositoryChangeParamsBase,
 	RepositoryIssueOriginParams,
 	RepositoryUiOriginParams,
@@ -11,10 +13,11 @@ export {
 	normalizeRepositoryChangeParamsInput,
 	normalizeRepositoryIssueChangeParams,
 	normalizeRepositoryIssueOrigin,
+	repositoryChangeOptionFields,
+	repositoryChangeOptions,
 	repositoryChangeParamsRecord,
+	repositoryChangeWorkflow,
 	repositoryIssueChangeLaunchConfig,
 } from "./repository-change-launch-internal.js";
-export {
-	createRepositoryChangeUiLauncher,
-	repositoryVisibilityCheck,
-} from "./repository-change-ui-launcher-internal.js";
+export type { RepositoryChangeWorkflow } from "./repository-change-process.js";
+export { createRepositoryChangeLauncher } from "./repository-change-ui-launcher-internal.js";

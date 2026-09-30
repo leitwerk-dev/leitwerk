@@ -83,6 +83,13 @@ export {
 } from "./external.js";
 export type { GitLabIssueWatcherEvent } from "./issue-watcher.js";
 export { gitlabIssueExternalId, gitlabIssueWatcherSource } from "./issue-watcher.js";
+export { resolveGitLabLaunchProject } from "./launch.js";
+export {
+	createGitLabPublicationAdapter,
+	type GitLabPublicationParams,
+	gitlabPublicationEvidenceForRequest,
+	gitlabPublicationSource,
+} from "./publication.js";
 export type { GitLabSelection } from "./selection.js";
 export {
 	parseGitLabSelection,

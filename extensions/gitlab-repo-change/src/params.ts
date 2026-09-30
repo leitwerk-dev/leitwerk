@@ -7,21 +7,30 @@ import {
 	repositoryChangeParamsRecord,
 } from "@leitwerk-dev/coding/repository-change-launch";
 import { trimString } from "@leitwerk-dev/domain";
+
 /** @public */
 export type GitLabRepoChangeParams = RepositoryChangeLaunchParams<
 	{
 		/** @public */
 		gitlabProfile: string;
+
+		/** @public */
+		gitSshProfile?: string;
+
 		/** @public */
 		gitlabOrigin: string;
+
 		/** @public */
 		projectId: number;
+
 		/** @public */
 		owner: string;
+
 		/** @public */
 		repo: string;
 	} & (RepositoryUiOriginParams | RepositoryIssueOriginParams)
 >;
+
 /** @public */
 export const gitlabRepoChangeParamsCodec =
 	createRepositoryChangeParamsCodec<GitLabRepoChangeParams>({
@@ -37,6 +46,7 @@ export const gitlabRepoChangeParamsCodec =
 			const common = {
 				...normalizeRepositoryChangeParamsInput(value, "GitLab Repo Change"),
 				gitlabProfile: text("gitlabProfile"),
+				gitSshProfile: trimString(r.gitSshProfile),
 				gitlabOrigin: text("gitlabOrigin"),
 				projectId: r.projectId,
 				owner: text("owner"),

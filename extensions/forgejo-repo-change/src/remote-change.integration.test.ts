@@ -79,11 +79,8 @@ async function driveToPublishedPullRequest(fixture: RemoteRepoChangeFixture) {
 	expect(processInstances(fixture)).toHaveLength(1);
 
 	await fixture.approvePlan(instanceId);
-	const implementationDecision = await fixture.waitForTurn(instanceId, "implementation_decision");
-	expect(implementationDecision.lifecycleStatus).toBe("waiting");
 	expect(fixture.piTurns.filter((turn) => turn.kind === "implementation")).toHaveLength(1);
 
-	await fixture.approveImplementation(instanceId);
 	const waiting = await fixture.waitForTurn(instanceId, "deliver_change");
 	const head1 = fixture.git.head(constants.workBranch);
 	const pr = fixture.forgejo.pullRequest();
@@ -135,7 +132,6 @@ describe("Forgejo repository-change composed integration", () => {
 		);
 
 		await fixture.approvePlan(instanceId);
-		await fixture.approveImplementation(instanceId);
 		await fixture.waitForTurn(instanceId, "deliver_change");
 		expect(fixture.forgejo.pullRequest()).toMatchObject({
 			head: { ref: params.workBranch },

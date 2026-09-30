@@ -1,7 +1,12 @@
 import { gitSshIntegration } from "@leitwerk-dev/git-ssh";
-import { githubIntegration } from "@leitwerk-dev/github";
-import type { LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
-import { createGitHubRepoChangeLauncher } from "./launcher.js";
+import { type GitHubGitIdentity, githubIntegration } from "@leitwerk-dev/github";
+import type {
+	LaunchPreparationCheck,
+	LeitwerkExtensionModule,
+	ProcessLaunchConfig,
+} from "@leitwerk-dev/process-sdk";
+import { createGitHubRepoChangeLauncher, type LauncherDependencies } from "./launcher.js";
+import type { GitHubRepoChangeParams } from "./params.js";
 import { createGitHubRepoChangeProcess } from "./process.js";
 import { parseProfileBindings } from "./profile-bindings.js";
 
@@ -66,10 +71,17 @@ export const {
 	launcher: defaultGitHubRepoChangeLauncher,
 } = createGitHubRepoChange({ docker: true });
 /** @public */
-export const {
-	configure: configureGitHubRepoChangeLauncher,
-	preparationChecks: githubRepositoryPreparationChecks,
-	resolveGitIdentity: resolveGitHubGitIdentity,
-	launcher: githubRepoChangeUiLauncher,
-} = defaultGitHubRepoChangeLauncher;
+export const configureGitHubRepoChangeLauncher: (value: LauncherDependencies | null) => void =
+	defaultGitHubRepoChangeLauncher.configure;
+/** @public */
+export const githubRepositoryPreparationChecks: (
+	input: unknown,
+	launch: ProcessLaunchConfig<GitHubRepoChangeParams>,
+) => readonly LaunchPreparationCheck<GitHubRepoChangeParams>[] =
+	defaultGitHubRepoChangeLauncher.preparationChecks;
+/** @public */
+export const resolveGitHubGitIdentity: (profile: string) => Promise<GitHubGitIdentity> =
+	defaultGitHubRepoChangeLauncher.resolveGitIdentity;
+/** @public */
+export const githubRepoChangeUiLauncher = defaultGitHubRepoChangeLauncher.launcher;
 export default defaultExtension;

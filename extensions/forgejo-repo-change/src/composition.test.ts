@@ -92,16 +92,14 @@ describe("server-owned delivery composition", () => {
 		}
 	});
 
-	it("retains the separate SSH read admission check", async () => {
+	it("rejects SSH read failures in the combined read/write admission check", async () => {
 		const f = setup();
-		f.preflight.mockImplementation(async (input) =>
-			!input.requireWrite ? { ok: false, access: "read", detail: "denied" } : { ok: true },
-		);
+		f.preflight.mockResolvedValue({ ok: false, access: "read", detail: "denied" });
 		const result = await f.launch();
 		if (!result.ok) throw new Error("launch");
 		const check = f.ui
 			.preparationChecks?.({}, result.launchConfig)
-			.find((c) => c.id === "ssh_read");
+			.find((c) => c.id === "ssh_write");
 		await expect(
 			check?.run({
 				signal: new AbortController().signal,

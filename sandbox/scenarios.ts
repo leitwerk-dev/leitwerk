@@ -166,9 +166,11 @@ export function notebookScriptResolver(
 				path.join(directory, "notes.txt"),
 				`Weekly review: record planting dates and watering observations.\nRevision ${progress.step}\n`,
 			);
-			return markdown("Updated notes.txt with the weekly review.");
+			return response([
+				call("implementation_ready", { markdown: "Updated notes.txt with the weekly review." }),
+			]);
 		}
-		return markdown("docs: document weekly garden review");
+		return markdown('{"repo":"docs: document weekly garden review"}');
 	};
 	return resolve;
 }

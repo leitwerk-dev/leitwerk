@@ -9,31 +9,23 @@ import {
 	SafeLaunchPreparationError,
 } from "@leitwerk-dev/process-sdk";
 import { buildAutoWorkBranchFromSeed } from "./auto-work-branch.js";
+import {
+	type RepositoryChangeLaunchParams,
+	type RepositoryIssueOriginParams,
+	type RepositoryUiOriginParams,
+	repositoryChangeOptionFields,
+	repositoryChangeOptions,
+	repositoryChangeWorkflow,
+} from "./repository-change-launch-internal.js";
 
-/** Recheck provider-owned repository visibility before launch. @internal */
-export function repositoryVisibilityCheck(
-	provider: string,
-	isVisible: () => Promise<boolean>,
-): LaunchPreparationCheck {
-	return {
-		id: "repository_visibility",
-		label: "Check repository visibility",
-		async run({ signal }) {
-			signal.throwIfAborted();
-			const visible = await isVisible();
-			signal.throwIfAborted();
-			if (!visible)
-				throw new SafeLaunchPreparationError(
-					"Repository is not visible",
-					`Grant the selected ${provider} profile access to the repository, then try again.`,
-				);
-		},
-	};
-}
-
-/** Shared UI mechanics; providers retain credentials, preparation and launch metadata. @internal */
-export function createRepositoryChangeUiLauncher<
-	P,
+/** Shared launch mechanics; providers retain credentials, preparation and launch metadata. @internal */
+export function createRepositoryChangeLauncher<
+	P extends RepositoryChangeLaunchParams<{
+		/** @internal */ owner: string;
+		/** @internal */ repo: string;
+	}> &
+		(RepositoryIssueOriginParams | RepositoryUiOriginParams),
+	D,
 	R extends {
 		/** @internal */
 		full_name: string;
@@ -54,15 +46,22 @@ export function createRepositoryChangeUiLauncher<
 	/** @internal */
 	providerId: string;
 	/** @internal */
-	assertConfigured(): void;
+	integration(dependencies: D): {
+		/** @internal */ profiles?(): readonly string[];
+		/** @internal */ client(profile: string): {
+			/** @internal */ listRepositories(): Promise<readonly R[]>;
+			/** @internal */ resolveGitIdentity(profile: string): Promise<I>;
+			/** @internal */ getIssue(
+				owner: string,
+				repo: string,
+				number: number,
+			): Promise<Pick<RepositoryIssue, "html_url" | "labels">>;
+		};
+	};
 	/** @internal */
-	profiles(): readonly string[];
+	profile(params: P): string;
 	/** @internal */
-	repositories(profile: string): Promise<readonly R[]>;
-	/** @internal */
-	resolveProfiles(profile: string): B;
-	/** @internal */
-	resolveGitIdentity(profile: string): Promise<I>;
+	resolveProfiles(profile: string, dependencies: D): B;
 	/** @internal */
 	params(
 		repository: R,
@@ -83,18 +82,57 @@ export function createRepositoryChangeUiLauncher<
 		repository: NoInfer<R>,
 	): ProcessLaunchConfig<P>;
 	/** @internal */
-	preparationChecks: NonNullable<ProcessLauncherDefinition<P>["ui"]>["preparationChecks"];
-}): ProcessLauncherDefinition<P> & {
-	/** Resolve issue launches using the same provider wiring as UI launches. @internal */
-	resolveIssueLaunchConfig(event: {
-		/** @internal */ profile: string;
-		/** @internal */ repository: R;
-		/** @internal */ issue: Pick<RepositoryIssue, "number" | "title" | "body" | "html_url">;
-		/** @internal */ labels: RepositoryIssueWatcherConfig["labels"];
-	}): Promise<ProcessLaunchConfig<P>>;
-} {
+	preparationChecks(params: P, dependencies: () => D): readonly LaunchPreparationCheck<P>[];
+}) {
 	const { provider, providerId } = options;
 	const profileField = `${providerId}Profile`;
+	let dependencies: D | null = null;
+	function requireDependencies(): D {
+		if (!dependencies) throw new Error(`${provider} repository launcher is not configured`);
+		return dependencies;
+	}
+	const integration = () => options.integration(requireDependencies());
+	const profiles = () => integration().profiles?.() ?? [];
+	async function repositories(profile: string): Promise<readonly R[]> {
+		return profile && profiles().includes(profile)
+			? integration().client(profile).listRepositories()
+			: [];
+	}
+	/** @internal */
+	function resolveProfiles(profile: string) {
+		if (!profiles().includes(profile)) throw new Error(`${provider} profile is not available`);
+		return options.resolveProfiles(profile, requireDependencies());
+	}
+	/** @internal */
+	async function resolveGitIdentity(profile: string): Promise<I> {
+		if (!profile) throw new Error(`A ${provider} profile is required to resolve Git identity`);
+		return integration().client(profile).resolveGitIdentity(profile);
+	}
+	/** @internal */
+	function preparationChecks(
+		_input: unknown,
+		{ params }: ProcessLaunchConfig<P>,
+	): LaunchPreparationCheck<P>[] {
+		return [
+			{
+				id: "repository_visibility",
+				label: "Check repository visibility",
+				async run({ signal }) {
+					signal.throwIfAborted();
+					const visible = (await repositories(options.profile(params))).some(
+						(candidate) => candidate.full_name === `${params.owner}/${params.repo}`,
+					);
+					signal.throwIfAborted();
+					if (!visible)
+						throw new SafeLaunchPreparationError(
+							"Repository is not visible",
+							`Grant the selected ${provider} profile access to the repository, then try again.`,
+						);
+				},
+			},
+			...options.preparationChecks(params, requireDependencies),
+		];
+	}
 	function validationError(
 		fieldId: string,
 		message: string,
@@ -102,12 +140,20 @@ export function createRepositoryChangeUiLauncher<
 	): LauncherValidationError {
 		return { code, fieldId, message };
 	}
-	return {
+	const launcher: ProcessLauncherDefinition<P> & {
+		/** @internal */
+		resolveIssueLaunchConfig(event: {
+			/** @internal */ profile: string;
+			/** @internal */ repository: R;
+			/** @internal */ issue: Pick<RepositoryIssue, "number" | "title" | "body" | "html_url">;
+			/** @internal */ labels: RepositoryIssueWatcherConfig["labels"];
+		}): Promise<ProcessLaunchConfig<P>>;
+	} = {
 		async resolveIssueLaunchConfig({ profile, repository, issue, labels }) {
 			const title = issue.title.trim();
 			const body = issue.body?.trim() ?? "";
-			const binding = options.resolveProfiles(profile);
-			const identity = await options.resolveGitIdentity(profile);
+			const binding = resolveProfiles(profile);
+			const identity = await resolveGitIdentity(profile);
 			return options.launchConfig(
 				{
 					...options.params(repository, {
@@ -140,6 +186,7 @@ export function createRepositoryChangeUiLauncher<
 				id: `${providerId}_repo_change_form`,
 				title: `${provider} Repo Change`,
 				fields: [
+					...repositoryChangeOptionFields,
 					{
 						id: profileField,
 						label: `${provider} profile`,
@@ -165,22 +212,28 @@ export function createRepositoryChangeUiLauncher<
 				submitLabel: "Start change",
 			},
 			resolveDefaults() {
-				return { [profileField]: options.profiles()[0] ?? "", repository: "", prompt: "" };
+				return {
+					[profileField]: profiles()[0] ?? "",
+					repository: "",
+					prompt: "",
+					...repositoryChangeOptions({}),
+				};
 			},
 			async resolveOptions(input) {
 				const profile = trimString(input[profileField]);
 				return {
-					[profileField]: options.profiles().map((value) => ({ value, label: value })),
-					repository: (await options.repositories(profile)).map((repository) => ({
+					[profileField]: profiles().map((value) => ({ value, label: value })),
+					repository: (await repositories(profile)).map((repository) => ({
 						value: repository.full_name,
 						label: repository.full_name,
 						description: repository.html_url,
 					})),
 				};
 			},
-			preparationChecks: options.preparationChecks,
+			preparationChecks,
 			resolveRelaunchInput(input) {
 				return {
+					...repositoryChangeOptions(input),
 					[profileField]: trimString(input[profileField]),
 					repository: trimString(input.repository),
 					prompt: trimString(input.prompt),
@@ -195,16 +248,16 @@ export function createRepositoryChangeUiLauncher<
 					ok: false as const,
 					errors: [validationError(fieldId, message, "custom_rule")],
 				});
-				options.assertConfigured();
+				requireDependencies();
 				if (!profile) errors.push(validationError(profileField, `${provider} profile is required`));
-				else if (!options.profiles().includes(profile))
+				else if (!profiles().includes(profile))
 					errors.push(
 						validationError(profileField, `${provider} profile is not available`, "custom_rule"),
 					);
 				if (!repositoryName) errors.push(validationError("repository", "Repository is required"));
 				if (!prompt) errors.push(validationError("prompt", "Requested change is required"));
 				if (errors.length > 0) return { ok: false, errors };
-				const repository = (await options.repositories(profile)).find(
+				const repository = (await repositories(profile)).find(
 					(candidate) => candidate.full_name === repositoryName,
 				);
 				if (!repository)
@@ -214,21 +267,42 @@ export function createRepositoryChangeUiLauncher<
 					);
 				let binding: B;
 				try {
-					binding = options.resolveProfiles(profile);
+					binding = resolveProfiles(profile);
 				} catch (error) {
 					return invalid(profileField, (error as Error).message);
 				}
-				const identity = await options.resolveGitIdentity(profile);
+				const identity = await resolveGitIdentity(profile);
 				const workBranch = buildAutoWorkBranchFromSeed(
 					prompt,
 					`${repository.ssh_url}:${repository.default_branch}`,
 				);
-				const params = options.params(repository, { ...binding, profile, prompt, workBranch });
+				const params = {
+					...options.params(repository, { ...binding, profile, prompt, workBranch }),
+					...repositoryChangeOptions(input),
+				};
 				return {
 					ok: true,
 					launchConfig: options.launchConfig(params, prompt, identity, repository),
 				};
 			},
 		},
+	};
+	return {
+		/** @internal */ configure(value: D | null) {
+			dependencies = value;
+		},
+		/** @internal */ preparationChecks,
+		/** @internal */ resolveProfiles,
+		/** @internal */ resolveGitIdentity,
+		/** @internal */ launcher,
+		/** @internal */ workflow: repositoryChangeWorkflow(async (params: P) => {
+			if (params.origin !== "issue") throw new Error(`Missing ${provider} source issue`);
+			const issue = await integration()
+				.client(options.profile(params))
+				.getIssue(params.owner, params.repo, params.issueNumber);
+			if (issue.html_url !== params.issueUrl)
+				throw new Error(`${provider} source issue installation changed`);
+			return issue.labels.map((label) => label.name);
+		}),
 	};
 }

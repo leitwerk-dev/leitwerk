@@ -1913,7 +1913,13 @@ function buildDefinedProcess<TParams, TState>(
 				const result = effect ? await effect(execution) : undefined;
 				let transition: Omit<ServerTransitionRequest<TState>, "state"> | undefined;
 				if (routing) {
-					const branchId = await routing.choose(execution);
+					const branchId = await routing.choose({
+						...execution,
+						ctx: {
+							...execution.ctx,
+							state: result?.state !== undefined ? result.state : execution.ctx.state,
+						},
+					});
 					const route = routing.routes[branchId];
 					if (!route) {
 						throw new Error(

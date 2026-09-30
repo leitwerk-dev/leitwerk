@@ -1,16 +1,21 @@
+import { gitSshIntegration } from "@leitwerk-dev/git-ssh";
 import { gitlabIntegration } from "@leitwerk-dev/gitlab";
 import type { LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
 import { createGitLabRepoChangeLauncher } from "./launcher.js";
 import { createGitLabRepoChangeProcess } from "./process.js";
+
 /** @public */
 export const manifest = {
 	/** @public */
 	id: "gitlab-repo-change",
+
 	/** @public */
 	version: "0.1.9",
+
 	/** @public */
-	requires: ["gitlab", "coding"],
+	requires: ["gitlab", "coding", "git-ssh"],
 } as const;
+
 /** @public */
 /** @public */
 export function createGitLabRepoChange(options: {
@@ -28,21 +33,27 @@ export function createGitLabRepoChange(options: {
 		setupServer(api) {
 			const integration = api.require(gitlabIntegration);
 			if (Array.isArray(integration)) throw new Error("GitLab integration must be singular");
-			launcher.configure(integration);
+			const ssh = api.require(gitSshIntegration);
+			if (Array.isArray(ssh)) throw new Error("Git SSH integration must be singular");
+			launcher.configure(integration, ssh);
 			api.onStop(() => launcher.configure(null));
 		},
 	};
+
 	/** @public */
 	/** @public */
 	return {
 		/** @public */
 		extension,
+
 		/** @public */
 		process,
+
 		/** @public */
 		launcher,
 	};
 }
+
 /** @public */
 export const {
 	extension: defaultExtension,

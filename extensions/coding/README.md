@@ -4,7 +4,7 @@ Shared repository-change planning, review, implementation, state, commit-message
 
 Owning extensions provide process identity, launcher policy, finalization copy, repository credential requirements, and a publication fragment. `@leitwerk-dev/forgejo-repo-change`, `@leitwerk-dev/github-repo-change`, and `@leitwerk-dev/gitlab-repo-change` are production consumers; the public sandbox supplies a local-only publication fragment for scripted scenarios.
 
-After final implementation approval, `generate_commit_message` consumes the durable accepted `plan` without repository tools. It uses the model configured for `pi.process_title_generation.model_profile` (or the process's inherited model when title generation has no profile), applies the formatting rules pinned in project metadata at launch, and persists the normalized plain-text message in finalization state. Publication fragments consume that message.
+After final implementation approval, `generate_commit_message` consumes the durable accepted `plan` without repository tools. It uses the model configured for `pi.process_title_generation.model_profile` (or the process's inherited model when title generation has no profile), applies the formatting rules pinned in project metadata at launch, and persists normalized plain-text messages keyed by project in `finalization.commitMessages`, for both single- and multi-repository changes. Publication fragments also accept the legacy `generatedCommitMessage` for resumed processes.
 
 `commitAndPushWorkBranch()` requires an explicit trusted Git identity, commits dirty workspace files, and pushes only the checked-out feature branch. It rejects invalid Git identity, unresolved conflicts, branch mismatches, and remote heads that do not match the committed HEAD.
 
@@ -78,7 +78,28 @@ or replace inherited blocks when selected. Empty replacement clears them.
 
 Plan uses `coding.planning`; implementation, commit-message generation, feedback
 revisions, CI repairs, and rebase repairs use `coding.implementation`;
-plan review, implementation review, and simplification
-use `coding.review`. Each new step captures current values. Prepared starts and
+simplification analysis uses `coding.review`. Each new step captures current values. Prepared starts and
 worker recovery retain their snapshots. Multi-repository instruction blocks are
 labelled separately; model defaults use the primary repository.
+
+## Streamlined coordinated changes
+
+GitLab, GitHub, Forgejo, and Jira GitLab share six planning/implementation turns
+plus four publication/repair turns. Plan decisions support approval and human-comment
+revisions; implementation proceeds automatically to simplification and publication.
+The optional `workflow` supplies server policies; `variant`, `finalizeLabel`, and
+`finalizeForm` are deprecated and no longer select gates.
+Server-side policies decide plan bypass and simplification routing. Decisions are
+persisted with the plan revision or implementation boundary before routing.
+
+Implementation starts at the session root with the accepted plan, not a prior review branch.
+Simplification has a separate application turn consuming findings and plan. Multi-repository
+sessions use the workspace root and persist commit messages by project key.
+Before upgrading, finish or abort instances parked on removed plan-review,
+implementation-review, implementation-approval, or simplification-approval turns.
+Retain their history; existing delivery turns and state remain supported.
+
+Publication adapters can coordinate repository-specific state and report aggregate
+terminal outcomes while reusing the same publication, feedback, CI, and rebase logic.
+GitLab, GitHub, and Forgejo adapters use `unchanged` to complete without publication,
+removing the source trigger without closing the issue.

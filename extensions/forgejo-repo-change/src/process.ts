@@ -1,10 +1,8 @@
 import {
 	createPullRequestChangeProcess,
-	createRepositoryChangePublication,
 	publicationObject as object,
 	type PublicationSource,
 	type PublicationState,
-	pullRequestDeliveryTools,
 	pullRequestPublicationDefaults,
 	readPublicationState,
 } from "@leitwerk-dev/coding/repository-change-publication";
@@ -18,12 +16,6 @@ import {
 	isIssueOrigin,
 } from "./params.js";
 
-const ids = {
-	deliver: "deliver_change",
-	feedback: "revise_from_pull_request_feedback",
-	ciRepair: "repair_woodpecker_pipeline",
-	operator: "ci_operator_action",
-};
 const remote = (state: RepositoryChangeState) => readPublicationState(state, "forgejoRepoChange");
 
 /** @internal */
@@ -38,6 +30,19 @@ export function createForgejoRepoChangeProcess(
 		(params) => params.forgejoProfile,
 		(params) => (isIssueOrigin(params) ? params : undefined),
 		"id",
+		{
+			id: "repair_woodpecker_pipeline",
+			label: "Woodpecker pipeline",
+			tools: [
+				"woodpecker_lookup_repository",
+				"woodpecker_list_pipelines",
+				"woodpecker_get_pipeline",
+				"woodpecker_get_step_logs",
+				"woodpecker_restart_pipeline",
+			],
+			prompt: (current) =>
+				`Diagnose Woodpecker pipeline #${current.pipeline?.number ?? "unknown"} (${current.pipeline?.status ?? "unknown"}) for the current checkout. Use Woodpecker tools to inspect pipeline metadata and bounded failed-step logs before changing anything. Fix repository causes. Call changes_ready for repository changes, no_changes only after an explicit provider restart or a justified diagnosis that no repository change is needed, or cannot_repair when operator action is required.`,
+		},
 	);
 	const { requirePr } = sharedSources;
 	const failedPipeline = woodpeckerExternal.pipeline<
@@ -58,11 +63,8 @@ export function createForgejoRepoChangeProcess(
 	});
 
 	const sources: PublicationSource<ForgejoRepoChangeParams>[] = [
-		{
-			id: "forgejo_merge_conflict",
-			kind: "conflict",
-			label: "Rebase conflicting pull request",
-			source: forgejoExternal.pullRequestConflict(({ params, state }) => ({
+		sharedSources.conflict(
+			forgejoExternal.pullRequestConflict(({ params, state }) => ({
 				profile: params.forgejoProfile,
 				owner: params.owner,
 				repo: params.repo,
@@ -71,11 +73,7 @@ export function createForgejoRepoChangeProcess(
 				lastConflictKey: remote(state).lastConflictKey,
 				pollInterval: "30s",
 			})),
-			read: ({ event }) => ({
-				kind: "conflict",
-				conflict: object(event).conflict as NonNullable<PublicationState["conflict"]>,
-			}),
-		},
+		),
 		sharedSources.feedback,
 		{
 			id: "woodpecker_failure_repair",
@@ -91,44 +89,15 @@ export function createForgejoRepoChangeProcess(
 		...sharedSources.terminal,
 		sharedSources.cancelled,
 	];
-	const publicationConfig = createRepositoryChangePublication<ForgejoRepoChangeParams>({
-		...sharedSources.adapter,
-		ids,
-		sources,
-		tools: {
-			delivery: pullRequestDeliveryTools("forgejo"),
-			feedback: ["forgejo_get_pull_request", "forgejo_list_pull_request_feedback"],
-			ci: [
-				"woodpecker_lookup_repository",
-				"woodpecker_list_pipelines",
-				"woodpecker_get_pipeline",
-				"woodpecker_get_step_logs",
-				"woodpecker_restart_pipeline",
-			],
-		},
-		commitMessage: (kind) =>
-			kind === "feedback"
-				? "fix: address Forgejo review feedback"
-				: "fix: repair Woodpecker pipeline",
-		prompt(kind, current) {
-			return kind === "feedback"
-				? `Address the unseen Forgejo pull-request feedback batch for PR #${current.prNumber}. Feedback identifiers: ${JSON.stringify(current.feedbackIds)}. Inspect the current checkout and use Forgejo tools to read the full feedback. Do not rely on an earlier plan or conversation. Make only justified repository changes. Call changes_ready if files need publishing, no_changes after an explicit diagnosis that no repository change is needed, or cannot_repair when operator action is required.`
-				: `Diagnose Woodpecker pipeline #${current.pipeline?.number ?? "unknown"} (${current.pipeline?.status ?? "unknown"}) for the current checkout. Use Woodpecker tools to inspect pipeline metadata and bounded failed-step logs before changing anything. Fix repository causes. Call changes_ready for repository changes, no_changes only after an explicit provider restart or a justified diagnosis that no repository change is needed, or cannot_repair when operator action is required.`;
-		},
-	});
-	const publication = publicationConfig.fragment;
-	publication.watcher({
-		id: "use_leitwerk",
-		label: "Forgejo use-leitwerk issues",
-		description: "Launch a remote repository change for Forgejo issues carrying the trigger label",
-		source: forgejoIssueWatcherSource,
-		preparationChecks: launcher.preparationChecks,
-		resolveLaunchConfig: launcher.launcher.resolveIssueLaunchConfig,
-	});
-
 	return createPullRequestChangeProcess("forgejo", "Forgejo", docker, {
 		paramsCodec: forgejoRepoChangeParamsCodec,
 		launcher: launcher.launcher,
-		publication: publicationConfig,
+		workflow: launcher.workflow,
+		publication: { ...sharedSources.adapter, sources },
+		watcher: {
+			source: forgejoIssueWatcherSource,
+			preparationChecks: launcher.preparationChecks,
+			resolveLaunchConfig: launcher.launcher.resolveIssueLaunchConfig,
+		},
 	});
 }

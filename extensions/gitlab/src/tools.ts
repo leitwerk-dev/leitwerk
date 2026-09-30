@@ -22,7 +22,7 @@ async function existingRemote<T>(read: () => Promise<T>): Promise<T | null> {
 /** @public */
 export function resolveGitLabRepositoryBinding(
 	ctx: Pick<IntegrationToolExecutionContext, "project" | "process">,
-	/** @public */
+	integration?: GitLabIntegration,
 ): {
 	/** @public */
 	profile: string;
@@ -32,7 +32,7 @@ export function resolveGitLabRepositoryBinding(
 	if (!ctx.project || ctx.project.instanceId !== ctx.process.id)
 		throw new Error("An authorized GitLab process project is required");
 	const binding = ctx.project.metadata?.gitlab as
-		| { profile?: unknown; projectId?: unknown }
+		| { profile?: unknown; projectId?: unknown; origin?: unknown }
 		| undefined;
 	if (
 		!binding ||
@@ -43,12 +43,18 @@ export function resolveGitLabRepositoryBinding(
 		binding.projectId <= 0
 	)
 		throw new Error("Invalid GitLab project binding");
+	if (
+		binding.origin !== undefined &&
+		integration &&
+		integration.client(binding.profile).baseUrl !== binding.origin
+	)
+		throw new Error("GitLab profile installation changed from the pinned repository");
 	return { profile: binding.profile, projectId: binding.projectId };
 }
 /** @public */
 export function resolveGitLabBinding(
 	ctx: Pick<IntegrationToolExecutionContext, "project" | "process">,
-	/** @public */
+	integration?: GitLabIntegration,
 ): {
 	/** @public */
 	profile: string;
@@ -57,7 +63,7 @@ export function resolveGitLabBinding(
 	/** @public */
 	iid: number;
 } {
-	const repository = resolveGitLabRepositoryBinding(ctx);
+	const repository = resolveGitLabRepositoryBinding(ctx, integration);
 	const iid = (ctx.project?.metadata?.gitlab as { iid?: unknown })?.iid;
 	if (typeof iid !== "number" || !Number.isSafeInteger(iid) || iid <= 0)
 		throw new Error("Invalid GitLab project binding: a merge request is required");
@@ -416,9 +422,9 @@ export function registerGitLabTools(api: ServerExtensionAPI, integration: GitLab
 			async execute(ctx, args) {
 				if (name === "gitlab_get_identity")
 					return integration
-						.client(resolveGitLabRepositoryBinding(ctx).profile)
+						.client(resolveGitLabRepositoryBinding(ctx, integration).profile)
 						.resolveGitIdentity(ctx.signal);
-				const b = resolveGitLabBinding(ctx);
+				const b = resolveGitLabBinding(ctx, integration);
 				const client = integration.client(b.profile);
 				if (name === "gitlab_observe_merge_request")
 					return observeMergeRequest(client, b.projectId, b.iid, ctx.signal);

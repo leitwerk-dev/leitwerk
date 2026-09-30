@@ -2,29 +2,23 @@ import { describeConflict } from "@leitwerk-dev/coding/repository-rebase";
 import {
 	defineExternalActionSource,
 	type ExternalEventDescription,
+	type RepositoryFeedbackSourceConfig,
+	type RepositoryIssueCancelledSourceConfig,
+	type RepositoryPullRequestSourceConfig,
 } from "@leitwerk-dev/process-sdk";
 
 /** @internal */
 export const GITHUB_PR_STATE_KIND = "@leitwerk-private/github.pr_state";
 
 /** @public */
-export interface GitHubPullRequestSourceConfig {
-	/** @public */
-	profile: string;
-	/** @public */
-	owner: string;
-	/** @public */
-	repo: string;
-	/** @public */
-	prNumber: number;
+export interface GitHubPullRequestSourceConfig
+	extends Omit<GitHubPullRequestTerminalSourceConfig, "terminalOutcome" | "disabled"> {
 	/** @public */
 	headSha: string;
 	/** @public */
 	feedbackCursor: number;
 	/** @public */
 	lastConflictKey?: string | null;
-	/** @public */
-	pollInterval?: string;
 	/** @internal */
 	disabled?: boolean;
 	/** @public */
@@ -93,50 +87,21 @@ export const GITHUB_PR_FEEDBACK_KIND = "@leitwerk-public/github.pr_feedback";
 export const GITHUB_ISSUE_CANCELLED_KIND = "@leitwerk-public/github.issue_cancelled";
 
 /** @public */
-export interface GitHubPullRequestTerminalSourceConfig {
-	/** @public */
-	profile: string;
-	/** @public */
-	owner: string;
-	/** @public */
-	repo: string;
-	/** @public */
-	prNumber: number;
-	/** @public */
-	pollInterval?: string;
-	/** @public */
-	terminalOutcome?: "merged" | "closed";
-	/** @internal */
-	disabled?: boolean;
-}
+export interface GitHubPullRequestTerminalSourceConfig
+	extends Pick<RepositoryPullRequestSourceConfig, "profile" | "owner" | "repo" | "prNumber">,
+		Partial<
+			Pick<RepositoryPullRequestSourceConfig, "pollInterval" | "terminalOutcome" | "disabled">
+		> {}
 
 /** @public */
-export interface GitHubFeedbackSourceConfig extends GitHubPullRequestTerminalSourceConfig {
-	/** @public */
-	conversationCursor: number;
-	/** @public */
-	reviewCursor: number;
-	/** @public */
-	inlineCursor: number;
-	/** @public */
-	quietPeriodMs: number;
-}
+export interface GitHubFeedbackSourceConfig
+	extends GitHubPullRequestTerminalSourceConfig,
+		Omit<RepositoryFeedbackSourceConfig, keyof RepositoryPullRequestSourceConfig> {}
 
 /** @public */
-export interface GitHubIssueCancelledSourceConfig {
-	/** @public */
-	profile: string;
-	/** @public */
-	owner: string;
-	/** @public */
-	repo: string;
-	/** @public */
-	issueNumber: number;
-	/** @public */
-	triggerLabel: string;
-	/** @public */
-	pollInterval?: string;
-}
+export interface GitHubIssueCancelledSourceConfig
+	extends Omit<RepositoryIssueCancelledSourceConfig, "pollInterval">,
+		Partial<Pick<RepositoryIssueCancelledSourceConfig, "pollInterval">> {}
 
 /** @public */
 export const GITHUB_CHECKS_KIND = "@leitwerk-public/github.checks";

@@ -1,4 +1,4 @@
-import { codingActionIds, createRepositoryChangeProcess } from "@leitwerk-dev/coding";
+import { createRepositoryChangeProcess } from "@leitwerk-dev/coding";
 import { commitAndPushWorkBranch } from "@leitwerk-dev/coding/finalization-git";
 import {
 	createRepositoryChangeParamsCodec,
@@ -28,7 +28,10 @@ publication.turn(
 			const published = commitAndPushWorkBranch({
 				repoPath: repo.fsPath,
 				workBranch: repo.workBranch,
-				commitMessage: ctx.state.finalization.generatedCommitMessage ?? "",
+				commitMessage:
+					ctx.state.finalization.commitMessages?.repo ??
+					ctx.state.finalization.generatedCommitMessage ??
+					"",
 				gitIdentity: { name: "Sandbox Developer", email: "developer@sandbox.invalid" },
 			});
 			return { outcome: "published", params: published };
@@ -46,12 +49,5 @@ export const sandboxRepositoryChangeProcess = createRepositoryChangeProcess({
 	processId: sandboxRepositoryChangeProcessId,
 	displayName: "Sandbox Repository Change",
 	paramsCodec,
-	finalizeLabel: "Publish change",
-	finalizeForm: {
-		id: codingActionIds.finalizeChange,
-		title: "Publish change",
-		fields: [],
-		submitLabel: "Publish change",
-	},
 	publication: { entryTurnId: publishTurnId, fragment: publication, happyPath: [publishTurnId] },
 }).process;

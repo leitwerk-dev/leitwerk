@@ -7,8 +7,11 @@ and this extension on the server and worker. The extension is opt-in.
 The UI launcher selects a server-owned GitHub profile, a visible repository, and
 a requested change. Launch checks repository visibility and SSH read/write access,
 pins the bot Git identity, and uses the default branch as the base. Replaying a UI
-launch generates a new work branch. Plans and implementations require operator
-approval before publication.
+launch generates a new work branch. The [shared workflow](../coding/README.md#streamlined-coordinated-changes)
+requires plan approval, then simplifies and publishes automatically. UI launches
+can skip plan approval or simplification; relaunch preserves both choices.
+Issue launches read `leitwerk-skip-simplification` after implementation, never use
+labels to bypass plan approval, and retain completed routing decisions on recovery.
 
 ## Configuration
 
@@ -42,7 +45,8 @@ be overridden through launcher input; existing instances retain resolved wiring.
 
 ## Delivery and recovery
 
-The shared coding publication lifecycle commits and pushes the work branch, then
+Unchanged work completes without a PR; source issues stay open, lose the trigger,
+and receive a comment. Otherwise the shared lifecycle commits and pushes the work branch, then
 creates or reconciles one PR. It settles human feedback for two minutes, acknowledges
 it, and starts a fresh repair turn. Replies and other provider writes reconcile
 across retries. GitHub checks trigger repair only for the tracked request revision;

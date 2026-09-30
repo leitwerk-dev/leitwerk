@@ -7,7 +7,10 @@ export function buildImplementPrompt(
 	return `Implement this requested change:
 ${ctx.prompts.initial}
 
-Repository root: . (the current working directory)
+Repository checkouts: ${ctx.repo
+		.all()
+		.map((repo) => `${repo.key}: ${repo.fsPath}`)
+		.join("; ")}
 
 Follow this plan:
 ${ctx.input.plan}
@@ -15,7 +18,9 @@ ${ctx.input.plan}
 Rules:
 - keep going until the change is complete; do any necessary additional passes without asking
 - make repository changes only inside the current working directory
-- treat . as the repository root for file edits and git commands
+- run file edits, Git commands, and checks in the appropriate checkout
+- follow each repository’s instructions and validate every affected repository
+- leave changes uncommitted; delivery owns commits and pushes
 - do not read from or write to any original source repository path outside the process workspace
 - keep the implementation coherent and complete
 - publish the implementation summary when done`;

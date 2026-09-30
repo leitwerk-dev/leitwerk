@@ -28,6 +28,8 @@ export function createPollingTestExtension<T>(
 				poll(): Promise<T>;
 		  }
 		| undefined,
+	/** Disable scheduled polling so tests control every observation. @internal */
+	manual = false,
 ) {
 	let provider: ReturnType<typeof setup>;
 	return {
@@ -35,7 +37,26 @@ export function createPollingTestExtension<T>(
 		manifest,
 		/** @internal */
 		setupServer(api: ServerExtensionAPI) {
-			provider = setup(api);
+			provider = setup(
+				manual
+					? {
+							...api,
+							get<T>(token: import("@leitwerk-dev/process-sdk").CapabilityToken<T>) {
+								const value = api.get(token);
+								return token === coreHostCapabilities.serverSetup && value && !Array.isArray(value)
+									? ({
+											...value,
+											polling: {
+												create: ({ pollOnce }: { pollOnce: () => Promise<unknown> }) => ({
+													poll: pollOnce,
+												}),
+											},
+										} as T)
+									: value;
+							},
+						}
+					: api,
+			);
 		},
 		/** @public */
 		poll() {

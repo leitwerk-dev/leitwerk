@@ -369,7 +369,10 @@ describe("defineProcess", () => {
 		expect(transitionsFor(process, "draft")).toEqual([{ nextTurnId: "draft", outcome: "ready" }]);
 	});
 
-	it("routes one LLM outcome deterministically from process state", async () => {
+	it.each([
+		false,
+		true,
+	])("routes an LLM outcome from persisted state (effect: %s)", async (withEffect) => {
 		const process = defineProcess({
 			id: "state_routed_outcome_process",
 			displayName: "State Routed Outcome",
@@ -393,6 +396,7 @@ describe("defineProcess", () => {
 								automatic: { to: "deliver" },
 							},
 							choose: ({ ctx }) => ctx.state.branch,
+							...(withEffect ? { effect: () => ({ state: { branch: "automatic" } }) } : {}),
 						},
 					},
 				}),
@@ -422,11 +426,17 @@ describe("defineProcess", () => {
 			{ turnRecordId: "trn_1", turnId: "draft", outcome: "ready", params: {} },
 			createTestServerProcessContext({
 				process: createTestProcessInstance({ processId: process.id, selectedTurnId: "draft" }),
-				state: { branch: "automatic" },
+				state: { branch: withEffect ? "manual" : "automatic" },
 				transition: async (next) => transitions.push(next as Record<string, unknown>),
 			}),
 		);
-		expect(transitions).toEqual([{ turnId: "deliver", trigger: "automatic" }]);
+		expect(transitions).toEqual([
+			{
+				turnId: "deliver",
+				trigger: "automatic",
+				...(withEffect ? { state: { branch: "automatic" } } : {}),
+			},
+		]);
 	});
 
 	it("allows custom worker overrides for compiled turns", async () => {

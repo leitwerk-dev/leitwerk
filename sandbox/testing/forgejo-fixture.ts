@@ -61,8 +61,6 @@ export async function control(f: Fixture, operation: string, input: Record<strin
 export async function publish(f: Fixture, id: string) {
 	await f.wait(id, "plan_decision");
 	await f.action(id, "approve_plan");
-	await f.wait(id, "implementation_decision");
-	await f.action(id, "finalize_change");
 	await f.wait(id, "deliver_change");
 	// Lifecycle persistence precedes asynchronous external-source arming.
 	await waitForValue(

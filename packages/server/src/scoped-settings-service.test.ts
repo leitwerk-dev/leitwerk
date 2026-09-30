@@ -45,6 +45,56 @@ function locatorSubjects(settings: ScopedSettingsService) {
 }
 
 describe("scoped settings", () => {
+	it("distinguishes discovered subjects from settings content and retains inactive overrides", async () => {
+		const { settings, repos } = await createSettingsFixture(undefined, [
+			settingsExtension,
+			{
+				manifest: { id: "discovery", version: "1" },
+				scopedSettings: {
+					scopes: [{ id: "discovery.project", label: "Projects" }],
+					settings: [],
+				},
+			},
+		]);
+		const project = settings.discover({
+			scopeType: "discovery.project",
+			identity: "1",
+			label: "Project",
+		});
+		const repository = settings.discover({
+			scopeType: "repository",
+			identity: "1",
+			label: "Repository",
+		});
+		expect(settings.listScopes().subjects).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ id: project.id, active: true, hasSettings: false }),
+				expect.objectContaining({ id: repository.id, active: true, hasSettings: true }),
+			]),
+		);
+		const removed = await createSettingsFixture(repos, []);
+		const hasSettings = () =>
+			removed.settings.listScopes().subjects.find((subject) => subject.id === project.id)
+				?.hasSettings;
+		expect(hasSettings()).toBe(false);
+		const change = {
+			subjectId: project.id,
+			key: "discovery.retained",
+			value: "Retained instructions",
+			mode: "replace" as const,
+			reset: false,
+			schemaVersion: 1,
+			expectedRevision: 0,
+			actor: ADMIN_ACTOR,
+		};
+		repos.scopedSettings.write(change);
+		expect(hasSettings()).toBe(true);
+		expect((await removed.settings.preview(project.id)).inactive).toHaveLength(1);
+		repos.scopedSettings.write({ ...change, reset: true, expectedRevision: 1 });
+		expect(hasSettings()).toBe(false);
+		expect((await removed.settings.preview(project.id)).inactive).toHaveLength(0);
+	});
+
 	it.each([
 		false,
 		true,
@@ -437,5 +487,44 @@ describe("scoped settings", () => {
 		expect(field?.effective?.value).toBe("second");
 		expect(field?.error).toContain("Provider credential is missing");
 		expect(field?.error).toContain("choose another model");
+	});
+	it("retains effective selections and draft values when dynamic choices are unavailable", async () => {
+		const definition = {
+			...instructions,
+			choices() {
+				throw new Error("Repository discovery unavailable");
+			},
+		};
+		const { settings } = await createSettingsFixture(undefined, [
+			{
+				...settingsExtension,
+				scopedSettings: {
+					...settingsExtension.scopedSettings,
+					settings: [definition, repositoryInstructions, model],
+				},
+			},
+		]);
+		const saved = {
+			subjectId: "instance",
+			key: definition.key,
+			value: "Retained selection",
+			mode: "replace" as const,
+			reset: false,
+			expectedRevision: 0,
+			actor: ADMIN_ACTOR,
+		};
+		settings.write(saved);
+		const field = (await settings.preview("instance")).fields.find((f) => f.key === definition.key);
+		expect(field?.effective?.value).toBe(saved.value);
+		expect(field?.error).toContain("Repository discovery unavailable");
+		const draft = await settings.previewDraft({
+			...saved,
+			value: "Local draft",
+			expectedRevision: 1,
+		});
+		expect(draft.fields.find((f) => f.key === definition.key)?.effective?.value).toBe(
+			"Local draft",
+		);
+		expect(settings.resolve(definition, {}).value).toBe(saved.value);
 	});
 });

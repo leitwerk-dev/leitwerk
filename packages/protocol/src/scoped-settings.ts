@@ -19,7 +19,7 @@ export interface SettingMetadata {
 		/** @public */
 		group: string;
 		/** @public */
-		control: "text" | "textarea" | "select" | "model" | "number" | "checkbox";
+		control: "text" | "textarea" | "select" | "model" | "number" | "checkbox" | "multiselect";
 	};
 }
 
@@ -73,6 +73,8 @@ export interface SettingsScopesResponse {
 		SettingsSubject & {
 			/** @internal */
 			active: boolean;
+			/** Has declared fields or retained inactive overrides to display. @internal */
+			hasSettings: boolean;
 		}
 	>;
 }
