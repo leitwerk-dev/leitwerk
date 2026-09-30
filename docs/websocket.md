@@ -4,6 +4,9 @@ Browser clients connect to `GET /ws` for live activity and invalidations. HTTP
 snapshots remain authoritative for durable state. This protocol is separate from
 [worker IPC](server-worker-lifecycle.md#4-ipc-protocol-message-reference).
 
+Issue approval creation, resolution and cancellation invalidate the process snapshot
+through `process.event` with `eventType: "tool_approval_updated"`.
+
 ## Connection and envelope
 
 Use the `leitwerk/ws/v1` subprotocol. With authentication enabled, upgrades require

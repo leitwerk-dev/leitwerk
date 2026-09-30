@@ -74,6 +74,12 @@ export class JiraSceneStore {
 		return {
 			baseUrl: this.baseUrl,
 			listProjects: async () => [jiraProject],
+			listCreateProjects: async () => [],
+			listProjectIssues: async (id) =>
+				structuredClone(this.state.issues.filter((issue) => issue.fields.project.id === id)),
+			createIssue: async () => {
+				throw new Error("Ticket creation is unavailable in this review composition");
+			},
 			listComponents: async () => structuredClone(jiraComponents),
 			searchIssues: async () => structuredClone(this.state.issues),
 			getIssue: async (id) => structuredClone(this.issue(id)),

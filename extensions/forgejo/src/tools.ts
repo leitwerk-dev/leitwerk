@@ -22,6 +22,7 @@ import {
 
 interface ForgejoTicketDestinationData {
 	profile: string;
+	baseUrl?: string;
 	repositoryId: number;
 	owner: string;
 	repo: string;
@@ -44,6 +45,7 @@ function destinationData(
 	const data = object(snapshot.data);
 	return {
 		profile: stringArg(data, "profile"),
+		...(typeof data.baseUrl === "string" ? { baseUrl: data.baseUrl } : {}),
 		repositoryId: numberArg(data, "repositoryId"),
 		owner: stringArg(data, "owner"),
 		repo: stringArg(data, "repo"),
@@ -120,6 +122,7 @@ function createDestinationProvider(
 			const labels = await client.listLabels(repository.owner.login, repository.name);
 			const data: ForgejoTicketDestinationData = {
 				profile: decoded.profile,
+				baseUrl: client.profile.baseUrl,
 				repositoryId: repository.id,
 				owner: repository.owner.login,
 				repo: repository.name,
@@ -138,9 +141,10 @@ function createDestinationProvider(
 		},
 		async validate(snapshot) {
 			const data = destinationData(snapshot);
-			const repository = await integration
-				.client(data.profile)
-				.getRepositoryById(data.repositoryId);
+			const client = integration.client(data.profile);
+			if (data.baseUrl && data.baseUrl !== client.profile.baseUrl)
+				throw new Error("Forgejo profile installation changed");
+			const repository = await client.getRepositoryById(data.repositoryId);
 			if (
 				!availableRepository(repository) ||
 				repository.owner.login !== data.owner ||
@@ -161,6 +165,7 @@ export function registerForgejoTools(
 	ticketCreation: ForgejoTicketCreationConfig = { defaultLabels: ["created-by-leitwerk"] },
 	projects?: ProcessProjectRepoLike,
 ): void {
+	const ticketDestinations = createDestinationProvider(integration, ticketCreation);
 	async function ensureLabel(
 		ctx: IntegrationToolExecutionContext,
 		target: RepositoryProjectBinding,
@@ -223,10 +228,12 @@ export function registerForgejoTools(
 				displayName: "Forgejo",
 				titlePath: "/title",
 				descriptionPath: "/body",
-				destinations: createDestinationProvider(integration, ticketCreation),
+				descriptionFormat: "markdown",
+				destinations: ticketDestinations,
 			},
 			async execute(ctx, args) {
 				if (!ctx.ticketDestination) throw new Error("A Forgejo ticket destination is required");
+				await ticketDestinations.validate(ctx.ticketDestination);
 				const target = destinationData(ctx.ticketDestination);
 				const client = integration.client(target.profile);
 				const title = stringArg(args, "title");

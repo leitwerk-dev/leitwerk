@@ -362,6 +362,13 @@ An integration tool with `capability.kind: "ticket_creation"` names the code-def
 privileged ticket graph. Startup rejects enabled capabilities whose process or
 entry turn is missing.
 
+The catalog exposes `titlePath` and `descriptionPath` as JSON Pointers for the
+read-only approval preview. `descriptionFormat: "markdown"` enables sanitized
+Markdown rendering; plain text is the default. Every argument remains inspectable when no preview
+mapping exists. A launch with no available destinations fails before creating a
+child. Retrying an accepted launch returns its existing child, including when the
+provider is temporarily unavailable or worker startup needs recovery.
+
 The tool returns `{ externalId, url, result? }`, uses its execution context's
 idempotency key, and reconciles ambiguous provider writes. A capability may also
 provide destinations:

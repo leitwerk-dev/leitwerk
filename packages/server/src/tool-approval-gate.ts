@@ -5,6 +5,7 @@ import type {
 } from "@leitwerk-dev/domain";
 import type { RepositoryBundle } from "./db/repositories.js";
 import type { ProcessOperationCoordinator } from "./process-operation-coordinator.js";
+import type { Broadcaster } from "./ws/broadcast.js";
 
 /** @internal */
 export type ToolApprovalDecision =
@@ -62,8 +63,20 @@ export function createToolApprovalGate(input: {
 	repos: ToolApprovalRepos;
 	/** @internal */
 	processOperations: ProcessOperationCoordinator;
+	/** @internal */
+	broadcaster: Pick<Broadcaster, "sendDurable">;
 }) {
 	const waiters = new Map<string, Set<(decision: ToolApprovalDecision) => void>>();
+	const notify = (instanceId: string) =>
+		input.broadcaster.sendDurable(
+			"process.event",
+			{
+				eventType: "tool_approval_updated",
+				level: "info",
+				message: "Issue approval updated",
+			},
+			instanceId,
+		);
 	/** @internal */
 	function reconcile(instanceId: string): void {
 		for (const request of input.repos.toolApprovalRequests.listByInstance(instanceId)) {
@@ -95,6 +108,7 @@ export function createToolApprovalGate(input: {
 			const result = input.repos.toolApprovalRequests.createIdempotent(requestInput);
 			const decision = resolvedDecision(result.request);
 			if (decision) return decision;
+			if (result.kind === "created") notify(requestInput.instanceId);
 			return await new Promise<ToolApprovalDecision>((resolve) => {
 				const pending = waiters.get(result.request.id) ?? new Set();
 				pending.add(resolve);
@@ -130,12 +144,14 @@ export function createToolApprovalGate(input: {
 					});
 				}),
 			);
+			if (resolved) notify(instanceId);
 			reconcile(instanceId);
 			return resolved;
 		},
 		/** @internal */
 		cancelTurn(instanceId: string, turnRecordId: string): number {
 			const changed = input.repos.toolApprovalRequests.cancelOpenByTurn(instanceId, turnRecordId);
+			if (changed) notify(instanceId);
 			reconcile(instanceId);
 			return changed;
 		},

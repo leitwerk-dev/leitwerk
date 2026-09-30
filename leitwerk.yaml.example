@@ -284,6 +284,18 @@ extensions:
   # forgejo: # Optional extension; see extensions/forgejo/README.md for profiles.
   #   ticket_creation:
   #     enabled: false # Enable only with the ticket-creation process extension.
+  # github: # Optional; see extensions/github/README.md for profiles.
+  #   ticket_creation:
+  #     enabled: false # Set true with the ticket-creation process extension.
+  #     default_labels: [created-by-leitwerk]
+  # gitlab: # Optional; see extensions/gitlab/README.md for profiles.
+  #   ticket_creation:
+  #     enabled: false
+  #     default_labels: [created-by-leitwerk]
+  # jira: # Optional Data Center integration; see extensions/jira/README.md.
+  #   ticket_creation:
+  #     enabled: false
+  #     default_labels: [created-by-leitwerk]
   # models:
   #   openai:
   #     api_key: env:OPENAI_API_KEY # or literal string "sk-..."

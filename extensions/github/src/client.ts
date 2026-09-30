@@ -241,6 +241,37 @@ export class GitHubClient extends RepositoryHttpClient {
 		).filter((issue) => !issue.pull_request);
 	}
 	/** @internal */
+	async getRepositoryById(id: number, signal?: AbortSignal): Promise<GitHubRepository> {
+		const repository = await this.request<GitHubRepository>(`/repositories/${id}`, { signal });
+		assertGitHubRepository(this.profile, repository.owner.login, repository.name);
+		return repository;
+	}
+	/** @internal */
+	async listIssues(owner: string, repo: string, signal?: AbortSignal): Promise<GitHubIssue[]> {
+		const issues = await this.pages<GitHubIssue & { pull_request?: unknown }>(
+			`${this.repositoryPath(owner, repo)}/issues?state=all`,
+			signal,
+		);
+		return issues.filter((issue) => !issue.pull_request);
+	}
+	/** @internal */
+	createIssue(
+		owner: string,
+		repo: string,
+		input: {
+			/** @internal */ title: string;
+			/** @internal */ body: string;
+			/** @internal */ labels: string[];
+		},
+		signal?: AbortSignal,
+	): Promise<GitHubIssue> {
+		return this.request(`${this.repositoryPath(owner, repo)}/issues`, {
+			method: "POST",
+			body: JSON.stringify(input),
+			signal,
+		});
+	}
+	/** @internal */
 	listIssueEvents(owner: string, repo: string, number: number) {
 		return this.pages<GitHubLabelEvent>(
 			`${this.repositoryPath(owner, repo)}/issues/${number}/events`,
@@ -294,14 +325,15 @@ export class GitHubClient extends RepositoryHttpClient {
 		});
 	}
 	/** @internal */
-	listLabels(owner: string, repo: string) {
-		return this.pages<GitHubLabel>(`${this.repositoryPath(owner, repo)}/labels`);
+	listLabels(owner: string, repo: string, signal?: AbortSignal) {
+		return this.pages<GitHubLabel>(`${this.repositoryPath(owner, repo)}/labels`, signal);
 	}
 	/** @internal */
-	createLabel(owner: string, repo: string, name: string) {
+	createLabel(owner: string, repo: string, name: string, signal?: AbortSignal) {
 		return this.request<GitHubLabel>(`${this.repositoryPath(owner, repo)}/labels`, {
 			method: "POST",
 			body: JSON.stringify({ name, color: "238636" }),
+			signal,
 		});
 	}
 	/** @internal */

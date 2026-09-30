@@ -369,9 +369,6 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 
 <div class="chronicle-flow" class:has-terminal-summary={hasTerminalSummary} data-section="chronicle-flow">
 	<ChronicleStartupHistory {startup} />
-	{#each toolApprovalRequests.filter((request) => request.status === "open") as request (request.id)}
-		<ChronicleToolApproval {request} />
-	{/each}
 	{#each retryGroups as group, groupIndex (chronicleItemKey(group[0], groupIndex))}
 		{#if group.length > 1 && group[0].kind === "turn_cluster"}
 			<details data-section="retry-history">
@@ -385,6 +382,10 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 		{:else}
 			{@render timelineItem(group[0], 1)}
 		{/if}
+	{/each}
+
+	{#each toolApprovalRequests.filter((request) => request.status === "open") as request (request.id)}
+		<ChronicleToolApproval {request} />
 	{/each}
 
 	{#if shouldRenderTrailingAfterFlow}

@@ -104,6 +104,7 @@ const ticketCapabilitySchema = v.object({
 	startTurnId: nonEmptyString,
 	titlePath: v.optional(v.string()),
 	descriptionPath: v.optional(v.string()),
+	descriptionFormat: v.optional(v.picklist(["plain", "markdown"])),
 	destinations: v.optional(v.unknown()),
 });
 const destinationSummarySchema = v.pipe(

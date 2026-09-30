@@ -132,6 +132,9 @@ If a trigger disappears or closes externally, its extension owns reconciliation 
 
 ### Subscription generations
 
+External subscriptions reflect committed process changes before worker or extension
+reactions finish. Providers do not need to wait for those reactions before polling.
+
 For external actions, providers may pass the captured `generation` from `listArmed`
 to `fire`. The server checks it under the process lock. A superseded subscription
 returns `external_source_superseded` without recording a turn or queuing an event.

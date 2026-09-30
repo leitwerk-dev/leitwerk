@@ -236,6 +236,14 @@ The server snapshots parent context and sanitized destinations, then admits a de
 draft process. That process resolves ambiguous choices with the operator. External-write
 approval displays the resolved destination separately from the tool arguments.
 
+Review follows the current work in the chronicle. It shows the issue title and
+description, with all submitted fields available in a disclosure. **Create issue**
+publishes the approved draft; **Request changes** opens a focused revision form;
+**Discard draft** ends it without a write. Failed requests preserve entered text.
+The initial dialog keeps its actions visible when its content scrolls on a small
+screen and reuses the launch key when retrying an unchanged draft.
+Approval changes appear live without reloading the page.
+
 ## Interaction and accessibility
 
 Controls have visible keyboard focus and at least 44px button height. Confirmation

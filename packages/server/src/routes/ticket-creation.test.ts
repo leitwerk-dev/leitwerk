@@ -34,6 +34,7 @@ function appWith(
 		app,
 		{
 			processGraphs: new Map([["ticket_creation_process", {}]]) as RouteDeps["processGraphs"],
+			launchRuns: { getByIdempotencyKey: () => null } as never,
 			...deps,
 		} as RouteDeps,
 		registry as IntegrationToolRegistry,
@@ -77,6 +78,56 @@ function ticketRelation() {
 }
 
 describe("ticket creation routes", () => {
+	it("returns an existing draft even when its provider is unavailable", async () => {
+		const relation = ticketRelation();
+		const resolveTicketTool = vi.fn(() => {
+			throw new Error("Provider unavailable");
+		});
+		const app = appWith(
+			{
+				launchRuns: {
+					getByIdempotencyKey: () => ({
+						instanceId: "child-1",
+						launcherId: "ticket:tracker_create_ticket",
+					}),
+				} as never,
+				processRelations: { getByChild: () => relation } as never,
+			},
+			{ resolveTicketTool },
+		);
+		const response = await app.inject({
+			method: "POST",
+			url: "/api/processes/parent-1/ticket-creation",
+			headers: { "idempotency-key": "same-draft" },
+			payload: ticketPayload,
+		});
+		expect(response.statusCode).toBe(200);
+		expect(response.json()).toEqual({ childInstanceId: "child-1", relation });
+		expect(resolveTicketTool).not.toHaveBeenCalled();
+	});
+
+	it("keeps an unavailable destination in the composer without launching a broken draft", async () => {
+		const startPreparedPlan = vi.fn();
+		const app = appWith(
+			{ launchCoordinator: { startPreparedPlan } as never },
+			{
+				resolveTicketTool: () => ({ capability: ticketCapability({ destinations: {} }) }) as never,
+				listTicketDestinations: async () => ({
+					destinations: [],
+					warnings: ["Profile unavailable"],
+				}),
+			},
+		);
+		const response = await app.inject({
+			method: "POST",
+			url: "/api/processes/parent-1/ticket-creation",
+			headers: { "idempotency-key": "empty" },
+			payload: ticketPayload,
+		});
+		expect(response.statusCode).toBe(503);
+		expect(response.json().error).toContain("No destinations are available");
+		expect(startPreparedPlan).not.toHaveBeenCalled();
+	});
 	it("requires an idempotency key", async () => {
 		const app = appWith({}, { ticketCatalog: () => [] });
 		const response = await app.inject({
@@ -325,7 +376,11 @@ describe("ticket approval decisions", () => {
 			status: "running",
 		});
 		const processOperations = createProcessOperationCoordinator();
-		const gate = createToolApprovalGate({ repos, processOperations });
+		const gate = createToolApprovalGate({
+			repos,
+			processOperations,
+			broadcaster: repos.broadcaster,
+		});
 		const processGraphs = createDefaultTestProcessGraphRegistry();
 		const processEngine = createProcessEngine({
 			...repos,
