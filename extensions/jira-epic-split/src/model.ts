@@ -1,5 +1,5 @@
 import { asUnknownRecord } from "@leitwerk-dev/domain";
-import type { JiraIssue } from "@leitwerk-dev/jira";
+import { type JiraIssue, jiraIsEpic } from "@leitwerk-dev/jira";
 import {
 	type Codec,
 	createEmptyStructuralProcessState,
@@ -26,7 +26,11 @@ export interface SplitParams {
 	/** @internal */ epic: JiraIssue;
 	/** @internal */ topicId: string;
 	/** @internal */ repositories: SplitRepository[];
-	/** @internal */ issueType: "Story" | "Task";
+	/** @internal */ issueType: "Story" | "Task" | "Sub-task";
+	/** @internal */ subtaskType?: {
+		/** @internal */ id: string;
+		/** @internal */ name: string;
+	};
 	/** @internal */ labels: string[];
 }
 
@@ -39,7 +43,7 @@ export interface SplitDraft {
 	/** @internal */ revision: string;
 	/** @internal */ summary: string;
 	/** @internal */ description: string;
-	/** @internal */ issueType: "Story" | "Task";
+	/** @internal */ issueType: SplitParams["issueType"];
 	/** @internal */ componentIds: string[];
 	/** @internal */ mappingRevision: string;
 	/** @internal */ blocked: string | null;
@@ -88,7 +92,7 @@ export function parseDraft(value: unknown): SplitDraft {
 		!["applicable", "not_applicable", "already_compliant", "unresolved"].includes(
 			String(record.verdict),
 		) ||
-		!["Story", "Task"].includes(String(record.issueType))
+		!["Story", "Task", "Sub-task"].includes(String(record.issueType))
 	)
 		throw new Error("Invalid repository assessment");
 	const draft = {
@@ -99,7 +103,7 @@ export function parseDraft(value: unknown): SplitDraft {
 		revision: typeof record.revision === "string" ? record.revision : "",
 		summary: typeof record.summary === "string" ? record.summary : "",
 		description: typeof record.description === "string" ? record.description : "",
-		issueType: record.issueType as "Story" | "Task",
+		issueType: record.issueType as SplitParams["issueType"],
 		componentIds: [] as string[],
 		mappingRevision: "",
 		blocked: null,
@@ -123,11 +127,20 @@ export const splitParamsCodec: Codec<SplitParams> = {
 			!record ||
 			!Array.isArray(record.repositories) ||
 			!asUnknownRecord(record.epic) ||
-			!["Story", "Task"].includes(String(record.issueType)) ||
+			!["Story", "Task", "Sub-task"].includes(String(record.issueType)) ||
 			!Array.isArray(record.labels) ||
 			record.labels.some((label) => typeof label !== "string")
 		)
-			throw new Error("Invalid epic split snapshot");
+			throw new Error("Invalid issue split snapshot");
+		if (!jiraIsEpic(record.epic as JiraIssue)) {
+			const subtaskType = asUnknownRecord(record.subtaskType);
+			if (!subtaskType || record.issueType !== "Sub-task")
+				throw new Error("Issue split requires a retained subtask type");
+			stringArg(subtaskType, "id");
+			stringArg(subtaskType, "name");
+		} else if (record.issueType === "Sub-task") {
+			throw new Error("Epic children must be Stories or Tasks");
+		}
 		for (const key of ["jiraProfile", "jiraBaseUrl", "gitlabProfile", "sshProfile", "topicId"])
 			stringArg(record, key);
 		for (const candidate of record.repositories) {
@@ -164,7 +177,7 @@ export const splitStateCodec: Codec<SplitState> = {
 			!Array.isArray(record.labels) ||
 			typeof record.epicRevision !== "string"
 		)
-			throw new Error("Invalid epic split state");
+			throw new Error("Invalid issue split state");
 		for (const values of [record.candidates, record.approved, record.labels])
 			if (
 				values.some((value) => typeof value !== "string") ||
@@ -196,7 +209,7 @@ export const splitStateCodec: Codec<SplitState> = {
 
 /** @internal */
 export function batchMarkdown(params: SplitParams, state: SplitState): string {
-	return `# ${params.epic.key}: repository tickets\n\n[Shared solution wiki](/wiki/${params.topicId})\n\nLabels selected for new tickets: ${state.labels.join(", ") || "none"}.\n\n${state.drafts
+	return `# ${params.epic.key}: repository tickets\n\n[Shared solution wiki](/wiki/${params.topicId})\n\n${params.subtaskType ? `Subtask type: ${params.subtaskType.name} (${params.subtaskType.id}).\n\n` : ""}Labels selected for new tickets: ${state.labels.join(", ") || "none"}.\n\n${state.drafts
 		.map((draft) => {
 			const repository = params.repositories.find(
 				(candidate) => candidate.key === draft.repositoryKey,

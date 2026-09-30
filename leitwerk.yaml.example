@@ -374,5 +374,8 @@ extensions:
 #         base_url: https://jira.example.org/jira
 #         token: env:JIRA_PAT
 #         epic_link_field: customfield_10014  # Otherwise discovered from Jira's schema.
-# Epic splitting is opt-in. See extensions/jira-epic-split/README.md for extension
+# Issue splitting is opt-in. See extensions/jira-epic-split/README.md for extension
 # loading, explicit GitLab scope, component mappings, and the review-gated watcher.
+# The watcher accepts leitwerk-issue-split and the legacy leitwerk-epic-split label.
+# Its optional subtaskIssueType selects a Jira subtask type ID when several exist.
+# issueType selects Story or Task for epic children only.

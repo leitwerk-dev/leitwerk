@@ -153,7 +153,7 @@ onMount(() =>
 </script>
 
 <div class="wiki-page" data-page="wiki">
-	<PageHeader title={topic?.title ?? "Solution wikis"} subtitle="Shared solutions and lessons, scoped to an epic. Check the cited evidence before applying guidance.">
+	<PageHeader title={topic?.title ?? "Solution wikis"} subtitle="Shared solutions and lessons, scoped to a source issue. Check the cited evidence before applying guidance.">
 		{#snippet actions()}<button class="ui-button" disabled={loading} onclick={() => void load()}>{loading ? "Refreshing…" : "Refresh"}</button>{/snippet}
 	</PageHeader>
 	{#if error}<p role="alert">{error} <button class="ui-button" onclick={() => void load()}>Try again</button></p>{/if}
@@ -164,7 +164,7 @@ onMount(() =>
 			<li><a href={`/wiki/${item.id}`} onclick={(event) => followLink(event, `/wiki/${item.id}`)}>{item.title}</a></li>
 		{/each}</ul>
 	{:else if topic}
-		<nav class="breadcrumbs" aria-label="Wiki navigation"><a href="/wiki" onclick={(event) => followLink(event, "/wiki")}>All solution wikis</a><ExternalLink href={topic.url} label="Open epic" /></nav>
+		<nav class="breadcrumbs" aria-label="Wiki navigation"><a href="/wiki" onclick={(event) => followLink(event, "/wiki")}>All solution wikis</a><ExternalLink href={topic.url} label="Open source issue" /></nav>
 		<div class="wiki-layout">
 			<aside aria-label="Wiki entries">
 				<label for="wiki-search">Find an entry</label><input id="wiki-search" type="search" bind:value={search} placeholder="Search solutions and lessons" />

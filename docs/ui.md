@@ -263,7 +263,7 @@ Managed result images may open in a secured new tab without an external marker.
 ## Other surfaces
 
 - Watcher cards show purpose, enabled state, process, and target before configuration.
-- [Solution wikis](topic-wiki.md) provide an epic index, evidence/status filters, page
+- [Solution wikis](topic-wiki.md) provide a source issue index, evidence/status filters, page
   history, and revision-checked deletion. Participating process headers link to their wiki.
 - [API token management](api-tokens.md) lives in the account menu. Anonymous mode shares
   one token owner and omits logout; authenticated logout ends only the browser session.

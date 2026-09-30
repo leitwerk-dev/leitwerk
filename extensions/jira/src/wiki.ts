@@ -6,7 +6,7 @@ import {
 	type TopicWikiStore,
 	topicWikiCapability,
 } from "@leitwerk-dev/process-sdk";
-import type { JiraClientLike, JiraIssue } from "./client.js";
+import { type JiraClientLike, type JiraIssue, jiraIsEpic } from "./client.js";
 import type { JiraIntegration } from "./index.js";
 
 /** @internal */
@@ -27,11 +27,16 @@ export function jiraEpicRevision(epic: JiraIssue): string {
 
 /** @internal */
 export function ensureEpicWiki(store: TopicWikiStore, client: JiraClientLike, epic: JiraIssue) {
+	return ensureIssueWiki(store, client, epic);
+}
+
+/** @internal */
+export function ensureIssueWiki(store: TopicWikiStore, client: JiraClientLike, issue: JiraIssue) {
 	return store.ensureTopic({
-		key: JSON.stringify(["jira.epic", client.baseUrl, epic.id]),
-		title: `${epic.key}: ${epic.fields.summary}`,
-		url: `${client.baseUrl}/browse/${encodeURIComponent(epic.key)}`,
-		sourceRevision: jiraEpicRevision(epic),
+		key: JSON.stringify([jiraIsEpic(issue) ? "jira.epic" : "jira.issue", client.baseUrl, issue.id]),
+		title: `${issue.key}: ${issue.fields.summary}`,
+		url: `${client.baseUrl}/browse/${encodeURIComponent(issue.key)}`,
+		sourceRevision: jiraEpicRevision(issue),
 	});
 }
 
@@ -43,7 +48,7 @@ export function registerJiraWikiTools(api: ServerExtensionAPI, integration: Jira
 		api.tool<Record<string, unknown>>({
 			name,
 			description:
-				"Read or contribute evidence-backed solutions in this process's epic wiki. Refresh before revising; deleted entries cannot be restored.",
+				"Read or contribute evidence-backed solutions in this process's source issue wiki. Refresh before revising; deleted entries cannot be restored.",
 			parameters: {
 				type: "object",
 				properties: {
@@ -76,17 +81,18 @@ export function registerJiraWikiTools(api: ServerExtensionAPI, integration: Jira
 			},
 			async execute(ctx, args) {
 				const binding = asUnknownRecord(ctx.process.metadata?.wiki);
+				const issueId = binding?.issueId ?? binding?.epicId;
 				if (
 					!binding ||
 					typeof binding.topicId !== "string" ||
 					typeof binding.profile !== "string" ||
-					typeof binding.epicId !== "string"
+					typeof issueId !== "string"
 				)
-					throw new Error("This process has no epic wiki binding");
+					throw new Error("This process has no source issue wiki binding");
 				const client = integration.client(binding.profile);
 				if (client.baseUrl !== binding.baseUrl) throw new Error("Jira wiki installation changed");
-				const topic = ensureEpicWiki(store, client, await client.getIssue(binding.epicId));
-				if (topic.id !== binding.topicId) throw new Error("Epic wiki binding mismatch");
+				const topic = ensureIssueWiki(store, client, await client.getIssue(issueId));
+				if (topic.id !== binding.topicId) throw new Error("Source issue wiki binding mismatch");
 				if (name === "wiki_index") {
 					const query = typeof args.query === "string" ? args.query.toLowerCase() : "";
 					return {

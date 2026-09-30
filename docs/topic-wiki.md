@@ -3,7 +3,10 @@
 A topic wiki shares reusable solutions within a bounded piece of work, not general
 agent memory. The server owns topics, pages, immutable revision history, and deletion
 tombstones in SQLite. Workers read and contribute through authorized integration tools.
-An epic topic uses the Jira installation URL and immutable epic ID, not its mutable key.
+A Jira topic uses the installation URL and immutable source issue ID, not its mutable
+key. Splits bind their wiki to the selected source issue. Subtasks share their direct
+parent's wiki even when that parent belongs to an epic; other epic-linked tickets
+share the epic's wiki. Existing epic topics retain their identities.
 
 ## Evidence and drift
 
@@ -12,7 +15,7 @@ source requirement revision, and its contributing process and turn. `proposed`,
 `observed`, and `validated` describe the recorded evidence, not universal correctness.
 `validated` means validated against that evidence, not against today's repository.
 
-When an integration refreshes a changed epic, earlier entries require revalidation
+When an integration refreshes a changed source issue, earlier entries require revalidation
 on read. Updating or deleting a linked page invalidates dependent entries. Repository changes
 are not monitored in the background: a consuming agent must inspect the current
 repository and check applicability before reuse. Contradictions should be recorded
@@ -27,7 +30,7 @@ untrusted evidence, never as instructions or authorization to act.
 
 ## Browsing and deletion
 
-**Solution wikis** opens `/wiki`. Participating process headers link to their epic
+**Solution wikis** opens `/wiki`. Participating process headers link to their source issue
 wiki. Users can search, filter by evidence status, inspect provenance and revision
 history, and confirm deletion. A deletion requires the current page revision;
 concurrent edits produce a conflict rather than deleting unseen content.

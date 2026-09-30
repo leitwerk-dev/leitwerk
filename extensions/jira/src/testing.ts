@@ -7,6 +7,7 @@ import {
 	type JiraIssueReceipt,
 	type JiraProject,
 	jiraEligible,
+	jiraSplitEligible,
 } from "./client.js";
 
 export { registerJiraWikiTools } from "./wiki.js";
@@ -20,6 +21,12 @@ export class LocalJiraAdapter implements JiraClientLike {
 	/** @internal */ loseNextCreateResponse = false;
 	/** @internal */ searchVisible = true;
 	/** @internal */ components: JiraComponent[] = [{ id: "200", name: "Service" }];
+	/** @internal */ epicLinkField: string | null = "customfield_100";
+	/** @internal */ issueTypes: JiraCreateMetadata["issueTypes"] = [
+		{ id: "Story", name: "Story", subtask: false, fields: {} },
+		{ id: "Task", name: "Task", subtask: false, fields: {} },
+		{ id: "10003", name: "Sub-task", subtask: true, fields: {} },
+	];
 
 	/** @internal */ seedIssue(issue: JiraIssue, epicKey?: string): void {
 		const stored = structuredClone(issue);
@@ -58,18 +65,35 @@ export class LocalJiraAdapter implements JiraClientLike {
 			)
 			.map((issue) => structuredClone(issue));
 	}
+	/** @internal */ async searchSplitIssues(projectIds: readonly string[]) {
+		return [...this.issues.values()]
+			.filter((issue) => projectIds.includes(issue.fields.project.id) && jiraSplitEligible(issue))
+			.map((issue) => structuredClone(issue));
+	}
 	/** @internal */ async getEpic(issue: JiraIssue): Promise<JiraIssue | null> {
 		if (issue.fields.issuetype?.name === "Epic") return issue;
-		const key = (issue.fields as unknown as Record<string, unknown>).customfield_100;
+		if (!this.epicLinkField) return null;
+		const key = (issue.fields as unknown as Record<string, unknown>)[this.epicLinkField];
 		return typeof key === "string" ? this.getIssue(key) : null;
 	}
-	/** @internal */ async createMetadata(): Promise<JiraCreateMetadata> {
+	/** @internal */ async createMetadata(
+		_projectId: string,
+		includeEpicLink = true,
+	): Promise<JiraCreateMetadata> {
+		if (includeEpicLink && !this.epicLinkField)
+			throw new Error("Splitting a Jira epic requires an Epic Link field");
 		return {
-			epicLinkField: "customfield_100",
-			issueTypes: ["Story", "Task"].map((name) => ({ id: name, name, fields: {} })),
+			epicLinkField: includeEpicLink ? this.epicLinkField : null,
+			issueTypes: structuredClone(this.issueTypes),
 		};
 	}
 	/** @internal */ async createIssue(fields: Record<string, unknown>): Promise<JiraIssueReceipt> {
+		const type = this.issueTypes.find(
+			(candidate) => candidate.id === (fields.issuetype as { id: string }).id,
+		);
+		if (!type) throw new Error("Unknown Jira issue type");
+		if (Boolean(type.subtask) !== Boolean(fields.parent))
+			throw new Error("Jira subtask creation requires its parent");
 		this.creations.push(structuredClone(fields));
 		const id = String(1000 + this.creations.length),
 			key = `APP-${id}`;
@@ -91,12 +115,16 @@ export class LocalJiraAdapter implements JiraClientLike {
 					project,
 					issuetype: {
 						id: (fields.issuetype as { id: string }).id,
-						name: (fields.issuetype as { id: string }).id,
+						name: type.name,
+						subtask: type.subtask,
 					},
+					...(fields.parent
+						? { parent: await this.getIssue((fields.parent as { id: string }).id) }
+						: {}),
 					status: { statusCategory: { key: "new" } },
 				},
 			},
-			String(fields.customfield_100),
+			typeof fields.customfield_100 === "string" ? fields.customfield_100 : undefined,
 		);
 		if (this.loseNextCreateResponse) {
 			this.loseNextCreateResponse = false;

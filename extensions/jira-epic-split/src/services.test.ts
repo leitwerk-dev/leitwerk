@@ -4,9 +4,11 @@ import { join } from "node:path";
 import { LocalGitLabAdapter } from "@leitwerk-dev/gitlab/testing";
 import {
 	ensureEpicWiki,
+	ensureIssueWiki,
 	type JiraIssue,
 	JiraRequestError,
 	jiraEpicRevision,
+	jiraIssueExternalId,
 } from "@leitwerk-dev/jira";
 import { LocalJiraAdapter, registerJiraWikiTools } from "@leitwerk-dev/jira/testing";
 import { createJiraGitLabLauncher } from "@leitwerk-dev/jira-gitlab-change";
@@ -27,9 +29,13 @@ import {
 	parseLabels,
 	registerSplitTools,
 	type SplitServices,
+	splitPublicationKey,
 } from "./services.js";
 
-async function fixture() {
+async function fixture(
+	sourceType = "Epic",
+	configureJira: (jira: LocalJiraAdapter) => void = () => {},
+) {
 	const root = mkdtempSync(join(tmpdir(), "epic-split-"));
 	let deps = createTestDeps({ sqlitePath: join(root, "state.sqlite") });
 	onTestFinished(() => {
@@ -44,13 +50,14 @@ async function fixture() {
 			git.seed({ owner: "team", name, files: { "README.md": "Old standard" } }).bare,
 		);
 	const jira = new LocalJiraAdapter();
+	configureJira(jira);
 	const epic: JiraIssue = {
 		id: "10",
 		key: "APP-10",
 		fields: {
 			summary: "Standardize readmes",
 			description: "Use the shared template",
-			issuetype: { id: "epic", name: "Epic" },
+			issuetype: { id: sourceType.toLowerCase(), name: sourceType, subtask: false },
 			project: { id: "100", key: "APP", name: "App" },
 			components: [],
 			labels: ["leitwerk-epic-split"],
@@ -100,7 +107,7 @@ async function fixture() {
 				revision: (await gitlab.client().getBranch(repository.projectId, "main")).commit.id,
 				summary: "Standardize README",
 				description: "Replace the template. Acceptance: README uses the shared sections.",
-				issueType: "Story",
+				issueType: params.issueType,
 			}),
 			...(await componentMapping(services, params, repository)),
 		});
@@ -155,6 +162,209 @@ async function fixture() {
 		},
 	};
 }
+
+it.each([
+	"Story",
+	"Task",
+	"Bug",
+	"Change Request",
+])("splits a %s into native subtasks without Epic Link", async (sourceType) => {
+	const test = await fixture(sourceType, (jira) => {
+		jira.epicLinkField = null;
+		jira.issueTypes[2].name = "Unteraufgabe";
+	});
+	expect(test.params.subtaskType).toEqual({ id: "10003", name: "Unteraufgabe" });
+	const result = (await test.tool("jira_split_publish", { repositoryKey: "repo_1" })) as {
+		receipt: { id: string };
+	};
+	expect(test.jira.creations[0]).toMatchObject({
+		parent: { id: "10" },
+		issuetype: { id: "10003" },
+		components: [{ id: "200" }],
+	});
+	expect(test.jira.creations[0]).not.toHaveProperty("customfield_100");
+	await test.jira.updateLabels(result.receipt.id, [], ["use-leitwerk"]);
+	const launcher = createJiraGitLabLauncher();
+	launcher.configure(test.services);
+	const launch = await launcher.resolve({
+		profile: "team",
+		projects: ["100"],
+		issue: await test.jira.getIssue(result.receipt.id),
+	});
+	expect(launch.params.repositories.map((repository) => repository.projectId)).toEqual([1]);
+	expect(launch.params.wikiTopicId).toBe(test.params.topicId);
+	test.restart();
+	await test.tool("jira_split_publish", { repositoryKey: "repo_1" });
+	expect(test.jira.creations).toHaveLength(1);
+});
+
+it("requires explicit selection for multiple subtask types and rejects unavailable types and invalid sources", async () => {
+	const test = await fixture("Story");
+	const input = {
+		jiraProfile: "team",
+		gitlabProfile: "team",
+		sshProfile: "team",
+		issue: "APP-10",
+		groups: "team",
+	};
+	test.jira.issueTypes.push({ id: "10004", name: "Technical subtask", subtask: true, fields: {} });
+	await expect(launchSplit(test.services, input)).rejects.toThrow("Select a subtask issue type ID");
+	const selected = await launchSplit(test.services, { ...input, subtaskIssueType: "10004" });
+	expect(selected.params.subtaskType).toEqual({ id: "10004", name: "Technical subtask" });
+	await expect(launchSplit(test.services, { ...input, subtaskIssueType: "99999" })).rejects.toThrow(
+		"Select a subtask issue type ID",
+	);
+	test.jira.issueTypes = test.jira.issueTypes.filter((type) => !type.subtask);
+	await expect(launchSplit(test.services, input)).rejects.toThrow("no subtask issue types");
+	test.jira.issues.get("10")!.fields.issuetype!.subtask = true;
+	await expect(launchSplit(test.services, input)).rejects.toThrow("cannot have nested subtasks");
+	test.jira.issues.get("10")!.fields.issuetype = undefined;
+	await expect(launchSplit(test.services, input)).rejects.toThrow("metadata is unavailable");
+	test.jira.issues.get("10")!.fields.issuetype = { id: "story", name: "Story" };
+	test.jira.issues.get("10")!.fields.status.statusCategory.key = "done";
+	await expect(launchSplit(test.services, input)).rejects.toThrow("open Jira issue");
+});
+
+it("blocks subtask type overrides, metadata removal, and source type drift before new writes", async () => {
+	const test = await fixture("Story");
+	test.state.drafts[0].issueType = "Task";
+	await expect(test.tool("jira_split_publish", { repositoryKey: "repo_1" })).rejects.toThrow(
+		"child relationship",
+	);
+	test.state.drafts[0].issueType = "Sub-task";
+	const subtaskType = test.jira.issueTypes.pop()!;
+	await expect(test.tool("jira_split_publish", { repositoryKey: "repo_1" })).rejects.toThrow(
+		"no longer offers",
+	);
+	const prepared = (await test.tool("jira_split_prepare")) as { drafts: { blocked: string }[] };
+	expect(prepared.drafts[0].blocked).toContain("no longer offers");
+	test.jira.issueTypes.push(subtaskType);
+	test.jira.issues.get("10")!.fields.issuetype = { id: "bug", name: "Bug" };
+	await expect(test.tool("jira_split_publish", { repositoryKey: "repo_1" })).resolves.toEqual({
+		reviewRequired: expect.stringContaining("type changed"),
+	});
+	expect(test.jira.creations).toHaveLength(0);
+});
+
+it.each([
+	"leitwerk-issue-split",
+	"leitwerk-epic-split",
+])("rejects a persisted %s child label before publishing", async (label) => {
+	const test = await fixture();
+	test.state.labels = [label];
+	await expect(test.tool("jira_split_publish", { repositoryKey: "repo_1" })).rejects.toThrow(
+		"cannot be selected for child tickets",
+	);
+	expect(test.jira.creations).toHaveLength(0);
+	expect(
+		test.services.wiki.publication(splitPublicationKey(test.params, test.params.repositories[0])),
+	).toBeNull();
+});
+
+it("keeps a story's sibling subtasks in its wiki and rejects changed parents", async () => {
+	const test = await fixture("Story");
+	const parentEpic: JiraIssue = { ...structuredClone(test.epic), id: "20", key: "APP-20" };
+	parentEpic.fields.issuetype = { id: "epic", name: "Epic" };
+	test.jira.seedIssue(parentEpic);
+	test.jira.seedIssue(test.epic, parentEpic.key);
+	const otherStory: JiraIssue = { ...structuredClone(test.epic), id: "11", key: "APP-11" };
+	test.jira.seedIssue(otherStory, parentEpic.key);
+	expect(ensureIssueWiki(test.services.wiki, test.jira, otherStory).id).not.toBe(
+		test.params.topicId,
+	);
+	expect(ensureIssueWiki(test.services.wiki, test.jira, parentEpic).id).not.toBe(
+		test.params.topicId,
+	);
+	const launcher = createJiraGitLabLauncher();
+	launcher.configure(test.services);
+	for (const repositoryKey of ["repo_1", "repo_2"]) {
+		const result = (await test.tool("jira_split_publish", { repositoryKey })) as {
+			receipt: { id: string };
+		};
+		await test.jira.updateLabels(result.receipt.id, [], ["use-leitwerk"]);
+		const launch = await launcher.resolve({
+			profile: "team",
+			projects: ["100"],
+			issue: await test.jira.getIssue(result.receipt.id),
+		});
+		expect(launch.params.wikiTopicId).toBe(test.params.topicId);
+	}
+	const manual = { ...(await test.jira.getIssue("1001")), id: "900", key: "APP-900" };
+	test.jira.seedIssue(manual);
+	const manualLaunch = await launcher.resolve({
+		profile: "team",
+		projects: ["100"],
+		issue: manual,
+	});
+	expect(manualLaunch.params.wikiTopicId).toBe(test.params.topicId);
+	expect(manualLaunch.params.repositories).toHaveLength(2);
+	test.jira.issues.get("1001")!.fields.parent = { id: "11", key: "APP-11" };
+	await expect(test.tool("jira_split_publish", { repositoryKey: "repo_1" })).rejects.toThrow(
+		"source issue",
+	);
+	await expect(
+		launcher.resolve({
+			profile: "team",
+			projects: ["100"],
+			issue: await test.jira.getIssue("1001"),
+		}),
+	).rejects.toThrow("source issue binding changed");
+});
+
+it("reconciles legacy epic publication bindings and snapshots without another POST", async () => {
+	const test = await fixture();
+	const repository = test.params.repositories[0];
+	const key = splitPublicationKey(test.params, repository);
+	const created = await test.jira.createIssue({
+		project: { id: "100" },
+		issuetype: { id: "Story" },
+		summary: "Existing child",
+		description: "Published before upgrade",
+		components: [{ id: "200" }],
+		labels: [`leitwerk-split-${key}`],
+		customfield_100: "APP-10",
+	});
+	test.services.wiki.reservePublication({
+		key,
+		topicId: test.params.topicId,
+		binding: { ...repository, gitlabProfile: "team", sshProfile: "team", epicId: "10" },
+		externalId: null,
+		url: null,
+	});
+	test.services.wiki.finishPublication(
+		key,
+		jiraIssueExternalId(test.jira.baseUrl, created.id),
+		`${test.jira.baseUrl}/browse/${created.key}`,
+	);
+	test.restart();
+	expect(splitParamsCodec.parse(test.params)).toEqual(test.params);
+	await expect(test.tool("jira_split_publish", { repositoryKey: "repo_1" })).resolves.toMatchObject(
+		{ receipt: created },
+	);
+	expect(test.jira.creations).toHaveLength(1);
+	await test.jira.updateLabels(created.id, [], ["use-leitwerk"]);
+	const launcher = createJiraGitLabLauncher();
+	launcher.configure(test.services);
+	const launch = await launcher.resolve({
+		profile: "team",
+		projects: ["100"],
+		issue: await test.jira.getIssue(created.id),
+	});
+	expect(launch.params.wikiTopicId).toBe(test.params.topicId);
+});
+
+it("prepares a fully published batch without requiring creation metadata", async () => {
+	const test = await fixture();
+	const result = (await test.tool("jira_split_publish", { repositoryKey: "repo_1" })) as {
+		receipt: { id: string; key: string; url: string };
+	};
+	test.state.drafts = [{ ...test.state.drafts[0], receipt: result.receipt }];
+	test.state.approved = [];
+	test.jira.epicLinkField = null;
+	await expect(test.tool("jira_split_prepare")).resolves.toMatchObject({
+		drafts: [{ receipt: result.receipt }],
+	});
+});
 
 it("creates one untriggered ticket with components, exact routing, and shared epic membership", async () => {
 	const test = await fixture();
@@ -213,8 +423,11 @@ it("creates one untriggered ticket with components, exact routing, and shared ep
 	).rejects.toThrow("binding");
 });
 
-it("reconciles a lost POST response across restart and delayed search without duplicating tickets", async () => {
-	const test = await fixture();
+it.each([
+	"Epic",
+	"Story",
+])("reconciles a lost %s split POST across restart and delayed search without duplicating tickets", async (sourceType) => {
+	const test = await fixture(sourceType);
 	test.jira.loseNextCreateResponse = true;
 	test.jira.searchVisible = false;
 	await expect(test.tool("jira_split_publish", { repositoryKey: "repo_1" })).rejects.toThrow(
@@ -234,8 +447,11 @@ it("reconciles a lost POST response across restart and delayed search without du
 	expect(test.jira.creations).toHaveLength(1);
 });
 
-it("allows retry after an explicit rejection and never reapplies a consumed trigger", async () => {
-	const test = await fixture();
+it.each([
+	"Epic",
+	"Story",
+])("retries a rejected %s split and never reapplies a consumed trigger", async (sourceType) => {
+	const test = await fixture(sourceType);
 	const create = test.jira.createIssue.bind(test.jira);
 	test.jira.createIssue = async () => {
 		throw new JiraRequestError(400);
@@ -256,8 +472,20 @@ it("allows retry after an explicit rejection and never reapplies a consumed trig
 	expect((await test.jira.getIssue(result.receipt.id)).fields.labels).not.toContain("use-leitwerk");
 });
 
-it("shares only the bound epic's evidence across processes and rejects deleted-entry replay", async () => {
-	const test = await fixture();
+it.each([
+	"Epic",
+	"Story",
+])("shares only the bound %s's evidence and rejects deleted-entry replay", async (sourceType) => {
+	const test = await fixture(sourceType);
+	if (sourceType === "Epic")
+		test.process.metadata = {
+			wiki: {
+				topicId: test.params.topicId,
+				profile: "team",
+				baseUrl: test.jira.baseUrl,
+				epicId: "10",
+			},
+		};
 	const store = test.services.wiki;
 	const collector = createToolCollector();
 	collector.api.get = createCapabilityAccessor([{ token: topicWikiCapability, value: store }]).get;
@@ -304,6 +532,10 @@ it("shares only the bound epic's evidence across processes and rejects deleted-e
 	await expect(call("wiki_share", "consumer", { ...input, evidence: [] })).rejects.toThrow(
 		"require evidence",
 	);
+	test.jira.issues.get("10")!.fields.description = "Changed requirement";
+	await expect(call("wiki_read", "consumer", { pageId: input.pageId })).resolves.toMatchObject({
+		page: { status: "needs_revalidation" },
+	});
 	store.deletePage(test.params.topicId, input.pageId, 1, "operator");
 	await expect(call("wiki_read", "consumer", { pageId: input.pageId })).resolves.toMatchObject({
 		page: null,
@@ -331,7 +563,7 @@ it("blocks only unmapped drafts and rejects approval after mapping, epic, or rep
 	).toContain("archived");
 	test.jira.issues.get("10")!.fields.description = "Different requirement";
 	await expect(test.tool("jira_split_publish", { repositoryKey: "repo_1" })).resolves.toMatchObject(
-		{ reviewRequired: expect.stringContaining("Epic") },
+		{ reviewRequired: expect.stringContaining("Source issue") },
 	);
 	expect(test.jira.creations).toHaveLength(0);
 	test.jira.issues.get("10")!.fields.project.id = "999";

@@ -111,6 +111,34 @@ describe("Jira Data Center boundary", () => {
 		expect(await client.getEpic(linkedIssue)).toBeNull();
 		await expect(client.createMetadata("100")).rejects.toThrow("requires an Epic Link field");
 	});
+	it("reads subtask metadata without discovering Epic Link", async () => {
+		const issueTypes = [
+			{ id: "5", name: "Unteraufgabe", subtask: true, fields: { parent: { required: true } } },
+		];
+		const client = new JiraClient(
+			{ baseUrl: "https://jira.test", token: "secret" },
+			async (url) => {
+				expect(new URL(String(url)).pathname).toBe("/rest/api/2/issue/createmeta");
+				return Response.json({ projects: [{ id: "100", issuetypes: issueTypes }] });
+			},
+		);
+		expect(await client.createMetadata("100", false)).toEqual({ epicLinkField: null, issueTypes });
+	});
+	it("discovers split candidates under both labels without restricting to epics", async () => {
+		const client = new JiraClient(
+			{ baseUrl: "https://jira.test", token: "secret" },
+			async (url) => {
+				const jql = new URL(String(url)).searchParams.get("jql");
+				expect(jql).toContain('labels in ("leitwerk-issue-split", "leitwerk-epic-split")');
+				expect(jql).toContain("issuetype not in subTaskIssueTypes()");
+				expect(jql).not.toContain("issuetype = Epic");
+				expect(jql).toContain("statusCategory != Done");
+				return Response.json({ issues: [linkedIssue], total: 1 });
+			},
+		);
+		expect(await client.searchSplitIssues(["100"])).toEqual([linkedIssue]);
+		expect(() => client.searchSplitIssues([])).toThrow("explicit Jira project IDs");
+	});
 	it("requires an override for ambiguous Epic Link discovery and validates the override", async () => {
 		const fetcher = async () =>
 			Response.json(

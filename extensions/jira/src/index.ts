@@ -23,7 +23,7 @@ import { registerJiraTools } from "./tools.js";
 import { registerJiraWikiTools } from "./wiki.js";
 
 export * from "./client.js";
-export { ensureEpicWiki, jiraEpicRevision } from "./wiki.js";
+export { ensureEpicWiki, ensureIssueWiki, jiraEpicRevision } from "./wiki.js";
 
 /** @public */
 export interface JiraIntegration {

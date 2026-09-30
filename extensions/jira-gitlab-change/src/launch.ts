@@ -7,12 +7,14 @@ import {
 	resolveGitLabLaunchProject,
 } from "@leitwerk-dev/gitlab";
 import {
-	ensureEpicWiki,
+	ensureIssueWiki,
 	type JiraIntegration,
 	type JiraIssue,
 	type JiraWatcherEvent,
 	jiraEligible,
+	jiraIsEpic,
 	jiraIssueExternalId,
+	jiraSplitChildMatches,
 	jiraSubjectIdentity,
 } from "@leitwerk-dev/jira";
 import {
@@ -329,10 +331,32 @@ export function createJiraGitLabLauncher() {
 			});
 		}
 		const first = repositories[0];
-		const epic = wiki && client.getEpic ? await client.getEpic(issue) : null;
-		if (publication && (!epic || epic.id !== publication.binding.epicId))
-			throw new Error("Generated ticket's epic binding changed");
-		const topic = wiki && epic ? ensureEpicWiki(wiki, client, epic) : null;
+		let sourceIssue: JiraIssue | null = null;
+		if (publication) {
+			const sourceIssueId = publication.binding.sourceIssueId ?? publication.binding.epicId;
+			const relationship = publication.binding.relationship ?? "epic";
+			if (
+				typeof sourceIssueId !== "string" ||
+				(relationship !== "epic" && relationship !== "subtask") ||
+				!(await jiraSplitChildMatches(client, issue, sourceIssueId, relationship))
+			)
+				throw new Error("Generated ticket's source issue binding changed");
+			sourceIssue = await client.getIssue(sourceIssueId);
+			if (
+				sourceIssue.fields.project.id !== issue.fields.project.id ||
+				sourceIssue.fields.issuetype?.subtask === true ||
+				jiraIsEpic(sourceIssue) !== (relationship === "epic")
+			)
+				throw new Error("Generated ticket's source issue binding changed");
+		} else if (wiki && issue.fields.issuetype?.subtask === true) {
+			if (!issue.fields.parent?.id) throw new Error("Jira subtask parent is unavailable");
+			sourceIssue = await client.getIssue(issue.fields.parent.id);
+		} else if (wiki && client.getEpic) {
+			sourceIssue = await client.getEpic(issue);
+		}
+		const topic = wiki && sourceIssue ? ensureIssueWiki(wiki, client, sourceIssue) : null;
+		if (publication && topic?.id !== publication.topicId)
+			throw new Error("Generated ticket's source issue wiki binding changed");
 		const params: JiraGitLabParams = {
 			...(topic ? { wikiTopicId: topic.id } : {}),
 			...first,
@@ -349,14 +373,14 @@ export function createJiraGitLabLauncher() {
 		};
 		return {
 			processId: "jira_gitlab_change_process",
-			...(topic && epic
+			...(topic && sourceIssue
 				? {
 						metadata: {
 							wiki: {
 								topicId: topic.id,
 								profile: event.profile,
 								baseUrl: client.baseUrl,
-								epicId: epic.id,
+								issueId: sourceIssue.id,
 							},
 						},
 					}

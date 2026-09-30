@@ -84,13 +84,15 @@ export interface JiraClientLike extends Pick<JiraClient, keyof JiraClient> {}
 
 /** @internal */
 export interface JiraCreateMetadata {
-	/** @internal */ epicLinkField: string;
+	/** @internal */ epicLinkField: string | null;
 	/** @internal */
 	issueTypes: {
 		/** @internal */
 		id: string;
 		/** @internal */
 		name: string;
+		/** @internal */
+		subtask?: boolean;
 		/** @internal */
 		fields: Record<
 			string,
@@ -311,7 +313,15 @@ export class JiraClient {
 	}
 
 	/** @internal */
-	async createMetadata(projectId: string): Promise<JiraCreateMetadata> {
+	searchSplitIssues(projectIds: readonly string[]): Promise<JiraIssue[]> {
+		if (!projectIds.length || projectIds.some((id) => !/^\d+$/.test(id)))
+			throw new Error("Select explicit Jira project IDs");
+		const jql = `project in (${projectIds.join(",")}) AND labels in ("leitwerk-issue-split", "leitwerk-epic-split") AND issuetype not in subTaskIssueTypes() AND statusCategory != Done ORDER BY id ASC`;
+		return this.#pages(`search?jql=${encodeURIComponent(jql)}&fields=*all`, "issues");
+	}
+
+	/** @internal */
+	async createMetadata(projectId: string, includeEpicLink = true): Promise<JiraCreateMetadata> {
 		const metadata = await this.#request<{
 			projects: { id: string; issuetypes: JiraCreateMetadata["issueTypes"] }[];
 		}>(
@@ -319,8 +329,9 @@ export class JiraClient {
 		);
 		const project = metadata.projects.find((candidate) => candidate.id === projectId);
 		if (!project) throw new Error("Jira issue creation is unavailable for this project");
-		const epicLinkField = await this.#resolveEpicLinkField();
-		if (!epicLinkField) throw new Error("Jira epic splitting requires an Epic Link field");
+		const epicLinkField = includeEpicLink ? await this.#resolveEpicLinkField() : null;
+		if (includeEpicLink && !epicLinkField)
+			throw new Error("Splitting a Jira epic requires an Epic Link field");
 		return { epicLinkField, issueTypes: project.issuetypes };
 	}
 
@@ -382,3 +393,32 @@ export const jiraEligible = (issue: JiraIssue) =>
 /** Installation context paths and immutable issue IDs define launch identity. @public */
 export const jiraIssueExternalId = (baseUrl: string, id: string) =>
 	`jira:${JSON.stringify([jiraBaseUrl(baseUrl), id])}`;
+
+/** @internal */
+export const jiraIsEpic = (issue: JiraIssue) =>
+	issue.fields.issuetype?.name.toLowerCase() === "epic";
+
+/** @internal */
+export const jiraSplitEligible = (issue: JiraIssue) =>
+	Boolean(issue.fields.issuetype?.id) &&
+	issue.fields.issuetype?.subtask !== true &&
+	issue.fields.status.statusCategory.key !== "done" &&
+	issue.fields.labels.some((label) =>
+		["leitwerk-issue-split", "leitwerk-epic-split"].includes(label),
+	);
+
+/** @internal */
+export async function jiraSplitChildMatches(
+	client: JiraClientLike,
+	issue: JiraIssue,
+	sourceIssueId: string,
+	relationship: "epic" | "subtask",
+): Promise<boolean> {
+	if (relationship === "subtask")
+		return issue.fields.issuetype?.subtask === true && issue.fields.parent?.id === sourceIssueId;
+	return (
+		issue.fields.issuetype?.subtask !== true &&
+		Boolean(client.getEpic) &&
+		(await client.getEpic?.(issue))?.id === sourceIssueId
+	);
+}

@@ -35,7 +35,7 @@ const inspectionTools = [
 	"wiki_share",
 ];
 const draftShape =
-	"{repositoryKey, verdict: applicable|not_applicable|already_compliant|unresolved, reason, evidence, revision: inspected commit SHA, summary, description: detailed change and acceptance criteria, issueType: Story|Task}";
+	"{repositoryKey, verdict: applicable|not_applicable|already_compliant|unresolved, reason, evidence, revision: inspected commit SHA, summary, description: detailed change and acceptance criteria, issueType: Story|Task|Sub-task}";
 const repositoryCodec: Codec<SplitRepository> = {
 	parse: (value) => value as SplitRepository,
 	serialize: (value) => value,
@@ -74,7 +74,7 @@ export function createSplitProcess(
 ) {
 	const process = flow
 		.process<SplitParams, SplitState>("jira_epic_split_process")
-		.displayName("Jira Epic Split")
+		.displayName("Jira Issue Split")
 		.entry("read_epic")
 		.runtime({ repositoryCheckout: "on_demand" })
 		.codecs({ params: splitParamsCodec, state: splitStateCodec })
@@ -82,8 +82,9 @@ export function createSplitProcess(
 		.launcher(launcher)
 		.watcher({
 			id: "epic_split",
-			label: "Jira epic splitting",
-			description: "Split epics labeled leitwerk-epic-split into repository tickets",
+			label: "Jira issue splitting",
+			description:
+				"Split issues labeled leitwerk-issue-split or leitwerk-epic-split into repository tickets",
 			source: watcher.source,
 			resolveLaunchConfig: watcher.resolve,
 		})
@@ -106,7 +107,7 @@ export function createSplitProcess(
 		.turn(
 			flow
 				.automatic<SplitParams, SplitState>("read_epic")
-				.description("Read epic")
+				.description("Read source issue")
 				.integrationTools("jira_split_prepare")
 				.run(async (ctx) => ({
 					outcome: "read",
@@ -114,8 +115,8 @@ export function createSplitProcess(
 				}))
 				.outcome("read", (outcome) =>
 					outcome
-						.description("Epic captured")
-						.parameter("prepared", { type: "object", description: "Captured epic" })
+						.description("Source issue captured")
+						.parameter("prepared", { type: "object", description: "Captured source issue" })
 						.effect(({ ctx, event }) => {
 							const prepared = event.params.prepared as PreparedBatch;
 							return {
@@ -135,7 +136,7 @@ export function createSplitProcess(
 				.askQuestions()
 				.buildPrompt(
 					(ctx) =>
-						`Read the epic and identify repository candidates for this standardization. Inspect GitLab metadata/files; checkout_repository is available when needed. Every scoped repository needs a reasoned decision. Inaccessible or ambiguous repositories remain candidates for investigation; never silently exclude them. Inspection only: no code changes or pushes.\n${wikiInstructions}\nEpic: ${JSON.stringify(ctx.state.epic)}\nRepositories: ${JSON.stringify(ctx.params.repositories)}`,
+						`Read the source issue and identify repository candidates for its requirements. Inspect GitLab metadata/files; checkout_repository is available when needed. Every scoped repository needs a reasoned decision. Inaccessible or ambiguous repositories remain candidates for investigation; never silently exclude them. Inspection only: no code changes or pushes.\n${wikiInstructions}\nSource issue: ${JSON.stringify(ctx.state.epic)}\nRepositories: ${JSON.stringify(ctx.params.repositories)}`,
 				)
 				.outcomeTool("candidates_identified", (outcome) =>
 					outcome
@@ -206,7 +207,7 @@ export function createSplitProcess(
 				})
 				.buildPrompt(
 					(ctx) =>
-						`Determine whether this repository needs the epic's standardization. Use GitLab file reads and checkout_repository as needed. Do not change code or publish anything. Distinguish already compliant, not applicable, and unresolved; lack of access is unresolved. For an applicable repository prepare one ticket with concrete acceptance criteria, evidence and inspected commit. Default issue type: ${ctx.params.issueType}.\n${wikiInstructions}\nEpic: ${JSON.stringify(ctx.state.epic)}\nRepository: ${JSON.stringify(ctx.item)}\nReturn assessment JSON: ${draftShape}`,
+						`Determine whether this repository needs changes for the source issue's requirements. Use GitLab file reads and checkout_repository as needed. Do not change code or publish anything. Distinguish already compliant, not applicable, and unresolved; lack of access is unresolved. For an applicable repository prepare one ticket with concrete acceptance criteria, evidence and inspected commit. ${ctx.params.subtaskType ? `Use issueType Sub-task (${ctx.params.subtaskType.name}); Story and Task are not allowed.` : `Default issue type: ${ctx.params.issueType}; only Story or Task are allowed.`}\n${wikiInstructions}\nSource issue: ${JSON.stringify(ctx.state.epic)}\nRepository: ${JSON.stringify(ctx.item)}\nReturn assessment JSON: ${draftShape}`,
 				)
 				.outcomeTool("repository_assessed", (outcome) =>
 					outcome
@@ -214,6 +215,8 @@ export function createSplitProcess(
 						.requiredString("assessment", `JSON ${draftShape}`)
 						.yield(({ ctx, event }) => {
 							const draft = parseDraft(JSON.parse(String(event.params.assessment)));
+							if ((draft.issueType === "Sub-task") !== Boolean(ctx.params.subtaskType))
+								throw new Error("Ticket type does not match the source issue's child relationship");
 							if (draft.repositoryKey !== ctx.item.key)
 								throw new Error("Assessment repository mismatch");
 							return draft;
@@ -247,7 +250,10 @@ export function createSplitProcess(
 				.outcome("ready", (outcome) =>
 					outcome
 						.description("Batch ready for review")
-						.parameter("prepared", { type: "object", description: "Current mappings and epic" })
+						.parameter("prepared", {
+							type: "object",
+							description: "Current mappings and source issue",
+						})
 						.markdown("batch", { publish: true })
 						.effect(({ ctx, event }) => {
 							const prepared = event.params.prepared as PreparedBatch;
@@ -283,7 +289,7 @@ export function createSplitProcess(
 									label: "Create as Tasks",
 									kind: "textarea",
 									description:
-										"Optional repository paths, one per line. Other rows keep their displayed issue type.",
+										"Epic splits only: optional repository paths, one per line. Leave blank for subtask splits.",
 								},
 								{
 									id: "labels",
@@ -310,6 +316,10 @@ export function createSplitProcess(
 							};
 							const excluded = keys(input.exclude),
 								tasks = keys(input.tasks);
+							if (ctx.params.subtaskType && tasks.length)
+								throw new Error(
+									"Subtask splits cannot create Tasks; leave the Task overrides blank",
+								);
 							const drafts = ctx.state.drafts.map((draft) =>
 								draft.receipt
 									? draft
@@ -396,7 +406,7 @@ export function createSplitProcess(
 				)
 				.buildPrompt(
 					(ctx) =>
-						`Revise the unpublished repository assessments and ticket drafts using the operator feedback. Reinspect when the epic or evidence changed. Preserve published rows and repository identities. Return every unpublished row in drafts JSON. Do not create issues. ${wikiInstructions}\nEpic: ${JSON.stringify(ctx.prepared.epic)}\nFeedback: ${ctx.state.feedback}\nRepositories: ${JSON.stringify(ctx.params.repositories)}\nCurrent drafts: ${JSON.stringify(ctx.state.drafts)}\nEach draft has shape ${draftShape}`,
+						`Revise the unpublished repository assessments and ticket drafts using the operator feedback. Reinspect when the source issue or evidence changed. Preserve published rows and repository identities. Return every unpublished row in drafts JSON. ${ctx.params.subtaskType ? "Use issueType Sub-task for every row." : "Use issueType Story or Task for every row."} Do not create issues. ${wikiInstructions}\nSource issue: ${JSON.stringify(ctx.prepared.epic)}\nFeedback: ${ctx.state.feedback}\nRepositories: ${JSON.stringify(ctx.params.repositories)}\nCurrent drafts: ${JSON.stringify(ctx.state.drafts)}\nEach draft has shape ${draftShape}`,
 				)
 				.outcomeTool("drafts_revised", (outcome) =>
 					outcome
@@ -406,6 +416,12 @@ export function createSplitProcess(
 							const value: unknown = JSON.parse(String(event.params.drafts));
 							if (!Array.isArray(value)) throw new Error("Expected draft array");
 							const drafts = value.map(parseDraft);
+							if (
+								drafts.some(
+									(draft) => (draft.issueType === "Sub-task") !== Boolean(ctx.params.subtaskType),
+								)
+							)
+								throw new Error("Ticket type does not match the source issue's child relationship");
 							const pending = ctx.state.drafts.filter((draft) => !draft.receipt);
 							if (
 								drafts.length !== pending.length ||
@@ -481,7 +497,7 @@ export function createSplitProcess(
 		.turn(
 			flow
 				.automatic<SplitParams, SplitState>("complete_split")
-				.description("Epic split result")
+				.description("Issue split result")
 				.run((ctx) => ({
 					outcome: "done",
 					params: { result: batchMarkdown(ctx.params, ctx.state) },
