@@ -1,10 +1,11 @@
 <script lang="ts">
-import type { ProcessLifecycleStatus } from "@leitwerk-dev/domain";
+import { asUnknownRecord, type ProcessLifecycleStatus } from "@leitwerk-dev/domain";
 import ExternalLink from "../../components/ExternalLink.svelte";
 import PageHeader from "../../components/PageHeader.svelte";
 import ProcessActionsMenu from "../../components/ProcessActionsMenu.svelte";
 import type { ProcessDetailData } from "../../lib/api.js";
 import { formatDefinition, formatStatus } from "../../lib/format.js";
+import { followLink } from "../../lib/router.svelte.js";
 
 interface Props {
 	instanceId: string;
@@ -47,6 +48,8 @@ const status = $derived.by(() => {
 		: null;
 });
 
+const wikiTopicId = $derived(asUnknownRecord(detail?.process.metadata?.wiki)?.topicId);
+
 function processStatusMark(status: ProcessLifecycleStatus): string {
 	if (status === "completed") {
 		return "✓";
@@ -78,6 +81,9 @@ function processStatusMark(status: ProcessLifecycleStatus): string {
 	{/snippet}
 
 	{#snippet actions()}
+		{#if typeof wikiTopicId === "string"}
+			<a class="ui-button" href={`/wiki/${encodeURIComponent(wikiTopicId)}`} onclick={(event) => followLink(event, `/wiki/${encodeURIComponent(wikiTopicId)}`)}>Epic wiki</a>
+		{/if}
 		{#if status}
 			<span
 				class="process-header-status"

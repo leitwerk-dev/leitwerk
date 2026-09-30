@@ -32,6 +32,19 @@ export interface JiraIssue {
 	/** @internal */
 	fields: {
 		/** @internal */
+		issuetype?: {
+			/** @internal */
+			id: string;
+			/** @internal */
+			name: string;
+			/** @internal */
+			subtask?: boolean;
+		};
+		/** @internal */
+		parent?: JiraIssueReceipt;
+		/** @internal */
+		updated?: string;
+		/** @internal */
 		summary: string;
 
 		/** @internal */
@@ -99,6 +112,47 @@ export interface JiraCreateProject extends JiraProject {
 export interface JiraClientLike extends Pick<JiraClient, keyof JiraClient> {}
 
 /** @internal */
+export interface JiraCreateMetadata {
+	/** @internal */ epicLinkField: string | null;
+	/** @internal */
+	issueTypes: {
+		/** @internal */
+		id: string;
+		/** @internal */
+		name: string;
+		/** @internal */
+		subtask?: boolean;
+		/** @internal */
+		fields: Record<
+			string,
+			{
+				/** @internal */
+				required?: boolean;
+				/** @internal */
+				hasDefaultValue?: boolean;
+			}
+		>;
+	}[];
+}
+
+/** @internal */
+export class JiraRequestError extends Error {
+	/** @internal */
+	readonly status: number;
+	/** @internal */
+	constructor(status: number) {
+		super(`Jira request failed (${status})`);
+		this.status = status;
+	}
+}
+
+/** @internal */
+export interface JiraIssueReceipt {
+	/** @internal */ id: string;
+	/** @internal */ key: string;
+}
+
+/** @internal */
 export function jiraBaseUrl(raw: string): string {
 	const url = new URL(raw);
 	if (url.protocol !== "https:" || url.username || url.password || url.search || url.hash)
@@ -114,6 +168,8 @@ export function parseJiraProfiles(raw: unknown): Map<
 		baseUrl: string;
 		/** @internal */
 		token: string;
+		/** @internal */
+		epicLinkField?: string;
 	}
 > {
 	const profiles = asUnknownRecord(asUnknownRecord(raw)?.profiles) ?? {};
@@ -131,7 +187,22 @@ export function parseJiraProfiles(raw: unknown): Map<
 				: profile.token;
 			if (!token || /[\r\n\0]/.test(token))
 				throw new Error(`Jira profile '${id}' requires a valid PAT`);
-			return [id, { baseUrl: jiraBaseUrl(profile.base_url), token }];
+			if (
+				profile.epic_link_field !== undefined &&
+				(typeof profile.epic_link_field !== "string" ||
+					!/^customfield_\d+$/.test(profile.epic_link_field))
+			)
+				throw new Error("epic_link_field must identify a Jira custom field");
+			return [
+				id,
+				{
+					baseUrl: jiraBaseUrl(profile.base_url),
+					token,
+					...(typeof profile.epic_link_field === "string"
+						? { epicLinkField: profile.epic_link_field }
+						: {}),
+				},
+			];
 		}),
 	);
 }
@@ -141,6 +212,7 @@ export class JiraClient {
 	readonly baseUrl: string;
 	#token: string;
 	#fetch: typeof fetch;
+	#epicLinkField: string | undefined;
 
 	/** @internal */
 	constructor(
@@ -149,12 +221,15 @@ export class JiraClient {
 			baseUrl: string;
 			/** @internal */
 			token: string;
+			/** @internal */
+			epicLinkField?: string;
 		},
 		fetcher: typeof fetch = fetch,
 	) {
 		this.#fetch = fetcher;
 		this.baseUrl = jiraBaseUrl(profile.baseUrl);
 		this.#token = profile.token;
+		this.#epicLinkField = profile.epicLinkField;
 	}
 	async #request<T>(path: string, init: RequestInit = {}): Promise<T> {
 		init.signal?.throwIfAborted();
@@ -175,7 +250,7 @@ export class JiraClient {
 		} catch {
 			throw new Error("Jira request unavailable");
 		}
-		if (!response.ok) throw new Error(`Jira request failed (${response.status})`);
+		if (!response.ok) throw new JiraRequestError(response.status);
 		if (response.status === 204) return undefined as T;
 		try {
 			return (await response.json()) as T;
@@ -268,12 +343,20 @@ export class JiraClient {
 
 	/** @internal */
 	async createIssue(fields: Record<string, unknown>, signal?: AbortSignal): Promise<JiraIssue> {
-		const result = await this.#request<{ id: string }>("issue", {
+		const result = await this.createIssueReceipt(fields, signal);
+		return this.getIssue(result.id, signal);
+	}
+
+	/** Return the write receipt without a follow-up read that could obscure a successful POST. @internal */
+	createIssueReceipt(
+		fields: Record<string, unknown>,
+		signal?: AbortSignal,
+	): Promise<JiraIssueReceipt> {
+		return this.#request<JiraIssueReceipt>("issue", {
 			method: "POST",
 			body: JSON.stringify({ fields }),
 			signal,
 		});
-		return this.getIssue(result.id, signal);
 	}
 
 	/** @internal */
@@ -297,10 +380,70 @@ export class JiraClient {
 
 	/** @internal */
 	getIssue(id: string, signal?: AbortSignal) {
-		return this.#request<JiraIssue>(
-			`issue/${encodeURIComponent(id)}?fields=summary,description,labels,project,components,status`,
-			{ signal },
+		return this.#request<JiraIssue>(`issue/${encodeURIComponent(id)}?fields=*all`, { signal });
+	}
+
+	async #resolveEpicLinkField(): Promise<string | null> {
+		if (this.#epicLinkField) return this.#epicLinkField;
+		const fields = await this.#request<{ id: string; schema?: { custom?: string } }[]>("field");
+		const matches = fields.filter(
+			(field) => field.schema?.custom === "com.pyxis.greenhopper.jira:gh-epic-link",
 		);
+		if (!matches.length) return null;
+		if (matches.length !== 1)
+			throw new Error(
+				"Configure this Jira profile's epic_link_field; Epic Link discovery is ambiguous",
+			);
+		this.#epicLinkField = matches[0].id;
+		return this.#epicLinkField;
+	}
+
+	/** @internal */
+	async getEpic(issue: JiraIssue): Promise<JiraIssue | null> {
+		if (issue.fields.issuetype?.name.toLowerCase() === "epic") return issue;
+		const field = await this.#resolveEpicLinkField();
+		if (!field) return null;
+		const key = (issue.fields as unknown as Record<string, unknown>)[field];
+		return typeof key === "string" && key ? this.getIssue(key) : null;
+	}
+
+	/** @internal */
+	searchSplitIssues(projectIds: readonly string[]): Promise<JiraIssue[]> {
+		if (!projectIds.length || projectIds.some((id) => !/^\d+$/.test(id)))
+			throw new Error("Select explicit Jira project IDs");
+		const jql = `project in (${projectIds.join(",")}) AND labels in ("leitwerk-issue-split", "leitwerk-epic-split") AND issuetype not in subTaskIssueTypes() AND statusCategory != Done ORDER BY id ASC`;
+		return this.#pages(`search?jql=${encodeURIComponent(jql)}&fields=*all`, "issues");
+	}
+
+	/** @internal */
+	async createMetadata(projectId: string, includeEpicLink = true): Promise<JiraCreateMetadata> {
+		const metadata = await this.#request<{
+			projects: { id: string; issuetypes: JiraCreateMetadata["issueTypes"] }[];
+		}>(
+			`issue/createmeta?projectIds=${encodeURIComponent(projectId)}&expand=projects.issuetypes.fields`,
+		);
+		const project = metadata.projects.find((candidate) => candidate.id === projectId);
+		if (!project) throw new Error("Jira issue creation is unavailable for this project");
+		const epicLinkField = includeEpicLink ? await this.#resolveEpicLinkField() : null;
+		if (includeEpicLink && !epicLinkField)
+			throw new Error("Splitting a Jira epic requires an Epic Link field");
+		return { epicLinkField, issueTypes: project.issuetypes };
+	}
+
+	/** @internal */
+	async findSplitIssue(projectId: string, marker: string): Promise<JiraIssue | null> {
+		if (!/^\d+$/.test(projectId) || !/^leitwerk-split-[a-f0-9]{64}$/.test(marker))
+			throw new Error("Invalid split ticket identity");
+		const jql = `project = ${projectId} AND labels = "${marker}" ORDER BY id ASC`;
+		const matches = await this.#pages<JiraIssue>(
+			`search?jql=${encodeURIComponent(jql)}&fields=*all`,
+			"issues",
+		);
+		if (matches.length > 1)
+			throw new Error(
+				"Multiple Jira tickets share the split identity; operator reconciliation required",
+			);
+		return matches[0] ?? null;
 	}
 
 	/** @internal */
@@ -340,3 +483,31 @@ export const jiraEligible = (issue: JiraIssue) =>
 /** Installation context paths and immutable issue IDs define launch identity. @public */
 export const jiraIssueExternalId = (baseUrl: string, id: string) =>
 	`jira:${JSON.stringify([jiraBaseUrl(baseUrl), id])}`;
+
+/** @internal */
+export const jiraIsEpic = (issue: JiraIssue) =>
+	issue.fields.issuetype?.name.toLowerCase() === "epic";
+
+/** @internal */
+export const jiraSplitEligible = (issue: JiraIssue) =>
+	Boolean(issue.fields.issuetype?.id) &&
+	issue.fields.issuetype?.subtask !== true &&
+	issue.fields.status.statusCategory.key !== "done" &&
+	issue.fields.labels.some((label) =>
+		["leitwerk-issue-split", "leitwerk-epic-split"].includes(label),
+	);
+
+/** @internal */
+export async function jiraSplitChildMatches(
+	client: JiraClientLike,
+	issue: JiraIssue,
+	sourceIssueId: string,
+	relationship: "epic" | "subtask",
+): Promise<boolean> {
+	if (relationship === "subtask")
+		return issue.fields.issuetype?.subtask === true && issue.fields.parent?.id === sourceIssueId;
+	return (
+		issue.fields.issuetype?.subtask !== true &&
+		(await client.getEpic?.(issue))?.id === sourceIssueId
+	);
+}

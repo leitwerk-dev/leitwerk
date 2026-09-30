@@ -71,6 +71,8 @@ the response does not imply an atomic read across SQLite and session storage.
 - `process.created`, `process.updated`, `process.deleted`
 - `process.input.queued`, `process.input.acknowledged`
 - `project.updated`, `worker.state`, `future.updated`
+- `wiki.updated`: contains `topicId`. Refetch the matching topic or wiki index;
+  page bodies are not sent in the invalidation.
 - `launch.updated`: contains `launchRunId` and nullable `instanceId`, not checklist
   details. Refetch the launch-run read model.
 

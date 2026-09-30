@@ -107,6 +107,8 @@ export interface RouteDeps
 	/** @internal */
 	scopedSettingsService?: import("../scoped-settings-service.js").ScopedSettingsService;
 	/** @internal */
+	topicWiki?: RepositoryBundle["topicWiki"];
+	/** @internal */
 	onSettingsChanged?: () => Promise<void>;
 	/** @internal */
 	mappedRuns?: RepositoryBundle["mappedRuns"];

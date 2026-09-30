@@ -156,8 +156,6 @@ describe("NodeRunRootGitOps", () => {
 			gitOps,
 		);
 
-		expect(result.ok).toBe(true);
-		expect(result.errors).toEqual([]);
 		expect(existsSync(path.join(workspaceRoot, "repo", ".git"))).toBe(true);
 		expect(git(path.join(workspaceRoot, "repo"), "symbolic-ref", "--short", "HEAD").trim()).toBe(
 			"feature/test",

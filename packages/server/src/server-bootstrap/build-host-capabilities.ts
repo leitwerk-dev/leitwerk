@@ -13,6 +13,7 @@ import {
 	type ProgrammaticLaunchRequestLike,
 	type ProvidedCapability,
 	type RegisteredProcessWatcherLike,
+	topicWikiCapability,
 } from "@leitwerk-dev/process-sdk";
 import type { LeitwerkConfig } from "../config/index.js";
 import type { RepositoryBundle } from "../db/repositories.js";
@@ -45,6 +46,7 @@ export function buildHostCapabilities(input: {
 	preProvidedCapabilities?: readonly ProvidedCapability[];
 }) {
 	const hostCapabilities = createCapabilityAccessor([
+		{ token: topicWikiCapability, value: input.baseDeps.topicWiki },
 		{
 			token: coreHostCapabilities.serverSetup,
 			value: {

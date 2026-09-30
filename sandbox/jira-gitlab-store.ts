@@ -77,8 +77,17 @@ export class JiraSceneStore {
 			baseUrl: this.baseUrl,
 			listProjects: async () => [jiraProject],
 			listCreateProjects: async () => [],
+			searchSplitIssues: async () => [],
+			getEpic: async () => null,
+			findSplitIssue: async () => null,
+			createMetadata: async () => {
+				throw new Error("Issue splitting is unavailable in this review composition");
+			},
 			listProjectIssues: async (id) =>
 				structuredClone(this.state.issues.filter((issue) => issue.fields.project.id === id)),
+			createIssueReceipt: async () => {
+				throw new Error("Ticket creation is unavailable in this review composition");
+			},
 			createIssue: async () => {
 				throw new Error("Ticket creation is unavailable in this review composition");
 			},

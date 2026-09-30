@@ -1,4 +1,5 @@
 export type Page =
+	| "wiki"
 	| "settings"
 	| "api-tokens"
 	| "home"
@@ -83,6 +84,10 @@ function matchPrefixedDetailRoute(
 
 export function matchRoute(pathnameWithSearch: string): Route {
 	const pathname = stripSearchAndHash(pathnameWithSearch);
+	if (pathname === "/wiki" || pathname.startsWith("/wiki/")) {
+		const segments = pathname.split("/").filter(Boolean).slice(1).map(decodeURIComponent);
+		return { page: "wiki", params: { topicId: segments[0] ?? "", pageId: segments[1] ?? "" } };
+	}
 	if (pathname === "/settings" || pathname === "/settings/")
 		return {
 			page: "settings",

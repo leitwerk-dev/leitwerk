@@ -48,11 +48,9 @@ export interface RunRootPlan {
 }
 
 export interface MaterializeResult {
-	ok: boolean;
 	manifest: ComponentManifest;
 	aggregatedAgentsMdSources: string[];
 	loadedSkills: string[];
-	errors: string[];
 }
 
 export interface ValidationResult {
@@ -131,22 +129,12 @@ async function collectMaterializedEntries(
 	plan: RunRootPlan,
 	git: RunRootGitOps,
 	errors: string[],
-	shouldMaterialize: (componentKey: string) => boolean = () => true,
-	existingEntryForKey?: (componentKey: string) => ComponentManifestEntry | null,
+	reusable = new Map<string, ComponentManifestEntry>(),
 ): Promise<ComponentManifestEntry[]> {
 	const entries: ComponentManifestEntry[] = [];
 	for (const comp of plan.components) {
-		if (!shouldMaterialize(comp.key)) {
-			const existing = existingEntryForKey?.(comp.key) ?? null;
-			if (existing) {
-				entries.push(existing);
-			} else {
-				errors.push(`${comp.key}: no existing manifest entry for unchanged key`);
-			}
-			continue;
-		}
 		try {
-			entries.push(await materializeComponentEntry(plan, comp, git));
+			entries.push(reusable.get(comp.key) ?? (await materializeComponentEntry(plan, comp, git)));
 		} catch (e) {
 			errors.push(`${comp.key}: ${e instanceof Error ? e.message : String(e)}`);
 		}
@@ -255,11 +243,9 @@ async function finalizeRunRoot(
 		throw new RunRootPreparationError(errors);
 	}
 	return {
-		ok: true,
 		manifest,
 		aggregatedAgentsMdSources,
 		loadedSkills,
-		errors,
 	};
 }
 
@@ -270,6 +256,31 @@ export async function materializeRunRoot(
 	const errors: string[] = [];
 	const entries = await collectMaterializedEntries(plan, git, errors);
 	return finalizeRunRoot(plan, git, entries, errors);
+}
+
+/** @internal */
+export async function prepareOnDemandRunRoot(
+	plan: RunRootPlan,
+	git: RunRootGitOps,
+	projectKey?: string,
+): Promise<MaterializeResult> {
+	if (
+		projectKey !== undefined &&
+		!plan.components.some((component) => component.key === projectKey)
+	)
+		throw new Error("Repository is outside this process's authorized scope");
+	const validation = await validateRunRoot(plan.workspaceRoot, plan.components, git);
+	const existingKeys = new Set(
+		validation.existingManifest?.components.map((component) => component.key) ?? [],
+	);
+	const selected = {
+		...plan,
+		components: plan.components.filter(
+			(component) => existingKeys.has(component.key) || component.key === projectKey,
+		),
+	};
+	// Selection only omits missing components, so retained entries keep the same validation.
+	return repairRunRoot(validation, selected, git);
 }
 
 export async function validateRunRoot(
@@ -301,22 +312,17 @@ export async function validateRunRoot(
 }
 
 export async function repairRunRoot(
-	_workspaceRoot: string,
 	validation: ValidationResult,
 	plan: RunRootPlan,
 	git: RunRootGitOps,
 ): Promise<MaterializeResult> {
 	const errors: string[] = [];
-	const toRepair = new Set([...validation.diff.stale, ...validation.diff.missing]);
-	const manifestEntries = await collectMaterializedEntries(
-		plan,
-		git,
-		errors,
-		(componentKey) => toRepair.has(componentKey),
-		(componentKey) =>
-			validation.existingManifest?.components.find((component) => component.key === componentKey) ??
-			null,
+	const reusable = new Map(
+		validation.existingManifest?.components
+			.filter((component) => validation.diff.unchanged.includes(component.key))
+			.map((component) => [component.key, component]),
 	);
+	const manifestEntries = await collectMaterializedEntries(plan, git, errors, reusable);
 
 	return finalizeRunRoot(plan, git, manifestEntries, errors);
 }

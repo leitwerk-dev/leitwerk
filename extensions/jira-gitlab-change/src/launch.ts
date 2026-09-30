@@ -7,11 +7,14 @@ import {
 	resolveGitLabLaunchProject,
 } from "@leitwerk-dev/gitlab";
 import {
+	ensureIssueWiki,
 	type JiraIntegration,
 	type JiraIssue,
 	type JiraWatcherEvent,
 	jiraEligible,
+	jiraIsEpic,
 	jiraIssueExternalId,
+	jiraSplitChildMatches,
 	jiraSubjectIdentity,
 } from "@leitwerk-dev/jira";
 import {
@@ -22,6 +25,7 @@ import {
 	SafeLaunchPreparationError,
 	type ScopedSettingsResolver,
 	type SettingDefinition,
+	type TopicWikiStore,
 } from "@leitwerk-dev/process-sdk";
 
 /** @public */
@@ -59,6 +63,8 @@ export interface RepositoryBinding extends GitLabPublicationParams {
 
 /** @public */
 export interface JiraGitLabParams extends GitLabPublicationParams {
+	/** @internal */
+	wikiTopicId?: string;
 	/** @internal */
 	origin: "jira";
 
@@ -105,6 +111,7 @@ function parseMapping(value: unknown): RepositoryMapping {
 	}
 	return validateMapping(r);
 }
+
 function validateMapping(r: Record<string, unknown> | null): RepositoryMapping {
 	if (
 		!r ||
@@ -167,6 +174,8 @@ export function createJiraGitLabLauncher() {
 
 		/** @internal */
 		settings: ScopedSettingsResolver;
+		/** @internal */
+		wiki?: TopicWikiStore;
 	} | null = null;
 	const requireServices = () => {
 		if (!services) throw new Error("Jira GitLab integration is not configured");
@@ -217,7 +226,7 @@ export function createJiraGitLabLauncher() {
 
 	/** @internal */
 	async function resolve(event: JiraWatcherEvent): Promise<ProcessLaunchConfig<JiraGitLabParams>> {
-		const { jira, gitlab, ssh, settings } = requireServices();
+		const { jira, gitlab, ssh, settings, wiki } = requireServices();
 		const client = jira.client(event.profile);
 		const issue = await client.getIssue(event.issue.id);
 		if (
@@ -263,6 +272,25 @@ export function createJiraGitLabLauncher() {
 				selected.set(key, entry);
 			}
 		}
+		const publication = wiki?.publicationByExternalId(
+			jiraIssueExternalId(client.baseUrl, issue.id),
+		);
+		if (publication) {
+			const binding = publication.binding;
+			const exact = [...selected.entries()].find(
+				([, entry]) =>
+					entry.origin === binding.origin &&
+					entry.projectId === binding.projectId &&
+					entry.gitlabProfile === binding.gitlabProfile &&
+					entry.sshProfile === binding.sshProfile,
+			);
+			if (!exact)
+				throw new Error(
+					"Generated ticket's repository binding no longer matches its component mappings",
+				);
+			selected.clear();
+			selected.set(...exact);
+		}
 		if (!selected.size)
 			throw new Error(
 				`No repositories mapped for ${issue.key}. Map at least one component in Settings → Jira components.`,
@@ -280,6 +308,12 @@ export function createJiraGitLabLauncher() {
 				throw new Error(
 					`GitLab project ${entry.projectId} must be active and provide an SSH clone URL`,
 				);
+			if (
+				publication &&
+				(repo.ssh_url_to_repo !== publication.binding.repoLocator ||
+					repo.default_branch !== publication.binding.baseBranch)
+			)
+				throw new Error("Generated ticket's repository checkout binding changed");
 			const key = `repo_${repositories.length + 1}`;
 			const { params: binding, project } = await resolveGitLabLaunchProject(
 				provider,
@@ -298,7 +332,34 @@ export function createJiraGitLabLauncher() {
 			});
 		}
 		const first = repositories[0];
+		let sourceIssue: JiraIssue | null = null;
+		if (publication) {
+			const sourceIssueId = publication.binding.sourceIssueId ?? publication.binding.epicId;
+			const relationship = publication.binding.relationship ?? "epic";
+			if (
+				typeof sourceIssueId !== "string" ||
+				(relationship !== "epic" && relationship !== "subtask") ||
+				!(await jiraSplitChildMatches(client, issue, sourceIssueId, relationship))
+			)
+				throw new Error("Generated ticket's source issue binding changed");
+			sourceIssue = await client.getIssue(sourceIssueId);
+			if (
+				sourceIssue.fields.project.id !== issue.fields.project.id ||
+				sourceIssue.fields.issuetype?.subtask === true ||
+				jiraIsEpic(sourceIssue) !== (relationship === "epic")
+			)
+				throw new Error("Generated ticket's source issue binding changed");
+		} else if (wiki && issue.fields.issuetype?.subtask === true) {
+			if (!issue.fields.parent?.id) throw new Error("Jira subtask parent is unavailable");
+			sourceIssue = await client.getIssue(issue.fields.parent.id);
+		} else if (wiki && client.getEpic) {
+			sourceIssue = await client.getEpic(issue);
+		}
+		const topic = wiki && sourceIssue ? ensureIssueWiki(wiki, client, sourceIssue) : null;
+		if (publication && topic?.id !== publication.topicId)
+			throw new Error("Generated ticket's source issue wiki binding changed");
 		const params: JiraGitLabParams = {
+			...(topic ? { wikiTopicId: topic.id } : {}),
 			...first,
 			origin: "jira",
 			jiraProfile: event.profile,
@@ -313,6 +374,18 @@ export function createJiraGitLabLauncher() {
 		};
 		return {
 			processId: "jira_gitlab_change_process",
+			...(topic && sourceIssue
+				? {
+						metadata: {
+							wiki: {
+								topicId: topic.id,
+								profile: event.profile,
+								baseUrl: client.baseUrl,
+								issueId: sourceIssue.id,
+							},
+						},
+					}
+				: {}),
 			title: `${issue.key}: ${issue.fields.summary}`,
 			params,
 			projects,

@@ -309,6 +309,21 @@ export class LocalGitLabAdapter {
 			},
 
 			getProject: async (id) => structuredClone(this.project(id)),
+			listRepositoryTree: async (id, ref, directory = "") =>
+				this.git(id, ["ls-tree", ref, ...(directory ? [`${directory}/`] : [])])
+					.split("\n")
+					.filter(Boolean)
+					.map((line) => {
+						const [details, filePath] = line.split("\t");
+						const [, type, objectId] = details.split(" ");
+						return { path: filePath, type, id: objectId };
+					}),
+			getRepositoryFile: async (id, ref, filePath) => ({
+				file_path: filePath,
+				content: Buffer.from(this.git(id, ["show", `${ref}:${filePath}`])).toString("base64"),
+				encoding: "base64",
+				last_commit_id: this.git(id, ["log", "-1", "--format=%H", ref, "--", filePath]),
+			}),
 			listProjects: async () => structuredClone(this.state.projects),
 			getGroup: async (id) => ({ id: 1, full_path: String(id) }),
 			listGroupProjects: async (group) =>

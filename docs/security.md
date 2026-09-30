@@ -5,6 +5,11 @@ permissions or tenant isolation. Workers and repository code are semi-trusted;
 credential routing is not isolation from code running as the same OS user.
 Configure network exposure and worker privileges accordingly.
 
+[Topic solution wikis](topic-wiki.md) have the same application-wide access model.
+Agent tools use server-pinned topic bindings; browser users can browse and delete
+entries. Evidence and agent-authored guidance are untrusted. Tombstones prevent
+same-ID resurrection, not recall from already running model contexts or audit history.
+
 ## Authentication models {#1-authentication-models}
 
 | Boundary | Credential and scope |

@@ -588,6 +588,48 @@ export class GitLabClient {
 		return this.pages("/projects?archived=false", signal);
 	}
 	/** @internal */
+	listRepositoryTree(
+		id: number,
+		ref: string,
+		path = "",
+		signal?: AbortSignal,
+	): Promise<
+		{
+			/** @internal */
+			path: string;
+			/** @internal */
+			type: string;
+			/** @internal */
+			id: string;
+		}[]
+	> {
+		return this.pages(
+			`${projectPath(id)}/repository/tree?ref=${encodeURIComponent(ref)}&path=${encodeURIComponent(path)}`,
+			signal,
+		);
+	}
+	/** @internal */
+	getRepositoryFile(
+		id: number,
+		ref: string,
+		path: string,
+		signal?: AbortSignal,
+	): Promise<{
+		/** @internal */
+		file_path: string;
+		/** @internal */
+		content: string;
+		/** @internal */
+		encoding: string;
+		/** @internal */
+		last_commit_id: string;
+	}> {
+		return this.request(
+			`${projectPath(id)}/repository/files/${encodeURIComponent(path)}?ref=${encodeURIComponent(ref)}`,
+			signal,
+		);
+	}
+	/** @internal */
 	getGroup(id: number | string, signal?: AbortSignal): Promise<GitLabGroup> {
 		return this.request(`/groups/${encodeURIComponent(id)}`, signal);
 	}
@@ -886,7 +928,8 @@ export type GitLabClientLike = Pick<
 	| "replyToDiscussion"
 	| "resolveDiscussion"
 	| "resolveGitIdentity"
->;
+> &
+	Partial<Pick<GitLabClient, "listRepositoryTree" | "getRepositoryFile">>;
 
 /** A pending current pipeline supersedes every older result. Synthetic merges must contain this source head. */
 /** @public */

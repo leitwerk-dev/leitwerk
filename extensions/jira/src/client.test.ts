@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { JiraClient, jiraIssueExternalId, parseJiraProfiles } from "./client.js";
+import { JiraClient, type JiraIssue, jiraIssueExternalId, parseJiraProfiles } from "./client.js";
+
+const linkedIssue = {
+	id: "101",
+	key: "APP-101",
+	fields: { issuetype: { id: "1", name: "Story" }, customfield_100: "APP-10" },
+} as unknown as JiraIssue;
 
 describe("Jira Data Center boundary", () => {
 	it("cancels an in-flight issue creation request with the caller's signal", async () => {
@@ -147,5 +153,130 @@ describe("Jira Data Center boundary", () => {
 			},
 		);
 		await client.updateLabels("123", ["use-leitwerk"], ["leitwerk-done"]);
+	});
+	it("discovers Epic Link by schema, retains project create fields, and reuses the field", async () => {
+		const requests: string[] = [];
+		const issueTypes = [{ id: "1", name: "Story", fields: { summary: { required: true } } }];
+		const client = new JiraClient(
+			{ baseUrl: "https://jira.test/context", token: "secret" },
+			async (url) => {
+				const request = new URL(String(url));
+				requests.push(request.pathname);
+				if (request.pathname.endsWith("/createmeta")) {
+					expect(request.searchParams.get("projectIds")).toBe("100");
+					expect(request.searchParams.get("expand")).toBe("projects.issuetypes.fields");
+					return Response.json({ projects: [{ id: "100", issuetypes: issueTypes }] });
+				}
+				if (request.pathname.endsWith("/field"))
+					return Response.json([
+						{
+							id: "customfield_100",
+							name: "Localized field name",
+							schema: { custom: "com.pyxis.greenhopper.jira:gh-epic-link" },
+						},
+					]);
+				expect(request.pathname).toBe("/context/rest/api/2/issue/APP-10");
+				expect(request.searchParams.get("fields")).toBe("*all");
+				return Response.json({ id: "10", key: "APP-10" });
+			},
+		);
+		expect(await client.createMetadata("100")).toEqual({
+			epicLinkField: "customfield_100",
+			issueTypes,
+		});
+		expect(await client.getEpic(linkedIssue)).toMatchObject({ id: "10" });
+		expect(requests.filter((path) => path.endsWith("/field"))).toHaveLength(1);
+	});
+	it("keeps ordinary Jira changes available without Epic Link but requires it for splitting", async () => {
+		const client = new JiraClient({ baseUrl: "https://jira.test", token: "secret" }, async (url) =>
+			Response.json(
+				String(url).includes("createmeta") ? { projects: [{ id: "100", issuetypes: [] }] } : [],
+			),
+		);
+		expect(await client.getEpic(linkedIssue)).toBeNull();
+		await expect(client.createMetadata("100")).rejects.toThrow("requires an Epic Link field");
+	});
+	it("reads subtask metadata without discovering Epic Link", async () => {
+		const issueTypes = [
+			{ id: "5", name: "Unteraufgabe", subtask: true, fields: { parent: { required: true } } },
+		];
+		const client = new JiraClient(
+			{ baseUrl: "https://jira.test", token: "secret" },
+			async (url) => {
+				expect(new URL(String(url)).pathname).toBe("/rest/api/2/issue/createmeta");
+				return Response.json({ projects: [{ id: "100", issuetypes: issueTypes }] });
+			},
+		);
+		expect(await client.createMetadata("100", false)).toEqual({ epicLinkField: null, issueTypes });
+	});
+	it("discovers split candidates under both labels without restricting to epics", async () => {
+		const client = new JiraClient(
+			{ baseUrl: "https://jira.test", token: "secret" },
+			async (url) => {
+				const jql = new URL(String(url)).searchParams.get("jql");
+				expect(jql).toContain('labels in ("leitwerk-issue-split", "leitwerk-epic-split")');
+				expect(jql).toContain("issuetype not in subTaskIssueTypes()");
+				expect(jql).not.toContain("issuetype = Epic");
+				expect(jql).toContain("statusCategory != Done");
+				return Response.json({ issues: [linkedIssue], total: 1 });
+			},
+		);
+		expect(await client.searchSplitIssues(["100"])).toEqual([linkedIssue]);
+		expect(() => client.searchSplitIssues([])).toThrow("explicit Jira project IDs");
+	});
+	it("requires an override for ambiguous Epic Link discovery and validates the override", async () => {
+		const fetcher = async () =>
+			Response.json(
+				["100", "200"].map((id) => ({
+					id: `customfield_${id}`,
+					schema: { custom: "com.pyxis.greenhopper.jira:gh-epic-link" },
+				})),
+			);
+		await expect(
+			new JiraClient({ baseUrl: "https://jira.test", token: "secret" }, fetcher).getEpic(
+				linkedIssue,
+			),
+		).rejects.toThrow("ambiguous");
+		const client = new JiraClient(
+			{ baseUrl: "https://jira.test", token: "secret", epicLinkField: "customfield_100" },
+			async (url) => {
+				expect(String(url)).toContain("/issue/APP-10?");
+				return Response.json({ id: "10" });
+			},
+		);
+		expect(await client.getEpic(linkedIssue)).toMatchObject({ id: "10" });
+		expect(() =>
+			parseJiraProfiles({
+				profiles: {
+					team: { base_url: "https://jira.test", token: "secret", epic_link_field: "labels" },
+				},
+			}),
+		).toThrow("custom field");
+	});
+	it("creates fields exactly once per request and rejects duplicate reconciliation matches", async () => {
+		const marker = `leitwerk-split-${"a".repeat(64)}`;
+		const fields = {
+			project: { id: "100" },
+			summary: "Standardize",
+			customfield_100: "APP-10",
+			labels: [marker],
+		};
+		const client = new JiraClient(
+			{ baseUrl: "https://jira.test", token: "secret" },
+			async (url, init) => {
+				if (init?.method === "POST") {
+					expect(JSON.parse(String(init.body))).toEqual({ fields });
+					return Response.json({ id: "101", key: "APP-101" }, { status: 201 });
+				}
+				const request = new URL(String(url));
+				expect(request.searchParams.get("jql")).toContain(`labels = "${marker}"`);
+				return Response.json({ startAt: 0, total: 2, issues: [{ id: "101" }, { id: "102" }] });
+			},
+		);
+		expect(await client.createIssueReceipt(fields)).toEqual({ id: "101", key: "APP-101" });
+		await expect(client.findSplitIssue("100", marker)).rejects.toThrow("Multiple Jira tickets");
+		await expect(client.findSplitIssue("100", "untrusted marker")).rejects.toThrow(
+			"Invalid split ticket identity",
+		);
 	});
 });

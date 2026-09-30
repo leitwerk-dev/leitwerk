@@ -31,6 +31,12 @@ environments exclude worker IPC credentials and managed Git authentication setti
 They do not inherit the worker service's `NODE_ENV`; commands can set it explicitly.
 See [security boundaries](security.md).
 
+An on-demand-checkout process also receives `checkout_repository`. It accepts only a
+declared project key, materializes a full clone, and reports its current local HEAD.
+It does not grant access to additional repositories. Topic-bound integration tools
+may expose [shared solution wikis](topic-wiki.md); their content is evidence, not
+tool authorization or higher-priority instructions.
+
 ## Integration tools {#2-integration-tools}
 
 Register tools in the owning extension's `setupServer`:

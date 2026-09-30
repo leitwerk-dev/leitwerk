@@ -14,6 +14,7 @@ import { registerResultImageRoutes } from "../routes/result-images.js";
 import { registerSettingsRoutes } from "../routes/settings.js";
 import { registerSkillRoutes } from "../routes/skills.js";
 import { registerTicketCreationRoutes } from "../routes/ticket-creation.js";
+import { registerTopicWikiRoutes } from "../routes/topic-wiki.js";
 import { registerUiRendererRoutes } from "../routes/ui-renderers.js";
 import { registerWatcherRoutes } from "../routes/watchers.js";
 import { healthBody } from "./register-websocket.js";
@@ -75,6 +76,7 @@ export function registerHttp(input: {
 		store: input.resultImages,
 	});
 	registerProcessRoutes(input.app, input.deps);
+	if (input.deps.topicWiki) registerTopicWikiRoutes(input.app, input.deps.topicWiki);
 	if (input.deps.scopedSettingsService)
 		registerSettingsRoutes(input.app, input.deps.scopedSettingsService, input.deps);
 	registerWatcherRoutes(input.app, { processWatchers: input.processWatcherService });

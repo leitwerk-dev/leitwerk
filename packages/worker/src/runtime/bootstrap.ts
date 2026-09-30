@@ -53,6 +53,7 @@ import { isLlmWorkerStartPayload } from "../worker-start-payload.js";
 import {
 	materializeRunRoot,
 	planRunRoot,
+	prepareOnDemandRunRoot,
 	type RunRootGitOps,
 	repairRunRoot,
 	validateRunRoot,
@@ -462,11 +463,14 @@ export async function bootstrapWorkerRuntime(
 	}));
 	const plan = planRunRoot(workspaceRoot, deps.instanceId, runRootProjects);
 
-	const runRootPreparation = deps.payload.resume
-		? validateRunRoot(workspaceRoot, runRootProjects, deps.gitOps).then((validation) =>
-				repairRunRoot(workspaceRoot, validation, plan, deps.gitOps),
-			)
-		: materializeRunRoot(plan, deps.gitOps);
+	const runRootPreparation =
+		resolvedWorkerProcess?.runtime?.repositoryCheckout === "on_demand"
+			? prepareOnDemandRunRoot(plan, deps.gitOps)
+			: deps.payload.resume
+				? validateRunRoot(workspaceRoot, runRootProjects, deps.gitOps).then((validation) =>
+						repairRunRoot(validation, plan, deps.gitOps),
+					)
+				: materializeRunRoot(plan, deps.gitOps);
 
 	const resolvedPiConfig = llmPayload
 		? resolveProcessPiConfig({

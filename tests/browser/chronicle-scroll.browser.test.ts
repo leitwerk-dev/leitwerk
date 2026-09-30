@@ -975,6 +975,8 @@ for (const { width, running } of [
 		await expect(history).toHaveAttribute("open", "");
 		await page.keyboard.press("Enter");
 		await expect(history).not.toHaveAttribute("open", "");
+		// Let the collapsed chronicle's scroll-anchor update finish before opening rail history.
+		await waitForScrollToSettle(page.locator('[data-role="chronicle-scroll"]'));
 		if (width < 1024) await page.getByRole("button", { name: /^Quick nav/ }).click();
 		const historyToggle = page.getByRole("button", { name: /^Earlier attempts/ });
 		if ((await historyToggle.getAttribute("aria-expanded")) !== "true") await historyToggle.click();

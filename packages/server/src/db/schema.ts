@@ -15,6 +15,41 @@ import {
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
 
+export const wikiTopics = sqliteTable("wiki_topics", {
+	id: text("id").primaryKey(),
+	key: text("key").notNull(),
+	data: text("data").notNull(),
+});
+
+export const wikiPages = sqliteTable("wiki_pages", {
+	id: text("id").primaryKey(),
+	topicId: text("topic_id")
+		.notNull()
+		.references(() => wikiTopics.id),
+	data: text("data").notNull(),
+});
+
+export const wikiRevisions = sqliteTable("wiki_revisions", {
+	id: text("id").primaryKey(),
+	pageId: text("page_id")
+		.notNull()
+		.references(() => wikiPages.id),
+	data: text("data").notNull(),
+});
+
+export const topicPublications = sqliteTable(
+	"topic_publications",
+	{
+		key: text("key").primaryKey(),
+		topicId: text("topic_id")
+			.notNull()
+			.references(() => wikiTopics.id),
+		externalId: text("external_id"),
+		data: text("data").notNull(),
+	},
+	(table) => [uniqueIndex("idx_topic_publications_external").on(table.externalId)],
+);
+
 export const startupObservations = sqliteTable(
 	"startup_observations",
 	{

@@ -371,6 +371,54 @@ export async function ensureGitLabSeenReaction(input: {
 }
 /** @internal */
 export function registerGitLabTools(api: ServerExtensionAPI, integration: GitLabIntegration) {
+	for (const name of [
+		"gitlab_inspect_project",
+		"gitlab_repository_tree",
+		"gitlab_repository_file",
+	] as const)
+		api.tool<Record<string, unknown>>({
+			name,
+			description:
+				"Inspect a bound GitLab repository. Use the returned commit ID as ref for subsequent tree/file reads.",
+			parameters: projectParameters({ ref: { type: "string" }, path: { type: "string" } }),
+			async execute(ctx, args) {
+				const binding = resolveGitLabRepositoryBinding(ctx, integration);
+				const client = integration.client(binding.profile);
+				if (name === "gitlab_inspect_project")
+					return {
+						project: await client.getProject(binding.projectId, ctx.signal),
+						branch: await client.getBranch(binding.projectId, ctx.project!.baseBranch, ctx.signal),
+					};
+				const ref = stringArg(args, "ref");
+				if (!/^[a-f0-9]{40,64}$/i.test(ref))
+					throw new Error("Repository reads require a commit ID returned by inspection");
+				if (name === "gitlab_repository_tree") {
+					if (!client.listRepositoryTree) throw new Error("Repository tree inspection unavailable");
+					return client.listRepositoryTree(
+						binding.projectId,
+						ref,
+						typeof args.path === "string" ? args.path : "",
+						ctx.signal,
+					);
+				}
+				if (!client.getRepositoryFile) throw new Error("Repository file inspection unavailable");
+				const file = await client.getRepositoryFile(
+					binding.projectId,
+					ref,
+					stringArg(args, "path"),
+					ctx.signal,
+				);
+				return {
+					...file,
+					content:
+						file.encoding === "base64"
+							? Buffer.from(file.content, "base64").toString("utf8")
+							: file.content,
+					encoding: "utf8",
+					revision: ref,
+				};
+			},
+		});
 	for (const [name, description, required] of [
 		["gitlab_observe_merge_request", "Read the current MR source revision and its latest CI", []],
 		["gitlab_get_changes", "Read the MR changes", []],
