@@ -27,7 +27,7 @@ import {
 } from "@leitwerk-dev/process-sdk/runtime-internals";
 import { createJiti } from "jiti";
 import { packageDirectorySync } from "pkg-dir";
-import { readPackageUpSync } from "read-pkg-up";
+import { readPackageUpSync } from "read-package-up";
 import resolvePackagePath from "resolve-package-path";
 import * as v from "valibot";
 import { type LeitwerkRuntimeLane, resolveRuntimeLane } from "./runtime-lane.js";
