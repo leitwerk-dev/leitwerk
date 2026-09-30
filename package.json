@@ -10,7 +10,7 @@
 	"engines": {
 		"node": ">=26 <27"
 	},
-	"packageManager": "npm@10.9.2",
+	"packageManager": "npm@10.9.9",
 	"workspaces": [
 		"packages/*",
 		"extensions/*"
