@@ -1,3 +1,4 @@
+import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { afterEach, expect, it, vi } from "vitest";
 import { createRepositoryBashTool } from "./repository-bash-tool.js";
 
@@ -24,7 +25,7 @@ NODE_ENV=production "${process.execPath}" -e 'if(process.env.NODE_ENV !== "produ
 		},
 		undefined,
 		undefined,
-		{} as never,
+		{ sessionManager: SessionManager.inMemory(process.cwd()) } as never,
 	);
 	expect(result.content).toContainEqual({ type: "text", text: "repository environment passed\n" });
 	expect(process.env.NODE_ENV).toBe("production");

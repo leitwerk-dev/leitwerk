@@ -46,6 +46,8 @@ test("source supervisor uses strict ports, isolated reload preflight, and acknow
 			[
 				"--conditions=source",
 				"--import",
+				"./scripts/pi-source-conditions.mjs",
+				"--import",
 				"tsx",
 				"scripts/sandbox/cli.ts",
 				`--ui-port=${ui.port}`,

@@ -1,3 +1,4 @@
+import { VERSION as PI_RUNTIME_VERSION } from "@earendil-works/pi-coding-agent";
 import type {
 	ProcessInstance,
 	ResolvedTurnStart,
@@ -23,8 +24,6 @@ import {
 	selectWorkerRuntimeProfile,
 } from "../worker-runtime-profile-selection.js";
 import type { Writes } from "./writes/writes.js";
-
-const PI_RUNTIME_VERSION = "0.81.1";
 
 export interface TurnStartPreflightDeps {
 	scopedSettings?: Pick<ScopedSettingsService, "capture">;

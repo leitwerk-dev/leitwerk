@@ -155,7 +155,14 @@ export async function launchSandbox(options: SandboxLauncherOptions): Promise<vo
 async function runSupervisor(publicRoot: string, env: NodeJS.ProcessEnv): Promise<void> {
 	const child = spawn(
 		process.execPath,
-		["--conditions=source", "--import", "tsx", "scripts/dev-supervisor.ts"],
+		[
+			"--conditions=source",
+			"--import",
+			"./scripts/pi-source-conditions.mjs",
+			"--import",
+			"tsx",
+			"scripts/dev-supervisor.ts",
+		],
 		{ cwd: publicRoot, env, stdio: "inherit", detached: true },
 	);
 	let timer: NodeJS.Timeout | undefined;

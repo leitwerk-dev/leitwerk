@@ -57,6 +57,10 @@ packages. Existing checkouts retain their branch and uncommitted edits. Keep ign
 selection metadata separate from committed manifests and the release lockfile.
 Do not mix local SDK packages with registry copies of the rest of the public graph.
 
+Source-mode launchers keep the `source` condition for Leitwerk and extension code.
+Pi dependencies use their published import entries, not repository-only source
+exports that may be absent from npm packages.
+
 Subsequent commands delegate to the selected checkout with the composition manifest.
 Return to released dependencies with:
 

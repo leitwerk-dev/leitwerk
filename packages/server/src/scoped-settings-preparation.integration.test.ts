@@ -1,5 +1,7 @@
+import { VERSION as PI_RUNTIME_VERSION } from "@earendil-works/pi-coding-agent";
 import { ADMIN_ACTOR, type ProcessInstance, type TurnStartRecord } from "@leitwerk-dev/domain";
 import { defineModelProvider } from "@leitwerk-dev/process-sdk";
+import { verifyCanonicalPiResourceBundle } from "@leitwerk-dev/worker-protocol";
 import { describe, expect, it } from "vitest";
 import { createModelStatusCache } from "./model-providers/model-status-cache.js";
 import { createModelProviderRegistry } from "./model-providers/registry.js";
@@ -103,6 +105,31 @@ async function setup() {
 }
 
 describe("scoped settings at the turn preparation boundary", () => {
+	it("records the installed Pi runtime version in prepared resource snapshots", async () => {
+		const { repos, prepare, deps } = await setup();
+		const process = repos.processes.create({
+			processId: "settings_process",
+			selectedTurnId: "run",
+		});
+		const pending = prepare(process);
+		expect(await pending.done).toEqual({ ok: true });
+		const prepared = pending.writes.turnStartWrites[0];
+		if (prepared.kind !== "create" || prepared.input.state.kind !== "starting") {
+			throw new Error("Expected prepared turn start");
+		}
+		const start = prepared.input.state.start;
+		if (start.kind !== "llm") throw new Error("Expected LLM start");
+		const bundle = deps.bundleCache.get(start.piResourceSnapshotDigest);
+		if (!bundle) throw new Error("Expected resource bundle");
+		const generated = verifyCanonicalPiResourceBundle(bundle.bytes).find(
+			(file) => file.path === "generated.json",
+		);
+		if (!generated) throw new Error("Expected generated resource manifest");
+		expect(JSON.parse(Buffer.from(generated.content).toString("utf8"))).toMatchObject({
+			compatibility: { piVersion: PI_RUNTIME_VERSION },
+		});
+	});
+
 	it.each([
 		repositoryInstructions,
 		model,
