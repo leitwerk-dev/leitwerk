@@ -1,6 +1,7 @@
 import type { LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
 import {
 	coreHostCapabilities,
+	parseTicketCreationConfig,
 	repositorySettingsIdentity,
 	scopedSettingsCapability,
 } from "@leitwerk-dev/process-sdk";
@@ -37,14 +38,18 @@ const extension: LeitwerkExtensionModule = {
 						});
 				return subjects;
 			});
-		setupGitLabIntegration(api, {
-			profiles: () => [...profiles.keys()],
-			client: (profile) => {
-				const client = clients.get(profile);
-				if (!client) throw new Error(`Unknown GitLab profile '${profile}'`);
-				return client;
+		setupGitLabIntegration(
+			api,
+			{
+				profiles: () => [...profiles.keys()],
+				client: (profile) => {
+					const client = clients.get(profile);
+					if (!client) throw new Error(`Unknown GitLab profile '${profile}'`);
+					return client;
+				},
 			},
-		});
+			{ ticketCreation: parseTicketCreationConfig(config, "GitLab") },
+		);
 		const deps = api.get(coreHostCapabilities.serverSetup);
 		if (!deps || Array.isArray(deps)) return;
 		deps.repositoryCredentials.register({

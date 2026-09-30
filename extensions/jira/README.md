@@ -1,5 +1,38 @@
 # Jira Data Center
 
+## Ticket creation
+
+Load `@leitwerk-dev/ticket-creation` and set:
+
+```yaml
+extensions:
+  jira:
+    ticket_creation:
+      enabled: true
+      default_labels: [created-by-leitwerk]
+```
+
+`jira_create_issue` discovers creatable projects and non-subtask issue types through
+the paginated REST v2 project/issue-type metadata endpoints (Jira 8.4 and later),
+not the bulk `createmeta` endpoint removed in Jira 9. The configured PAT needs Browse Projects and Create Issues
+permissions. Required custom fields and allowed values are included in the drafting
+context. The draft may supply additional fields by metadata field ID, but cannot
+override its server-pinned project or issue type. Unknown fields and missing required
+values fail without creating an issue. Labels cannot contain spaces; use
+`default_labels: []` to omit defaults. Empty labels are omitted from the create
+payload. A destination whose create screen excludes Labels rejects configured
+default labels before approval; requested labels must also be supported by that
+screen.
+
+The normal approval flow supports creation, revision and discard. Snapshots pin the
+installation (including its context path), project ID, project key and issue type.
+Retry reconciliation scans project issues, including closed issues, for the durable
+write marker. Ticket creation defaults to disabled; enabling it requires the ticket
+process to be loaded. `LocalJiraAdapter` is available from the `/testing` export for
+persistent local scenarios.
+
+## Profiles and delivery
+
 `@leitwerk-dev/jira` is an opt-in Jira Data Center REST v2 integration. It supports
 paginated discovery and issue/comment reads, including installations below a URL
 context path. Load it with `jira-gitlab-change` to launch coordinated GitLab changes.

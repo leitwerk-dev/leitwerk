@@ -79,6 +79,35 @@ export interface JiraComment {
 	body: string;
 }
 
+/** @internal */
+export interface JiraCreateField {
+	/** @internal */
+	name: string;
+	/** @internal */
+	required: boolean;
+	/** @internal */
+	hasDefaultValue?: boolean;
+	/** @internal */
+	schema?: Record<string, unknown>;
+	/** @internal */
+	allowedValues?: unknown[];
+}
+
+/** @internal */
+export interface JiraCreateProject extends JiraProject {
+	/** @internal */
+	issuetypes: Array<{
+		/** @internal */
+		id: string;
+		/** @internal */
+		name: string;
+		/** @internal */
+		subtask: boolean;
+		/** @internal */
+		fields: Record<string, JiraCreateField>;
+	}>;
+}
+
 /** @public */
 export interface JiraClientLike extends Pick<JiraClient, keyof JiraClient> {}
 
@@ -203,12 +232,15 @@ export class JiraClient {
 		this.#epicLinkField = profile.epicLinkField;
 	}
 	async #request<T>(path: string, init: RequestInit = {}): Promise<T> {
+		init.signal?.throwIfAborted();
 		let response: Response;
 		try {
 			response = await this.#fetch(`${this.baseUrl}/rest/api/2/${path}`, {
 				...init,
 				redirect: "error",
-				signal: AbortSignal.timeout(30_000),
+				signal: init.signal
+					? AbortSignal.any([init.signal, AbortSignal.timeout(30_000)])
+					: AbortSignal.timeout(30_000),
 				headers: {
 					Authorization: `Bearer ${this.#token}`,
 					Accept: "application/json",
@@ -226,22 +258,28 @@ export class JiraClient {
 			throw new Error("Jira returned invalid JSON");
 		}
 	}
-	async #pages<T>(path: string, field: string): Promise<T[]> {
+	async #pages<T>(path: string, field: string, signal?: AbortSignal): Promise<T[]> {
 		const items: T[] = [];
 		let startAt = 0;
 		for (;;) {
 			const page = await this.#request<Record<string, unknown> | T[]>(
 				`${path}${path.includes("?") ? "&" : "?"}startAt=${startAt}&maxResults=100`,
+				{ signal },
 			);
 			// Data Center's project and component endpoints may return the complete array.
 			if (Array.isArray(page)) return page;
 			const batch = page[field];
 			if (!Array.isArray(batch)) throw new Error("Jira returned an invalid page");
-			if (typeof page.startAt === "number" && page.startAt !== startAt)
+			const pageStart = page.startAt ?? page.start;
+			if (typeof pageStart === "number" && pageStart !== startAt)
 				throw new Error("Jira pagination did not advance");
 			items.push(...(batch as T[]));
 			startAt += batch.length;
-			if (page.isLast === true || (typeof page.total === "number" && startAt >= page.total))
+			if (
+				page.isLast === true ||
+				page.last === true ||
+				(typeof page.total === "number" && startAt >= page.total)
+			)
 				return items;
 			if (!batch.length) {
 				if (typeof page.total === "number" && startAt < page.total)
@@ -252,8 +290,73 @@ export class JiraClient {
 	}
 
 	/** @internal */
-	listProjects() {
-		return this.#pages<JiraProject>("project", "values");
+	listProjects(signal?: AbortSignal) {
+		return this.#pages<JiraProject>("project", "values", signal);
+	}
+
+	/** @internal */
+	async listCreateProjects(projectId?: string, signal?: AbortSignal): Promise<JiraCreateProject[]> {
+		const projects = projectId
+			? [await this.#request<JiraProject>(`project/${encodeURIComponent(projectId)}`, { signal })]
+			: await this.listProjects(signal);
+		return Promise.all(
+			projects.map(async (project) => {
+				const path = `issue/createmeta/${encodeURIComponent(project.id)}/issuetypes`;
+				const issueTypes = await this.#pages<
+					Omit<JiraCreateProject["issuetypes"][number], "fields">
+				>(path, "values", signal);
+				return {
+					...project,
+					issuetypes: await Promise.all(
+						issueTypes
+							.filter((issueType) => !issueType.subtask)
+							.map(async (issueType) => {
+								const fields = await this.#pages<
+									JiraCreateField & { /** @internal */ fieldId: string }
+								>(`${path}/${encodeURIComponent(issueType.id)}`, "values", signal);
+								return {
+									...issueType,
+									fields: Object.fromEntries(
+										fields.map(({ fieldId, ...field }) => {
+											if (typeof fieldId !== "string" || !fieldId)
+												throw new Error("Jira returned invalid create field metadata");
+											return [fieldId, field];
+										}),
+									),
+								};
+							}),
+					),
+				};
+			}),
+		);
+	}
+
+	/** @internal */
+	listProjectIssues(projectId: string, signal?: AbortSignal): Promise<JiraIssue[]> {
+		if (!/^\d+$/.test(projectId)) throw new Error("Invalid Jira project ID");
+		return this.#pages<JiraIssue>(
+			`search?jql=${encodeURIComponent(`project = ${projectId} ORDER BY id ASC`)}&fields=summary,description,labels,project,components,status`,
+			"issues",
+			signal,
+		);
+	}
+
+	/** @internal */
+	async createIssue(fields: Record<string, unknown>, signal?: AbortSignal): Promise<JiraIssue> {
+		const result = await this.createIssueReceipt(fields, signal);
+		return this.getIssue(result.id, signal);
+	}
+
+	/** Return the write receipt without a follow-up read that could obscure a successful POST. @internal */
+	createIssueReceipt(
+		fields: Record<string, unknown>,
+		signal?: AbortSignal,
+	): Promise<JiraIssueReceipt> {
+		return this.#request<JiraIssueReceipt>("issue", {
+			method: "POST",
+			body: JSON.stringify({ fields }),
+			signal,
+		});
 	}
 
 	/** @internal */
@@ -276,8 +379,8 @@ export class JiraClient {
 	}
 
 	/** @internal */
-	getIssue(id: string) {
-		return this.#request<JiraIssue>(`issue/${encodeURIComponent(id)}?fields=*all`);
+	getIssue(id: string, signal?: AbortSignal) {
+		return this.#request<JiraIssue>(`issue/${encodeURIComponent(id)}?fields=*all`, { signal });
 	}
 
 	async #resolveEpicLinkField(): Promise<string | null> {
@@ -325,11 +428,6 @@ export class JiraClient {
 		if (includeEpicLink && !epicLinkField)
 			throw new Error("Splitting a Jira epic requires an Epic Link field");
 		return { epicLinkField, issueTypes: project.issuetypes };
-	}
-
-	/** @internal */
-	createIssue(fields: Record<string, unknown>): Promise<JiraIssueReceipt> {
-		return this.#request("issue", { method: "POST", body: JSON.stringify({ fields }) });
 	}
 
 	/** @internal */

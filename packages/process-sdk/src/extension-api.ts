@@ -1059,6 +1059,8 @@ export interface TicketCreationCapability {
 	readonly titlePath?: string;
 	/** RFC 6901 JSON Pointer into the tool arguments. @public */
 	readonly descriptionPath?: string;
+	/** Read-only issue preview format; defaults to plain text. @public */
+	readonly descriptionFormat?: "plain" | "markdown";
 	/** @public */
 	readonly destinations?: TicketCreationDestinationProvider;
 }

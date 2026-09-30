@@ -52,6 +52,8 @@ export class LocalGitLabAdapter {
 	loseNextCommentResponse = false;
 	/** @public */
 	loseNextMergeRequestResponse = false;
+	/** @internal */
+	loseNextIssueResponse = false;
 	/** @public */
 	loseNextReplyResponse = false;
 	/** @public */
@@ -224,10 +226,26 @@ export class LocalGitLabAdapter {
 		});
 		return {
 			baseUrl: this.baseUrl,
-			listIssues: async (id) =>
+			listIssues: async (id, _signal, state = "opened") =>
 				structuredClone(
-					(this.state.issues ?? []).filter((i) => i.project_id === id && i.state === "opened"),
+					(this.state.issues ?? []).filter(
+						(i) => i.project_id === id && (state === "all" || i.state === "opened"),
+					),
 				),
+			createIssue: async (id, input) => {
+				const issue = this.createIssue(
+					id,
+					input.title,
+					input.labels ? input.labels.split(",") : [],
+				);
+				issue.description = input.description;
+				this.save();
+				if (this.loseNextIssueResponse) {
+					this.loseNextIssueResponse = false;
+					throw new Error("Response lost after issue write");
+				}
+				return structuredClone(issue);
+			},
 			getIssue: async (id, iid) => {
 				const issue = (this.state.issues ?? []).find((i) => i.project_id === id && i.iid === iid);
 				if (!issue) throw new Error("Unknown local GitLab issue");

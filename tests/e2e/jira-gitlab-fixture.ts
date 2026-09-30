@@ -14,7 +14,7 @@ import jira, {
 	type JiraSourceConfig,
 	setupJiraIntegration,
 } from "@leitwerk-dev/jira";
-import { LocalJiraAdapter } from "@leitwerk-dev/jira/testing";
+import { LocalJiraSplitAdapter as LocalJiraAdapter } from "@leitwerk-dev/jira/testing";
 import { createJiraGitLabChange, type JiraGitLabParams } from "@leitwerk-dev/jira-gitlab-change";
 import type { CoreServerSetupDeps } from "@leitwerk-dev/process-sdk";
 import { createPollingTestExtension, fixtureModelProviders } from "@leitwerk-dev/test-support";

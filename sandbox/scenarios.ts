@@ -86,16 +86,26 @@ export function notebookScriptResolver(
 					},
 				],
 			});
-		if (names.has("local_create_ticket") || names.has("forgejo_create_issue")) {
-			const toolName = names.has("forgejo_create_issue")
-				? "forgejo_create_issue"
-				: "local_create_ticket";
+		const ticketTool = [
+			"forgejo_create_issue",
+			"github_create_issue",
+			"gitlab_create_issue",
+			"jira_create_issue",
+			"local_create_ticket",
+		].find((name) => names.has(name));
+		if (ticketTool) {
+			const toolName = ticketTool;
 			const params = JSON.parse(process.paramsJson ?? "{}");
+			const titleKey = toolName === "jira_create_issue" ? "summary" : "title";
+			const bodyKey =
+				toolName === "jira_create_issue" || toolName === "gitlab_create_issue"
+					? "description"
+					: "body";
 			const ticket = call(toolName, {
-				title: `Improve the garden notebook${progress.step > 1 ? ` (revision ${progress.step})` : ""}`,
-				body: "Document the weekly planting review.",
+				[titleKey]: `Improve the garden notebook${progress.step > 1 ? ` (revision ${progress.step})` : ""}`,
+				[bodyKey]: "Document the weekly planting review.",
 				destinationId:
-					toolName === "forgejo_create_issue" ? params.ticketDestinations?.[0]?.id : "garden",
+					toolName === "local_create_ticket" ? "garden" : params.ticketDestinations?.[0]?.id,
 			});
 			const afterToolResult = (
 				call: StubToolCallScriptCall,
@@ -112,8 +122,8 @@ export function notebookScriptResolver(
 						...call,
 						args: {
 							...call.args,
-							title: `Revised: ${call.args.title}`,
-							body: `Document the weekly planting review.\n\n${"feedback" in result ? result.feedback : ""}`,
+							[titleKey]: `Revised: ${call.args[titleKey]}`,
+							[bodyKey]: `Document the weekly planting review.\n\n${"feedback" in result ? result.feedback : ""}`,
 						},
 					};
 				return undefined;

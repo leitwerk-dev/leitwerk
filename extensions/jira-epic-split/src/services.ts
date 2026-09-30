@@ -497,9 +497,9 @@ export function registerSplitTools(api: ServerExtensionAPI, services: SplitServi
 				}
 				if (!receipt) {
 					parseLabels(state.labels.join(","));
-					if (!client.createIssue || !client.createMetadata)
+					if (!client.createIssueReceipt || !client.createMetadata)
 						throw new Error("Jira issue creation unavailable");
-					const createIssue = client.createIssue.bind(client);
+					const createIssue = client.createIssueReceipt.bind(client);
 					const metadata = await client.createMetadata(
 						epic.fields.project.id,
 						jiraIsEpic(params.epic),

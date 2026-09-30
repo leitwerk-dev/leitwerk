@@ -1,4 +1,4 @@
-import { LocalJiraAdapter } from "@leitwerk-dev/jira/testing";
+import { LocalJiraSplitAdapter as LocalJiraAdapter } from "@leitwerk-dev/jira/testing";
 import { expect, it } from "vitest";
 import { epicSplitSource } from "./index.js";
 

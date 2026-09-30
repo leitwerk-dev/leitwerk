@@ -763,6 +763,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			processModelPolicy,
 			getModelAvailabilitySnapshot: () => modelStatusCache.snapshot(),
 			afterRecord(process) {
+				invalidateExternalSourceArmings?.(process.id);
 				// The process volume is the durable source for an already-created start.
 				// A missing server-cache entry is valid after restart.
 				piResourceBundlePins.reconcile(process);
@@ -811,6 +812,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		const toolApprovalGate = createToolApprovalGate({
 			repos: baseDeps,
 			processOperations,
+			broadcaster,
 		});
 		const integrationToolRequests = createIntegrationToolRequestService({
 			registry: integrationTools,

@@ -1,8 +1,10 @@
+import { readLocalJson, writeLocalJson } from "@leitwerk-dev/test-support/local-git";
 import {
 	type JiraClientLike,
 	type JiraComment,
 	type JiraComponent,
 	type JiraCreateMetadata,
+	type JiraCreateProject,
 	type JiraIssue,
 	type JiraIssueReceipt,
 	type JiraProject,
@@ -13,7 +15,7 @@ import {
 export { registerJiraWikiTools } from "./wiki.js";
 
 /** @internal */
-export class LocalJiraAdapter implements JiraClientLike {
+export class LocalJiraSplitAdapter implements JiraClientLike {
 	/** @internal */ readonly baseUrl = "https://jira.test/context";
 	/** @internal */ readonly issues = new Map<string, JiraIssue>();
 	/** @internal */ readonly comments = new Map<string, JiraComment[]>();
@@ -46,6 +48,34 @@ export class LocalJiraAdapter implements JiraClientLike {
 			).values(),
 		];
 	}
+	/** @internal */ async listCreateProjects(projectId?: string): Promise<JiraCreateProject[]> {
+		return (await this.listProjects())
+			.filter((project) => !projectId || project.id === projectId)
+			.map((project) => ({
+				...project,
+				issuetypes: this.issueTypes
+					.filter((type) => !type.subtask)
+					.map((type) => ({
+						...type,
+						subtask: false,
+						fields: Object.fromEntries(
+							Object.entries(type.fields).map(([key, field]) => [
+								key,
+								{
+									...field,
+									name: key,
+									required: field.required ?? false,
+								},
+							]),
+						),
+					})),
+			}));
+	}
+	/** @internal */ async listProjectIssues(projectId: string): Promise<JiraIssue[]> {
+		return structuredClone(
+			[...this.issues.values()].filter((issue) => issue.fields.project.id === projectId),
+		);
+	}
 	/** @internal */ async listComponents(): Promise<JiraComponent[]> {
 		return structuredClone(this.components);
 	}
@@ -76,7 +106,13 @@ export class LocalJiraAdapter implements JiraClientLike {
 			issueTypes: structuredClone(this.issueTypes),
 		};
 	}
-	/** @internal */ async createIssue(fields: Record<string, unknown>): Promise<JiraIssueReceipt> {
+	/** @internal */ async createIssueReceipt(
+		fields: Record<string, unknown>,
+	): Promise<JiraIssueReceipt> {
+		const { id, key } = await this.createIssue(fields);
+		return { id, key };
+	}
+	/** @internal */ async createIssue(fields: Record<string, unknown>): Promise<JiraIssue> {
 		const type = this.issueTypes.find(
 			(candidate) => candidate.id === (fields.issuetype as { id: string }).id,
 		);
@@ -119,7 +155,7 @@ export class LocalJiraAdapter implements JiraClientLike {
 			this.loseNextCreateResponse = false;
 			throw new Error("Response lost after Jira creation");
 		}
-		return { id, key };
+		return this.getIssue(id);
 	}
 	/** @internal */ async findSplitIssue(projectId: string, marker: string) {
 		return this.searchVisible
@@ -148,4 +184,149 @@ export class LocalJiraAdapter implements JiraClientLike {
 			...new Set([...issue.fields.labels.filter((label) => !remove.includes(label)), ...add]),
 		];
 	}
+}
+
+/** @internal */
+export class LocalJiraAdapter {
+	/** @internal */
+	readonly state: {
+		/** @internal */
+		version: number;
+		/** @internal */
+		projects: JiraCreateProject[];
+		/** @internal */
+		issues: JiraIssue[];
+		/** @internal */
+		comments: Record<string, JiraComment[]>;
+	};
+	/** @internal */
+	loseNextIssueResponse = false;
+	/** @internal */
+	constructor(
+		/** @internal */ readonly root: string,
+		/** @internal */ readonly baseUrl = "https://jira.test",
+	) {
+		this.state = readLocalJson(root, "jira.json", {
+			version: 1,
+			projects: [],
+			issues: [],
+			comments: {},
+		});
+	}
+	/** @internal */
+	save(): void {
+		writeLocalJson(this.root, "jira.json", this.state);
+	}
+	/** @internal */
+	seed(project: JiraCreateProject): void {
+		if (this.state.projects.some((candidate) => candidate.id === project.id)) return;
+		this.state.projects.push(structuredClone(project));
+		this.save();
+	}
+	/** @internal */
+	client(): JiraClientLike {
+		return {
+			...localJiraIssueClient(this.state, () => this.save()),
+			baseUrl: this.baseUrl,
+			listProjects: async () => structuredClone(this.state.projects),
+			listCreateProjects: async (id) =>
+				structuredClone(this.state.projects.filter((project) => !id || project.id === id)),
+			listComponents: async () => [],
+			searchIssues: async (ids) =>
+				structuredClone(this.state.issues.filter((issue) => ids.includes(issue.fields.project.id))),
+			listProjectIssues: async (id) =>
+				structuredClone(this.state.issues.filter((issue) => issue.fields.project.id === id)),
+			searchSplitIssues: async (ids) =>
+				structuredClone(
+					this.state.issues.filter(
+						(issue) => ids.includes(issue.fields.project.id) && jiraSplitEligible(issue),
+					),
+				),
+			getEpic: async (issue) =>
+				issue.fields.issuetype?.name === "Epic" ? structuredClone(issue) : null,
+			createMetadata: async (id, includeEpicLink = true) => {
+				if (includeEpicLink)
+					throw new Error("Local ticket creation does not configure an Epic Link field");
+				const project = this.state.projects.find((project) => project.id === id);
+				if (!project) throw new Error("Unknown local Jira project");
+				return { epicLinkField: null, issueTypes: structuredClone(project.issuetypes) };
+			},
+			findSplitIssue: async (id, marker) => {
+				const matches = this.state.issues.filter(
+					(issue) => issue.fields.project.id === id && issue.fields.labels.includes(marker),
+				);
+				if (matches.length > 1) throw new Error("Multiple Jira tickets share the split identity");
+				return structuredClone(matches[0] ?? null);
+			},
+			createIssueReceipt: async (fields, signal) => {
+				const { id, key } = await this.client().createIssue(fields, signal);
+				return { id, key };
+			},
+			createIssue: async (fields) => {
+				const project = this.state.projects.find(
+					(project) => project.id === (fields.project as { id: string }).id,
+				);
+				if (!project) throw new Error("Unknown local Jira project");
+				const issueType = project.issuetypes.find(
+					(type) => type.id === (fields.issuetype as { id: string }).id,
+				);
+				if (!issueType) throw new Error("Unknown local Jira issue type");
+				for (const key of Object.keys(fields)) {
+					if (!["project", "issuetype"].includes(key) && !Object.hasOwn(issueType.fields, key))
+						throw new Error(`Jira field '${key}' is not on the create screen`);
+				}
+				const created: JiraIssue = {
+					id: String(this.state.issues.length + 1),
+					key: `${project.key}-${this.state.issues.filter((issue) => issue.fields.project.id === project.id).length + 1}`,
+					fields: {
+						...fields,
+						summary: String(fields.summary),
+						description: String(fields.description),
+						labels: (fields.labels as string[] | undefined) ?? [],
+						project,
+						components: [],
+						status: { statusCategory: { key: "new" } },
+					},
+				};
+				this.state.issues.push(created);
+				this.save();
+				if (this.loseNextIssueResponse) {
+					this.loseNextIssueResponse = false;
+					throw new Error("Response lost after issue write");
+				}
+				return structuredClone(created);
+			},
+		};
+	}
+}
+
+/** @internal */
+export function localJiraIssueClient(
+	state: Pick<LocalJiraAdapter["state"], "issues" | "comments">,
+	save: () => void,
+): Pick<JiraClientLike, "getIssue" | "listComments" | "addComment" | "updateLabels"> {
+	const issue = (id: string) => {
+		const found = state.issues.find((issue) => issue.id === id || issue.key === id);
+		if (!found) throw new Error("Unknown local Jira issue");
+		return found;
+	};
+	return {
+		getIssue: async (id) => structuredClone(issue(id)),
+		listComments: async (id) => structuredClone(state.comments[issue(id).id] ?? []),
+		addComment: async (id, body) => {
+			state.comments[issue(id).id] ??= [];
+			const comments = state.comments[issue(id).id];
+			const comment = { id: String(comments.length + 1), body };
+			comments.push(comment);
+			save();
+			return structuredClone(comment);
+		},
+		updateLabels: async (id, remove, add) => {
+			const current = issue(id);
+			current.fields.labels = [
+				...new Set([...current.fields.labels.filter((label) => !remove.includes(label)), ...add]),
+			];
+			save();
+		},
+	};
 }

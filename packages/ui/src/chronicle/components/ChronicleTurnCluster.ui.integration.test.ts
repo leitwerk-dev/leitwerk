@@ -1,10 +1,10 @@
 /// <reference types="svelte" />
-import { mount, tick, unmount } from "svelte";
+import { tick } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { mountTest } from "../../test-support/mount.js";
 import type { ChronicleTurnClusterItem } from "../lib/chronicle-projection.js";
 import ChronicleTurnCluster from "./ChronicleTurnCluster.svelte";
 
-const mounted: ReturnType<typeof mount>[] = [];
 const onOpenReasoningDetails = vi.fn();
 const onDraftTicket = vi.fn();
 function cluster(overrides: Partial<ChronicleTurnClusterItem> = {}): ChronicleTurnClusterItem {
@@ -37,28 +37,17 @@ function cluster(overrides: Partial<ChronicleTurnClusterItem> = {}): ChronicleTu
 	};
 }
 async function render(value: ChronicleTurnClusterItem, compressHistory = false) {
-	const target = document.createElement("div");
-	document.body.appendChild(target);
-	mounted.push(
-		mount(ChronicleTurnCluster, {
-			target,
-			props: {
-				cluster: value,
-				isFocused: false,
-				compressHistory,
-				onOpenReasoningDetails,
-				onDraftTicket,
-			},
-		}),
-	);
+	const { target } = mountTest(ChronicleTurnCluster, {
+		cluster: value,
+		isFocused: false,
+		compressHistory,
+		onOpenReasoningDetails,
+		onDraftTicket,
+	});
 	await tick();
 	return target;
 }
-afterEach(async () => {
-	for (const app of mounted.splice(0)) await unmount(app);
-	document.body.replaceChildren();
-	vi.clearAllMocks();
-});
+afterEach(() => vi.clearAllMocks());
 
 describe("chronicle turn disclosure", () => {
 	it("shows the full short result without empty prompt or reasoning panels and keeps issue creation attached to that result", async () => {
@@ -150,34 +139,24 @@ describe("ended progress", () => {
 		["superseded", "Interrupted"],
 		["succeeded", "Final status not recorded"],
 	])("renders %s without active steps", async (attemptStatus, label) => {
-		const target = document.createElement("div");
-		document.body.append(target);
-		mounted.push(
-			mount(ChronicleTurnCluster, {
-				target,
-				props: {
-					cluster: cluster({
-						sections: [
-							{
-								kind: "turn_progress",
-								attemptStatus,
-								report: {
-									title: "Delivery",
-									steps: [
-										{ id: "active", label: "Publish", status: "in_progress" },
-										{ id: "future", label: "Merge", status: "incomplete" },
-									],
-									links: [{ id: "pr", label: "PR #53", url: "https://example.test/pr/53" }],
-								},
-							},
-						],
-					}),
-					isFocused: false,
-					onOpenReasoningDetails,
-				},
+		const target = await render(
+			cluster({
+				sections: [
+					{
+						kind: "turn_progress",
+						attemptStatus,
+						report: {
+							title: "Delivery",
+							steps: [
+								{ id: "active", label: "Publish", status: "in_progress" },
+								{ id: "future", label: "Merge", status: "incomplete" },
+							],
+							links: [{ id: "pr", label: "PR #53", url: "https://example.test/pr/53" }],
+						},
+					},
+				],
 			}),
 		);
-		await tick();
 		expect(target.textContent).toContain(label);
 		expect(target.textContent).toContain("Related resources");
 		expect(target.querySelector('[data-progress-status="in_progress"]')).toBeNull();

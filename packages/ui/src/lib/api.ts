@@ -128,9 +128,10 @@ export async function fetchTicketCreationTools(): Promise<TicketCreationToolSumm
 export function launchTicketCreation(
 	instanceId: string,
 	body: LaunchTicketCreationRequestBody,
+	idempotencyKey = crypto.randomUUID(),
 ): Promise<LaunchTicketCreationResponseBody> {
 	const init = jsonRequestInit("POST", body);
-	init.headers = { ...init.headers, "idempotency-key": crypto.randomUUID() };
+	init.headers = { ...init.headers, "idempotency-key": idempotencyKey };
 	return requestJson({
 		path: `/api/processes/${encodeURIComponent(instanceId)}/ticket-creation`,
 		init,

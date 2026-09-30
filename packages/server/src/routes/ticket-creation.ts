@@ -95,6 +95,9 @@ export function registerTicketCreationRoutes(
 			tools: registry.ticketCatalog().map((tool) => ({
 				name: tool.name,
 				displayName: tool.capability.displayName,
+				descriptionFormat: tool.capability.descriptionFormat,
+				titlePath: tool.capability.titlePath,
+				descriptionPath: tool.capability.descriptionPath,
 			})),
 		}),
 	);
@@ -109,6 +112,23 @@ export function registerTicketCreationRoutes(
 						statusCode: 400,
 					});
 				}
+				const existing = deps.launchRuns.getByIdempotencyKey(idempotencyKey.trim());
+				if (existing?.instanceId) {
+					const relation = deps.processRelations.getByChild(existing.instanceId);
+					if (
+						existing.launcherId !== `ticket:${req.body.toolName}` ||
+						relation?.parentInstanceId !== req.params.instanceId ||
+						relation.purpose !== "ticket_creation"
+					) {
+						return reply
+							.code(409)
+							.send({ error: "This launch key already belongs to another request" });
+					}
+					return {
+						childInstanceId: existing.instanceId,
+						relation,
+					} satisfies LaunchTicketCreationResponseBody;
+				}
 				const tool = registry.resolveTicketTool(req.body.toolName);
 				const { processId, startTurnId } = tool.capability;
 				if (!hasProcessGraph(deps.processGraphs, processId)) {
@@ -120,6 +140,14 @@ export function registerTicketCreationRoutes(
 				const destinationList = tool.capability.destinations
 					? await registry.listTicketDestinations(req.body.toolName, actor)
 					: undefined;
+				if (destinationList && destinationList.destinations.length === 0) {
+					throw Object.assign(
+						new Error(
+							`No destinations are available in ${tool.capability.displayName}. Check project access and issue permissions, then try again.${destinationList.warnings?.length ? ` ${destinationList.warnings.join(" ")}` : ""}`,
+						),
+						{ statusCode: 503 },
+					);
+				}
 				const { parent, context } = assembleContext(deps, req.params.instanceId, req.body);
 				const launchPlan: ProcessLaunchPlan = {
 					launcherId: `ticket:${req.body.toolName}`,
@@ -168,11 +196,6 @@ export function registerTicketCreationRoutes(
 				}
 				const relation = deps.processRelations.getByChild(launched.process.id);
 				if (!relation) throw new Error("Ticket launch did not create its process relation");
-				if (launched.error) {
-					return reply
-						.code(500)
-						.send({ error: launched.error, childInstanceId: launched.process.id });
-				}
 				return {
 					childInstanceId: launched.process.id,
 					relation,

@@ -202,7 +202,9 @@ export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalG
 		this.save();
 	}
 	/** @public */
-	failNextResponse(operation: "comment" | "reply" | "reaction" | "issue" | "label") {
+	failNextResponse(
+		operation: "comment" | "reply" | "reaction" | "issue" | "label" | "create-issue",
+	) {
 		this.state.failAfterWrite = operation;
 		this.save();
 	}
@@ -230,7 +232,7 @@ export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalG
 			title: input.title,
 			body: input.body ?? "",
 			state: "open",
-			html_url: `${this.options.baseUrl}/__local#issue-${number}`,
+			html_url: `${this.options.baseUrl}/__local/github/receipts/${repo.repository.id}/${number}`,
 			updated_at: this.timestamp(),
 			user: { login: input.author ?? "developer" },
 			labels: [],
@@ -296,6 +298,23 @@ export class LocalGitHubAdapter extends LocalForgeStore<LocalGitHubState, LocalG
 		};
 		const client: GitHubClientLike = {
 			profile,
+			getRepositoryById: async (id) => {
+				const found = this.state.repositories.find((entry) => entry.repository.id === id);
+				if (!found) throw new Error("Unknown local GitHub repository");
+				return {
+					...repo(found.repository.owner.login, found.repository.name).repository,
+					archived: false,
+					has_issues: true,
+				};
+			},
+			listIssues: async (owner, name) => structuredClone(repo(owner, name).issues),
+			createIssue: async (owner, name, input) => {
+				const issue = this.createIssue(repo(owner, name), input);
+				issue.labels = input.labels.map((label) => ({ id: this.id(), name: label }));
+				this.save();
+				this.lostResponse("create-issue");
+				return structuredClone(issue);
+			},
 			listRepositories: async () =>
 				this.state.repositories
 					.map((r) => ({ ...r.repository, archived: false, has_issues: true }))

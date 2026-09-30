@@ -3,11 +3,13 @@ import {
 	type RepositoryIssue as ForgejoIssue,
 	type RepositoryPullRequest as ForgejoPullRequest,
 	normalizeRepositoryFeedback,
+	ticketLabelNames as parseLabelNames,
 	type RepositoryFeedbackItem,
 	RepositoryHttpClient,
 } from "@leitwerk-dev/process-sdk";
 
 export type { ForgejoIssue, ForgejoPullRequest };
+export { parseLabelNames };
 
 /** @public */
 export interface ForgejoRepository {
@@ -111,13 +113,6 @@ export function parseForgejoTicketCreationConfig(value: unknown): ForgejoTicketC
 		...enabled,
 		defaultLabels: parseLabelNames(rawLabels, "Forgejo ticket_creation.default_labels"),
 	};
-}
-
-/** @internal */
-export function parseLabelNames(value: unknown = [], name: string): string[] {
-	if (!Array.isArray(value) || value.some((label) => typeof label !== "string" || !label.trim()))
-		throw new Error(`${name} must be an array of non-empty strings`);
-	return [...new Set(value.map((label) => label.trim()))];
 }
 
 /** @internal */

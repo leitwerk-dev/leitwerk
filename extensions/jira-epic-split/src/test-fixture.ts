@@ -1,6 +1,6 @@
 import { LocalGitLabAdapter } from "@leitwerk-dev/gitlab/testing";
 import type { JiraIssue } from "@leitwerk-dev/jira";
-import { LocalJiraAdapter } from "@leitwerk-dev/jira/testing";
+import { LocalJiraSplitAdapter as LocalJiraAdapter } from "@leitwerk-dev/jira/testing";
 import { LocalGit } from "@leitwerk-dev/test-support/local-git";
 
 /** @internal */

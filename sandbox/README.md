@@ -113,6 +113,19 @@ does not simulate production scheduling or deployment.
 
 ## Local integration composition
 
+For the complete ticket flow with all four production adapters backed by local
+providers, run a separate workspace with this composition:
+
+```sh
+LEITWERK_SANDBOX_COMPOSITION_ENTRY="$PWD/sandbox/ticket-composition.ts" npm run dev:sandbox
+```
+
+The **ticket** scene exposes Forgejo, GitHub, GitLab and Jira in the issue composer.
+Each targets a Garden notebook repository or project and uses the normal approval
+gate. The provider state persists in its own local JSON file. This composition needs
+no external credentials. Sandbox storage belongs to one composition; use a separate
+workspace or explicitly reset disposable sandbox data before switching compositions.
+
 Run the public-only Forgejo/GitHub/Woodpecker composition with:
 
 ```sh

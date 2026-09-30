@@ -230,15 +230,40 @@ export class GitHubClient extends RepositoryHttpClient {
 		);
 	}
 	/** @internal */
-	async listOpenIssues(owner: string, repo: string) {
-		return (
-			await this.pages<
-				GitHubIssue & {
-					/** @internal */
-					pull_request?: unknown;
-				}
-			>(`${this.repositoryPath(owner, repo)}/issues?state=open`)
-		).filter((issue) => !issue.pull_request);
+	listOpenIssues(owner: string, repo: string) {
+		return this.listIssues(owner, repo, undefined, "open");
+	}
+	/** @internal */
+	async getRepositoryById(id: number, signal?: AbortSignal): Promise<GitHubRepository> {
+		const repository = await this.request<GitHubRepository>(`/repositories/${id}`, { signal });
+		assertGitHubRepository(this.profile, repository.owner.login, repository.name);
+		return repository;
+	}
+	/** @internal */
+	async listIssues(
+		owner: string,
+		repo: string,
+		signal?: AbortSignal,
+		state: "open" | "all" = "all",
+	): Promise<GitHubIssue[]> {
+		const issues = await this.pages<GitHubIssue & { pull_request?: unknown }>(
+			`${this.repositoryPath(owner, repo)}/issues?state=${state}`,
+			signal,
+		);
+		return issues.filter((issue) => !issue.pull_request);
+	}
+	/** @internal */
+	createIssue(
+		owner: string,
+		repo: string,
+		input: {
+			/** @internal */ title: string;
+			/** @internal */ body: string;
+			/** @internal */ labels: string[];
+		},
+		signal?: AbortSignal,
+	): Promise<GitHubIssue> {
+		return this.writeJson(`${this.repositoryPath(owner, repo)}/issues`, "POST", input, signal);
 	}
 	/** @internal */
 	listIssueEvents(owner: string, repo: string, number: number) {
@@ -294,14 +319,15 @@ export class GitHubClient extends RepositoryHttpClient {
 		});
 	}
 	/** @internal */
-	listLabels(owner: string, repo: string) {
-		return this.pages<GitHubLabel>(`${this.repositoryPath(owner, repo)}/labels`);
+	listLabels(owner: string, repo: string, signal?: AbortSignal) {
+		return this.pages<GitHubLabel>(`${this.repositoryPath(owner, repo)}/labels`, signal);
 	}
 	/** @internal */
-	createLabel(owner: string, repo: string, name: string) {
+	createLabel(owner: string, repo: string, name: string, signal?: AbortSignal) {
 		return this.request<GitHubLabel>(`${this.repositoryPath(owner, repo)}/labels`, {
 			method: "POST",
 			body: JSON.stringify({ name, color: "238636" }),
+			signal,
 		});
 	}
 	/** @internal */

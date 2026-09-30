@@ -1,5 +1,30 @@
 # GitHub integration
 
+## Ticket creation
+
+Load `@leitwerk-dev/ticket-creation` and set:
+
+```yaml
+extensions:
+  github:
+    ticket_creation:
+      enabled: true
+      default_labels: [created-by-leitwerk]
+```
+
+`github_create_issue` uses the normal derived draft and approval flow. It discovers
+repositories from configured profiles, respects `allowed_organization`, and excludes
+archived repositories and repositories with issues disabled. The token needs Issues
+read/write access to the destination, including permission to create default labels.
+Optional labels must already exist. Set `default_labels: []` to omit defaults.
+
+The snapshot pins the API installation and repository ID. A renamed, transferred,
+disabled or repointed destination fails before writing. Retry reconciliation includes
+closed issues and recovers an issue whose create response was lost. Ticket creation
+defaults to disabled; enabling it requires the ticket process to be loaded.
+
+## Profiles and delivery
+
 Server-owned GitHub API profiles, pull-request state polling, and project-scoped
 LLM tools. Tokens never enter workers. Reads cover issues, pull requests, reviews,
 inline comments, Actions check runs, and releases. Pull-request creation, comments,

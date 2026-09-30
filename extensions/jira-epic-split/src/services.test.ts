@@ -8,7 +8,10 @@ import {
 	jiraEpicRevision,
 	jiraIssueExternalId,
 } from "@leitwerk-dev/jira";
-import { type LocalJiraAdapter, registerJiraWikiTools } from "@leitwerk-dev/jira/testing";
+import {
+	type LocalJiraSplitAdapter as LocalJiraAdapter,
+	registerJiraWikiTools,
+} from "@leitwerk-dev/jira/testing";
 import { createJiraGitLabLauncher } from "@leitwerk-dev/jira-gitlab-change";
 import {
 	createCapabilityAccessor,
@@ -273,7 +276,7 @@ it("reconciles legacy epic publication bindings and snapshots without another PO
 	const test = await fixture();
 	const repository = test.params.repositories[0];
 	const key = splitPublicationKey(test.params, repository);
-	const created = await test.jira.createIssue({
+	const created = await test.jira.createIssueReceipt({
 		project: { id: "100" },
 		issuetype: { id: "Story" },
 		summary: "Existing child",

@@ -7,8 +7,10 @@ import {
 	type ExternalActionSource,
 	type LeitwerkExtensionModule,
 	parseProcessWatcherLaunchModelConfig,
+	parseTicketCreationConfig,
 	type ServerExtensionAPI,
 	scopedSettingsCapability,
+	type TicketCreationConfig,
 } from "@leitwerk-dev/process-sdk";
 import { createPollSchedule, emptyPollResult, parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import {
@@ -19,6 +21,7 @@ import {
 	jiraIssueExternalId,
 	parseJiraProfiles,
 } from "./client.js";
+import { registerJiraTicketCreation } from "./ticket-creation.js";
 import { registerJiraTools } from "./tools.js";
 import { registerJiraWikiTools } from "./wiki.js";
 
@@ -142,12 +145,19 @@ export function setupJiraIntegration(
 	options: {
 		/** @public */
 		now?: () => number;
+		/** @internal */
+		ticketCreation?: TicketCreationConfig;
 	} = {},
 ) {
 	const now = options.now ?? Date.now;
 	api.provide(jiraIntegration, integration);
 	registerJiraTools(api, integration);
 	registerJiraWikiTools(api, integration);
+	registerJiraTicketCreation(
+		api,
+		integration,
+		options.ticketCreation ?? { enabled: false, defaultLabels: [] },
+	);
 	const settings = api.get(scopedSettingsCapability);
 	if (settings && !Array.isArray(settings)) {
 		settings.registerDiscovery("jira.project", async () => {
@@ -267,14 +277,18 @@ const extension: LeitwerkExtensionModule = {
 		const clients = new Map(
 			[...parseJiraProfiles(config)].map(([id, profile]) => [id, new JiraClient(profile)]),
 		);
-		setupJiraIntegration(api, {
-			profiles: () => [...clients.keys()],
-			client: (profile) => {
-				const client = clients.get(profile);
-				if (!client) throw new Error(`Jira profile '${profile}' is unavailable`);
-				return client;
+		setupJiraIntegration(
+			api,
+			{
+				profiles: () => [...clients.keys()],
+				client: (profile) => {
+					const client = clients.get(profile);
+					if (!client) throw new Error(`Jira profile '${profile}' is unavailable`);
+					return client;
+				},
 			},
-		});
+			{ ticketCreation: parseTicketCreationConfig(config, "Jira") },
+		);
 	},
 };
 export default extension;

@@ -37,6 +37,25 @@ const pipeline = (id: number, status: string, sha = "head"): GitLabPipeline => (
 	web_url: `https://forge.test/pipelines/${id}`,
 });
 describe("GitLab boundary", () => {
+	it("creates issues with the v4 payload and can reconcile closed issues without changing watcher discovery", async () => {
+		const requests: { url: URL; init?: RequestInit }[] = [];
+		const client = new GitLabClient(profile, {
+			fetch: async (url, init) => {
+				requests.push({ url: new URL(String(url)), init });
+				return init?.method === "POST" ? Response.json({ iid: 7 }) : Response.json([]);
+			},
+		});
+		const input = { title: "Review", description: "Checklist", labels: "triage" };
+		expect(await client.createIssue(42, input)).toEqual({ iid: 7 });
+		expect(requests[0].url.pathname).toBe("/api/v4/projects/42/issues");
+		expect(JSON.parse(String(requests[0].init?.body))).toEqual(input);
+		await client.listIssues(42);
+		await client.listIssues(42, undefined, "all");
+		expect(requests.slice(1).map((request) => request.url.searchParams.get("state"))).toEqual([
+			"opened",
+			"all",
+		]);
+	});
 	it.each([
 		[{ has_conflicts: true }, "conflict"],
 		[{ detailed_merge_status: "conflict", has_conflicts: false }, "conflict"],

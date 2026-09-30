@@ -33,6 +33,10 @@ export interface GitLabProject {
 	/** @public */
 	archived?: boolean;
 	/** @internal */
+	issues_enabled?: boolean;
+	/** @internal */
+	issues_access_level?: string;
+	/** @internal */
 	permissions?: {
 		/** @internal */
 		project_access?: {
@@ -457,8 +461,24 @@ export class GitLabClient {
 		throw new Error("GitLab pagination limit exceeded; discovery incomplete");
 	}
 	/** @public */
-	listIssues(id: number, signal?: AbortSignal): Promise<GitLabIssue[]> {
-		return this.pages(`${projectPath(id)}/issues?state=opened&scope=all`, signal);
+	listIssues(
+		id: number,
+		signal?: AbortSignal,
+		state: "opened" | "all" = "opened",
+	): Promise<GitLabIssue[]> {
+		return this.pages(`${projectPath(id)}/issues?state=${state}&scope=all`, signal);
+	}
+	/** @internal */
+	createIssue(
+		id: number,
+		input: {
+			/** @internal */ title: string;
+			/** @internal */ description: string;
+			/** @internal */ labels: string;
+		},
+		signal?: AbortSignal,
+	): Promise<GitLabIssue> {
+		return this.request(`${projectPath(id)}/issues`, signal, input);
 	}
 	/** @public */
 	getIssue(id: number, iid: number, signal?: AbortSignal): Promise<GitLabIssue> {
@@ -871,6 +891,7 @@ export class GitLabClient {
 export type GitLabClientLike = Pick<
 	GitLabClient,
 	| "listIssues"
+	| "createIssue"
 	| "getIssue"
 	| "updateIssue"
 	| "listIssueNotes"
