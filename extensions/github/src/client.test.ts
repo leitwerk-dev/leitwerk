@@ -12,6 +12,49 @@ const testClient = (profile: Partial<GitHubProfile> = {}) =>
 afterEach(() => vi.unstubAllGlobals());
 
 describe("GitHubClient", () => {
+	it("cancels an in-flight label creation request with the caller's signal", async () => {
+		const controller = new AbortController();
+		const signals: Array<AbortSignal | null | undefined> = [];
+		vi.stubGlobal("fetch", async (_url: string, init?: RequestInit) => {
+			signals.push(init?.signal);
+			controller.abort();
+			init?.signal?.throwIfAborted();
+			return Response.json({ id: 1, name: "triage" });
+		});
+		await expect(
+			testClient().createLabel("team", "garden", "triage", controller.signal),
+		).rejects.toThrow();
+		expect(signals).toHaveLength(1);
+		expect(signals[0]?.aborted).toBe(true);
+	});
+
+	it("creates issues with labels and reconciles closed issues without mistaking PRs for issues", async () => {
+		const requests: { url: string; init?: RequestInit }[] = [];
+		vi.stubGlobal("fetch", async (url: string, init?: RequestInit) => {
+			requests.push({ url, init });
+			return init?.method === "POST"
+				? Response.json({ number: 42 })
+				: Response.json([
+						{ number: 42, state: "closed" },
+						{ number: 43, pull_request: {} },
+					]);
+		});
+		const client = testClient();
+		const input = { title: "Review", body: "Checklist", labels: ["triage"] };
+		expect(await client.createIssue("team", "garden", input)).toEqual({ number: 42 });
+		expect(JSON.parse(String(requests[0].init?.body))).toEqual(input);
+		expect(await client.listIssues("team", "garden")).toEqual([{ number: 42, state: "closed" }]);
+		expect(new URL(requests[1].url).searchParams.get("state")).toBe("all");
+	});
+
+	it("checks the organization boundary after looking up a repository by immutable ID", async () => {
+		vi.stubGlobal("fetch", async () =>
+			Response.json({ id: 42, owner: { login: "outside" }, name: "garden" }),
+		);
+		await expect(testClient({ allowedOrganization: "team" }).getRepositoryById(42)).rejects.toThrow(
+			"must belong to team",
+		);
+	});
 	it("parses server-owned profiles and rejects insecure API origins", () => {
 		expect(
 			parseGitHubProfiles({

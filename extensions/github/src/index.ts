@@ -1,12 +1,15 @@
 import {
 	coreHostCapabilities,
 	type LeitwerkExtensionModule,
+	parseTicketCreationConfig,
 	repositorySettingsIdentity,
 	scopedSettingsCapability,
+	type TicketCreationConfig,
 } from "@leitwerk-dev/process-sdk";
 import { type GitHubIntegration, githubIntegration } from "./capability.js";
 import { GitHubClient, parseGitHubProfiles } from "./client.js";
 import { createGitHubProvider } from "./provider.js";
+import { registerGitHubTicketCreation } from "./ticket-creation.js";
 import { registerGitHubTools } from "./tools.js";
 
 /** @internal */
@@ -46,7 +49,9 @@ const extension: LeitwerkExtensionModule = {
 				return new GitHubClient(value);
 			},
 		};
-		setupGitHubIntegration(api, integration);
+		setupGitHubIntegration(api, integration, {
+			ticketCreation: parseTicketCreationConfig(config, "GitHub"),
+		});
 	},
 };
 
@@ -59,12 +64,19 @@ export function setupGitHubIntegration(
 	options: {
 		/** @public */
 		now?: () => number;
+		/** @internal */
+		ticketCreation?: TicketCreationConfig;
 	} = {},
 ) {
 	api.provide(githubIntegration, integration);
 	const deps = api.get(coreHostCapabilities.serverSetup);
 	if (!deps || Array.isArray(deps)) return;
 	registerGitHubTools(api, integration);
+	registerGitHubTicketCreation(
+		api,
+		integration,
+		options.ticketCreation ?? { enabled: false, defaultLabels: [] },
+	);
 	return createGitHubProvider(deps, integration, options);
 }
 

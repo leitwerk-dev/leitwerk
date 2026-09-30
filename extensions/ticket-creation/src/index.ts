@@ -15,7 +15,7 @@ function ticketPrompt(params: TicketCreationParams): string {
 			? `\n\n<ticket-destinations>\nChoose one destinationId when calling the ticket tool. Ask the operator which destination to use when their instructions do not make it clear.\n${params.ticketDestinations
 					.map(
 						(destination) =>
-							`- ${destination.displayName}${destination.group ? ` (${destination.group})` : ""}: ${destination.id}`,
+							`- ${destination.displayName}${destination.group ? ` (${destination.group})` : ""}: ${destination.id}${destination.description ? `\n  ${destination.description}` : ""}`,
 					)
 					.join("\n")}\n</ticket-destinations>`
 			: "";

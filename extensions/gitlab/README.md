@@ -1,5 +1,31 @@
 # GitLab
 
+## Ticket creation
+
+Load `@leitwerk-dev/ticket-creation` and set:
+
+```yaml
+extensions:
+  gitlab:
+    ticket_creation:
+      enabled: true
+      default_labels: [created-by-leitwerk]
+```
+
+`gitlab_create_issue` discovers projects from configured profiles, excluding archived
+projects and projects with issues disabled. The token needs API access and permission
+to create issues and configured default labels in the destination. Optional labels
+must already exist. Set `default_labels: []` to omit defaults; label names cannot
+contain commas.
+
+The normal draft process asks for approval before writing. Its snapshot pins the
+installation, project ID and path. Renamed, transferred, disabled or repointed
+destinations fail before writing. Retry reconciliation includes closed issues and
+recovers lost create responses. Ticket creation defaults to disabled; enabling it
+requires the ticket process to be loaded.
+
+## Profiles and delivery
+
 `@leitwerk-dev/gitlab` supplies GitLab v4 API access and repository-scoped HTTPS Git authentication from one server-owned profile. Load this optional extension on the server and worker.
 
 ```yaml

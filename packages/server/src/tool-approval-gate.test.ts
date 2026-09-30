@@ -1,4 +1,4 @@
-import { describe, expect, it, onTestFinished } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { closeDatabase } from "./db/database.js";
 import { commitWrites } from "./process-engine/writes/commit-writes.js";
 import { createWrites } from "./process-engine/writes/writes.js";
@@ -21,6 +21,7 @@ function createGateFixture() {
 	const gate = createToolApprovalGate({
 		repos,
 		processOperations: createProcessOperationCoordinator(),
+		broadcaster: repos.broadcaster,
 	});
 	onTestFinished(() => {
 		gate.cancelTurn(process.id, turn.id);
@@ -30,6 +31,43 @@ function createGateFixture() {
 }
 
 describe("tool approval gate", () => {
+	it.each([
+		"accepted",
+		"feedback",
+		"declined",
+		"cancelled",
+	] as const)("invalidates connected clients when approval opens and becomes %s", async (outcome) => {
+		const { repos, process, turn, gate } = createGateFixture();
+		const broadcast = vi.spyOn(repos.broadcaster, "sendDurable");
+		const input = {
+			instanceId: process.id,
+			turnRecordId: turn.id,
+			toolCallId: "review-call",
+			toolName: "tracker_create_issue",
+			arguments: { title: "Review the garden" },
+		};
+		const first = gate.review(input);
+		const replay = gate.review(input);
+		expect(broadcast).toHaveBeenCalledExactlyOnceWith(
+			"process.event",
+			expect.objectContaining({ eventType: "tool_approval_updated" }),
+			process.id,
+		);
+		const request = gate.listOpen(process.id)[0];
+		if (!request) throw new Error("Missing approval");
+		if (outcome === "cancelled") gate.cancelTurn(process.id, turn.id);
+		else
+			await gate.resolve(
+				process.id,
+				request.id,
+				outcome === "feedback" ? { kind: outcome, feedback: "Add reminders" } : { kind: outcome },
+				{ id: "operator", kind: "user", provider: null },
+			);
+		await Promise.all([first, replay]);
+		expect(broadcast).toHaveBeenCalledTimes(2);
+		expect(gate.listOpen(process.id)).toEqual([]);
+	});
+
 	it.each([
 		"accepted",
 		"cancelled",

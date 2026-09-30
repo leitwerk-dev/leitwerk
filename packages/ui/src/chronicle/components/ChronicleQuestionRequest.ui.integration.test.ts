@@ -1,16 +1,15 @@
 /// <reference types="svelte" />
 import type { ProcessQuestionRequest } from "@leitwerk-dev/domain";
 import { createTestQuestionRequest } from "@leitwerk-dev/test-support/fixtures";
-import { mount, tick, unmount } from "svelte";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { tick } from "svelte";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { mountTest } from "../../test-support/mount.js";
 
 const mockSubmitQuestionAnswers = vi.hoisted(() => vi.fn());
 
 vi.mock("../../lib/api", () => ({ submitQuestionAnswers: mockSubmitQuestionAnswers }));
 
 import ChronicleQuestionRequest from "./ChronicleQuestionRequest.svelte";
-
-const mounted: Array<ReturnType<typeof mount>> = [];
 
 function questionRequest(overrides: Partial<ProcessQuestionRequest> = {}): ProcessQuestionRequest {
 	return createTestQuestionRequest({
@@ -22,10 +21,7 @@ function questionRequest(overrides: Partial<ProcessQuestionRequest> = {}): Proce
 }
 
 function mountSubject(request = questionRequest()) {
-	const target = document.createElement("div");
-	document.body.appendChild(target);
-	mounted.push(mount(ChronicleQuestionRequest, { target, props: { request } }));
-	return target;
+	return mountTest(ChronicleQuestionRequest, { request }).target;
 }
 
 beforeEach(() => {
@@ -37,11 +33,6 @@ beforeEach(() => {
 			answeredAt: "2026-07-26T00:01:00.000Z",
 		}),
 	);
-});
-
-afterEach(async () => {
-	for (const app of mounted.splice(0)) await unmount(app);
-	document.body.replaceChildren();
 });
 
 describe("ChronicleQuestionRequest", () => {

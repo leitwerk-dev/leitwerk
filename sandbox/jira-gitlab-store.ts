@@ -1,4 +1,5 @@
 import type { JiraClientLike, JiraComment, JiraIssue } from "@leitwerk-dev/jira";
+import { localJiraIssueClient } from "@leitwerk-dev/jira/testing";
 import { readLocalJson, writeLocalJson } from "@leitwerk-dev/test-support/local-git";
 
 export const jiraProject = { id: "100", key: "ATLAS", name: "Atlas delivery experience" };
@@ -72,28 +73,17 @@ export class JiraSceneStore {
 	}
 	client(): JiraClientLike {
 		return {
+			...localJiraIssueClient(this.state, () => this.save()),
 			baseUrl: this.baseUrl,
 			listProjects: async () => [jiraProject],
+			listCreateProjects: async () => [],
+			listProjectIssues: async (id) =>
+				structuredClone(this.state.issues.filter((issue) => issue.fields.project.id === id)),
+			createIssue: async () => {
+				throw new Error("Ticket creation is unavailable in this review composition");
+			},
 			listComponents: async () => structuredClone(jiraComponents),
 			searchIssues: async () => structuredClone(this.state.issues),
-			getIssue: async (id) => structuredClone(this.issue(id)),
-			listComments: async (id) => structuredClone(this.state.comments[this.issue(id).id] ?? []),
-			addComment: async (id, body) => {
-				const issueId = this.issue(id).id;
-				this.state.comments[issueId] ??= [];
-				const comments = this.state.comments[issueId];
-				const comment = { id: String(comments.length + 1), body };
-				comments.push(comment);
-				this.save();
-				return structuredClone(comment);
-			},
-			updateLabels: async (id, remove, add) => {
-				const issue = this.issue(id);
-				issue.fields.labels = [
-					...new Set([...issue.fields.labels.filter((label) => !remove.includes(label)), ...add]),
-				];
-				this.save();
-			},
 		};
 	}
 }

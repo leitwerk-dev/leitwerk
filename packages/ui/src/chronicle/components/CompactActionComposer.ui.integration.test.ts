@@ -1,8 +1,9 @@
 /// <reference types="svelte" />
 
 import type { ProcessActionSummary } from "@leitwerk-dev/protocol/http-contracts";
-import { mount, tick, unmount } from "svelte";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { tick } from "svelte";
+import { describe, expect, it, vi } from "vitest";
+import { mountTest } from "../../test-support/mount.js";
 import type { ActionSectionController } from "../lib/action-bindings.js";
 import CompactActionComposer from "./CompactActionComposer.svelte";
 
@@ -36,15 +37,6 @@ const revisionAction: ProcessActionSummary = {
 	},
 };
 
-const mountedApps: Array<ReturnType<typeof mount>> = [];
-
-afterEach(async () => {
-	for (const app of mountedApps.splice(0)) {
-		await unmount(app);
-	}
-	document.body.innerHTML = "";
-});
-
 function mountSubject() {
 	const values: Record<string, Record<string, string | number | boolean>> = {
 		request_revision: { message: "" },
@@ -76,13 +68,10 @@ function mountSubject() {
 		collapseActionForm: vi.fn(),
 		submitActionDecision,
 	};
-	const target = document.createElement("div");
-	document.body.appendChild(target);
-	const app = mount(CompactActionComposer, {
-		target,
-		props: { actionSectionController: controller, onOpenDetails },
+	const { target } = mountTest(CompactActionComposer, {
+		actionSectionController: controller,
+		onOpenDetails,
 	});
-	mountedApps.push(app);
 	return { target, values, submitActionDecision, onOpenDetails, controller };
 }
 

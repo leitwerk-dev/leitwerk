@@ -1,5 +1,8 @@
 <script lang="ts">
-import type { TicketCreationToolSummary } from "@leitwerk-dev/protocol";
+import type {
+	LaunchTicketCreationRequestBody,
+	TicketCreationToolSummary,
+} from "@leitwerk-dev/protocol";
 import type { FormFieldDefinition } from "@leitwerk-dev/protocol/form-contract";
 import type { ChronicleTicketDraftArtifact } from "../../chronicle/lib/chronicle-ticket-artifact.js";
 import FormFieldRenderer from "../../components/FormFieldRenderer.svelte";
@@ -21,17 +24,20 @@ let selectedTicketTool = $state("");
 let ticketInstructions = $state("");
 let ticketError = $state<string | null>(null);
 let ticketLaunching = $state(false);
+let launchAttempt: { body: string; key: string } | null = null;
 
 const ticketInstructionsField: FormFieldDefinition<"textarea"> = {
 	id: "ticket-instructions",
 	label: "What issue should be created?",
 	kind: "textarea",
+	required: true,
 	placeholder: "Describe the problem, expected outcome, and any important constraints.",
 };
 const ticketToolField: FormFieldDefinition<"select"> = {
 	id: "ticket-tool",
 	label: "Ticket system",
 	kind: "select",
+	required: true,
 };
 
 $effect(() => {
@@ -45,7 +51,9 @@ $effect(() => {
 	void fetchTicketCreationTools()
 		.then((tools) => {
 			if (cancelled) return;
-			ticketTools = tools;
+			ticketTools = [...tools].sort((first, second) =>
+				first.displayName.localeCompare(second.displayName),
+			);
 			selectedTicketTool = tools.length === 1 ? (tools[0]?.name ?? "") : "";
 		})
 		.catch((reason) => {
@@ -60,17 +68,26 @@ $effect(() => {
 });
 
 function close() {
+	if (ticketLaunching) return;
 	ticketInstructions = "";
 	ticketError = null;
+	launchAttempt = null;
 	onClose();
 }
 
 async function submitTicketDraft() {
-	if (!draft || !selectedTicketTool) return;
+	if (
+		!draft ||
+		!ticketInstructions.trim() ||
+		!selectedTicketTool ||
+		ticketLaunching ||
+		ticketToolsLoading
+	)
+		return;
 	ticketLaunching = true;
 	ticketError = null;
 	try {
-		const result = await launchTicketCreation(instanceId, {
+		const body: LaunchTicketCreationRequestBody = {
 			artifact:
 				draft.kind === "turn_result"
 					? { kind: "turn_result", turnRecordId: draft.turnRecordId }
@@ -78,7 +95,12 @@ async function submitTicketDraft() {
 			focus: draft.excerpt ? { kind: "excerpt", excerpt: draft.excerpt } : { kind: "whole_result" },
 			additionalInstructions: ticketInstructions.trim(),
 			toolName: selectedTicketTool,
-		});
+		};
+		const serialized = JSON.stringify(body);
+		if (launchAttempt?.body !== serialized)
+			launchAttempt = { body: serialized, key: crypto.randomUUID() };
+		const result = await launchTicketCreation(instanceId, body, launchAttempt.key);
+		ticketLaunching = false;
 		close();
 		navigate(buildProcessPath(result.childInstanceId));
 	} catch (reason) {
@@ -97,7 +119,7 @@ async function submitTicketDraft() {
 	dataSection="ticket-composer"
 	panelId="ticket-composer"
 	width="min(100% - 32px, 520px)"
-	maxHeight="min(85dvh, 620px)"
+	maxHeight="min(100dvh - 32px, 680px)"
 	initialFocusSelector="textarea"
 	dismissible={!ticketLaunching}
 >
@@ -105,7 +127,9 @@ async function submitTicketDraft() {
 		<h2 id="ticket-composer-title">Create issue</h2>
 		<p>Start an issue draft from this result. You’ll review it before it is published.</p>
 	</header>
+	<form class="ticket-composer-form" aria-busy={ticketLaunching} onsubmit={(event) => { event.preventDefault(); void submitTicketDraft(); }}>
 	<div class="ticket-composer-body">
+	<fieldset class="ticket-composer-fields" disabled={ticketLaunching}>
 		{#if draft?.excerpt}
 			<details class="ticket-source"><summary>Selected text</summary><blockquote>{draft.excerpt}</blockquote></details>
 		{:else}
@@ -139,17 +163,18 @@ async function submitTicketDraft() {
 				{#if ticketTools.length === 0}<button type="button" class="ui-button" onclick={() => ticketToolLoadRequest++}>Try again</button>{/if}
 			</div>
 		{/if}
+	</fieldset>
 	</div>
 	<footer class="ticket-composer-actions">
 		<button type="button" class="ui-button" data-pressable="true" disabled={ticketLaunching} onclick={close}>Cancel</button>
 		<button
-			type="button"
+			type="submit"
 			class="ui-button" data-variant="primary"
 			data-pressable="true"
 			disabled={!ticketInstructions.trim() || !selectedTicketTool || ticketLaunching || ticketToolsLoading}
-			onclick={submitTicketDraft}
 		>{ticketLaunching ? "Starting draft…" : "Draft issue"}</button>
 	</footer>
+	</form>
 </ModalShell>
 
 <style>
@@ -157,6 +182,7 @@ async function submitTicketDraft() {
 		display: grid;
 		gap: 6px;
 		padding-right: var(--space-2xl);
+		flex-shrink: 0;
 	}
 
 	.ticket-composer-header h2,
@@ -179,12 +205,19 @@ async function submitTicketDraft() {
 	}
 
 	.ticket-composer-body {
+		min-width: 0;
+		overflow-y: auto;
+		min-height: 0;
+		scrollbar-color: var(--chronicle-border-strong) transparent;
+	}
+
+	.ticket-composer-fields {
 		display: grid;
 		gap: var(--space-md);
 		min-width: 0;
-		overflow-y: auto;
 		padding: 2px;
-		scrollbar-color: var(--chronicle-border-strong) transparent;
+		margin: 0;
+		border: 0;
 	}
 
 	.ticket-composer-state,
@@ -200,6 +233,7 @@ async function submitTicketDraft() {
 		border: 1px solid var(--chronicle-danger-border);
 		background: var(--chronicle-danger-surface-soft);
 		color: var(--chronicle-danger-text-strong);
+		overflow-wrap: anywhere;
 	}
 
 	.ticket-composer-actions {
@@ -216,4 +250,9 @@ async function submitTicketDraft() {
 	.ticket-composer-error { display: grid; gap: var(--space-sm); }
 	.ticket-composer-error p { margin: 0; }
 	.ticket-composer-actions { flex-wrap: wrap; flex-shrink: 0; }
+	.ticket-composer-form { display: flex; flex-direction: column; gap: var(--space-md); min-height: 0; }
+	@media (max-width: 540px) {
+		.ticket-composer-body :global(textarea), .ticket-composer-body :global(select) { font-size: 16px; }
+		.ticket-composer-actions :global(button[data-variant="primary"]) { flex: 1; }
+	}
 </style>

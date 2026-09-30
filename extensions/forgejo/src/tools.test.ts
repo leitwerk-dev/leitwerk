@@ -221,6 +221,7 @@ describe("Forgejo server tools", () => {
 		expect(snapshot?.agentContext).toContain("bug");
 		expect(snapshot?.data).toEqual({
 			profile: "primary",
+			baseUrl: "https://git.example.test",
 			repositoryId: 42,
 			owner: "team",
 			repo: "repo",
@@ -250,6 +251,13 @@ describe("Forgejo server tools", () => {
 		let issues: ForgejoIssue[] = [];
 		const client = {
 			profile: { baseUrl: "https://git.example.test", token: "secret", botLogin: "leitwerk" },
+			getRepositoryById: vi.fn(async () => ({
+				id: 42,
+				name: "repo",
+				full_name: "team/repo",
+				owner: { login: "team" },
+				has_issues: true,
+			})),
 			listLabels: vi.fn(async () => labels),
 			createLabel: vi.fn(async (_owner, _repo, name: string) => {
 				const created = { id: 5, name };

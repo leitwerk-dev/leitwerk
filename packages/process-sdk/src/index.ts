@@ -307,6 +307,15 @@ export {
 	structuralStateCodec,
 } from "./state-helpers.js";
 export { sanitizeWorkerSubprocessEnv } from "./subprocess-env.js";
+export {
+	listTicketDestinations,
+	markdownTicketCreationDefinition,
+	parseTicketCreationConfig,
+	parseTicketDestinationId,
+	type TicketCreationConfig,
+	ticketDestinationId,
+	ticketLabelNames,
+} from "./ticket-creation.js";
 export { numberArg, objectArg, projectParameters, stringArg } from "./tool-arguments.js";
 export type { ToolCallRendererDefinition } from "./tool-renderers.js";
 export {

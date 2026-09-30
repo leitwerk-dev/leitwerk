@@ -6,6 +6,18 @@ Ticket adapters register normal integration tools with `capability.kind: "ticket
 
 The initial dialog contains only the operator's issue description and, when more than one adapter exists, the ticket system. Ticket refinement and destination clarification stay in the child process's normal UI.
 
+The Forgejo, GitHub, GitLab and Jira extensions provide production adapters.
+Load this process extension alongside the required integration and enable its
+`ticket_creation` configuration. GitHub, GitLab and Jira are opt-in; Forgejo retains
+its enabled-by-default behavior. See each integration's README for permissions and
+configuration. Jira supports its existing Data Center REST v2 integration and
+discovers creatable project/issue-type pairs, including required custom fields.
+
+The review shows the destination, title and description before **Create issue**.
+Operators can inspect all fields, request changes, or discard the draft. Unchanged
+launch retries reuse the same child. If worker startup fails after the child is
+created, the UI opens that child for normal recovery.
+
 Adapters must use the execution context idempotency key with `ctx.externalWrites.ensure()` and reconcile ambiguous external outcomes before retrying.
 
 The root export provides the process and `ticketCreationParamsCodec`. The codec

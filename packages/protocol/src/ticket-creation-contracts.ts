@@ -6,6 +6,12 @@ export interface TicketCreationToolSummary {
 	name: string;
 	/** @internal */
 	displayName: string;
+	/** @internal */
+	titlePath?: string;
+	/** @internal */
+	descriptionPath?: string;
+	/** @internal */
+	descriptionFormat?: "plain" | "markdown";
 }
 
 /** @internal */

@@ -1,11 +1,16 @@
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
-import { coreHostCapabilities } from "@leitwerk-dev/process-sdk";
+import {
+	coreHostCapabilities,
+	type ExternalSourceArmingLike,
+	type ExternalSourceServiceLike,
+} from "@leitwerk-dev/process-sdk";
 import { emptyPollResult } from "@leitwerk-dev/watcher-utils";
 import { describe, expect, it, vi } from "vitest";
 import { type AppContext, type AppOptions, createAppContext } from "./app.js";
 import { getDefaultConfig } from "./config/index.js";
 import {
 	createFixtureAutomaticTurn,
+	createFixtureHumanTurn,
 	createFixtureProcess,
 } from "./test-helpers/process-fixtures.js";
 import { fakeWorkerRunnerRuntime } from "./test-helpers/worker-runner-runtime.js";
@@ -206,6 +211,92 @@ describe("createAppContext", () => {
 				},
 			});
 			expect(projectFrames.at(-1)?.payload).not.toHaveProperty("changedFields");
+		} finally {
+			await ctx.close();
+		}
+	});
+
+	it("refreshes external subscriptions before process-update reactions", async () => {
+		const sourceKind = "example.plan-policy";
+		let externalSources: ExternalSourceServiceLike | undefined;
+		const ctx = await createLocalApp({
+			extensionCatalog: buildExtensionCatalogFromModules([
+				{
+					manifest: { id: "external-source-test", version: "1.0.0" },
+					setupCatalog(api) {
+						api.registerProcess(
+							createFixtureProcess({
+								id: "external_source_process",
+								entry: "review",
+								turns: {
+									review: createFixtureHumanTurn({
+										actions: {
+											revise: {
+												label: "Revise plan",
+												acceptanceState: "neutral",
+												to: "review",
+												effect: ({ ctx }) => ({
+													processPatch: { planRevision: ctx.process.planRevision + 1 },
+												}),
+											},
+										},
+										externalActions: {
+											bypass: {
+												id: "bypass",
+												source: {
+													kind: sourceKind,
+													config: {},
+													resolve: ({ process }) => ({ planRevision: process.planRevision }),
+												},
+												complete: true,
+											},
+										},
+									}),
+								},
+							}),
+						);
+					},
+					setupServer(api) {
+						const deps = api.require(coreHostCapabilities.serverSetup);
+						if (Array.isArray(deps)) throw new Error("expected one server setup capability");
+						externalSources = deps.externalSources;
+					},
+				},
+			]),
+		});
+		try {
+			await ctx.listen();
+			if (!externalSources) throw new Error("Missing external sources");
+			const sources = externalSources;
+			const process = ctx.deps.processes.create({ processId: "external_source_process" });
+			const observedArmings: ExternalSourceArmingLike[][] = [];
+			ctx.extensionHost.on("process_updated", ({ instanceId }) => {
+				if (instanceId === process.id) observedArmings.push(sources.listArmed(sourceKind));
+			});
+			expect(sources.listArmed(sourceKind)).toEqual([]);
+
+			expect((await ctx.deps.processEngine.startProcess(process.id, "review")).ok).toBe(true);
+			expect(observedArmings).toMatchObject([
+				[
+					{
+						id: "review:bypass",
+						instanceId: process.id,
+						resolved: { planRevision: process.planRevision },
+					},
+				],
+			]);
+
+			expect((await ctx.deps.processEngine.executeProcessAction(process.id, "revise", {})).ok).toBe(
+				true,
+			);
+			expect(observedArmings[1]).toMatchObject([
+				{ id: "review:bypass", resolved: { planRevision: process.planRevision + 1 } },
+			]);
+			expect(observedArmings[1][0].generation).not.toBe(observedArmings[0][0].generation);
+
+			expect((await ctx.deps.processEngine.abortProcess(process.id)).ok).toBe(true);
+			expect(observedArmings).toHaveLength(3);
+			expect(observedArmings[2]).toEqual([]);
 		} finally {
 			await ctx.close();
 		}

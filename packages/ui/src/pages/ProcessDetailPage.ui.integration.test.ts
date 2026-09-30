@@ -4491,12 +4491,16 @@ describe("ProcessDetailPage", () => {
 		submit?.click();
 		await flushUi();
 
-		expect(mockLaunchTicketCreation).toHaveBeenCalledWith("agt_1", {
-			artifact: { kind: "turn_result", turnRecordId: "trn_2" },
-			focus: { kind: "whole_result" },
-			additionalInstructions: "Fix the issue creation flow on narrow mobile screens.",
-			toolName: "tracker_create_issue",
-		});
+		expect(mockLaunchTicketCreation).toHaveBeenCalledWith(
+			"agt_1",
+			{
+				artifact: { kind: "turn_result", turnRecordId: "trn_2" },
+				focus: { kind: "whole_result" },
+				additionalInstructions: "Fix the issue creation flow on narrow mobile screens.",
+				toolName: "tracker_create_issue",
+			},
+			expect.any(String),
+		);
 	});
 
 	it("keeps historical turn results compressed until the user explicitly expands them", async () => {
