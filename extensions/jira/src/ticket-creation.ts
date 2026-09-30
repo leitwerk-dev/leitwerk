@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import {
+	listTicketDestinations,
 	objectArg,
 	parseTicketDestinationId,
 	type ServerExtensionAPI,
@@ -12,6 +13,8 @@ import {
 } from "@leitwerk-dev/process-sdk";
 import type { JiraCreateProject } from "./client.js";
 import type { JiraIntegration } from "./index.js";
+
+const reservedFields = ["project", "issuetype", "summary", "description", "labels"];
 
 function destinationData(snapshot: TicketCreationDestinationSnapshot) {
 	const data = objectArg(snapshot.data);
@@ -47,10 +50,10 @@ export function registerJiraTicketCreation(
 		id: `${ticketDestinationId(profile, project.id)}.${issueType.id}`,
 		displayName: `${project.key} · ${project.name} / ${issueType.name}`,
 		group: `${profile} · ${new URL(integration.client(profile).baseUrl).host}`,
-		description: `Issue type: ${issueType.name}. Default labels: ${config.defaultLabels.join(", ") || "none"}. Additional fields: ${JSON.stringify(Object.fromEntries(Object.entries(issueType.fields).filter(([key]) => !["project", "issuetype", "summary", "description", "labels"].includes(key))))}`,
+		description: `Issue type: ${issueType.name}. Default labels: ${config.defaultLabels.join(", ") || "none"}. Additional fields: ${JSON.stringify(Object.fromEntries(Object.entries(issueType.fields).filter(([key]) => !reservedFields.includes(key))))}`,
 	});
 	const currentDestination = async (
-		data: ReturnType<typeof destinationData>,
+		data: Omit<ReturnType<typeof destinationData>, "projectKey"> & { projectKey?: string },
 		signal?: AbortSignal,
 	) => {
 		const client = integration.client(data.profile);
@@ -61,7 +64,11 @@ export function registerJiraTicketCreation(
 		const issueType = project?.issuetypes.find(
 			(type) => type.id === data.issueTypeId && !type.subtask,
 		);
-		if (!project || project.key !== data.projectKey || !issueType)
+		if (
+			!project ||
+			(data.projectKey !== undefined && project.key !== data.projectKey) ||
+			!issueType
+		)
 			throw new Error(
 				"The selected Jira project or issue type is no longer available for creation",
 			);
@@ -69,31 +76,14 @@ export function registerJiraTicketCreation(
 		return { client, project, issueType };
 	};
 	const destinations: TicketCreationDestinationProvider = {
-		async list() {
-			const results = await Promise.all(
-				integration.profiles().map(async (profile) => {
-					try {
-						const projects = await integration.client(profile).listCreateProjects();
-						return {
-							destinations: projects.flatMap((project) =>
-								project.issuetypes
-									.filter((type) => !type.subtask)
-									.map((type) => summary(profile, project, type)),
-							),
-							warnings: [],
-						};
-					} catch {
-						return {
-							destinations: [],
-							warnings: [`Jira profile '${profile}' is currently unavailable.`],
-						};
-					}
-				}),
+		list() {
+			return listTicketDestinations("Jira", integration.profiles(), async (profile) =>
+				(await integration.client(profile).listCreateProjects()).flatMap((project) =>
+					project.issuetypes
+						.filter((type) => !type.subtask)
+						.map((type) => summary(profile, project, type)),
+				),
 			);
-			return {
-				destinations: results.flatMap((result) => result.destinations),
-				warnings: results.flatMap((result) => result.warnings),
-			};
 		},
 		async resolve({ destinationId }) {
 			const separator = destinationId.lastIndexOf(".");
@@ -103,29 +93,21 @@ export function registerJiraTicketCreation(
 			const issueTypeId = destinationId.slice(separator + 1);
 			if (!/^[1-9]\d*$/.test(issueTypeId)) throw new Error("Unknown Jira issue type");
 			const client = integration.client(profile);
-			const project = (await client.listCreateProjects(projectId)).find(
-				(project) => project.id === projectId,
-			);
-			const issueType = project?.issuetypes.find(
-				(type) => type.id === issueTypeId && !type.subtask,
-			);
-			if (!project || !issueType)
-				throw new Error("The selected Jira destination cannot accept issues");
-			validateLabels(issueType, config.defaultLabels);
+			const data = {
+				profile,
+				baseUrl: client.baseUrl,
+				projectId,
+				issueTypeId,
+				defaultLabels: config.defaultLabels,
+			};
+			const { project, issueType } = await currentDestination(data);
 			const destination = summary(profile, project, issueType);
 			return {
 				summary: {
 					...destination,
 					description: `Default labels: ${config.defaultLabels.join(", ") || "none"}`,
 				},
-				data: {
-					profile,
-					baseUrl: client.baseUrl,
-					projectId,
-					projectKey: project.key,
-					issueTypeId,
-					defaultLabels: config.defaultLabels,
-				},
+				data: { ...data, projectKey: project.key },
 				agentContext: destination.description,
 			};
 		},
@@ -177,10 +159,7 @@ export function registerJiraTicketCreation(
 				throw new Error("Jira labels cannot contain spaces");
 			const fields = args.fields === undefined ? {} : objectArg(args.fields);
 			for (const key of Object.keys(fields)) {
-				if (
-					["project", "issuetype", "summary", "description", "labels"].includes(key) ||
-					!Object.hasOwn(issueType.fields, key)
-				)
+				if (reservedFields.includes(key) || !Object.hasOwn(issueType.fields, key))
 					throw new Error(
 						`Jira field '${key}' is not an additional create field for this issue type`,
 					);
@@ -189,7 +168,7 @@ export function registerJiraTicketCreation(
 				if (
 					field.required &&
 					!field.hasDefaultValue &&
-					!["project", "issuetype", "summary", "description", "labels"].includes(key) &&
+					!reservedFields.includes(key) &&
 					(fields[key] == null ||
 						fields[key] === "" ||
 						(Array.isArray(fields[key]) && fields[key].length === 0))

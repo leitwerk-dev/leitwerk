@@ -1,16 +1,20 @@
 import {
 	existingObject,
 	type IntegrationToolExecutionContext,
+	listTicketDestinations,
+	markdownTicketCreationDefinition,
 	matchesPatch,
 	numberArg,
 	objectArg as object,
 	type ProcessProjectRepoLike,
+	parseTicketDestinationId,
 	projectParameters,
 	type RepositoryProjectBinding,
 	type ServerExtensionAPI,
 	stringArg,
 	type TicketCreationDestinationProvider,
 	type TicketCreationDestinationSnapshot,
+	ticketDestinationId,
 } from "@leitwerk-dev/process-sdk";
 import { resolveForgejoProjectBinding } from "./binding.js";
 import type { ForgejoIntegration } from "./capability.js";
@@ -33,12 +37,6 @@ function availableRepository(repository: ForgejoRepository): boolean {
 	return repository.archived !== true && repository.has_issues !== false;
 }
 
-function destinationId(
-	data: Pick<ForgejoTicketDestinationData, "profile" | "repositoryId">,
-): string {
-	return `${encodeURIComponent(data.profile)}.${data.repositoryId}`;
-}
-
 function destinationData(
 	snapshot: TicketCreationDestinationSnapshot,
 ): ForgejoTicketDestinationData {
@@ -53,75 +51,37 @@ function destinationData(
 	};
 }
 
-function decodeDestinationId(
-	value: string,
-): Pick<ForgejoTicketDestinationData, "profile" | "repositoryId"> {
-	const separator = value.lastIndexOf(".");
-	if (separator <= 0) throw new Error("Unknown Forgejo ticket destination");
-	try {
-		const profile = decodeURIComponent(value.slice(0, separator));
-		const repositoryId = Number(value.slice(separator + 1));
-		if (!profile || !Number.isInteger(repositoryId) || repositoryId <= 0) {
-			throw new Error("invalid");
-		}
-		return { profile, repositoryId };
-	} catch {
-		throw new Error("Unknown Forgejo ticket destination");
-	}
-}
-
-function destinationGroup(profile: string, baseUrl: string): string {
-	return `${profile} · ${new URL(baseUrl).hostname}`;
-}
-
 function createDestinationProvider(
 	integration: ForgejoIntegration,
 	ticketCreation: ForgejoTicketCreationConfig,
 ): TicketCreationDestinationProvider {
 	const summary = (profile: string, repository: ForgejoRepository, baseUrl: string) => ({
-		id: destinationId({ profile, repositoryId: repository.id }),
+		id: ticketDestinationId(profile, repository.id),
 		displayName: repository.full_name,
-		group: destinationGroup(profile, baseUrl),
+		group: `${profile} · ${new URL(baseUrl).hostname}`,
 		description: ticketCreation.defaultLabels.length
 			? `Default labels: ${ticketCreation.defaultLabels.join(", ")}`
 			: "No default labels",
 	});
 	return {
-		async list() {
-			const results = await Promise.all(
-				integration.profiles().map(async (profile) => {
-					try {
-						const client = integration.client(profile);
-						const repositories = (await client.listRepositories()).filter(availableRepository);
-						return {
-							destinations: repositories.map((repository) =>
-								summary(profile, repository, client.profile.baseUrl),
-							),
-							warnings: [] as string[],
-						};
-					} catch {
-						return {
-							destinations: [],
-							warnings: [`Forgejo profile '${profile}' is currently unavailable.`],
-						};
-					}
-				}),
-			);
-			return {
-				destinations: results.flatMap((result) => result.destinations),
-				warnings: results.flatMap((result) => result.warnings),
-			};
+		list() {
+			return listTicketDestinations("Forgejo", integration.profiles(), async (profile) => {
+				const client = integration.client(profile);
+				return (await client.listRepositories())
+					.filter(availableRepository)
+					.map((repository) => summary(profile, repository, client.profile.baseUrl));
+			});
 		},
-		async resolve({ destinationId: encoded }) {
-			const decoded = decodeDestinationId(encoded);
-			const client = integration.client(decoded.profile);
-			const repository = await client.getRepositoryById(decoded.repositoryId);
+		async resolve({ destinationId }) {
+			const { profile, resourceId } = parseTicketDestinationId(destinationId);
+			const client = integration.client(profile);
+			const repository = await client.getRepositoryById(Number(resourceId));
 			if (!availableRepository(repository)) {
 				throw new Error("The selected Forgejo repository cannot accept issues");
 			}
 			const labels = await client.listLabels(repository.owner.login, repository.name);
 			const data: ForgejoTicketDestinationData = {
-				profile: decoded.profile,
+				profile,
 				baseUrl: client.profile.baseUrl,
 				repositoryId: repository.id,
 				owner: repository.owner.login,
@@ -129,7 +89,7 @@ function createDestinationProvider(
 				defaultLabels: [...ticketCreation.defaultLabels],
 			};
 			return {
-				summary: summary(decoded.profile, repository, client.profile.baseUrl),
+				summary: summary(profile, repository, client.profile.baseUrl),
 				data,
 				agentContext: `Create the ticket in ${repository.full_name} on ${new URL(client.profile.baseUrl).hostname}. Configured default labels: ${ticketCreation.defaultLabels.join(", ") || "none"}. Existing optional labels: ${
 					labels
@@ -208,29 +168,12 @@ export function registerForgejoTools(
 		api.tool<Record<string, unknown>>({
 			name: "forgejo_create_issue",
 			description: "Create one issue in the operator-selected Forgejo repository",
-			parameters: {
-				type: "object",
-				properties: {
-					title: { type: "string", description: "Concise issue title" },
-					body: { type: "string", description: "Complete Markdown issue description" },
-					labels: {
-						type: "array",
-						items: { type: "string" },
-						description: "Optional existing label names from the destination context",
-					},
-				},
-				required: ["title", "body"],
-			},
-			capability: {
-				kind: "ticket_creation",
-				processId: "ticket_creation_process",
-				startTurnId: "create_ticket",
-				displayName: "Forgejo",
-				titlePath: "/title",
-				descriptionPath: "/body",
-				descriptionFormat: "markdown",
-				destinations: ticketDestinations,
-			},
+			...markdownTicketCreationDefinition(
+				"Forgejo",
+				ticketDestinations,
+				"body",
+				"Optional existing label names from the destination context",
+			),
 			async execute(ctx, args) {
 				if (!ctx.ticketDestination) throw new Error("A Forgejo ticket destination is required");
 				await ticketDestinations.validate(ctx.ticketDestination);

@@ -65,43 +65,39 @@ const composition: SandboxCompositionFactory = (input) => {
 					.map((entry) => entry.module),
 				{
 					manifest: { id: "forgejo", version: "1" },
-					setupServer: (api) => {
-						setupForgejoIntegration(
+					setupServer: (api) =>
+						void setupForgejoIntegration(
 							api,
 							{ profiles: () => ["local"], client: () => forgejo.client() },
 							ticketCreation,
-						);
-					},
+						),
 				},
 				{
 					manifest: { id: "github", version: "1" },
-					setupServer: (api) => {
-						setupGitHubIntegration(
+					setupServer: (api) =>
+						void setupGitHubIntegration(
 							api,
 							{ profiles: () => ["local"], client: () => github.client() },
 							{ ticketCreation },
-						);
-					},
+						),
 				},
 				{
 					manifest: { id: "gitlab", version: "1" },
-					setupServer: (api) => {
-						setupGitLabIntegration(
+					setupServer: (api) =>
+						void setupGitLabIntegration(
 							api,
 							{ profiles: () => ["local"], client: () => gitlab.client() },
 							{ ticketCreation },
-						);
-					},
+						),
 				},
 				{
 					...jiraExtension,
-					setupServer: (api) => {
-						setupJiraIntegration(
+					setupServer: (api) =>
+						void setupJiraIntegration(
 							api,
 							{ profiles: () => ["local"], client: () => jira.client() },
 							{ ticketCreation },
-						);
-					},
+						),
 				},
 			]);
 		},

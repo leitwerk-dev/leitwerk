@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 
-import { mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	cancelSessionTransfer,
@@ -11,9 +10,8 @@ import {
 } from "../lib/api.js";
 import { setPendingRetryConfig } from "../lib/retry-config.svelte.js";
 import { buildHomePath, navigate } from "../lib/router.svelte.js";
+import { mountTest } from "../test-support/mount.js";
 import ProcessActionsMenu from "./ProcessActionsMenu.svelte";
-
-const mountedApps: Array<ReturnType<typeof mount>> = [];
 
 const defaultRetryConfig = {
 	launcherId: "test-launcher",
@@ -81,24 +79,15 @@ function mountSubject({
 		blocksManualTurns: boolean;
 	} | null;
 } = {}) {
-	const target = document.createElement("div");
-	document.body.appendChild(target);
-
-	const app = mount(ProcessActionsMenu, {
-		target,
-		props: {
-			instanceId: "test-instance-id",
-			lifecycleStatus,
-			disabled,
-			processLabel,
-			onDeleted,
-			hasSessionFile,
-			sessionTransfer,
-		},
+	return mountTest(ProcessActionsMenu, {
+		instanceId: "test-instance-id",
+		lifecycleStatus,
+		disabled,
+		processLabel,
+		onDeleted,
+		hasSessionFile,
+		sessionTransfer,
 	});
-	mountedApps.push(app);
-
-	return { app, target };
 }
 
 async function flush() {
@@ -123,9 +112,7 @@ function getMenuItems(target: HTMLElement): string[] {
 	);
 }
 
-afterEach(async () => {
-	for (const app of mountedApps.splice(0)) await unmount(app);
-	document.body.innerHTML = "";
+afterEach(() => {
 	vi.clearAllMocks();
 	resetDefaultMocks();
 });

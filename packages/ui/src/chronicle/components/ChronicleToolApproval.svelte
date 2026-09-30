@@ -1,5 +1,5 @@
 <script lang="ts">
-import type { ProcessToolApprovalRequest } from "@leitwerk-dev/domain";
+import { type ProcessToolApprovalRequest, resolveJsonPointer } from "@leitwerk-dev/domain";
 import type { TicketCreationToolSummary } from "@leitwerk-dev/protocol";
 import { tick } from "svelte";
 import { fetchTicketCreationTools, resolveToolApproval } from "../../lib/api.js";
@@ -16,12 +16,7 @@ let tool = $state<TicketCreationToolSummary | undefined>();
 
 function textAt(pointer: string | undefined): string | null {
 	if (!pointer) return null;
-	let value: unknown = request.arguments;
-	for (const segment of pointer.slice(1).split("/")) {
-		const key = segment.replaceAll("~1", "/").replaceAll("~0", "~");
-		if (!value || typeof value !== "object" || !Object.hasOwn(value, key)) return null;
-		value = (value as Record<string, unknown>)[key];
-	}
+	const value = resolveJsonPointer(request.arguments, pointer);
 	return typeof value === "string" ? value : null;
 }
 

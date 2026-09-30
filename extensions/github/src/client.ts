@@ -230,15 +230,8 @@ export class GitHubClient extends RepositoryHttpClient {
 		);
 	}
 	/** @internal */
-	async listOpenIssues(owner: string, repo: string) {
-		return (
-			await this.pages<
-				GitHubIssue & {
-					/** @internal */
-					pull_request?: unknown;
-				}
-			>(`${this.repositoryPath(owner, repo)}/issues?state=open`)
-		).filter((issue) => !issue.pull_request);
+	listOpenIssues(owner: string, repo: string) {
+		return this.listIssues(owner, repo, undefined, "open");
 	}
 	/** @internal */
 	async getRepositoryById(id: number, signal?: AbortSignal): Promise<GitHubRepository> {
@@ -247,9 +240,14 @@ export class GitHubClient extends RepositoryHttpClient {
 		return repository;
 	}
 	/** @internal */
-	async listIssues(owner: string, repo: string, signal?: AbortSignal): Promise<GitHubIssue[]> {
+	async listIssues(
+		owner: string,
+		repo: string,
+		signal?: AbortSignal,
+		state: "open" | "all" = "all",
+	): Promise<GitHubIssue[]> {
 		const issues = await this.pages<GitHubIssue & { pull_request?: unknown }>(
-			`${this.repositoryPath(owner, repo)}/issues?state=all`,
+			`${this.repositoryPath(owner, repo)}/issues?state=${state}`,
 			signal,
 		);
 		return issues.filter((issue) => !issue.pull_request);
@@ -265,11 +263,7 @@ export class GitHubClient extends RepositoryHttpClient {
 		},
 		signal?: AbortSignal,
 	): Promise<GitHubIssue> {
-		return this.request(`${this.repositoryPath(owner, repo)}/issues`, {
-			method: "POST",
-			body: JSON.stringify(input),
-			signal,
-		});
+		return this.writeJson(`${this.repositoryPath(owner, repo)}/issues`, "POST", input, signal);
 	}
 	/** @internal */
 	listIssueEvents(owner: string, repo: string, number: number) {

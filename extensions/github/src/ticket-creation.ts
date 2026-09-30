@@ -1,4 +1,6 @@
 import {
+	listTicketDestinations,
+	markdownTicketCreationDefinition,
 	numberArg,
 	objectArg,
 	parseTicketDestinationId,
@@ -62,29 +64,12 @@ export function registerGitHubTicketCreation(
 			throw new Error("The selected GitHub repository changed; choose the destination again");
 	};
 	const destinations: TicketCreationDestinationProvider = {
-		async list() {
-			const results = await Promise.all(
-				(integration.profiles?.() ?? []).map(async (profile) => {
-					try {
-						const repositories = await integration.client(profile).listRepositories();
-						return {
-							destinations: repositories
-								.filter(available)
-								.map((repository) => summary(profile, repository)),
-							warnings: [],
-						};
-					} catch {
-						return {
-							destinations: [],
-							warnings: [`GitHub profile '${profile}' is currently unavailable.`],
-						};
-					}
-				}),
+		list() {
+			return listTicketDestinations("GitHub", integration.profiles?.() ?? [], async (profile) =>
+				(await integration.client(profile).listRepositories())
+					.filter(available)
+					.map((repository) => summary(profile, repository)),
 			);
-			return {
-				destinations: results.flatMap((result) => result.destinations),
-				warnings: results.flatMap((result) => result.warnings),
-			};
 		},
 		async resolve({ destinationId }) {
 			const { profile, resourceId } = parseTicketDestinationId(destinationId);
@@ -111,29 +96,7 @@ export function registerGitHubTicketCreation(
 	api.tool<Record<string, unknown>>({
 		name: "github_create_issue",
 		description: "Create one issue in the selected GitHub repository",
-		parameters: {
-			type: "object",
-			properties: {
-				title: { type: "string", description: "Concise issue title" },
-				body: { type: "string", description: "Complete Markdown issue description" },
-				labels: {
-					type: "array",
-					items: { type: "string" },
-					description: "Optional existing label names",
-				},
-			},
-			required: ["title", "body"],
-		},
-		capability: {
-			kind: "ticket_creation",
-			displayName: "GitHub",
-			processId: "ticket_creation_process",
-			startTurnId: "create_ticket",
-			titlePath: "/title",
-			descriptionPath: "/body",
-			descriptionFormat: "markdown",
-			destinations,
-		},
+		...markdownTicketCreationDefinition("GitHub", destinations),
 		async execute(ctx, args) {
 			if (!ctx.ticketDestination) throw new Error("A GitHub ticket destination is required");
 			ctx.signal.throwIfAborted();

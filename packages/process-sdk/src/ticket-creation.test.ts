@@ -1,9 +1,28 @@
 import { expect, it } from "vitest";
 import {
+	listTicketDestinations,
 	parseTicketCreationConfig,
 	parseTicketDestinationId,
 	ticketDestinationId,
 } from "./ticket-creation.js";
+
+it("retains available destinations and warns for failed profiles", async () => {
+	const result = await listTicketDestinations(
+		"Tracker",
+		["first", "offline", "last"],
+		async (profile) => {
+			if (profile === "offline") throw new Error("Unavailable");
+			return [{ id: profile, displayName: profile }];
+		},
+	);
+	expect(result).toEqual({
+		destinations: [
+			{ id: "first", displayName: "first" },
+			{ id: "last", displayName: "last" },
+		],
+		warnings: ["Tracker profile 'offline' is currently unavailable."],
+	});
+});
 
 it("requires explicit opt-in and preserves empty label defaults", () => {
 	expect(parseTicketCreationConfig({}, "Tracker")).toEqual({

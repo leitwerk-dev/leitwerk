@@ -6,11 +6,9 @@ import { LocalGitHubAdapter } from "@leitwerk-dev/github/testing";
 import { LocalGitLabAdapter, setupGitLabIntegration } from "@leitwerk-dev/gitlab/testing";
 import jiraExtension, { setupJiraIntegration } from "@leitwerk-dev/jira";
 import { LocalJiraAdapter } from "@leitwerk-dev/jira/testing";
-import { emptyParamsCodec, flow, type ServerExtensionAPI } from "@leitwerk-dev/process-sdk";
-import { fixtureModelProviders } from "@leitwerk-dev/test-support";
-import { createExtensionIntegrationHarness } from "@leitwerk-dev/test-support/integration";
+import type { ServerExtensionAPI } from "@leitwerk-dev/process-sdk";
 import { expect, it, onTestFinished } from "vitest";
-import ticketCreation from "./index.js";
+import { createTicketFixture } from "./ticket-fixture.js";
 
 const providers = ["GitHub", "GitLab", "Jira"] as const;
 type Provider = (typeof providers)[number];
@@ -101,99 +99,27 @@ async function fixture(provider: Provider) {
 	onTestFinished(() => rmSync(root, { recursive: true, force: true }));
 	const boundary = providerFixture(provider, root);
 	const toolName = `${provider.toLowerCase()}_create_issue`;
-	const parentDefinition = flow
-		.process("ticket_parent")
-		.displayName("Garden review")
-		.entry("review")
-		.codecs({ params: emptyParamsCodec, state: emptyParamsCodec })
-		.initialState(() => ({}))
-		.turn(
-			flow
-				.llm("review")
-				.description("Review the garden")
-				.prompt("Review the garden")
-				.publish("saved")
-				.complete(),
-		)
-		.define();
-	const test = await createExtensionIntegrationHarness({
-		extensions: [
-			ticketCreation,
-			{
-				manifest: { id: "parent", version: "1" },
-				setupCatalog(api) {
-					api.registerProcess(parentDefinition);
-				},
-			},
-			{
-				manifest: { id: provider.toLowerCase(), version: "1" },
-				...(provider === "Jira" ? { scopedSettings: jiraExtension.scopedSettings } : {}),
-				setupServer: boundary.setup,
-			},
-			{
-				manifest: { id: "ticket-model", version: "1" },
-				modelProviders: fixtureModelProviders({
-					id: "ticket-model",
-					modelId: "scripted",
-					server: true,
-				}),
-			},
+	const fixture = await createTicketFixture(
+		{
+			manifest: { id: provider.toLowerCase(), version: "1" },
+			...(provider === "Jira" ? { scopedSettings: jiraExtension.scopedSettings } : {}),
+			setupServer: boundary.setup,
+		},
+		toolName,
+		() => [
+			{ name: toolName, arguments: { ...boundary.args, destinationId: boundary.destinationId } },
 		],
-		models: [{ id: "scripted", provider: "ticket-model", modelId: "scripted" }],
-		defaultModel: "scripted",
-		script: () => ({
-			tools: [
-				{ name: toolName, arguments: { ...boundary.args, destinationId: boundary.destinationId } },
-			],
-			afterToolResult(call, result) {
-				if (
-					result &&
-					typeof result === "object" &&
-					"code" in result &&
-					result.code === "operator_feedback"
-				)
-					return {
-						...call,
-						arguments: {
-							...call.arguments,
-							[boundary.descriptionKey]: "Revised planting checklist with weekly reminders.",
-						},
-					};
-			},
-		}),
-	});
-	onTestFinished(() => test.close());
-	const parent = await test.createProcess(parentDefinition, {
-		position: { selectedTurnId: null, lifecycleStatus: "completed" },
-	});
-	const retained = await parent.seedAcceptedTurn({
-		turnId: "review",
-		execution: { status: "succeeded", outcome: "saved", markdown: "Document the planting review." },
-	});
-	const launch = () =>
-		test.request({
-			method: "POST",
-			url: `/api/processes/${parent.id}/ticket-creation`,
-			headers: { "idempotency-key": "one-ticket" },
-			payload: {
-				toolName,
-				artifact: retained.artifact,
-				focus: { kind: "whole_result" },
-				additionalInstructions: "Create a garden issue.",
-			},
-		});
-	const response = await launch();
-	expect(response.statusCode, response.body).toBe(200);
-	const child = test.process(response.json<{ childInstanceId: string }>().childInstanceId);
-	const approval = async () => {
-		const snapshot = await child.waitFor((snapshot) =>
-			snapshot.approvals.some((request) => request.status === "open"),
-		);
-		const request = snapshot.approvals.find((request) => request.status === "open");
-		if (!request) throw new Error("Missing approval");
-		return request;
+		boundary.descriptionKey,
+	);
+	const child = fixture.test.process(await fixture.launch("one-ticket"));
+	return {
+		test: fixture.test,
+		boundary,
+		child,
+		approval: () => fixture.approval(child.id),
+		launch: () => fixture.request("one-ticket"),
+		toolName,
 	};
-	return { test, boundary, child, approval, launch, toolName };
 }
 
 it.each(

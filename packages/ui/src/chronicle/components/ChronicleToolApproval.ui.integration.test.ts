@@ -1,6 +1,7 @@
 import type { ProcessToolApprovalRequest } from "@leitwerk-dev/domain";
-import { mount, tick, unmount } from "svelte";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { tick } from "svelte";
+import { beforeEach, expect, it, vi } from "vitest";
+import { mountTest } from "../../test-support/mount.js";
 
 const mocks = vi.hoisted(() => ({ tools: vi.fn(), resolve: vi.fn() }));
 vi.mock("../../lib/api.js", () => ({
@@ -10,15 +11,12 @@ vi.mock("../../lib/api.js", () => ({
 
 import ChronicleToolApproval from "./ChronicleToolApproval.svelte";
 
-const mounted: ReturnType<typeof mount>[] = [];
 const flush = async () => {
 	await tick();
 	await tick();
 	await tick();
 };
 function subject() {
-	const target = document.createElement("div");
-	document.body.append(target);
 	const request: ProcessToolApprovalRequest = {
 		id: "review",
 		instanceId: "draft",
@@ -27,7 +25,7 @@ function subject() {
 		toolName: "tracker_create_issue",
 		arguments: {
 			fields: {
-				summary: "Improve the garden",
+				"~summary/title": "Improve the garden",
 				description: "<script>untrusted</script>\nWeekly review.",
 			},
 		},
@@ -38,8 +36,7 @@ function subject() {
 		resolvedBy: null,
 		feedback: null,
 	};
-	mounted.push(mount(ChronicleToolApproval, { target, props: { request } }));
-	return target;
+	return mountTest(ChronicleToolApproval, { request }).target;
 }
 function button(target: HTMLElement, text: string) {
 	const found = [...target.querySelectorAll("button")].find(
@@ -54,15 +51,11 @@ beforeEach(() => {
 		{
 			name: "tracker_create_issue",
 			displayName: "Tracker",
-			titlePath: "/fields/summary",
+			titlePath: "/fields/~0summary~1title",
 			descriptionPath: "/fields/description",
 		},
 	]);
 	mocks.resolve.mockResolvedValue({});
-});
-afterEach(async () => {
-	for (const component of mounted.splice(0)) await unmount(component);
-	document.body.replaceChildren();
 });
 
 it("previews declared fields as safe text and creates only after explicit approval", async () => {

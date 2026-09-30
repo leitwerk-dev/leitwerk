@@ -308,6 +308,8 @@ export {
 } from "./state-helpers.js";
 export { sanitizeWorkerSubprocessEnv } from "./subprocess-env.js";
 export {
+	listTicketDestinations,
+	markdownTicketCreationDefinition,
 	parseTicketCreationConfig,
 	parseTicketDestinationId,
 	type TicketCreationConfig,

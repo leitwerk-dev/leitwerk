@@ -95,13 +95,9 @@ export function registerTicketCreationRoutes(
 			tools: registry.ticketCatalog().map((tool) => ({
 				name: tool.name,
 				displayName: tool.capability.displayName,
-				...(tool.capability.descriptionFormat
-					? { descriptionFormat: tool.capability.descriptionFormat }
-					: {}),
-				...(tool.capability.titlePath ? { titlePath: tool.capability.titlePath } : {}),
-				...(tool.capability.descriptionPath
-					? { descriptionPath: tool.capability.descriptionPath }
-					: {}),
+				descriptionFormat: tool.capability.descriptionFormat,
+				titlePath: tool.capability.titlePath,
+				descriptionPath: tool.capability.descriptionPath,
 			})),
 		}),
 	);

@@ -1,5 +1,6 @@
-import { mount, tick, unmount } from "svelte";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { tick } from "svelte";
+import { beforeEach, expect, it, vi } from "vitest";
+import { mountTest } from "../../test-support/mount.js";
 
 const mocks = vi.hoisted(() => ({ tools: vi.fn(), launch: vi.fn(), navigate: vi.fn() }));
 vi.mock("../../lib/api.js", () => ({
@@ -13,7 +14,6 @@ vi.mock("../../lib/router.svelte.js", () => ({
 
 import TicketCreationComposer from "./TicketCreationComposer.svelte";
 
-const mounted: ReturnType<typeof mount>[] = [];
 const flush = async () => {
 	await tick();
 	await tick();
@@ -21,19 +21,12 @@ const flush = async () => {
 };
 
 function subject() {
-	const target = document.createElement("div");
-	document.body.append(target);
 	const close = vi.fn();
-	mounted.push(
-		mount(TicketCreationComposer, {
-			target,
-			props: {
-				instanceId: "parent",
-				draft: { kind: "turn_result", turnRecordId: "retained" },
-				onClose: close,
-			},
-		}),
-	);
+	const { target } = mountTest(TicketCreationComposer, {
+		instanceId: "parent",
+		draft: { kind: "turn_result", turnRecordId: "retained" },
+		onClose: close,
+	});
 	return { target, close };
 }
 
@@ -47,10 +40,6 @@ function describeIssue(target: HTMLElement, value = "Make the mobile flow usable
 beforeEach(() => {
 	vi.resetAllMocks();
 	mocks.tools.mockResolvedValue([{ name: "atlas_create_issue", displayName: "Atlas" }]);
-});
-afterEach(async () => {
-	for (const component of mounted.splice(0)) await unmount(component);
-	document.body.replaceChildren();
 });
 
 it("retains the description and launch key when a lost response is retried", async () => {
@@ -74,13 +63,8 @@ it("retains the description and launch key when a lost response is retried", asy
 });
 
 it("ignores repeated submissions and disables all input while starting", async () => {
-	let finish: (value: unknown) => void = () => {};
-	mocks.launch.mockImplementation(
-		() =>
-			new Promise((resolve) => {
-				finish = resolve;
-			}),
-	);
+	const launch = Promise.withResolvers<unknown>();
+	mocks.launch.mockReturnValue(launch.promise);
 	const { target } = subject();
 	await flush();
 	describeIssue(target);
@@ -94,7 +78,7 @@ it("ignores repeated submissions and disables all input while starting", async (
 	expect(
 		target.querySelector('button[aria-label="Close issue creator"]')?.hasAttribute("disabled"),
 	).toBe(true);
-	finish({ childInstanceId: "draft" });
+	launch.resolve({ childInstanceId: "draft" });
 	await flush();
 });
 

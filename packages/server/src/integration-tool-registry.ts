@@ -1,4 +1,4 @@
-import type { Actor } from "@leitwerk-dev/domain";
+import { type Actor, resolveJsonPointer } from "@leitwerk-dev/domain";
 import {
 	bindExternalWrites,
 	type ExternalWriteLogRepoLike,
@@ -191,18 +191,6 @@ export function validateTicketCreationReceipt(value: unknown): TicketCreationRec
 		url: url.toString(),
 		...(Object.hasOwn(receipt, "result") ? { result: receipt.result } : {}),
 	};
-}
-
-function resolveJsonPointer(value: unknown, pointer: string): unknown {
-	if (pointer === "") return value;
-	return pointer
-		.slice(1)
-		.split("/")
-		.reduce<unknown>((current, token) => {
-			if (!current || typeof current !== "object") return undefined;
-			const key = token.replaceAll("~1", "/").replaceAll("~0", "~");
-			return (current as Record<string, unknown>)[key];
-		}, value);
 }
 
 const parseToolArgs = (value: unknown) =>

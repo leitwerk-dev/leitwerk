@@ -40,12 +40,8 @@ export class LocalJiraAdapter {
 	}
 	/** @internal */
 	client(): JiraClientLike {
-		const issue = (id: string) => {
-			const found = this.state.issues.find((issue) => issue.id === id || issue.key === id);
-			if (!found) throw new Error("Unknown local Jira issue");
-			return found;
-		};
 		return {
+			...localJiraIssueClient(this.state, () => this.save()),
 			baseUrl: this.baseUrl,
 			listProjects: async () => structuredClone(this.state.projects),
 			listCreateProjects: async (id) =>
@@ -55,7 +51,6 @@ export class LocalJiraAdapter {
 				structuredClone(this.state.issues.filter((issue) => ids.includes(issue.fields.project.id))),
 			listProjectIssues: async (id) =>
 				structuredClone(this.state.issues.filter((issue) => issue.fields.project.id === id)),
-			getIssue: async (id) => structuredClone(issue(id)),
 			createIssue: async (fields) => {
 				const project = this.state.projects.find(
 					(project) => project.id === (fields.project as { id: string }).id,
@@ -90,22 +85,37 @@ export class LocalJiraAdapter {
 				}
 				return structuredClone(created);
 			},
-			listComments: async (id) => structuredClone(this.state.comments[issue(id).id] ?? []),
-			addComment: async (id, body) => {
-				this.state.comments[issue(id).id] ??= [];
-				const comments = this.state.comments[issue(id).id];
-				const comment = { id: String(comments.length + 1), body };
-				comments.push(comment);
-				this.save();
-				return structuredClone(comment);
-			},
-			updateLabels: async (id, remove, add) => {
-				const current = issue(id);
-				current.fields.labels = [
-					...new Set([...current.fields.labels.filter((label) => !remove.includes(label)), ...add]),
-				];
-				this.save();
-			},
 		};
 	}
+}
+
+/** @internal */
+export function localJiraIssueClient(
+	state: Pick<LocalJiraAdapter["state"], "issues" | "comments">,
+	save: () => void,
+): Pick<JiraClientLike, "getIssue" | "listComments" | "addComment" | "updateLabels"> {
+	const issue = (id: string) => {
+		const found = state.issues.find((issue) => issue.id === id || issue.key === id);
+		if (!found) throw new Error("Unknown local Jira issue");
+		return found;
+	};
+	return {
+		getIssue: async (id) => structuredClone(issue(id)),
+		listComments: async (id) => structuredClone(state.comments[issue(id).id] ?? []),
+		addComment: async (id, body) => {
+			state.comments[issue(id).id] ??= [];
+			const comments = state.comments[issue(id).id];
+			const comment = { id: String(comments.length + 1), body };
+			comments.push(comment);
+			save();
+			return structuredClone(comment);
+		},
+		updateLabels: async (id, remove, add) => {
+			const current = issue(id);
+			current.fields.labels = [
+				...new Set([...current.fields.labels.filter((label) => !remove.includes(label)), ...add]),
+			];
+			save();
+		},
+	};
 }

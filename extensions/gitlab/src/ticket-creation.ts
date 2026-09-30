@@ -1,4 +1,6 @@
 import {
+	listTicketDestinations,
+	markdownTicketCreationDefinition,
 	numberArg,
 	objectArg,
 	parseTicketDestinationId,
@@ -48,27 +50,12 @@ export function registerGitLabTicketCreation(
 			: "No default labels",
 	});
 	const destinations: TicketCreationDestinationProvider = {
-		async list() {
-			const results = await Promise.all(
-				integration.profiles().map(async (profile) => {
-					try {
-						const projects = await integration.client(profile).listProjects();
-						return {
-							destinations: projects.filter(available).map((project) => summary(profile, project)),
-							warnings: [],
-						};
-					} catch {
-						return {
-							destinations: [],
-							warnings: [`GitLab profile '${profile}' is currently unavailable.`],
-						};
-					}
-				}),
+		list() {
+			return listTicketDestinations("GitLab", integration.profiles(), async (profile) =>
+				(await integration.client(profile).listProjects())
+					.filter(available)
+					.map((project) => summary(profile, project)),
 			);
-			return {
-				destinations: results.flatMap((result) => result.destinations),
-				warnings: results.flatMap((result) => result.warnings),
-			};
 		},
 		async resolve({ destinationId }) {
 			const { profile, resourceId } = parseTicketDestinationId(destinationId);
@@ -100,29 +87,7 @@ export function registerGitLabTicketCreation(
 	api.tool<Record<string, unknown>>({
 		name: "gitlab_create_issue",
 		description: "Create one issue in the selected GitLab project",
-		parameters: {
-			type: "object",
-			properties: {
-				title: { type: "string", description: "Concise issue title" },
-				description: { type: "string", description: "Complete Markdown issue description" },
-				labels: {
-					type: "array",
-					items: { type: "string" },
-					description: "Optional existing label names",
-				},
-			},
-			required: ["title", "description"],
-		},
-		capability: {
-			kind: "ticket_creation",
-			displayName: "GitLab",
-			processId: "ticket_creation_process",
-			startTurnId: "create_ticket",
-			titlePath: "/title",
-			descriptionPath: "/description",
-			descriptionFormat: "markdown",
-			destinations,
-		},
+		...markdownTicketCreationDefinition("GitLab", destinations, "description"),
 		async execute(ctx, args) {
 			if (!ctx.ticketDestination) throw new Error("A GitLab ticket destination is required");
 			await destinations.validate(ctx.ticketDestination);
