@@ -1,9 +1,12 @@
 import { type ChildProcess, type SpawnOptions, spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 import { signalProcessGroup, stopAttached } from "../packages/dev-tools/src/child-process.ts";
 
 export { createCoalescedRunner } from "../packages/dev-tools/src/coalesced-runner.ts";
 export { signalProcessGroup, stopAttached };
+
+const piSourceImport = fileURLToPath(new URL("./pi-source-conditions.mjs", import.meta.url));
 
 /** Wire child and terminal exits to an idempotent shutdown callback. */
 export function watchChildren(children: ChildProcess[], finish: (code: number) => void): void {
@@ -50,7 +53,7 @@ export function spawnManaged(
 export function spawnTsx(scriptPath: string, options: SpawnOptions = {}): ChildProcess {
 	return spawnManaged(
 		process.execPath,
-		["--conditions=source", "--import", "tsx", scriptPath],
+		["--conditions=source", "--import", piSourceImport, "--import", "tsx", scriptPath],
 		options,
 	);
 }
@@ -61,10 +64,14 @@ export function spawnTsx(scriptPath: string, options: SpawnOptions = {}): ChildP
  * the session can clean up even when npm exits before the supervisor does.
  */
 export function spawnAttachedTsx(scriptPath: string, options: SpawnOptions = {}): ChildProcess {
-	return spawn(process.execPath, ["--conditions=source", "--import", "tsx", scriptPath], {
-		...options,
-		detached: false,
-	});
+	return spawn(
+		process.execPath,
+		["--conditions=source", "--import", piSourceImport, "--import", "tsx", scriptPath],
+		{
+			...options,
+			detached: false,
+		},
+	);
 }
 
 export function waitForSuccess(child: ChildProcess): Promise<boolean> {

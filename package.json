@@ -22,8 +22,8 @@
 		}
 	},
 	"scripts": {
-		"dev": "node --conditions=source --import tsx scripts/dev-supervisor.ts",
-		"dev:server:source": "node --conditions=source --import tsx scripts/dev-server-source.ts",
+		"dev": "node --conditions=source --import ./scripts/pi-source-conditions.mjs --import tsx scripts/dev-supervisor.ts",
+		"dev:server:source": "node --conditions=source --import ./scripts/pi-source-conditions.mjs --import tsx scripts/dev-server-source.ts",
 		"dev:server:dist": "node --import tsx scripts/dev-server-dist.ts",
 		"dev:parity": "npm run parity:build && LEITWERK_RUNTIME_LANE=dist concurrently --kill-others-on-fail --names runtime,server,ext-ui,ui \"npm:dev:runtime\" \"npm:dev:server:dist\" \"npm:dev:ext-ui\" \"npm:dev:ui\"",
 		"dev:runtime": "node --import tsx scripts/dev-runtime.ts",
@@ -66,8 +66,8 @@
 		"publish:preflight": "node scripts/publish-workspaces.mjs preflight",
 		"publish:workspaces": "node scripts/publish-workspaces.mjs publish",
 		"publish:verify": "node scripts/publish-workspaces.mjs verify",
-		"dev:sandbox": "node --conditions=source --import tsx scripts/sandbox/cli.ts",
-		"sandbox:reset": "node --conditions=source --import tsx scripts/sandbox/cli.ts reset",
+		"dev:sandbox": "node --conditions=source --import ./scripts/pi-source-conditions.mjs --import tsx scripts/sandbox/cli.ts",
+		"sandbox:reset": "node --conditions=source --import ./scripts/pi-source-conditions.mjs --import tsx scripts/sandbox/cli.ts reset",
 		"benchmark:worker-startup": "node packages/dev-tools/dist/cli.js benchmark:worker-startup",
 		"api:report": "node --import tsx packages/dev-tools/src/cli.ts api:report"
 	},
