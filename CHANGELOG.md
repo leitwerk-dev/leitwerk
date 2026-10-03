@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.3.2](https://github.com/leitwerk-dev/leitwerk/compare/v0.3.1...v0.3.2) (2026-10-03)
+
+
+### Features
+
+* **gitlab:** MR comment tools and discussion resolve ([#120](https://github.com/leitwerk-dev/leitwerk/issues/120)) ([902ca63](https://github.com/leitwerk-dev/leitwerk/commit/902ca6300b3c704c9f54d011a63a39b6ec133233))
+* **inspector:** retain execution evidence and expose inspection APIs ([#116](https://github.com/leitwerk-dev/leitwerk/issues/116)) ([9f41a49](https://github.com/leitwerk-dev/leitwerk/commit/9f41a49ac409d1ea9abc90da067814826b997c45))
+* **inspector:** unify process inspection and edit model defaults ([#117](https://github.com/leitwerk-dev/leitwerk/issues/117)) ([e19aff9](https://github.com/leitwerk-dev/leitwerk/commit/e19aff94880acdc85f673e152d30814a8bdb7452))
+* **jira:** coordinate GitLab changes with workflow bypasses ([#129](https://github.com/leitwerk-dev/leitwerk/issues/129)) ([08ad702](https://github.com/leitwerk-dev/leitwerk/commit/08ad702c355774baae5cf0e42314ed56dc450b25))
+* **jira:** split epics with a shared solution wiki ([#134](https://github.com/leitwerk-dev/leitwerk/issues/134)) ([2a35f67](https://github.com/leitwerk-dev/leitwerk/commit/2a35f672085a95f1ad38de806e16d3a5abe4db2b))
+* **settings:** persist scoped defaults and capture turn settings ([#118](https://github.com/leitwerk-dev/leitwerk/issues/118)) ([ae26b51](https://github.com/leitwerk-dev/leitwerk/commit/ae26b51c7685c904e657aa15ea5024c471630736))
+* **ticket-creation:** add GitHub, GitLab and Jira adapters ([#136](https://github.com/leitwerk-dev/leitwerk/issues/136)) ([f94fc0f](https://github.com/leitwerk-dev/leitwerk/commit/f94fc0f7a0263136b00a618fa83fc85440e99095))
+
+
+### Bug Fixes
+
+* **deps:** replace dependency read-pkg-up with read-package-up ^11.0.0 ([#124](https://github.com/leitwerk-dev/leitwerk/issues/124)) ([98078ae](https://github.com/leitwerk-dev/leitwerk/commit/98078aec02ee5bb0068a8413981dc81e2ab96318))
+* **deps:** update caddy docker tag to v2.11.3 ([#137](https://github.com/leitwerk-dev/leitwerk/issues/137)) ([b9ee359](https://github.com/leitwerk-dev/leitwerk/commit/b9ee3596b0bfed865691809ea78c5639026f04ec))
+* **deps:** update dependency esbuild to v0.28.2 ([#135](https://github.com/leitwerk-dev/leitwerk/issues/135)) ([6536a17](https://github.com/leitwerk-dev/leitwerk/commit/6536a1764fb1bf73cae6a0010b1f6fee34be9e83))
+* **deps:** update runtime npm dependencies ([#133](https://github.com/leitwerk-dev/leitwerk/issues/133)) ([cb62b11](https://github.com/leitwerk-dev/leitwerk/commit/cb62b111102cbd13e90d482faa5509e6afc69629))
+* **deps:** update runtime npm dependencies ([#138](https://github.com/leitwerk-dev/leitwerk/issues/138)) ([20e090a](https://github.com/leitwerk-dev/leitwerk/commit/20e090af0c80770b714be34dbb76bd415880acaa))
+
 ## [0.3.1](https://github.com/leitwerk-dev/leitwerk/compare/v0.3.0...v0.3.1) (2026-09-24)
 
 
