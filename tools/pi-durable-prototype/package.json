@@ -1,0 +1,23 @@
+{
+	"name": "leitwerk-pi-durable-prototype",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Throwaway evaluation of a server-owned Pi Durable harness with credential-free workers",
+	"scripts": {
+		"build": "tsc --noEmit",
+		"image": "docker build -t leitwerk-pi-durable-prototype:1.0.2 .",
+		"evaluate": "tsx src/evaluate.ts",
+		"check": "npm run build && npm run image && npm run evaluate"
+	},
+	"dependencies": {
+		"@earendil-works/chord": "1.0.2",
+		"@earendil-works/pi-ai": "1.0.2",
+		"@earendil-works/pi-durable": "1.0.2"
+	},
+	"devDependencies": {
+		"@types/node": "26.0.0",
+		"tsx": "4.23.15",
+		"typescript": "6.0.2"
+	}
+}

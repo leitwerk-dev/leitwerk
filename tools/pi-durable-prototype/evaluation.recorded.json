@@ -1,0 +1,123 @@
+{
+	"piDurable": "1.0.2",
+	"node": "v26.3.0",
+	"evaluatedAt": "2026-10-04T23:33:17.556Z",
+	"results": [
+		{
+			"scenario": "acceptance-security-branches-watch",
+			"elapsedMs": 2829,
+			"evidence": {
+				"exportResult": {
+					"entries": 22,
+					"archiveBytes": 16162,
+					"productsResolved": 3,
+					"uncommittedWorkspacePreserved": true
+				},
+				"attempts": 3,
+				"conversations": 2,
+				"authenticatedModelCalls": 9,
+				"watchFrames": 14
+			}
+		},
+		{
+			"scenario": "after_acceptance",
+			"elapsedMs": 1733,
+			"evidence": {
+				"attempts": 1,
+				"inputEntries": 1,
+				"externalEffects": 0,
+				"selectedTurn": "review"
+			}
+		},
+		{
+			"scenario": "after_binding",
+			"elapsedMs": 1737,
+			"evidence": {
+				"attempts": 1,
+				"inputEntries": 1,
+				"externalEffects": 0,
+				"selectedTurn": "review"
+			}
+		},
+		{
+			"scenario": "during_model",
+			"elapsedMs": 1896,
+			"evidence": {
+				"attempts": 1,
+				"inputEntries": 1,
+				"externalEffects": 0,
+				"selectedTurn": "review"
+			}
+		},
+		{
+			"scenario": "after_external_effect",
+			"elapsedMs": 1781,
+			"evidence": {
+				"attempts": 1,
+				"inputEntries": 1,
+				"externalEffects": 1,
+				"selectedTurn": "review"
+			}
+		},
+		{
+			"scenario": "during_unsafe_tool",
+			"elapsedMs": 1815,
+			"evidence": {
+				"attempts": 1,
+				"inputEntries": 1,
+				"externalEffects": 0,
+				"selectedTurn": "review"
+			}
+		},
+		{
+			"scenario": "before_business_outcome",
+			"elapsedMs": 1718,
+			"evidence": {
+				"attempts": 1,
+				"inputEntries": 1,
+				"externalEffects": 0,
+				"selectedTurn": "review"
+			}
+		},
+		{
+			"scenario": "after_business_outcome",
+			"elapsedMs": 1748,
+			"evidence": {
+				"attempts": 1,
+				"inputEntries": 1,
+				"externalEffects": 0,
+				"selectedTurn": "review"
+			}
+		},
+		{
+			"scenario": "stop-retry-stale-fencing",
+			"elapsedMs": 2456,
+			"evidence": {
+				"attempts": 2,
+				"selectedTurn": "review",
+				"staleRejected": true
+			}
+		},
+		{
+			"scenario": "stop-with-pending-outcome",
+			"elapsedMs": 2282,
+			"evidence": {
+				"staleOutcomeRejected": true,
+				"pendingReceiptDiscarded": true
+			}
+		},
+		{
+			"scenario": "queued-inputs-reconnect",
+			"elapsedMs": 1711,
+			"evidence": {
+				"queuedRecovered": true,
+				"duplicateSubmissionId": 13,
+				"inputEntries": 2
+			}
+		}
+	],
+	"applicationBaseCommit": "e6cb2e1e67fdd90c77d4cbca419c8474a90f3455",
+	"codingAgentSdk": "0.81.1",
+	"validationCommand": "npm run check --prefix tools/pi-durable-prototype",
+	"environment": "macOS host, Docker Desktop Linux worker, generated fixtures only"
+}
