@@ -84,9 +84,10 @@ Open the Vite URL printed by the command. On the launcher page:
 
 The process completes when the assistant finishes. Its recorded output remains
 available in the Chronicle. To try a human decision, launch **Poem Creator** and
-review its draft. These are optional
-[showcase processes](https://github.com/leitwerk-dev/leitwerk/blob/main/extensions/showcase-processes/README.md),
-not special cases in the runtime.
+review its draft. Single Prompt belongs to the optional
+[example-processes extension](https://github.com/leitwerk-dev/leitwerk/blob/main/extensions/example-processes/README.md);
+Poem Creator belongs to
+[showcase-processes](https://github.com/leitwerk-dev/leitwerk/blob/main/extensions/showcase-processes/README.md).
 
 Stop the development server with Ctrl+C. Restart it from the same directory with
 the same configuration and encryption key.

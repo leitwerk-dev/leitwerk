@@ -5,14 +5,14 @@ import {
 	type ExtensionIntegrationHarnessOptions,
 	waitForValue,
 } from "@leitwerk-dev/test-support/integration";
-import showcaseProcessesExtension from "../index.js";
+import exampleProcessesExtension from "../index.js";
 
-export function createShowcaseHarness(options: Partial<ExtensionIntegrationHarnessOptions> = {}) {
+export function createExampleHarness(options: Partial<ExtensionIntegrationHarnessOptions> = {}) {
 	return createExtensionIntegrationHarness({
 		extensions: [
-			showcaseProcessesExtension,
+			exampleProcessesExtension,
 			{
-				manifest: { id: "showcase-fixture-providers", version: "1" },
+				manifest: { id: "example-fixture-providers", version: "1" },
 				modelProviders: fixtureModelProviders(
 					{ id: "anthropic", modelId: "claude-sonnet-4-20250514", server: true },
 					{ id: "ollama", modelId: "qwen2.5-coder:14b", server: true },
@@ -31,20 +31,21 @@ export function createShowcaseHarness(options: Partial<ExtensionIntegrationHarne
 		defaultModel: "claude_fast",
 		script(_id, _prompt, observation) {
 			const names = new Set(observation.tools.map((tool) => tool.name));
-			if (names.has("no_issues"))
+			if (names.has("done"))
 				return {
 					tools: [
-						{ name: "no_issues", arguments: { review: "## Review\n\nReady.", summary: "Ready" } },
+						{
+							name: "done",
+							arguments: { summary: "Completed", markdown: "# Result\n\nCompleted." },
+						},
 					],
 				};
-
 			return {
 				tools: [
 					{
 						name: "markdown_result",
 						arguments: {
-							markdown:
-								"# Cloud Dusk\n\nEvening servers hum in amber light,\nScaled dreams unfolding into night.",
+							markdown: "# Result\n\nCompleted.",
 						},
 					},
 				],

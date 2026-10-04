@@ -1,12 +1,12 @@
 import coding from "@leitwerk-dev/coding";
+import examples from "@leitwerk-dev/example-processes";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
-import showcase from "@leitwerk-dev/showcase-processes";
 import { expect, expectNoPageOverflow, test } from "./fixtures.js";
 
 test.use({
 	browserServerOptions: {
 		tempPrefix: "leitwerk-settings-browser-",
-		createExtensionCatalog: () => buildExtensionCatalogFromModules([coding, showcase]),
+		createExtensionCatalog: () => buildExtensionCatalogFromModules([coding, examples]),
 	},
 });
 

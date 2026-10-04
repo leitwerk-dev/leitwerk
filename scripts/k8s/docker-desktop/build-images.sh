@@ -11,5 +11,5 @@ docker image inspect "${SERVER_IMAGE}" "${WORKER_IMAGE}" \
 chmod 600 "${DEPLOY_ROOT}/image-lock.txt"
 
 docker run --rm --entrypoint sh "${SERVER_IMAGE}" -c \
-	'test -f /app/packages/ui/dist/index.html && test -d /app/extensions/showcase-processes'
-docker run --rm --entrypoint sh "${WORKER_IMAGE}" -c 'test -d /app/extensions/showcase-processes'
+	'test -f /app/packages/ui/dist/index.html && test -d /app/extensions/example-processes'
+docker run --rm --entrypoint sh "${WORKER_IMAGE}" -c 'test -d /app/extensions/example-processes'

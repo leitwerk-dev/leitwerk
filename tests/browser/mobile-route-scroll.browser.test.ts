@@ -1,3 +1,4 @@
+import exampleProcessesExtension from "@leitwerk-dev/example-processes";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import showcaseProcessesExtension from "@leitwerk-dev/showcase-processes";
 import type { Locator, Page } from "@playwright/test";
@@ -23,7 +24,8 @@ test.use({
 				},
 			};
 		},
-		createExtensionCatalog: () => buildExtensionCatalogFromModules([showcaseProcessesExtension]),
+		createExtensionCatalog: () =>
+			buildExtensionCatalogFromModules([showcaseProcessesExtension, exampleProcessesExtension]),
 	},
 });
 

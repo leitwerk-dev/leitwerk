@@ -1,6 +1,6 @@
+import exampleProcessesExtension from "@leitwerk-dev/example-processes";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import type { AppContext } from "@leitwerk-dev/server";
-import showcaseProcessesExtension from "@leitwerk-dev/showcase-processes";
 import { fixtureModelProviders } from "@leitwerk-dev/test-support";
 import { createIntegrationHarness, waitForValue } from "@leitwerk-dev/test-support/integration";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -9,7 +9,7 @@ let ctx: AppContext;
 let address: string;
 
 const testExtensionCatalog = buildExtensionCatalogFromModules([
-	showcaseProcessesExtension,
+	exampleProcessesExtension,
 	{
 		manifest: { id: "agents-http-fixture-provider", version: "1.0.0" },
 		modelProviders: fixtureModelProviders({

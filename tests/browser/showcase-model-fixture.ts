@@ -1,3 +1,4 @@
+import exampleProcessesExtension from "@leitwerk-dev/example-processes";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import showcaseProcessesExtension from "@leitwerk-dev/showcase-processes";
 import { fixtureModelProviders } from "@leitwerk-dev/test-support";
@@ -11,6 +12,7 @@ export const fixtureModelProfile = {
 
 export function createShowcaseModelCatalog() {
 	return buildExtensionCatalogFromModules([
+		exampleProcessesExtension,
 		{
 			...showcaseProcessesExtension,
 			modelProviders: fixtureModelProviders({

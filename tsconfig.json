@@ -104,6 +104,9 @@
 		},
 		{
 			"path": "extensions/gitlab-repo-change"
+		},
+		{
+			"path": "extensions/example-processes"
 		}
 	],
 	"files": []

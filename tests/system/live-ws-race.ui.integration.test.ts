@@ -1,3 +1,4 @@
+import exampleProcessesExtension from "@leitwerk-dev/example-processes";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import {
 	createDurableWsFrame,
@@ -7,7 +8,6 @@ import {
 	type ProcessDetailUiSnapshotResponseBody,
 	WS_PRIMARY_PATH_TYPES,
 } from "@leitwerk-dev/protocol";
-import showcaseProcessesExtension from "@leitwerk-dev/showcase-processes";
 import { describe, expect, it } from "vitest";
 import {
 	type MountedUiHarness,
@@ -16,7 +16,7 @@ import {
 	waitFor,
 } from "../helpers/ui-harness.ts";
 
-const extensionCatalog = buildExtensionCatalogFromModules([showcaseProcessesExtension]);
+const extensionCatalog = buildExtensionCatalogFromModules([exampleProcessesExtension]);
 
 function click(element: Element) {
 	element.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));

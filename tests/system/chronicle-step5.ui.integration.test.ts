@@ -2,7 +2,7 @@ import path from "node:path";
 import { buildExtensionCatalog } from "@leitwerk-dev/extension-runtime";
 import { createLoadedExtensionModuleForTest } from "@leitwerk-dev/extension-runtime/testing";
 import type { LeitwerkConfig } from "@leitwerk-dev/server";
-import singlePromptExtension, {
+import showcaseProcessesExtension, {
 	buildPoemLeafOutcomeFallbackMarkdown,
 	buildPoemLeafOutcomePayload,
 } from "@leitwerk-dev/showcase-processes";
@@ -18,18 +18,18 @@ import {
 	waitFor,
 } from "../helpers/ui-harness.ts";
 
-const singlePromptPackageDir = path.resolve(process.cwd(), "extensions/showcase-processes");
-const singlePromptExtensionWithProvider = {
-	...singlePromptExtension,
+const showcasePackageDir = path.resolve(process.cwd(), "extensions/showcase-processes");
+const showcaseProcessesExtensionWithProvider = {
+	...showcaseProcessesExtension,
 	modelProviders: fixtureModelProviders({ id: "anthropic", modelId: "claude-fast" }),
 };
 
-async function createRealSinglePromptCatalog() {
+async function createPoemCatalog() {
 	return buildExtensionCatalog([
-		createLoadedExtensionModuleForTest(singlePromptExtensionWithProvider, {
+		createLoadedExtensionModuleForTest(showcaseProcessesExtensionWithProvider, {
 			packageName: "@leitwerk-dev/showcase-processes",
-			packageDir: singlePromptPackageDir,
-			entryPath: path.join(singlePromptPackageDir, "src/index.ts"),
+			packageDir: showcasePackageDir,
+			entryPath: path.join(showcasePackageDir, "src/index.ts"),
 		}),
 	]);
 }
@@ -47,7 +47,7 @@ function configurePoemModel(config: LeitwerkConfig) {
 
 function createPoemDraftSequenceSpawn(markdowns: readonly string[]) {
 	let draftIndex = 0;
-	const extensionCatalog = createRealSinglePromptCatalog();
+	const extensionCatalog = createPoemCatalog();
 	return createInProcessWorkerSpawn({
 		extensionCatalog,
 		toolCallScriptResolver({ tools }) {
@@ -135,7 +135,7 @@ async function findElement<T extends Element>(selector: string): Promise<T> {
 describe("chronicle step 5 poem outcome renderer", () => {
 	it("renders the active action row directly below the latest leaf outcome and keeps it on the newest outcome after revision", async () => {
 		let harness: MountedUiHarness<Record<string, never>> | null = null;
-		const extensionCatalog = await createRealSinglePromptCatalog();
+		const extensionCatalog = await createPoemCatalog();
 
 		try {
 			const instanceIdRef = { value: "" };
@@ -229,7 +229,7 @@ describe("chronicle step 5 poem outcome renderer", () => {
 
 	it("renders the real poem outcome renderer end-to-end, preserves historical drafts, and keeps a live tail visible", async () => {
 		let harness: MountedUiHarness<Record<string, never>> | null = null;
-		const extensionCatalog = await createRealSinglePromptCatalog();
+		const extensionCatalog = await createPoemCatalog();
 
 		try {
 			const instanceIdRef = { value: "" };
@@ -330,7 +330,7 @@ describe("chronicle step 5 poem outcome renderer", () => {
 
 	it("renders review findings and no-issues opinions inside the real poem outcome renderer", async () => {
 		let harness: MountedUiHarness<Record<string, never>> | null = null;
-		const extensionCatalog = await createRealSinglePromptCatalog();
+		const extensionCatalog = await createPoemCatalog();
 
 		try {
 			const instanceIdRef = { value: "" };
@@ -459,7 +459,7 @@ describe("chronicle step 5 poem outcome renderer", () => {
 
 	it("shows inline poem renderer warnings without erasing neighboring poem history", async () => {
 		let harness: MountedUiHarness<Record<string, never>> | null = null;
-		const extensionCatalog = await createRealSinglePromptCatalog();
+		const extensionCatalog = await createPoemCatalog();
 
 		try {
 			const instanceIdRef = { value: "" };

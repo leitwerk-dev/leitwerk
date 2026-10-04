@@ -19,8 +19,9 @@ export interface FileExternalInput {
 	consume: FileExternalConsumeMode;
 }
 
+// Keep the persisted source kind stable when moving the process between extensions.
 /** @internal */
-export const FILE_EXTERNAL_INSTRUCTION_KIND = "@leitwerk-dev/showcase-processes.file.instruction";
+export const FILE_EXTERNAL_PRESENCE_KIND = "@leitwerk-dev/showcase-processes.file.presence";
 
 function normalizeConfig(input: FileExternalInput): FileExternalInput {
 	return {
@@ -47,14 +48,14 @@ function resolveFileConfig(
 /** @internal */
 export const fileExternal = {
 	/** @internal */
-	instruction(input: FileExternalInput): ExternalActionSource {
+	presence(input: FileExternalInput): ExternalActionSource {
 		const config = normalizeConfig(input);
 		return {
-			kind: FILE_EXTERNAL_INSTRUCTION_KIND,
-			label: `File instruction: ${config.path}`,
-			description: `Reads ${config.path} as instruction text`,
+			kind: FILE_EXTERNAL_PRESENCE_KIND,
+			label: `File present: ${config.path}`,
+			description: `Fires when ${config.path} exists`,
 			config,
-			inputMode: "instruction",
+			inputMode: "none",
 			resolve(ctx) {
 				return resolveFileConfig(config, ctx);
 			},
@@ -137,27 +138,22 @@ async function pollArmedFileSource(
 	return { config, file };
 }
 
-async function fireInstructionSources(
+async function firePresenceSources(
 	deps: CoreServerSetupDeps,
 	result: PollResult,
 	resolveConfig: (config: FileExternalInput) => FileExternalInput,
 	isDue: (key: string, pollInterval: string) => boolean,
 	activeKeys: Set<string>,
 ): Promise<void> {
-	for (const armed of deps.externalSources.listArmed(FILE_EXTERNAL_INSTRUCTION_KIND)) {
+	for (const armed of deps.externalSources.listArmed(FILE_EXTERNAL_PRESENCE_KIND)) {
 		const target = await pollArmedFileSource(armed, resolveConfig, isDue, activeKeys, result);
 		if (!target) {
 			continue;
 		}
-		const { config, file } = target;
-		const instruction = file.content.trim();
-		if (!instruction) {
-			continue;
-		}
+		const { config } = target;
 		const fired = await deps.externalSources.fire({
 			instanceId: armed.instanceId,
 			armingId: armed.id,
-			input: { instruction },
 			event: { path: config.path, pollInterval: config.pollInterval },
 			mergeKey: config.path,
 		});
@@ -200,14 +196,14 @@ export function createFileExternalSourceProvider(
 	}
 	const due = createDueTracker();
 	return deps.polling.create({
-		id: "showcase-file-external",
+		id: "example-file-external",
 		pollInterval: () => "50ms",
 		isEnabled: () => true,
 		defaultIntervalMs: 50,
 		async pollOnce() {
 			const result = emptyPollResult();
 			const activeKeys = new Set<string>();
-			await fireInstructionSources(deps, result, applyAlias, due.isDue, activeKeys);
+			await firePresenceSources(deps, result, applyAlias, due.isDue, activeKeys);
 			due.prune(activeKeys);
 			return result;
 		},

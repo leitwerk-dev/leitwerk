@@ -23,7 +23,7 @@ server:
     logWorkerEventsToStdout: true
     extensionLoading:
       sources:
-        - /app/extensions/showcase-processes
+        - /app/extensions/example-processes
 
 workers:
   maxParallelProcesses: 2

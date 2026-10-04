@@ -1,14 +1,8 @@
 # Showcase processes extension
 
-This extension provides demo and smoke-test processes:
+This extension provides Poem Creator, its filesystem watcher and review-file provider, and its selected-leaf renderer.
 
-- Poem Creator;
-- Single Prompt;
-- Single Prompt with Tool;
-- external-completion examples;
-- Kubernetes smoke processes.
-
-It also provides a filesystem external-source provider and selected-leaf renderer assets.
+The single-prompt and Kubernetes smoke processes live in [example-processes](../example-processes/README.md). To retain those processes when upgrading, load that extension too and move `file_triggers.complete_prompt_path` from `extensions.showcase-processes` to `extensions.example-processes`. Process and launcher ids stay unchanged.
 
 ## Load
 
@@ -21,7 +15,6 @@ extensions:
   showcase-processes:
     file_triggers:
       poem_review_path: /tmp/poem-review-{instanceId}
-      complete_prompt_path: /tmp/complete-prompt
 ```
 
 `{instanceId}` prevents concurrent poem processes from sharing one review file.
@@ -56,7 +49,7 @@ When the automated reviewer leaves feedback, the operator can:
 
 Dismissing feedback clears the active review result and branch reference. The existing poem remains available for completion, revision, or another automated review.
 
-## External completion files
+## Review files
 
 The file provider polls armed file sources. It maps the process definition's default paths to configured aliases, reads non-empty content, fires the matching `{ instanceId, armingId }`, and consumes the file according to the source declaration.
 
@@ -64,8 +57,7 @@ The file provider polls armed file sources. It maps the process definition's def
 
 The source lane loads `src/ui/manifest.json` and lets Vite transform the custom-element sources directly. The dist build publishes the import manifest and bundles under `dist/ui`; run `npm run build:ext-ui` when validating those production assets. Both lanes expose the modules through `/ext-ui/...`.
 
-Turn labels stay concise: Run Prompt for single-prompt work, and Draft Poem,
-Review, Assess Poem, and Review Feedback for the poem process. The human
+Turn labels are Draft Poem, Review, Assess Poem, and Review Feedback. The human
 review and automated assessment remain distinct; turn ids and routing are unchanged.
 
 Poem review outcomes publish their existing concise summary separately from the full review result. This adds no turn or model call and leaves human review routing unchanged.

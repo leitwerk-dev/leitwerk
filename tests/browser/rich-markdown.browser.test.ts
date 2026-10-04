@@ -1,8 +1,8 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import singlePromptExtension from "@leitwerk-dev/example-processes";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import type { AppContext } from "@leitwerk-dev/server";
-import singlePromptExtension from "@leitwerk-dev/showcase-processes";
 import { createAcceptedLlmTurn as createFixtureAcceptedLlmTurn } from "../helpers/accepted-llm-turn.ts";
 import { expect, test } from "./fixtures.js";
 

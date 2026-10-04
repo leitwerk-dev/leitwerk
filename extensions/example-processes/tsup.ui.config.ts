@@ -2,7 +2,7 @@ import { defineConfig } from "tsup";
 
 export default defineConfig((options) => ({
 	entry: {
-		"assets/poem-leaf-outcome-element": "src/ui/poem-leaf-outcome-element.ts",
+		"assets/leaf-outcome-element": "src/ui/leaf-outcome-element.ts",
 	},
 	outDir: "dist/ui",
 	format: ["esm"],

@@ -37,12 +37,12 @@ Treat `docs/*.md` as the intended target state. Resolve wording drift by updatin
 - **Linting/formatting**: Biome
 - **Build**: tsup (server/worker/domain/protocol), tsx (dev), Vite (UI)
 - **Pi integration**: `@earendil-works/pi-coding-agent` SDK embedded in workers
-- **Product Model**: Process-centric. Public demo processes live in `showcase-processes` (for example `poem_creator_process` and `single_prompt_process`). Loaded dynamically via `jiti`, not statically privileged.
+- **Product Model**: Process-centric. Poem Creator lives in `showcase-processes`; prompt and Kubernetes smoke processes live in `example-processes`. Loaded dynamically via `jiti`, not statically privileged.
 
 ## 3. Package layout & Boundaries
 Monorepo using npm workspaces. 
 - **Core (`packages/`)**: `domain`, `protocol`, `worker-protocol`, `process-sdk`, `extension-runtime`, `watcher-utils`, `external-writes`, `worker-runners`, `server`, `worker`, `ui`, `test-support`.
-- **Extensions (`extensions/`)**: `showcase-processes`, `models`, `coding`, `forgejo-repo-change`, `git-ssh`, `process-analysis`, `telegram`, etc.
+- **Extensions (`extensions/`)**: `showcase-processes`, `example-processes`, `models`, `coding`, `forgejo-repo-change`, `git-ssh`, `process-analysis`, `telegram`, etc.
 
 **Hard Rule:** Core packages under `packages/` must **never** import from `extensions/` (applies to runtime, tests, and types). Top-level `tests/` should import via package specifiers (e.g., `@leitwerk-dev/domain`).
 
