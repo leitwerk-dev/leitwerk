@@ -35,7 +35,8 @@
 
 | Extension | Description |
 |-----------|-------------|
-| **[@leitwerk-dev/showcase-processes](extensions/showcase-processes)** | Demo processes plus a filesystem poem watcher used by the example config |
+| **[@leitwerk-dev/showcase-processes](extensions/showcase-processes)** | Poem Creator and its filesystem watcher |
+| **[@leitwerk-dev/example-processes](extensions/example-processes)** | Single-prompt examples and Kubernetes smoke processes |
 | **[@leitwerk-dev/models](extensions/models)** | Standard Pi API-key providers and config-defined custom gateways |
 | **[@leitwerk-dev/coding](extensions/coding)** | Shared repo-change graph, forms, prompts, and Git finalization |
 | **[@leitwerk-dev/git-ssh](extensions/git-ssh)** | Git-over-SSH credential profiles |

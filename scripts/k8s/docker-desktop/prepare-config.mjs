@@ -84,8 +84,8 @@ config.extension_loading = {
 	}),
 };
 
-if (!config.extension_loading.sources.includes("/app/extensions/showcase-processes")) {
-	throw new Error("Source configuration must load the showcase-processes extension");
+if (!config.extension_loading.sources.includes("/app/extensions/example-processes")) {
+	throw new Error("Source configuration must load the example-processes extension");
 }
 if (!(config.pi?.model_profiles ?? []).some((profile) => typeof profile?.provider === "string")) {
 	throw new Error("Source configuration must define at least one model profile");

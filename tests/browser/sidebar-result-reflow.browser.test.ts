@@ -1,9 +1,9 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
+import singlePromptExtension from "@leitwerk-dev/example-processes";
 import { buildExtensionCatalog } from "@leitwerk-dev/extension-runtime";
 import { createLoadedExtensionModuleForTest } from "@leitwerk-dev/extension-runtime/testing";
 import type { AppContext } from "@leitwerk-dev/server";
-import singlePromptExtension from "@leitwerk-dev/showcase-processes";
 import { createAcceptedLlmTurn as createFixtureAcceptedLlmTurn } from "../helpers/accepted-llm-turn.ts";
 import { box, expect, test } from "./fixtures.js";
 
@@ -43,7 +43,7 @@ async function createSinglePromptUiFixture(dir: string): Promise<string> {
 		path.join(dir, "package.json"),
 		JSON.stringify(
 			{
-				name: "@leitwerk-dev/showcase-processes",
+				name: "@leitwerk-dev/example-processes",
 				private: true,
 				type: "module",
 				leitwerk: {
@@ -66,7 +66,7 @@ async function createSinglePromptUiFixture(dir: string): Promise<string> {
 		JSON.stringify(
 			{
 				apiVersion: 1,
-				extensionManifestId: "showcase-processes",
+				extensionManifestId: "example-processes",
 				renderers: {
 					"@leitwerk-dev/showcase-processes:single_prompt_process.leaf_outcome": {
 						kind: "custom_element",
@@ -87,7 +87,7 @@ async function createSinglePromptUiFixture(dir: string): Promise<string> {
 async function buildSinglePromptCatalogWithUiFixture(packageDir: string) {
 	return buildExtensionCatalog([
 		createLoadedExtensionModuleForTest(singlePromptExtension, {
-			packageName: "@leitwerk-dev/showcase-processes",
+			packageName: "@leitwerk-dev/example-processes",
 			packageDir,
 		}),
 	]);
@@ -193,7 +193,7 @@ test.use({
 		tempPrefix: "leitwerk-sidebar-reflow-browser-",
 		createExtensionCatalog: async (_config, tempRoot) => {
 			const packageDir = await createSinglePromptUiFixture(
-				path.join(tempRoot, "showcase-processes"),
+				path.join(tempRoot, "example-processes"),
 			);
 			return buildSinglePromptCatalogWithUiFixture(packageDir);
 		},

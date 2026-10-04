@@ -273,6 +273,7 @@ extension_loading:
   sources:
     - ./extensions/models
     - ./extensions/showcase-processes
+    - ./extensions/example-processes
 
 extensions:
   # github-repo-change:
@@ -334,6 +335,8 @@ extensions:
     file_triggers:
       poll_interval: 1s
       poem_review_path: /tmp/poem-review-{instanceId}
+  example-processes:
+    file_triggers:
       complete_prompt_path: /tmp/complete-prompt
   telegram:
     enabled: false

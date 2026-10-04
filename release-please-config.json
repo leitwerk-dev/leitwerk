@@ -108,7 +108,8 @@
 				"@leitwerk-dev/gitlab-repo-change",
 				"@leitwerk-dev/jira",
 				"@leitwerk-dev/jira-gitlab-change",
-				"@leitwerk-dev/jira-epic-split"
+				"@leitwerk-dev/jira-epic-split",
+				"@leitwerk-dev/example-processes"
 			]
 		}
 	],
@@ -292,6 +293,11 @@
 		},
 		"extensions/jira-epic-split": {
 			"component": "@leitwerk-dev/jira-epic-split",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"extensions/example-processes": {
+			"component": "@leitwerk-dev/example-processes",
 			"skip-github-release": true,
 			"skip-changelog": true
 		}
