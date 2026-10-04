@@ -491,7 +491,62 @@ describe("buildExtensionCatalog", () => {
 		).rejects.toThrow(/invalid_graph_process.*undeclared nextTurnId 'missing'/);
 	});
 
-	it("rejects registered processes that consume products never published by the process", async () => {
+	it.each([
+		"declaration",
+		"retained",
+	] as const)("rechecks %s routing changes against the happy path", async (source) => {
+		const emptyCodec = {
+			parse: () => ({}),
+			serialize: (value: Record<string, never>) => value,
+		};
+		const process = defineProcess({
+			id: "disconnected_process",
+			displayName: "Disconnected Process",
+			entry: "start",
+			happyPath: ["start", "done"],
+			paramsCodec: emptyCodec,
+			stateCodec: emptyCodec,
+			initialState: () => ({}),
+			turns: {
+				start: llmTurn({
+					availableTools: [],
+					description: "Start",
+					branchType: "primary",
+					context: "fresh",
+					prompt: () => "prompt",
+					turnEnd: { outcome: "ready", params: {}, to: "done" },
+				}),
+				done: humanTurn({
+					description: "Done",
+					actions: {
+						finish: { label: "Finish", acceptanceState: "accepted", complete: true },
+					},
+				}),
+			},
+		});
+		const start = process.turns.get("start");
+		if (start?.definition.kind !== "llm") throw new Error("test start turn is missing");
+		if (source === "declaration") {
+			start.definition.turnEnd = { outcome: "ready", params: {}, complete: true };
+		} else {
+			setProcessTurnTransitions(start, [{ outcome: "ready", lifecycleStatus: "completed" }]);
+		}
+
+		await expect(
+			buildExtensionCatalog([
+				createLoadedExtensionModuleForTest({
+					manifest: { id: "disconnected-extension", version: "0.1.0" },
+					setupCatalog(api) {
+						api.registerProcess(process);
+					},
+				}),
+			]),
+		).rejects.toThrow(
+			/disconnected_process.*happy path segment 'start' -> 'done' is not connected/,
+		);
+	});
+
+	it("rechecks product declarations changed after definition", async () => {
 		const emptyCodec = {
 			parse: () => ({}),
 			serialize: (value: Record<string, never>) => value,
@@ -510,11 +565,13 @@ describe("buildExtensionCatalog", () => {
 					branchType: "primary",
 					context: "fresh",
 					prompt: async () => "prompt",
-					consumedProducts: ["plan"],
 					turnEnd: { outcome: "done", params: {}, complete: true },
 				}),
 			},
 		});
+		const consumer = process.turns.get("consume_plan")?.definition;
+		if (consumer?.kind !== "llm") throw new Error("test consumer is missing");
+		consumer.consumedProducts = ["plan"];
 
 		await expect(
 			buildExtensionCatalog([

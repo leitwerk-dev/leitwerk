@@ -654,6 +654,30 @@ describe("product refs", () => {
 						consumedProducts: ["plan"],
 						optionalConsumedProducts: ["message"],
 					}),
+					generate_plan: createFixtureLlmTurn("Generate plan", { publishedProduct: "plan" }),
+					human_review: humanTurn({
+						description: "Publish message",
+						actions: {
+							submit: {
+								label: "Submit",
+								acceptanceState: "accepted",
+								to: "consumer",
+								form: {
+									id: "submit_message",
+									title: "Submit message",
+									fields: [
+										{
+											id: "message",
+											label: "Message",
+											kind: "textarea",
+											primaryPrompt: true,
+											publish: true,
+										},
+									],
+								},
+							},
+						},
+					}),
 				},
 			}),
 		]);
@@ -726,6 +750,7 @@ describe("product refs", () => {
 					consumer: createFixtureLlmTurn("consumer", {
 						optionalConsumedProducts: ["message"],
 					}),
+					llm_review: createFixtureLlmTurn("Review message", { publishedProduct: "message" }),
 					human_review: humanTurn({
 						description: "Review message",
 						reviewProduct: "message",

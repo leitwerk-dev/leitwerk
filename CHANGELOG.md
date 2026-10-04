@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Breaking changes
+
+* **process-sdk:** `defineProcess(...)` and `flow.process(...).define()` now reject
+  invalid declared metadata before returning, including errors previously deferred
+  to catalog loading or server setup. Independent errors are reported together.
+  Move error handling to definition construction. This change requires a minor
+  release while the package is in `0.x`.
+
 ## [0.3.1](https://github.com/leitwerk-dev/leitwerk/compare/v0.3.0...v0.3.1) (2026-09-24)
 
 

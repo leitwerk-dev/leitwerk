@@ -13,18 +13,10 @@ import {
 	type LeitwerkExtensionModule,
 	type PiServerAdapter,
 	type ToolCallRendererDefinition,
-	toProcessGraphView,
-	validateProcessGraphEntryTurns,
-	validateProcessGraphProducts,
-	validateProcessGraphTurnTransitions,
+	validateProcessDefinition,
 	validateToolCallRendererDefinition,
-	validateTurnDefinition,
 } from "@leitwerk-dev/process-sdk";
-import {
-	getProcessTurnTransitions,
-	isDefinedProcess,
-	registerUnique,
-} from "@leitwerk-dev/process-sdk/runtime-internals";
+import { isDefinedProcess, registerUnique } from "@leitwerk-dev/process-sdk/runtime-internals";
 import { createJiti } from "jiti";
 import { packageDirectorySync } from "pkg-dir";
 import { readPackageUpSync } from "read-package-up";
@@ -651,37 +643,8 @@ export async function buildExtensionCatalog(
 	}
 
 	const validationErrors: string[] = [];
-	for (const [processId, processDef] of processes) {
-		if (processDef.turns.size === 0) {
-			validationErrors.push(`Process '${processId}' must declare at least one turn`);
-		}
-		for (const [turnId, binding] of processDef.turns) {
-			if ("transitions" in binding) {
-				validationErrors.push(
-					`Process '${processId}' turn '${turnId}' must declare routing on the turn definition instead of authored transitions`,
-				);
-			}
-			for (const error of validateTurnDefinition(turnId, binding.definition)) {
-				validationErrors.push(error);
-			}
-			for (const transition of getProcessTurnTransitions(binding)) {
-				if (transition.nextTurnId && !processDef.turns.has(transition.nextTurnId)) {
-					validationErrors.push(
-						`Process '${processId}' turn transition from '${turnId}' references undeclared next turn '${transition.nextTurnId}'`,
-					);
-				}
-			}
-		}
-		const graph = toProcessGraphView(processDef);
-		for (const error of validateProcessGraphEntryTurns(graph)) {
-			validationErrors.push(`Process '${processId}' graph error: ${error}`);
-		}
-		for (const error of validateProcessGraphProducts(graph)) {
-			validationErrors.push(`Process '${processId}' graph error: ${error}`);
-		}
-		for (const error of validateProcessGraphTurnTransitions(graph)) {
-			validationErrors.push(`Process '${processId}' graph error: ${error}`);
-		}
+	for (const processDef of processes.values()) {
+		validationErrors.push(...validateProcessDefinition(processDef));
 	}
 	if (validationErrors.length > 0) {
 		throw new Error(validationErrors.join("; "));

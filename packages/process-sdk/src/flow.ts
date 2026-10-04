@@ -55,11 +55,6 @@ import type {
 	MappedTurnItemContext,
 	MappedTurnServerContext,
 } from "./mapped-turn.js";
-import {
-	type ProcessGraphSource,
-	toProcessGraphView,
-	validateProcessGraphProducts,
-} from "./process-graph.js";
 import type { OutcomeToolParameterSpec, PiBuiltInToolName, ProcessPiConfig } from "./types.js";
 
 /** @public */
@@ -2772,13 +2767,7 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 			...(this.launcherHooks.length > 0 ? { launchers: chainHooks(this.launcherHooks) } : {}),
 			...(this.watcherHooks.length > 0 ? { watchers: chainHooks(this.watcherHooks) } : {}),
 		};
-		const process = defineProcess(input);
-		const errors = validateProcessGraphProducts(
-			toProcessGraphView(process as unknown as ProcessGraphSource),
-		);
-		if (errors.length > 0)
-			throw new Error(`Flow process '${this.processId}': ${errors.join("; ")}`);
-		return process;
+		return defineProcess(input);
 	}
 }
 

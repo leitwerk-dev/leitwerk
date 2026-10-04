@@ -72,6 +72,20 @@ opts a process into [lazy full clones](process-workspace.md#2-repository-managem
 
 ## Turn types
 
+`defineProcess(...)` and `flow.process(...).define()` validate declared turn metadata,
+routes, products, entry turns, the happy path, and shared action forms before returning.
+Independent errors are reported together with process and turn context. Checks that
+depend on an invalid declaration are skipped. Validation does not execute codecs,
+initial state, prompts, or process callbacks.
+
+Catalog admission repeats the same checks, including checks on retained transitions,
+so later metadata changes cannot bypass validation. Catalog registration separately
+checks process provenance and duplicate process IDs.
+
+Invalid definitions that previously failed during catalog loading or server setup
+now fail at definition. Exact diagnostic wording and order are not a compatibility
+contract.
+
 A process declares its graph in code. Configuration supplies runtime defaults;
 it does not define turns, transitions, actions, or completion policy.
 

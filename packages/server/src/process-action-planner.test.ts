@@ -33,6 +33,7 @@ function buildRegistry(action: ProcessActionDefinition) {
 						implement: {
 							description: "Implement",
 							kind: "llm" as const,
+							availableTools: [],
 							completionMode: "turn_end" as const,
 							branchType: "primary" as const,
 							context: "full" as const,
