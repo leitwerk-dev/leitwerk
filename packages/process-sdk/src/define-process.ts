@@ -23,13 +23,20 @@ import type {
 	WorkerCompleteInput,
 	WorkerProcessContext,
 } from "./extension-api.js";
-import { type MappedLlmTurnSpec, mappedCollectTrigger, validateMappedTurn } from "./mapped-turn.js";
+import { type MappedLlmTurnSpec, mappedCollectTrigger } from "./mapped-turn.js";
 import {
 	getProcessTurnTransitions,
 	markDefinedProcess,
 	setProcessTurnTransitions,
 } from "./process-definition-internals.js";
+import {
+	type ProcessGraphSource,
+	toProcessGraphView,
+	validateProcessGraphProducts,
+	validateProcessGraphTurnTransitions,
+} from "./process-graph.js";
 import type { ServerExtensionEventMap } from "./server-events.js";
+import { validateTurnDefinition } from "./turn-semantics.js";
 import type {
 	HumanTurnActionView,
 	HumanTurnExternalActionView,
@@ -638,7 +645,7 @@ function compileBranchRoutes(input: {
 	const routes: Record<string, NormalizedActionRoute> = {};
 	const transitions: NormalizedActionRoute[] = [];
 	const usedTriggers = new Set<string>();
-	for (const [branchId, branchSpec] of Object.entries(input.branches)) {
+	compileDeclarations(Object.entries(input.branches), ([branchId, branchSpec]) => {
 		if (branchId.trim() === "") throw new Error(input.emptyBranchError);
 		const target = normalizeStaticRouteTarget(
 			input.targetContext(branchId),
@@ -651,7 +658,7 @@ function compileBranchRoutes(input: {
 		const route = { ...target, trigger };
 		routes[branchId] = route;
 		transitions.push(route);
-	}
+	});
 	return { routes, transitions };
 }
 
@@ -770,15 +777,7 @@ function compileExternalSourceTransitions<TParams, TState>(input: {
 	spec: ExternalTurnDefinition<TParams, TState>;
 	knownTurnIds: ReadonlySet<TurnId>;
 }): readonly ProcessTurnTransition[] {
-	if (input.spec.transitions.length === 0) {
-		throw new Error(`External turn '${input.turnId}' must declare at least one source transition`);
-	}
-	return input.spec.transitions.map((transition, index) => {
-		if (transition.source.kind.trim() === "") {
-			throw new Error(
-				`External turn '${input.turnId}' source transition ${index} has an empty kind`,
-			);
-		}
+	return compileDeclarations(input.spec.transitions, (transition, index) => {
 		const target = normalizeStaticRouteTarget(
 			`External turn '${input.turnId}' source '${transition.source.kind}'`,
 			transition,
@@ -1124,21 +1123,11 @@ function compileTurnOutcomeDefinitions<TParams, TState>(input: {
 	const outcomeEntries = Object.entries(input.outcomes ?? {}) as Array<
 		[string, ProcessToolOutcomeSpec<TParams, TState>]
 	>;
-	if (outcomeEntries.length > 0 && input.turnEnd) {
-		throw new Error(
-			`Turn '${input.turnId}' cannot declare both tool outcomes and a turnEnd result`,
-		);
-	}
-	if (outcomeEntries.length === 0 && !input.turnEnd) {
-		throw new Error(
-			`Turn '${input.turnId}' must declare at least one tool outcome or a turnEnd result`,
-		);
-	}
 
 	const transitions: ProcessTurnTransition[] = [];
 	const effects = new Map<string, ProcessOutcomeEffect<TParams, TState> | undefined>();
 	const routings = new Map<string, CompiledOutcomeRouting<TParams, TState>>();
-	for (const [outcome, spec] of outcomeEntries) {
+	compileDeclarations(outcomeEntries, ([outcome, spec]) => {
 		if (outcome.trim() === "") {
 			throw new Error(`Turn '${input.turnId}' declares an empty outcome id`);
 		}
@@ -1169,7 +1158,7 @@ function compileTurnOutcomeDefinitions<TParams, TState>(input: {
 			});
 		}
 		effects.set(outcome, resolveOutcomeEffect({ spec }));
-	}
+	});
 
 	if (input.turnEnd) {
 		if (input.turnEnd.outcome.trim() === "") {
@@ -1203,8 +1192,6 @@ function compileMappedTurnTransitions<TParams, TState>(input: {
 }): readonly ProcessTurnTransition[] {
 	const mapped = input.spec.forEach;
 	if (!mapped) return [];
-	const errors = validateMappedTurn(input.turnId, input.spec);
-	if (errors.length) throw new Error(errors.join("; "));
 	const routing = mapped.routing;
 	if (routing.kind === "static") {
 		const target = normalizeStaticRouteTarget(
@@ -1219,7 +1206,7 @@ function compileMappedTurnTransitions<TParams, TState>(input: {
 		);
 		return [{ ...target, trigger: mappedCollectTrigger() }];
 	}
-	return Object.entries(routing.branches).map(([branchId, to]) => {
+	return compileDeclarations(Object.entries(routing.branches), ([branchId, to]) => {
 		if (branchId.trim() === "") {
 			throw new Error(`Mapped turn '${input.turnId}' collection contains an empty branch id`);
 		}
@@ -1380,7 +1367,7 @@ function deriveHumanTurnActions<TParams, TState>(input: {
 	const derivedActions: DerivedHumanTurnAction<TParams, TState>[] = [];
 	const transitions: ProcessTurnTransition[] = [];
 	const actionIdByTrigger = new Map<string, string>();
-	for (const [actionId, actionSpec] of actionEntries) {
+	compileDeclarations(actionEntries, ([actionId, actionSpec]) => {
 		if (actionId.trim() === "") {
 			throw new Error(`Human turn '${input.turnId}' declares an empty action id`);
 		}
@@ -1445,14 +1432,14 @@ function deriveHumanTurnActions<TParams, TState>(input: {
 					description: trigger.description,
 				})) ?? [],
 		});
-	}
+	});
 
 	const externalActionEntries = Object.entries(input.spec.externalActions ?? {}) as Array<
 		[string, ProcessHumanTurnExternalActionSpec<TParams, TState>]
 	>;
 	const derivedExternalActions: DerivedHumanTurnExternalAction<TParams, TState>[] = [];
 	const externalActionIds = new Set<string>();
-	for (const [externalActionId, actionSpec] of externalActionEntries) {
+	compileDeclarations(externalActionEntries, ([externalActionId, actionSpec]) => {
 		if (externalActionIds.has(externalActionId)) {
 			throw new Error(
 				`Human turn '${input.turnId}' declares duplicate external action '${externalActionId}'`,
@@ -1503,7 +1490,7 @@ function deriveHumanTurnActions<TParams, TState>(input: {
 				description: actionSpec.description ?? actionSpec.source.description ?? null,
 			},
 		});
-	}
+	});
 
 	return {
 		actions: derivedActions,
@@ -1638,14 +1625,14 @@ function buildActionTransitionRequest<TState>(route: NormalizedActionRoute) {
 }
 
 function validateHappyPathConnectivity<TParams, TState>(input: {
-	processId: string;
 	happyPath: readonly TurnId[] | undefined;
 	turns: ReadonlyMap<TurnId, ProcessTurnBinding<TurnDefinition<TParams, TState>>>;
 	turnDefinitionsById: ReadonlyMap<TurnId, TurnDefinition<unknown, unknown>>;
-}): void {
+}): string[] {
+	const errors: string[] = [];
 	const happyPath = input.happyPath;
 	if (!happyPath || happyPath.length < 2) {
-		return;
+		return errors;
 	}
 	const happyPathTurns = new Set<TurnId>(happyPath);
 	for (let index = 0; index < happyPath.length - 1; index += 1) {
@@ -1677,60 +1664,122 @@ function validateHappyPathConnectivity<TParams, TState>(input: {
 			}
 		}
 		if (!connected) {
-			throw new Error(
-				`Process '${input.processId}' happy path segment '${source}' -> '${target}' is not connected by declared transitions`,
+			errors.push(
+				`happy path segment '${source}' -> '${target}' is not connected by declared transitions`,
 			);
+		}
+	}
+	return errors;
+}
+
+type ProcessDefinitionDeclaration<TParams, TState> = Pick<
+	DefinedProcessInput<TParams, TState>,
+	"id" | "entry" | "alternateEntries" | "happyPath" | "turns"
+>;
+
+class DefinitionDiagnostics {
+	readonly errors: string[] = [];
+
+	constructor(private readonly processId: string) {}
+
+	add(message: string, turnId?: TurnId): void {
+		const context = `Process '${this.processId}'${turnId === undefined ? "" : `, turn '${turnId}'`}`;
+		this.errors.push(`${context}: ${message}`);
+	}
+
+	record(error: unknown, turnId?: TurnId): void {
+		if (error instanceof AggregateError) {
+			for (const cause of error.errors) this.record(cause, turnId);
+		} else {
+			this.add(error instanceof Error ? error.message : String(error), turnId);
+		}
+	}
+
+	capture<T>(inspect: () => T, turnId?: TurnId): T | undefined {
+		try {
+			return inspect();
+		} catch (error) {
+			this.record(error, turnId);
+			return undefined;
 		}
 	}
 }
 
-function buildDefinedProcess<TParams, TState>(
-	input: DefinedProcessInput<TParams, TState>,
-): Pick<ExtensionProcessDefinition<TParams, TState>, "turns" | "worker" | "server"> {
-	const turnEntries = Object.entries(input.turns);
-	if (turnEntries.length === 0) {
-		throw new Error(`Process '${input.id}' must declare at least one turn`);
+// Siblings can be inspected independently; their dependent compilation cannot
+// proceed until all of them are valid.
+function compileDeclarations<TEntry, TResult>(
+	entries: readonly TEntry[],
+	compile: (entry: TEntry, index: number) => TResult,
+): TResult[] {
+	const results: TResult[] = [];
+	const errors: unknown[] = [];
+	for (const [index, entry] of entries.entries()) {
+		try {
+			results.push(compile(entry, index));
+		} catch (error) {
+			errors.push(error);
+		}
 	}
+	if (errors.length > 0) {
+		throw new AggregateError(
+			errors,
+			errors.map((error) => (error instanceof Error ? error.message : String(error))).join("; "),
+		);
+	}
+	return results;
+}
+
+// Compilation and catalog admission share this inspection. Author callbacks are
+// retained as values; inspecting a declaration never executes a process.
+function compileProcessDefinition<TParams, TState>(
+	input: ProcessDefinitionDeclaration<TParams, TState>,
+	retainedTurns?: ReadonlyMap<TurnId, ProcessTurnBinding<TurnDefinition<TParams, TState>>>,
+) {
+	const diagnostics = new DefinitionDiagnostics(input.id);
+	const turnEntries = Object.entries(input.turns);
 	const knownTurnIds = new Set(turnEntries.map(([turnId]) => turnId));
 	const turnDefinitionsById = new Map<TurnId, TurnDefinition<unknown, unknown>>(
 		turnEntries.map(([turnId, turnSpec]) => [turnId, turnSpec as TurnDefinition<unknown, unknown>]),
 	);
-	if (!knownTurnIds.has(input.entry)) {
-		throw new Error(`Process '${input.id}' entry turn '${input.entry}' is not declared`);
+	if (turnEntries.length === 0) {
+		diagnostics.add("must declare at least one turn");
 	}
 	const seenEntries = new Set<TurnId>();
 	for (const turnId of [input.entry, ...(input.alternateEntries ?? [])]) {
 		if (seenEntries.has(turnId)) {
-			throw new Error(`Process '${input.id}' declares duplicate entry turn '${turnId}'`);
+			diagnostics.add(`declares duplicate entry turn '${turnId}'`);
 		}
 		if (!knownTurnIds.has(turnId)) {
-			throw new Error(`Process '${input.id}' entry turn '${turnId}' is not declared`);
+			diagnostics.add(`entry turn '${turnId}' is not declared in turns`);
 		}
 		seenEntries.add(turnId);
 	}
 
+	let validHappyPath = true;
 	if (input.happyPath) {
+		const before = diagnostics.errors.length;
 		if (input.happyPath.length === 0) {
-			throw new Error(`Process '${input.id}' declares an empty happy path`);
+			diagnostics.add("declares an empty happy path");
 		}
 		const seen = new Set<TurnId>();
 		for (const turnId of input.happyPath) {
 			if (!knownTurnIds.has(turnId)) {
-				throw new Error(`Process '${input.id}' happy path references undeclared turn '${turnId}'`);
+				diagnostics.add(`happy path references undeclared turn '${turnId}'`);
 			}
 			if (seen.has(turnId)) {
-				throw new Error(`Process '${input.id}' happy path repeats turn '${turnId}'`);
+				diagnostics.add(`happy path repeats turn '${turnId}'`);
 			}
 			seen.add(turnId);
 		}
-		if (input.happyPath[0] !== input.entry) {
-			throw new Error(
-				`Process '${input.id}' happy path must start at the entry turn '${input.entry}'`,
-			);
+		if (input.happyPath.length > 0 && input.happyPath[0] !== input.entry) {
+			diagnostics.add(`happy path must start at the entry turn '${input.entry}'`);
 		}
+		validHappyPath = before === diagnostics.errors.length;
 	}
 
-	const turns = new Map<TurnId, ProcessTurnBinding<TurnDefinition<TParams, TState>>>();
+	const turns = new Map<TurnId, ProcessTurnBinding<TurnDefinition<TParams, TState>>>(
+		turnEntries.map(([turnId, definition]) => [turnId, { definition }]),
+	);
 	const actionUses = new Map<string, CompiledActionUse<TParams, TState>[]>();
 	const executableTurns = new Map<
 		TurnId,
@@ -1738,79 +1787,167 @@ function buildDefinedProcess<TParams, TState>(
 			spec: RoutableTurnDefinition<string, TParams, TState>;
 		}
 	>();
-
+	let validTurns = true;
+	let inspectableProducts = true;
 	for (const [turnId, turnSpec] of turnEntries) {
-		if (turnSpec.kind === "llm" && turnSpec.forEach) {
-			turns.set(
-				turnId,
-				createProcessTurnBinding(
-					turnSpec,
-					compileMappedTurnTransitions({ turnId, spec: turnSpec, knownTurnIds }),
-				),
-			);
-			executableTurns.set(turnId, {
-				spec: turnSpec,
-				effects: new Map(),
-				routings: new Map(),
-			});
+		const errors = diagnostics.capture(() => validateTurnDefinition(turnId, turnSpec), turnId);
+		if (errors === undefined) {
+			validTurns = false;
+			inspectableProducts = false;
 			continue;
 		}
-		if (turnSpec.kind === "llm" || turnSpec.kind === "automatic") {
-			const { transitions, effects, routings } = compileTurnOutcomeDefinitions({
-				turnId,
-				outcomes: turnSpec.outcomes,
-				turnEnd: turnSpec.turnEnd,
-				knownTurnIds,
-			});
-			const externalTransitions =
-				turnSpec.kind === "automatic" && turnSpec.externalActions
-					? deriveHumanTurnActions({
-							turnId,
-							spec: {
-								kind: "human",
-								description: turnSpec.description,
-								actions: {},
-								externalActions: turnSpec.externalActions,
-							},
-							knownTurnIds,
-							turnDefinitionsById,
-							requireHumanActions: false,
-						}).transitions
-					: [];
-			turns.set(
-				turnId,
-				createProcessTurnBinding(turnSpec, [...transitions, ...externalTransitions]),
-			);
-			executableTurns.set(turnId, { spec: turnSpec, effects, routings });
+		for (const error of errors) diagnostics.add(error, turnId);
+		if (errors.length > 0) {
+			validTurns = false;
 			continue;
 		}
+		try {
+			if (turnSpec.kind === "llm" && turnSpec.forEach) {
+				turns.set(
+					turnId,
+					createProcessTurnBinding(
+						turnSpec,
+						compileMappedTurnTransitions({ turnId, spec: turnSpec, knownTurnIds }),
+					),
+				);
+				executableTurns.set(turnId, {
+					spec: turnSpec,
+					effects: new Map(),
+					routings: new Map(),
+				});
+				continue;
+			}
+			if (turnSpec.kind === "llm" || turnSpec.kind === "automatic") {
+				const { transitions, effects, routings } = compileTurnOutcomeDefinitions({
+					turnId,
+					outcomes: turnSpec.outcomes,
+					turnEnd: turnSpec.turnEnd,
+					knownTurnIds,
+				});
+				const externalTransitions =
+					turnSpec.kind === "automatic" && turnSpec.externalActions
+						? deriveHumanTurnActions({
+								turnId,
+								spec: {
+									kind: "human",
+									description: turnSpec.description,
+									actions: {},
+									externalActions: turnSpec.externalActions,
+								},
+								knownTurnIds,
+								turnDefinitionsById,
+								requireHumanActions: false,
+							}).transitions
+						: [];
+				turns.set(
+					turnId,
+					createProcessTurnBinding(turnSpec, [...transitions, ...externalTransitions]),
+				);
+				executableTurns.set(turnId, { spec: turnSpec, effects, routings });
+				continue;
+			}
 
-		if (turnSpec.kind === "human") {
-			const compiled = compileHumanTurn({
+			if (turnSpec.kind === "human") {
+				const compiled = compileHumanTurn({
+					turnId,
+					spec: turnSpec,
+					knownTurnIds,
+					turnDefinitionsById,
+					actionUses,
+				});
+				turns.set(turnId, compiled.binding);
+				continue;
+			}
+
+			const compiled = compileExternalTurn({
 				turnId,
 				spec: turnSpec,
 				knownTurnIds,
-				turnDefinitionsById,
-				actionUses,
 			});
 			turns.set(turnId, compiled.binding);
-			continue;
+		} catch (error) {
+			validTurns = false;
+			diagnostics.record(error, turnId);
 		}
-
-		const compiled = compileExternalTurn({
-			turnId,
-			spec: turnSpec,
-			knownTurnIds,
-		});
-		turns.set(turnId, compiled.binding);
 	}
 
-	validateHappyPathConnectivity({
-		processId: input.id,
-		happyPath: input.happyPath,
-		turns,
-		turnDefinitionsById,
-	});
+	for (const [actionId, uses] of actionUses) {
+		const [firstUse] = uses;
+		for (const use of uses.slice(1)) {
+			if (!areFormsEquivalent(firstUse.form, use.form)) {
+				diagnostics.add(
+					`Action '${actionId}' must use the same form on every turn that references it (first declared on '${firstUse.turnId}')`,
+					use.turnId,
+				);
+			}
+		}
+	}
+
+	if (retainedTurns) {
+		for (const [turnId, binding] of retainedTurns) {
+			if ("transitions" in binding) {
+				diagnostics.add(
+					"must declare routing on the turn definition instead of authored transitions",
+					turnId,
+				);
+			}
+		}
+	}
+	// Recompiled declarations and retained transitions must each form a valid graph.
+	// Retained routes cannot stand in for metadata that changed after definition.
+	for (const graphTurns of retainedTurns ? [turns, retainedTurns] : [turns]) {
+		if (!inspectableProducts) continue;
+		const graph = diagnostics.capture(() =>
+			toProcessGraphView({
+				id: input.id,
+				entryTurnId: input.entry,
+				alternateEntryTurnIds: input.alternateEntries,
+				happyPath: input.happyPath,
+				turns: graphTurns,
+			} as unknown as ProcessGraphSource),
+		);
+		if (!graph) continue;
+		for (const error of validateProcessGraphProducts(graph)) diagnostics.add(error);
+		const transitionErrors = validateProcessGraphTurnTransitions(graph);
+		for (const error of transitionErrors) diagnostics.add(error);
+		// Connectivity depends on successful routing compilation. Do not manufacture
+		// disconnected-path errors from turns whose declarations already failed.
+		if (validTurns && validHappyPath && transitionErrors.length === 0) {
+			for (const error of validateHappyPathConnectivity({
+				happyPath: input.happyPath,
+				turns: graphTurns,
+				turnDefinitionsById,
+			}))
+				diagnostics.add(error);
+		}
+	}
+
+	return { turns, actionUses, executableTurns, errors: [...new Set(diagnostics.errors)] };
+}
+
+/** Recheck declaration metadata and retained graph facts without executing author callbacks. @internal */
+export function validateProcessDefinition<TParams, TState>(
+	process: ExtensionProcessDefinition<TParams, TState>,
+): readonly string[] {
+	return compileProcessDefinition(
+		{
+			id: process.id,
+			entry: process.entryTurnId,
+			alternateEntries: process.alternateEntryTurnIds,
+			happyPath: process.happyPath,
+			turns: Object.fromEntries(
+				[...process.turns].map(([id, binding]) => [id, binding.definition]),
+			),
+		},
+		process.turns,
+	).errors;
+}
+
+function buildDefinedProcess<TParams, TState>(
+	input: DefinedProcessInput<TParams, TState>,
+): Pick<ExtensionProcessDefinition<TParams, TState>, "turns" | "worker" | "server"> {
+	const { turns, actionUses, executableTurns, errors } = compileProcessDefinition(input);
+	if (errors.length > 0) throw new Error(errors.join("; "));
 
 	const worker: ExtensionProcessDefinition<TParams, TState>["worker"] = (api) => {
 		api.start(input.entry);
@@ -1844,13 +1981,6 @@ function buildDefinedProcess<TParams, TState>(
 		for (const [actionId, uses] of actionUses) {
 			const [firstUse] = uses;
 			const form = firstUse?.form;
-			for (const use of uses) {
-				if (!areFormsEquivalent(form, use.form)) {
-					throw new Error(
-						`Action '${actionId}' must use the same form on every turn that references it`,
-					);
-				}
-			}
 			api.action({
 				id: actionId,
 				label: firstUse?.label ?? actionId,

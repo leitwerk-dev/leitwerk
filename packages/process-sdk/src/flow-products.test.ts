@@ -334,7 +334,7 @@ describe("flow product publication and consumption", () => {
 						),
 				)
 				.define(),
-		).toThrow(/publishes input 'message' but does not route to a consuming turn/);
+		).toThrow(/external action 'review_file' cannot publish input on a terminal route/);
 
 		expect(() =>
 			base()

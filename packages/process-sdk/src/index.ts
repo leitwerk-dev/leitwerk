@@ -78,6 +78,7 @@ export {
 	resolveHumanTurnView,
 	routeTurnOutcomes,
 	type TurnDefinition,
+	validateProcessDefinition,
 } from "./define-process.js";
 export { createEventBus } from "./event-bus.js";
 export type {

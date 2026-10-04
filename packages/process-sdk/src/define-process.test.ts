@@ -1190,58 +1190,58 @@ describe("defineProcess", () => {
 			title: "Second",
 			fields: [{ id: "count", label: "Count", kind: "number" }],
 		};
-		const process = defineProcess({
-			id: "inconsistent_form_process",
-			displayName: "Inconsistent Form",
-			entry: "draft",
-			paramsCodec: emptyParamsCodec,
-			stateCodec,
-			initialState: () => ({ branch: "draft" }),
-			turns: {
-				draft: llmTurn({
-					availableTools: [],
-					description: "Draft",
-					branchType: "primary",
-					context: "fresh",
-					prompt: async () => "draft",
-					turnEnd: { outcome: "ready", params: {}, to: "start" },
-				}),
-				start: humanTurn({
-					description: "Start",
-					actions: {
-						retry: {
-							label: "Retry",
-							acceptanceState: "neutral",
-							form: firstForm,
-							to: "done",
+		expect(() =>
+			defineProcess({
+				id: "inconsistent_form_process",
+				displayName: "Inconsistent Form",
+				entry: "draft",
+				paramsCodec: emptyParamsCodec,
+				stateCodec,
+				initialState: () => ({ branch: "draft" }),
+				turns: {
+					draft: llmTurn({
+						availableTools: [],
+						description: "Draft",
+						branchType: "primary",
+						context: "fresh",
+						prompt: async () => "draft",
+						turnEnd: { outcome: "ready", params: {}, to: "start" },
+					}),
+					start: humanTurn({
+						description: "Start",
+						actions: {
+							retry: {
+								label: "Retry",
+								acceptanceState: "neutral",
+								form: firstForm,
+								to: "done",
+							},
 						},
-					},
-				}),
-				alternate: humanTurn({
-					description: "Alternate",
-					actions: {
-						retry: {
-							label: "Retry",
-							acceptanceState: "neutral",
-							form: secondForm,
-							to: "done",
+					}),
+					alternate: humanTurn({
+						description: "Alternate",
+						actions: {
+							retry: {
+								label: "Retry",
+								acceptanceState: "neutral",
+								form: secondForm,
+								to: "done",
+							},
 						},
-					},
-				}),
-				done: automaticTurn({
-					description: "Done",
-					run: () => ({ outcome: "completed", params: {} }),
-					outcomes: {
-						completed: {
-							description: "completed",
-							parameters: {},
-							complete: true,
+					}),
+					done: automaticTurn({
+						description: "Done",
+						run: () => ({ outcome: "completed", params: {} }),
+						outcomes: {
+							completed: {
+								description: "completed",
+								parameters: {},
+								complete: true,
+							},
 						},
-					},
-				}),
-			},
-		});
-
-		expect(() => buildServerProcessForTest(process)).toThrow(/same form/);
+					}),
+				},
+			}),
+		).toThrow(/same form/);
 	});
 });
