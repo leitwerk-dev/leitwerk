@@ -39,6 +39,7 @@ async function writePiExtension(agentDir: string, source: string): Promise<void>
 function providerExtensionSource(observationFile: string): string {
 	return `
 import { appendFileSync } from "node:fs";
+import { getCurrentSystemPrompt, getCurrentTools } from "@earendil-works/pi-ai";
 
 export default function providerExtension(pi) {
   pi.registerProvider("extension-provider", {
@@ -48,9 +49,9 @@ export default function providerExtension(pi) {
     api: "title-test",
     streamSimple(model, context, options) {
       appendFileSync(${JSON.stringify(observationFile)}, JSON.stringify({
-        systemPrompt: context.systemPrompt,
+        systemPrompt: getCurrentSystemPrompt(context.messages),
         messages: context.messages,
-        tools: context.tools,
+        tools: getCurrentTools(context.messages),
         modelMaxTokens: model.maxTokens,
         reasoning: options?.reasoning,
         sessionId: options?.sessionId,
@@ -232,7 +233,10 @@ describe("process title generator retries", () => {
 					"You write concise operator-facing titles for process instances.",
 				);
 				expect(observation.systemPrompt).not.toContain("expert coding assistant");
-				expect(observation.messages).toEqual([expect.objectContaining({ role: "user" })]);
+				expect(observation.messages).toEqual([
+					expect.objectContaining({ role: "system" }),
+					expect.objectContaining({ role: "user" }),
+				]);
 				expect(JSON.stringify(observation.messages)).toContain(
 					"Implement a collapsible sidebar for the process list.",
 				);

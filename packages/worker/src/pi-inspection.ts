@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { getCurrentSystemPrompt, getCurrentTools } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { ExecutionInspectionCapture, InspectionMessage } from "@leitwerk-dev/domain";
 
@@ -84,7 +85,7 @@ export function installPiInspection(
 					id: model.id,
 					thinkingLevel: session.thinkingLevel ?? null,
 				},
-				systemPrompt: { state: "recorded", value: context.systemPrompt ?? "" },
+				systemPrompt: { state: "recorded", value: getCurrentSystemPrompt(context.messages) },
 				appendedInstructions: {
 					state: "recorded",
 					value: session.resourceLoader.getAppendSystemPrompt(),
@@ -97,7 +98,7 @@ export function installPiInspection(
 				},
 				tools: {
 					state: "recorded",
-					value: (context.tools ?? []).map(({ name, description, parameters }) => ({
+					value: getCurrentTools(context.messages).map(({ name, description, parameters }) => ({
 						name,
 						description,
 						parameters,
