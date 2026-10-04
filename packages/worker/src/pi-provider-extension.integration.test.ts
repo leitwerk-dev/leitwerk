@@ -199,6 +199,11 @@ describe("SdkPiTreeHandleFactory Pi provider extensions", () => {
 					tools: { state: "recorded", value: [] },
 					messages: [
 						{
+							role: "system",
+							entryId: expect.any(String),
+							content: { state: "recorded" },
+						},
+						{
 							role: "user",
 							entryId: expect.any(String),
 							content: {

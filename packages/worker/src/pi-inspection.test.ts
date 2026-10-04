@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { installPiInspection } from "./pi-inspection.js";
 
 describe("model-input capture", () => {
-	it("retains each assembled context revision and exact message identities without provider options or renderer details", () => {
+	it("retains each assembled context revision and exact message identities without provider options or renderer details", async () => {
 		const llm = new FakeLlmProvider();
 		llm.onPrompt(() => ({ content: "done" }));
 		const captures: ExecutionInspectionCapture[] = [];
@@ -54,7 +54,7 @@ describe("model-input capture", () => {
 				request,
 			],
 		};
-		call(model, context, { apiKey: "provider-secret" });
+		await call(model, context, { apiKey: "provider-secret" });
 		leaf = "compaction";
 		request.content = "Compacted history";
 		context.messages.push({
@@ -65,8 +65,8 @@ describe("model-input capture", () => {
 			toolsAdded: [finish],
 			timestamp: 2,
 		});
-		call({ ...model, id: "second" }, context, { apiKey: "provider-secret" });
-		call(model, { messages: [request] }, { apiKey: "provider-secret" });
+		await call({ ...model, id: "second" }, context, { apiKey: "provider-secret" });
+		await call(model, { messages: [request] }, { apiKey: "provider-secret" });
 		expect(llm.calls).toHaveLength(3);
 		expect(captures.map((capture) => capture.fact)).toMatchObject([
 			{

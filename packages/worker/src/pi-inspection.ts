@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { getCurrentSystemPrompt, getCurrentTools } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { ExecutionInspectionCapture, InspectionMessage } from "@leitwerk-dev/domain";
 
@@ -44,7 +43,8 @@ export function installPiInspection(
 			},
 		});
 	});
-	session.agent.streamFunction = (model, context, options) => {
+	session.agent.streamFunction = async (model, context, options) => {
+		const { getCurrentSystemPrompt, getCurrentTools } = await import("@earendil-works/pi-ai");
 		const entries = session.sessionManager.getBranch();
 		const byContent = new Map<string, Array<{ id: string; timestamp: number }>>();
 		for (const entry of entries) {
