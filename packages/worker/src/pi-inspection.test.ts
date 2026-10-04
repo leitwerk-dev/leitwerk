@@ -1,3 +1,4 @@
+import type { TranscriptContext } from "@earendil-works/pi-ai";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { type ExecutionInspectionCapture, redactInspectionEvidence } from "@leitwerk-dev/domain";
 import { FakeLlmProvider } from "@leitwerk-dev/test-support";
@@ -5,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { installPiInspection } from "./pi-inspection.js";
 
 describe("model-input capture", () => {
-	it("retains each assembled context revision and exact message identities without provider options or renderer details", () => {
+	it("retains each assembled context revision and exact message identities without provider options or renderer details", async () => {
 		const llm = new FakeLlmProvider();
 		llm.onPrompt(() => ({ content: "done" }));
 		const captures: ExecutionInspectionCapture[] = [];
@@ -34,36 +35,74 @@ describe("model-input capture", () => {
 		);
 		const call = session.agent.streamFunction as unknown as AgentSession["agent"]["streamFunction"];
 		const model = { provider: "synthetic", id: "first" } as Parameters<typeof call>[0];
-		const context = {
-			systemPrompt: "Assembled first",
-			messages: [{ role: "user" as const, content: "Request", timestamp: 1 }],
-			tools: [
+		const lookup = {
+			name: "lookup",
+			description: "Available",
+			parameters: { type: "object", properties: {} },
+		};
+		const finish = { ...lookup, name: "finish", description: "Finish the turn" };
+		const request = { role: "user" as const, content: "Request", timestamp: 1 };
+		const context: TranscriptContext = {
+			messages: [
 				{
-					name: "lookup",
-					description: "Available",
-					parameters: { type: "object" as const, properties: {} },
+					role: "system",
+					content: "Base instructions",
+					sections: { turn: "Assembled first", obsolete: "Obsolete instructions" },
+					toolsAdded: [lookup],
+					timestamp: 0,
 				},
+				request,
 			],
 		};
-		call(model, context, { apiKey: "provider-secret" });
+		await call(model, context, { apiKey: "provider-secret" });
 		leaf = "compaction";
-		context.systemPrompt = "Assembled second";
-		context.messages[0].content = "Compacted history";
-		call({ ...model, id: "second" }, context, { apiKey: "provider-secret" });
-		expect(llm.calls).toHaveLength(2);
+		request.content = "Compacted history";
+		context.messages.push({
+			role: "system",
+			content: "Additional instructions",
+			sections: { turn: "Assembled second", obsolete: null },
+			toolsRemoved: [{ name: "lookup" }],
+			toolsAdded: [finish],
+			timestamp: 2,
+		});
+		await call({ ...model, id: "second" }, context, { apiKey: "provider-secret" });
+		await call(model, { messages: [request] }, { apiKey: "provider-secret" });
+		expect(llm.calls).toHaveLength(3);
 		expect(captures.map((capture) => capture.fact)).toMatchObject([
 			{
 				kind: "model_input",
 				boundaryEntryId: "prompt",
 				model: { id: "first" },
-				systemPrompt: { value: "Assembled first" },
-				messages: [{ entryId: "prompt", role: "user", content: { value: "Request" } }],
+				systemPrompt: {
+					state: "recorded",
+					value: "Base instructions\n\nAssembled first\n\nObsolete instructions",
+				},
+				tools: { state: "recorded", value: [lookup] },
+				messages: [
+					{ entryId: null, role: "system", content: { value: "Base instructions" } },
+					{ entryId: "prompt", role: "user", content: { value: "Request" } },
+				],
 			},
 			{
 				kind: "model_input",
 				boundaryEntryId: "compaction",
 				model: { id: "second" },
-				messages: [{ entryId: null, content: { value: "Compacted history" } }],
+				systemPrompt: {
+					state: "recorded",
+					value: "Base instructions\n\nAdditional instructions\n\nAssembled second",
+				},
+				tools: { state: "recorded", value: [finish] },
+				messages: [
+					{ entryId: null, role: "system", content: { value: "Base instructions" } },
+					{ entryId: null, role: "user", content: { value: "Compacted history" } },
+					{ entryId: null, role: "system", content: { value: "Additional instructions" } },
+				],
+			},
+			{
+				kind: "model_input",
+				systemPrompt: { state: "recorded", value: "" },
+				tools: { state: "recorded", value: [] },
+				messages: [{ entryId: null, role: "user", content: { value: "Compacted history" } }],
 			},
 		]);
 		expect(JSON.stringify(captures)).not.toContain("provider-secret");

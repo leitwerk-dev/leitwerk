@@ -43,7 +43,8 @@ export function installPiInspection(
 			},
 		});
 	});
-	session.agent.streamFunction = (model, context, options) => {
+	session.agent.streamFunction = async (model, context, options) => {
+		const { getCurrentSystemPrompt, getCurrentTools } = await import("@earendil-works/pi-ai");
 		const entries = session.sessionManager.getBranch();
 		const byContent = new Map<string, Array<{ id: string; timestamp: number }>>();
 		for (const entry of entries) {
@@ -84,7 +85,7 @@ export function installPiInspection(
 					id: model.id,
 					thinkingLevel: session.thinkingLevel ?? null,
 				},
-				systemPrompt: { state: "recorded", value: context.systemPrompt ?? "" },
+				systemPrompt: { state: "recorded", value: getCurrentSystemPrompt(context.messages) },
 				appendedInstructions: {
 					state: "recorded",
 					value: session.resourceLoader.getAppendSystemPrompt(),
@@ -97,7 +98,7 @@ export function installPiInspection(
 				},
 				tools: {
 					state: "recorded",
-					value: (context.tools ?? []).map(({ name, description, parameters }) => ({
+					value: getCurrentTools(context.messages).map(({ name, description, parameters }) => ({
 						name,
 						description,
 						parameters,
