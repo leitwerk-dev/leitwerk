@@ -1,0 +1,805 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Steering input inbox · Leitwerk prototype</title>
+<style>
+:root {
+	font-family: ui-sans-serif, system-ui, sans-serif;
+	color: #18212b;
+	background: #fff;
+	font-size: 15px;
+	line-height: 1.5;
+	--blue: #2f61b7;
+	--muted: #4c5968;
+	--line: #d9dee5;
+}
+* {
+	box-sizing: border-box;
+}
+body {
+	margin: 0;
+}
+button,
+textarea {
+	font: inherit;
+}
+button {
+	min-height: 44px;
+	padding: 9px 15px;
+	border: 1px solid #aeb7c2;
+	background: #fff;
+	color: inherit;
+	border-radius: 24px;
+	cursor: pointer;
+	font-weight: 600;
+}
+button:hover:not(:disabled) {
+	border-color: var(--blue);
+	background: #f2f6fc;
+}
+button:disabled {
+	color: #687483;
+	background: #f2f4f7;
+	cursor: default;
+}
+button:focus-visible,
+textarea:focus-visible {
+	outline: 3px solid var(--blue);
+	outline-offset: 3px;
+}
+button.primary {
+	background: #18212b;
+	color: #fff;
+	border-color: #18212b;
+}
+header {
+	border-bottom: 1px solid var(--line);
+	padding: 18px max(24px, calc((100vw - 1160px) / 2));
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	gap: 16px;
+	background: #f7f8fa;
+}
+header strong {
+	font-size: 18px;
+}
+header span {
+	color: var(--muted);
+}
+main {
+	max-width: 1208px;
+	margin: auto;
+	padding: 30px 24px 60px;
+}
+h1 {
+	font-size: 30px;
+	line-height: 1.2;
+	margin: 0 0 12px;
+	letter-spacing: -0.6px;
+}
+h2 {
+	font-size: 19px;
+	margin: 0 0 12px;
+}
+h3 {
+	font-size: 15px;
+	margin: 0 0 6px;
+}
+p {
+	margin: 0 0 12px;
+}
+.intro {
+	max-width: 860px;
+	color: var(--muted);
+}
+.notice {
+	margin: 18px 0 24px;
+	padding: 14px 18px;
+	border: 1px solid #b9cae8;
+	background: #f2f6fc;
+	border-radius: 8px;
+}
+.notice p {
+	margin: 0;
+}
+.layout {
+	display: grid;
+	grid-template-columns: minmax(0, 1.65fr) minmax(300px, 1fr);
+	gap: 32px;
+}
+.section {
+	padding-bottom: 24px;
+	margin-bottom: 24px;
+	border-bottom: 1px solid var(--line);
+}
+.bar {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	flex-wrap: wrap;
+}
+.bar h2 {
+	margin: 0;
+}
+.stats {
+	display: flex;
+	gap: 22px;
+	flex-wrap: wrap;
+	margin: 16px 0;
+	color: var(--muted);
+}
+.stats strong {
+	color: #18212b;
+	font-size: 21px;
+	padding-right: 5px;
+}
+.queue {
+	border-top: 1px solid var(--line);
+}
+.input-row {
+	padding: 16px 0;
+	border-bottom: 1px solid var(--line);
+}
+.row-top {
+	display: flex;
+	gap: 12px;
+	justify-content: space-between;
+	align-items: flex-start;
+}
+.sequence {
+	font-variant-numeric: tabular-nums;
+	font-weight: 650;
+	white-space: nowrap;
+}
+.body {
+	margin: 7px 0 9px;
+	overflow-wrap: anywhere;
+	white-space: pre-wrap;
+}
+.meta {
+	font-size: 13px;
+	color: var(--muted);
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px 16px;
+}
+.badge {
+	font-size: 13px;
+	display: inline-block;
+	background: #f2f4f7;
+	padding: 3px 9px;
+	border-radius: 20px;
+	white-space: nowrap;
+}
+.badge.blue {
+	background: #e6ecf6;
+	color: #224c91;
+}
+.badge.amber {
+	background: #fff4e4;
+	color: #835013;
+}
+.empty {
+	padding: 22px 0;
+	color: var(--muted);
+}
+.composer {
+	margin-top: 20px;
+}
+label {
+	display: block;
+	font-weight: 600;
+	margin-bottom: 8px;
+}
+textarea {
+	resize: vertical;
+	min-height: 88px;
+	width: 100%;
+	padding: 12px;
+	border: 1px solid #aeb7c2;
+	border-radius: 9px;
+	color: #18212b;
+	background: #fff;
+}
+.hint {
+	color: var(--muted);
+	font-size: 13px;
+	margin: 7px 0 13px;
+}
+.actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 12px;
+}
+.state-lines {
+	margin: 0;
+}
+.state-lines div {
+	display: flex;
+	justify-content: space-between;
+	gap: 16px;
+	border-bottom: 1px solid var(--line);
+	padding: 9px 0;
+}
+.state-lines dt {
+	color: var(--muted);
+}
+.state-lines dd {
+	margin: 0;
+	text-align: right;
+}
+.call {
+	background: #f7f8fa;
+	padding: 15px;
+	margin-top: 12px;
+	border: 1px solid var(--line);
+	border-radius: 8px;
+}
+.call p {
+	font-size: 14px;
+	margin: 6px 0 0;
+}
+.call ul {
+	padding-left: 20px;
+	font-size: 14px;
+	margin: 8px 0 0;
+	overflow-wrap: anywhere;
+}
+.call .muted {
+	color: var(--muted);
+}
+.controls p {
+	font-size: 14px;
+	color: var(--muted);
+}
+.guided {
+	margin-top: 8px;
+	background: #f7f8fa;
+	border: 1px solid var(--line);
+	border-radius: 10px;
+	padding: 22px;
+}
+.tabs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin: 12px 0 16px;
+}
+.tabs button[aria-selected="true"] {
+	background: #e6ecf6;
+	color: #224c91;
+	border-color: #2f61b7;
+}
+.steps {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+	margin-top: 16px;
+}
+.steps button {
+	font-weight: 500;
+	font-size: 14px;
+}
+.steps button.done {
+	border-color: #d9dee5;
+	background: #fff;
+	color: #4c5968;
+}
+.outcome {
+	font-weight: 600;
+	color: #224c91;
+	margin: 14px 0 0;
+}
+.footnote {
+	margin-top: 22px;
+	font-size: 13px;
+	color: var(--muted);
+	max-width: 1000px;
+}
+.log {
+	padding-left: 20px;
+	font-size: 13px;
+	color: var(--muted);
+	max-height: 160px;
+	overflow: auto;
+}
+.log li {
+	margin: 5px 0;
+}
+.small {
+	font-size: 13px;
+	color: var(--muted);
+}
+@media (max-width: 760px) {
+	.layout {
+		grid-template-columns: 1fr;
+		gap: 0;
+	}
+	main {
+		padding: 22px 18px 40px;
+	}
+	header {
+		padding: 15px 18px;
+	}
+	header span {
+		font-size: 13px;
+		max-width: 155px;
+		text-align: right;
+	}
+	h1 {
+		font-size: 26px;
+	}
+	.guided {
+		padding: 16px;
+	}
+	.tabs {
+		display: grid;
+		grid-template-columns: 1fr;
+	}
+	.tabs button {
+		text-align: left;
+	}
+	.steps {
+		display: grid;
+		grid-template-columns: 1fr;
+	}
+	.row-top {
+		gap: 8px;
+	}
+	.badge {
+		white-space: normal;
+		text-align: right;
+	}
+	.stats {
+		gap: 15px;
+	}
+	button {
+		max-width: 100%;
+	}
+	.state-lines div {
+		gap: 10px;
+	}
+	.notice {
+		padding: 12px;
+	}
+	.bar {
+		align-items: flex-start;
+	}
+}
+</style>
+</head>
+<body>
+<header><strong>Leitwerk / Inputs</strong><span>Prototype • synthetic data</span></header>
+<main>
+<h1>Did my instruction get through?</h1>
+<p class="intro">Explore a steering inbox for one running process. Can an operator tell when guidance is queued, acknowledged, and actually included in a model call—even when an acknowledgement goes missing?</p>
+<div class="notice" role="status" aria-live="polite"><p id="feedback"></p></div>
+<div class="layout">
+<section>
+<div class="section">
+<div class="bar"><h2>Steering input inbox</h2><button type="button" id="reset">Reset demo</button></div>
+<div class="stats" id="stats"></div>
+<div class="queue" id="queue"></div>
+<form class="composer" id="compose"><label for="draft">Instruction draft</label><textarea id="draft" placeholder="For example: include the reconnect failure case.">Include the reconnect failure case.</textarea><p class="hint">Edit before queuing. Queued instructions keep their sequence and content.</p><button type="submit" class="primary">Queue instruction</button></form>
+</div>
+<div class="section controls"><h2>Drive the simulation</h2><p>Delivery hands pending inputs to the worker. Consumption applies the next instruction in FIFO order. Acknowledgement records that consumption on the server.</p><div class="actions"><button type="button" data-action="deliver">Deliver / replay pending</button><button type="button" data-action="consume">Consume next input</button></div><div class="actions"><button type="button" data-action="loseAck" id="lose">Lose next acknowledgement</button><button type="button" data-action="reconcile">Reconnect &amp; reconcile</button></div><p class="hint">Reconnect keeps the same worker alive. Its last consumed sequence repairs missing acknowledgements before replaying the remainder.</p></div>
+</section>
+<aside>
+<div class="section"><h2>Observed state</h2><dl class="state-lines" id="state"></dl></div>
+<div class="section"><h2>Model call context</h2><p class="small">An acknowledged input can still be waiting for a future call. A call's captured context stays fixed.</p><div id="calls"></div><div class="actions"><button type="button" data-action="finish">Finish current call</button><button type="button" data-action="capture">Capture next call</button></div></div>
+<details><summary>Simulation activity</summary><ol class="log" id="log"></ol></details>
+</aside>
+</div>
+<section class="guided" aria-label="Guided walkthroughs"><h2>Try a tricky moment</h2><p class="small">Choose a case to reset to a known state. Each step performs a real action; free play leaves the walkthrough.</p><div class="tabs" role="tablist" aria-label="Input delivery scenarios" id="tabs"></div><div id="scenario" role="tabpanel" tabindex="0"></div></section>
+<p class="footnote">Future UI proposal. Everything here is an in-memory simulation of one process and one surviving worker. “Captured in call” is simulated evidence, not a production input-to-call guarantee. No provider, server, durable store, or network is connected.</p>
+</main>
+<script>
+// Pure model. Durable server records, worker state and immutable call captures are distinct.
+function initialState() {
+	return {
+		tick: 0,
+		inputs: [],
+		nextSequence: 1,
+		workerQueue: [],
+		applied: [],
+		lastSequenceConsumed: 0,
+		dropNextAck: false,
+		replaysSkipped: 0,
+		calls: [{ id: 1, sequences: [], active: true }],
+		events: [],
+		feedback: "Call 1 is already running. New steering can only affect a later model call.",
+	};
+}
+function reduce(previous, action) {
+	const s = structuredClone(previous);
+	s.tick += 1;
+	function say(message) {
+		s.feedback = message;
+		s.events.push(message);
+		return s;
+	}
+	function deliver() {
+		const pending = s.inputs.filter((x) => x.consumedAt === null);
+		let added = 0,
+			skipped = 0;
+		for (const item of pending) {
+			if (item.sequence <= s.lastSequenceConsumed || s.workerQueue.includes(item.sequence)) {
+				skipped++;
+				continue;
+			}
+			s.workerQueue.push(item.sequence);
+			added++;
+		}
+		s.workerQueue.sort((a, b) => a - b);
+		s.replaysSkipped += skipped;
+		return { added, skipped };
+	}
+	switch (action.type) {
+		case "queue": {
+			const body = (action.body || "").trim();
+			if (!body) return say("Write an instruction before queuing it.");
+			const sequence = s.nextSequence++;
+			s.inputs.push({
+				id: `inp_${sequence}`,
+				sequence,
+				body,
+				source: "operator",
+				kind: "instruction",
+				target: null,
+				receivedAt: s.tick,
+				consumedAt: null,
+			});
+			return say(`Queued input #${sequence}. Its sequence and text are now fixed.`);
+		}
+		case "deliver": {
+			const result = deliver();
+			return say(
+				"Delivered " +
+					result.added +
+					" new input(s). Skipped " +
+					result.skipped +
+					" already queued or consumed replay(s).",
+			);
+		}
+		case "consume": {
+			const sequence = s.workerQueue.shift();
+			if (sequence === undefined)
+				return say("No input at the worker. Deliver pending inputs first.");
+			s.applied.push(sequence);
+			s.lastSequenceConsumed = sequence;
+			const item = s.inputs.find((x) => x.sequence === sequence);
+			if (s.dropNextAck) {
+				s.dropNextAck = false;
+				return say(
+					"Input #" +
+						sequence +
+						" reached the worker, but its acknowledgement was lost. The server still shows pending.",
+				);
+			}
+			item.consumedAt = s.tick;
+			return say(
+				"Input #" +
+					sequence +
+					" acknowledged. It is available for the next model call; captured calls stay unchanged.",
+			);
+		}
+		case "loseAck":
+			s.dropNextAck = true;
+			return say(
+				"The next consumption acknowledgement will be lost. The worker will still apply the instruction.",
+			);
+		case "reconcile": {
+			let recovered = 0;
+			for (const input of s.inputs) {
+				if (input.consumedAt === null && input.sequence <= s.lastSequenceConsumed) {
+					input.consumedAt = s.tick;
+					recovered++;
+				}
+			}
+			const result = deliver();
+			return say(
+				"Reconnected to the same worker. Reconciled " +
+					recovered +
+					" acknowledgement(s) through sequence " +
+					s.lastSequenceConsumed +
+					"; delivered " +
+					result.added +
+					" remaining input(s).",
+			);
+		}
+		case "finish": {
+			const active = s.calls.find((x) => x.active);
+			if (!active) return say("No call is running. Capture the next call when ready.");
+			active.active = false;
+			return say(
+				"Call " +
+					active.id +
+					" finished with its original context. Later guidance did not change it.",
+			);
+		}
+		case "capture": {
+			if (s.calls.some((x) => x.active))
+				return say("A model call is already running. Finish it before capturing another call.");
+			const id = s.calls.length + 1;
+			s.calls.push({ id, sequences: [...s.applied], active: true });
+			return say(
+				"Call " +
+					id +
+					" captured " +
+					s.applied.length +
+					" steering input(s) in sequence order. This snapshot is now fixed.",
+			);
+		}
+		default:
+			return previous;
+	}
+}
+const scenarios = [
+	{
+		title: "Ordered steering",
+		description:
+			"Queue two instructions, deliver them together, and consume one at a time. Both must reach the next call in their original order.",
+		steps: [
+			[
+				"Queue first instruction",
+				{ type: "queue", body: "Keep the change focused on reconnect behavior." },
+			],
+			[
+				"Queue second instruction",
+				{ type: "queue", body: "Include keyboard navigation in the review." },
+			],
+			["Deliver the batch", { type: "deliver" }],
+			["Consume input #1", { type: "consume" }],
+			["Consume input #2", { type: "consume" }],
+			["Finish call 1", { type: "finish" }],
+			["Capture call 2", { type: "capture" }],
+		],
+		outcome: "Both instructions appear in call 2 as #1 then #2. Call 1 keeps its original context.",
+	},
+	{
+		title: "Lost acknowledgement",
+		description:
+			"The worker applies an instruction, but the server misses its acknowledgement. Replay the pending delivery, then reconnect to the surviving worker.",
+		steps: [
+			[
+				"Queue an instruction",
+				{ type: "queue", body: "Check the reconnect failure case before proceeding." },
+			],
+			["Deliver the instruction", { type: "deliver" }],
+			["Lose the next acknowledgement", { type: "loseAck" }],
+			["Consume input #1", { type: "consume" }],
+			["Replay pending delivery", { type: "deliver" }],
+			["Reconnect and reconcile", { type: "reconcile" }],
+		],
+		outcome:
+			"Input #1 was applied once. Replay was ignored by the worker watermark, and reconnect repaired the server acknowledgement.",
+	},
+	{
+		title: "Too late for this call",
+		description:
+			"Call 1 has already captured its context. Consume new guidance while it is running, then inspect where that guidance actually appears.",
+		steps: [
+			[
+				"Queue late guidance",
+				{ type: "queue", body: "Explain the retry trade-off in the final answer." },
+			],
+			["Deliver late guidance", { type: "deliver" }],
+			["Consume and acknowledge", { type: "consume" }],
+			["Try to capture during call 1", { type: "capture" }],
+			["Finish call 1", { type: "finish" }],
+			["Capture call 2", { type: "capture" }],
+		],
+		outcome:
+			"Acknowledged does not mean included in the current call. The instruction first appears in call 2.",
+	},
+];
+// DOM shell. All model transitions go through reduce; state has no browser dependencies.
+let state = initialState(),
+	selected = -1,
+	step = 0;
+const $ = (id) => document.getElementById(id);
+const escapeText = (value) =>
+	String(value).replace(
+		/[&<>"']/g,
+		(ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch],
+	);
+function dispatch(action, fromGuide = false) {
+	if (!fromGuide) selected = -1;
+	state = reduce(state, action);
+	render();
+}
+function render() {
+	$("feedback").textContent = state.feedback;
+	const pending = state.inputs.filter((x) => x.consumedAt === null).length;
+	$("stats").innerHTML =
+		"<span><strong>" +
+		state.inputs.length +
+		"</strong>queued total</span><span><strong>" +
+		pending +
+		"</strong>pending ack</span><span><strong>" +
+		(state.inputs.length - pending) +
+		"</strong>acknowledged</span>";
+	$("queue").innerHTML = state.inputs.length
+		? state.inputs
+				.map((input) => {
+					const applied = state.applied.includes(input.sequence);
+					const first = state.calls.find((call) => call.sequences.includes(input.sequence));
+					const status =
+						input.consumedAt !== null
+							? "Acknowledged"
+							: applied
+								? "Pending · acknowledgement lost"
+								: "Pending acknowledgement";
+					const where = first
+						? `First captured in call ${first.id}`
+						: applied
+							? "Available for a future call"
+							: "Awaiting worker consumption";
+					return (
+						'<article class="input-row"><div class="row-top"><span class="sequence">Input #' +
+						input.sequence +
+						'</span><span class="badge ' +
+						(input.consumedAt !== null ? "blue" : applied ? "amber" : "") +
+						'">' +
+						status +
+						'</span></div><p class="body">' +
+						escapeText(input.body) +
+						'</p><div class="meta"><span>' +
+						where +
+						"</span><span>" +
+						(state.workerQueue.includes(input.sequence)
+							? "At worker · queued"
+							: applied
+								? "At worker · applied once"
+								: "At server · queued") +
+						"</span></div></article>"
+					);
+				})
+				.join("")
+		: '<p class="empty">No steering inputs yet. Queue a draft or start a walkthrough.</p>';
+	$("state").innerHTML = [
+		[
+			"Worker last consumed",
+			state.lastSequenceConsumed ? `#${state.lastSequenceConsumed}` : "None",
+		],
+		["Worker FIFO queue", state.workerQueue.map((n) => `#${n}`).join(", ") || "Empty"],
+		["Applied instruction count", state.applied.length],
+		["Skipped replay deliveries", state.replaysSkipped],
+		["Next acknowledgement", state.dropNextAck ? "Will be lost" : "Normal"],
+		[
+			"Server pending sequences",
+			state.inputs
+				.filter((x) => x.consumedAt === null)
+				.map((x) => `#${x.sequence}`)
+				.join(", ") || "None",
+		],
+	]
+		.map(([key, value]) => `<div><dt>${key}</dt><dd>${escapeText(value)}</dd></div>`)
+		.join("");
+	$("calls").innerHTML = state.calls
+		.map(
+			(call) =>
+				'<div class="call"><div class="bar"><strong>Call ' +
+				call.id +
+				'</strong><span class="badge ' +
+				(call.active ? "blue" : "") +
+				'">' +
+				(call.active ? "Running" : "Finished") +
+				'</span></div><p class="muted">Captured steering: ' +
+				(call.sequences.map((n) => `#${n}`).join(" → ") || "none") +
+				"</p>" +
+				(call.sequences.length
+					? "<ul>" +
+						call.sequences
+							.map(
+								(n) =>
+									`<li>${escapeText(state.inputs.find((x) => x.sequence === n).body)}</li>`,
+							)
+							.join("") +
+						"</ul>"
+					: "") +
+				"</div>",
+		)
+		.join("");
+	$("lose").textContent = state.dropNextAck
+		? "Next acknowledgement will be lost"
+		: "Lose next acknowledgement";
+	$("log").innerHTML = state.events.map((event) => `<li>${escapeText(event)}</li>`).join("");
+	$("tabs").innerHTML = scenarios
+		.map(
+			(scenario, i) =>
+				'<button type="button" role="tab" id="tab-' +
+				i +
+				'" aria-controls="scenario" aria-selected="' +
+				(selected === i) +
+				'" data-scenario="' +
+				i +
+				'">' +
+				scenario.title +
+				"</button>",
+		)
+		.join("");
+	if (selected < 0) {
+		$("scenario").removeAttribute("aria-labelledby");
+		$("scenario").innerHTML =
+			"<p>Free play is active. Choose a case above to begin a guided walkthrough.</p>";
+		return;
+	}
+	const scenario = scenarios[selected];
+	$("scenario").setAttribute("aria-labelledby", `tab-${selected}`);
+	$("scenario").innerHTML =
+		"<p>" +
+		scenario.description +
+		'</p><div class="steps">' +
+		scenario.steps
+			.map(
+				([label], i) =>
+					'<button type="button" data-step="' +
+					i +
+					'" ' +
+					(i !== step ? "disabled" : "") +
+					' class="' +
+					(i < step ? "done" : "") +
+					'">' +
+					(i < step ? "✓ " : `${i + 1}. `) +
+					label +
+					"</button>",
+			)
+			.join("") +
+		"</div>" +
+		(step === scenario.steps.length ? `<p class="outcome">${scenario.outcome}</p>` : "");
+}
+$("compose").addEventListener("submit", (event) => {
+	event.preventDefault();
+	const draft = $("draft");
+	dispatch({ type: "queue", body: draft.value });
+	if (draft.value.trim()) draft.value = "";
+});
+$("reset").addEventListener("click", () => {
+	state = initialState();
+	selected = -1;
+	step = 0;
+	$("draft").value = "Include the reconnect failure case.";
+	render();
+});
+document.addEventListener("click", (event) => {
+	const button = event.target.closest("button");
+	if (!button) return;
+	if (button.dataset.action) dispatch({ type: button.dataset.action });
+	if (button.dataset.scenario !== undefined) {
+		selected = Number(button.dataset.scenario);
+		step = 0;
+		state = initialState();
+		$("draft").value = "";
+		render();
+		$(`tab-${selected}`).focus();
+	}
+	if (button.dataset.step !== undefined) {
+		const action = scenarios[selected].steps[step][1];
+		step++;
+		dispatch(action, true);
+		const next = document.querySelector(`[data-step="${step}"]`);
+		if (next) next.focus();
+		else $("scenario").focus();
+	}
+});
+$("tabs").addEventListener("keydown", (event) => {
+	if (!["ArrowRight", "ArrowLeft", "Home", "End"].includes(event.key)) return;
+	event.preventDefault();
+	const current = Number(document.activeElement.dataset.scenario || 0);
+	const next =
+		event.key === "Home"
+			? 0
+			: event.key === "End"
+				? scenarios.length - 1
+				: (current + (event.key === "ArrowRight" ? 1 : -1) + scenarios.length) % scenarios.length;
+	document.querySelector(`[data-scenario="${next}"]`).click();
+});
+render();
+</script>
+</body>
+</html>
