@@ -136,9 +136,11 @@ describe("mapped LLM turns", () => {
 
 	it("applies shared settings independently to ordinary and mapped turns", () => {
 		const builders = [flow.llm<Record<string, never>, State>("ordinary"), mappedBuilder()];
+		const waitFor = () => false;
 		for (const builder of builders) {
 			builder
 				.description("Assess")
+				.waitFor(waitFor)
 				.askQuestions()
 				.executionPurpose("assessment")
 				.modelPurpose("process_title_generation")
@@ -149,7 +151,8 @@ describe("mapped LLM turns", () => {
 				.optionalConsume("review")
 				.rootBranchReview()
 				.continueFromProductBranch("plan")
-				.buildPrompt(() => "Assess");
+				.prompt("Assess");
+			expect(() => builder.waitFor(waitFor)).toThrow(/already declares .waitFor/);
 
 			if ("collect" in builder) {
 				builder
@@ -164,6 +167,7 @@ describe("mapped LLM turns", () => {
 			const definition = builder.definition;
 			expect(definition).toMatchObject({
 				description: "Assess",
+				waitFor,
 				askQuestions: true,
 				executionPurpose: "assessment",
 				modelPurpose: "process_title_generation",

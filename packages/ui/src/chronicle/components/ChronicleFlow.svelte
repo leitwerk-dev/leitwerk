@@ -73,6 +73,7 @@ interface Props {
 		summary: string;
 		guidance?: string;
 		technicalDetail?: string | null;
+		canRetry?: boolean;
 	} | null;
 	modelConfiguration: ProcessModelConfigurationView;
 	onOpenReasoningDetails: (turnRecordId: string, itemId?: string) => void;
@@ -207,6 +208,7 @@ const hasTrailingProcessSection = $derived(
 		recovery !== null ||
 		startupRecovery !== null ||
 		processError !== null ||
+		selectedTurn?.readiness !== undefined ||
 		actionBindings.actionSectionActions.length > 0 ||
 		externalTriggers.length > 0,
 );
@@ -310,6 +312,9 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 			summary={processError.summary}
 			guidance={processError.guidance}
 			technicalDetail={processError.technicalDetail}
+			onRetry={processError.canRetry ? () => recoveryController.retryFailedTurn() : undefined}
+			busy={recoveryController.retryBusy}
+			error={recoveryController.retryError}
 		/>
 	{:else}
 		<ChronicleActionSection

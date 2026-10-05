@@ -37,10 +37,43 @@ async function createLeaveFeedbackReviewHarness() {
 	});
 }
 
-function waitForReview(poem: ExtensionIntegrationProcess, turnId = "poem_review") {
-	return poem.waitFor(
-		({ process }) => process.selectedTurnId === turnId && process.lifecycleStatus === "waiting",
+function launchPoem(prompt: string, defaultModelProfileId = "local_qwen", runtime = harness) {
+	return runtime.launch(
+		"poem_creator_process.poem_creator_ui",
+		{ prompt },
+		{ defaultModelProfileId },
 	);
+}
+
+function waitForReview(
+	poem: ExtensionIntegrationProcess,
+	turnId = "poem_review",
+	counts: Record<string, number> = {},
+) {
+	return poem.waitFor(
+		({ process, turns }) =>
+			process.selectedTurnId === turnId &&
+			process.lifecycleStatus === "waiting" &&
+			Object.entries(counts).every(
+				([id, count]) => turns.filter((turn) => turn.turnId === id).length === count,
+			),
+	);
+}
+
+async function processActions(poem: ExtensionIntegrationProcess, runtime = harness) {
+	const response = await runtime.request({ url: `/api/processes/${poem.id}/actions` });
+	expect(response.statusCode).toBe(200);
+	return response.json<{ actions: { id: string }[] }>().actions;
+}
+
+async function launchFeedbackReview(prompt: string) {
+	const issuesHarness = await createLeaveFeedbackReviewHarness();
+	onTestFinished(() => issuesHarness.close());
+	const poem = await launchPoem(prompt, "claude_fast", issuesHarness);
+	await waitForReview(poem);
+	expect((await poem.action("run_poem_auto_review")).statusCode).toBe(200);
+	const review = await waitForReview(poem, "poem_review_feedback");
+	return { issuesHarness, poem, review };
 }
 
 function reviewToolNames(poem: ExtensionIntegrationProcess) {
@@ -99,10 +132,10 @@ describe("poem creator extension", () => {
 			},
 		});
 		onTestFinished(() => fileTriggerHarness.close());
-		const poem = await fileTriggerHarness.launch(
-			"poem_creator_process.poem_creator_ui",
-			{ prompt: "Write a short poem about rain over Berlin rooftops." },
-			{ defaultModelProfileId: "local_qwen" },
+		const poem = await launchPoem(
+			"Write a short poem about rain over Berlin rooftops.",
+			"local_qwen",
+			fileTriggerHarness,
 		);
 		await waitForReview(poem);
 		await poem.waitFor(({ events }) =>
@@ -163,11 +196,7 @@ describe("poem creator extension", () => {
 		});
 		const defaultsBody = defaultsResponse.json();
 		expect(defaultsResponse.statusCode).toBe(200);
-		const poem = await harness.launch(
-			"poem_creator_process.poem_creator_ui",
-			{ prompt: "" },
-			{ defaultModelProfileId: "claude_fast" },
-		);
+		const poem = await launchPoem("", "claude_fast");
 		expect(poem.snapshot().process).toMatchObject({
 			processId: "poem_creator_process",
 			defaultModelProfileId: "claude_fast",
@@ -179,42 +208,30 @@ describe("poem creator extension", () => {
 		});
 		expect(existsSync(firstHumanReview.workspaceRoot)).toBe(true);
 
-		const initialActionsResponse = await harness.request({
-			url: `/api/processes/${poem.id}/actions`,
-		});
-		const initialActionsBody = initialActionsResponse.json();
-		expect(initialActionsResponse.statusCode).toBe(200);
-		expect(initialActionsBody.actions).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({ id: "complete_poem", label: "Complete poem" }),
-				expect.objectContaining({ id: "request_poem_revision", label: "Request revision" }),
-				expect.objectContaining({ id: "run_poem_auto_review", label: "Run automated review" }),
-			]),
-		);
-		const completePoemAction = initialActionsBody.actions.find(
-			(action: { id: string }) => action.id === "complete_poem",
-		);
-		const requestRevisionAction = initialActionsBody.actions.find(
-			(action: { id: string }) => action.id === "request_poem_revision",
-		);
-		const autoReviewAction = initialActionsBody.actions.find(
-			(action: { id: string }) => action.id === "run_poem_auto_review",
-		);
-		expect(completePoemAction).toMatchObject({
-			supportsScheduling: false,
-			supportsNextTurnModelOverride: false,
-			preview: expect.objectContaining({ kind: "terminal" }),
-		});
-		expect(requestRevisionAction).toMatchObject({
-			supportsScheduling: true,
-			supportsNextTurnModelOverride: true,
-			preview: expect.objectContaining({ turnId: "draft_poem", turnKind: "llm" }),
-		});
-		expect(autoReviewAction).toMatchObject({
-			supportsScheduling: true,
-			supportsNextTurnModelOverride: true,
-			preview: expect.objectContaining({ turnId: "review_poem_draft", turnKind: "llm" }),
-		});
+		const expectedActions = expect.arrayContaining([
+			expect.objectContaining({
+				id: "complete_poem",
+				label: "Complete poem",
+				supportsScheduling: false,
+				supportsNextTurnModelOverride: false,
+				preview: expect.objectContaining({ kind: "terminal" }),
+			}),
+			expect.objectContaining({
+				id: "request_poem_revision",
+				label: "Request revision",
+				supportsScheduling: true,
+				supportsNextTurnModelOverride: true,
+				preview: expect.objectContaining({ turnId: "draft_poem", turnKind: "llm" }),
+			}),
+			expect.objectContaining({
+				id: "run_poem_auto_review",
+				label: "Run automated review",
+				supportsScheduling: true,
+				supportsNextTurnModelOverride: true,
+				preview: expect.objectContaining({ turnId: "review_poem_draft", turnKind: "llm" }),
+			}),
+		]);
+		expect(await processActions(poem)).toEqual(expectedActions);
 		const firstTurnRecords = firstHumanReview.turns;
 		expect(firstTurnRecords).toHaveLength(1);
 		expect(firstTurnRecords[0]).toMatchObject({
@@ -242,20 +259,10 @@ describe("poem creator extension", () => {
 		expect(afterAutoAcceptedReview.inputs).toHaveLength(0);
 		expect(reviewToolNames(poem)).toEqual(["no_issues"]);
 
-		const reviewActionsResponse = await harness.request({
-			url: `/api/processes/${poem.id}/actions`,
-		});
-		const reviewActionsBody = reviewActionsResponse.json();
-		expect(reviewActionsResponse.statusCode).toBe(200);
-		expect(reviewActionsBody.actions).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({ id: "complete_poem", label: "Complete poem" }),
-				expect.objectContaining({ id: "request_poem_revision", label: "Request revision" }),
-				expect.objectContaining({ id: "run_poem_auto_review", label: "Run automated review" }),
-			]),
-		);
+		const reviewActions = await processActions(poem);
+		expect(reviewActions).toEqual(expectedActions);
 		expect(
-			reviewActionsBody.actions.filter((action: { id: string }) =>
+			reviewActions.filter((action) =>
 				["accept_poem_review", "request_poem_review_changes"].includes(action.id),
 			),
 		).toEqual([]);
@@ -284,11 +291,7 @@ describe("poem creator extension", () => {
 	});
 
 	it("schedules poem review-loop actions while rejecting terminal poem completion scheduling", async () => {
-		const poem = await harness.launch(
-			"poem_creator_process.poem_creator_ui",
-			{ prompt: "Write a short poem about sunrise over the city skyline." },
-			{ defaultModelProfileId: "local_qwen" },
-		);
+		const poem = await launchPoem("Write a short poem about sunrise over the city skyline.");
 		await waitForReview(poem);
 		const runReviewAt = new Date(Date.now() + 60_000).toISOString();
 		const reviewScheduleResponse = await harness.request({
@@ -324,16 +327,11 @@ describe("poem creator extension", () => {
 	});
 
 	it("sends accepted leave_feedback review back to the primary branch", async () => {
-		const issuesHarness = await createLeaveFeedbackReviewHarness();
-		onTestFinished(() => issuesHarness.close());
-		const poem = await issuesHarness.launch(
-			"poem_creator_process.poem_creator_ui",
-			{ prompt: "Write a short poem about cloud software under an evening sky." },
-			{ defaultModelProfileId: "claude_fast" },
-		);
-		await waitForReview(poem);
-		expect((await poem.action("run_poem_auto_review")).statusCode).toBe(200);
-		const humanReviewOfReview = await waitForReview(poem, "poem_review_feedback");
+		const {
+			issuesHarness,
+			poem,
+			review: humanReviewOfReview,
+		} = await launchFeedbackReview("Write a short poem about cloud software under an evening sky.");
 		expect(JSON.parse(humanReviewOfReview.process.stateJson ?? "null")).toMatchObject({
 			latestReviewOutcome: "leave_feedback",
 			latestReviewMarkdown: expect.any(String),
@@ -355,12 +353,7 @@ describe("poem creator extension", () => {
 				}),
 			]),
 		);
-		const reviewActionsResponse = await issuesHarness.request({
-			url: `/api/processes/${poem.id}/actions`,
-		});
-		const reviewActionsBody = reviewActionsResponse.json();
-		expect(reviewActionsResponse.statusCode).toBe(200);
-		expect(reviewActionsBody.actions).toEqual(
+		expect(await processActions(poem, issuesHarness)).toEqual(
 			expect.arrayContaining([
 				expect.objectContaining({ id: "accept_poem_review", label: "Accept review" }),
 				expect.objectContaining({
@@ -381,12 +374,7 @@ describe("poem creator extension", () => {
 		);
 		expect(humanReviewOfReview.turns).toHaveLength(3);
 		expect((await poem.action("accept_poem_review")).statusCode).toBe(200);
-		const afterAcceptedReview = await poem.waitFor(
-			({ process, turns }) =>
-				process.lifecycleStatus === "waiting" &&
-				process.selectedTurnId === "poem_review" &&
-				turns.filter((turn) => turn.turnId === "draft_poem").length === 2,
-		);
+		const afterAcceptedReview = await waitForReview(poem, "poem_review", { draft_poem: 2 });
 		expect(afterAcceptedReview.process).toMatchObject({ lifecycleStatus: "waiting" });
 		expect(afterAcceptedReview.inputs).toEqual([]);
 		const acceptedReviewDrafts = afterAcceptedReview.turns.filter(
@@ -409,11 +397,7 @@ describe("poem creator extension", () => {
 	});
 
 	it("supports a human revision loop for poem creator before returning to review", async () => {
-		const poem = await harness.launch(
-			"poem_creator_process.poem_creator_ui",
-			{ prompt: "Write a short poem about crafting cloud software at dusk." },
-			{ defaultModelProfileId: "local_qwen" },
-		);
+		const poem = await launchPoem("Write a short poem about crafting cloud software at dusk.");
 		await waitForReview(poem);
 		expect(
 			(
@@ -422,12 +406,7 @@ describe("poem creator extension", () => {
 				})
 			).statusCode,
 		).toBe(200);
-		const rerun = await poem.waitFor(
-			({ process, turns }) =>
-				process.lifecycleStatus === "waiting" &&
-				process.selectedTurnId === "poem_review" &&
-				turns.filter((turn) => turn.turnId === "draft_poem").length === 2,
-		);
+		const rerun = await waitForReview(poem, "poem_review", { draft_poem: 2 });
 		expect(rerun.process).toMatchObject({
 			lifecycleStatus: "waiting",
 			defaultModelProfileId: "local_qwen",
@@ -450,16 +429,10 @@ describe("poem creator extension", () => {
 	});
 
 	it("continues llm review on the same review branch when a human requests review changes", async () => {
-		const issuesHarness = await createLeaveFeedbackReviewHarness();
-		onTestFinished(() => issuesHarness.close());
-		const poem = await issuesHarness.launch(
-			"poem_creator_process.poem_creator_ui",
-			{ prompt: "Write a short poem about rain over Berlin rooftops." },
-			{ defaultModelProfileId: "claude_fast" },
-		);
-		await waitForReview(poem);
-		expect((await poem.action("run_poem_auto_review")).statusCode).toBe(200);
-		const { turns } = await waitForReview(poem, "poem_review_feedback");
+		const {
+			poem,
+			review: { turns },
+		} = await launchFeedbackReview("Write a short poem about rain over Berlin rooftops.");
 		const firstDraft = turns.find((turn) => turn.turnId === "draft_poem");
 		const firstReview = turns.filter((turn) => turn.turnId === "review_poem_draft").at(-1);
 		expect(firstReview).toMatchObject({
@@ -473,13 +446,10 @@ describe("poem creator extension", () => {
 				})
 			).statusCode,
 		).toBe(200);
-		const afterRerun = await poem.waitFor(
-			({ process, turns }) =>
-				process.lifecycleStatus === "waiting" &&
-				process.selectedTurnId === "poem_review_feedback" &&
-				turns.filter((turn) => turn.turnId === "review_poem_draft").length === 2 &&
-				turns.filter((turn) => turn.turnId === "draft_poem").length === 1,
-		);
+		const afterRerun = await waitForReview(poem, "poem_review_feedback", {
+			review_poem_draft: 2,
+			draft_poem: 1,
+		});
 		const secondReview = afterRerun.turns
 			.filter((turn) => turn.turnId === "review_poem_draft")
 			.at(-1);

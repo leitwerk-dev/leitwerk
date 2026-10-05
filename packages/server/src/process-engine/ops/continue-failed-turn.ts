@@ -9,7 +9,7 @@ import {
 	resolveTurnContinuationUserPrompt,
 } from "@leitwerk-dev/protocol";
 import type { ReadonlyPiSessionTree } from "../../pi-session-tree.js";
-import { accept, reject } from "../decision.js";
+import { accept, modelOverrideMetadata, reject } from "../decision.js";
 import { defineOperation } from "../operation.js";
 import { readCurrentPrimaryPathLeafEntryId } from "../state-json.js";
 import type { ProcessEngine, ProcessEngineDeps } from "../types.js";
@@ -138,18 +138,7 @@ export const ContinueFailedTurn = defineOperation<
 		stampActorOnEvents(writes, input.options?.actor, "continue_scheduled");
 		return accept({
 			writes,
-			metadata:
-				input.options?.nextTurnModelProfileId !== undefined ||
-				input.options?.providerOptions !== undefined
-					? {
-							...(input.options.nextTurnModelProfileId !== undefined
-								? { nextTurnModelProfileId: input.options.nextTurnModelProfileId }
-								: {}),
-							...(input.options.providerOptions !== undefined
-								? { providerOptions: input.options.providerOptions }
-								: {}),
-						}
-					: undefined,
+			metadata: modelOverrideMetadata(input.options),
 		});
 	},
 });

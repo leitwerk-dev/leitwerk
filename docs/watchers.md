@@ -11,6 +11,8 @@ a fixed provider catalog.
 | Configuration storage, launch admission, and durable deduplication | Server. |
 
 See [external actions](process-sdk.md#external-actions) for in-flight routing.
+External edges to worker turns must [wake readiness](process-sdk.md#readiness-before-a-worker-starts)
+instead of starting workers directly. Remote writes remain with their owning adapter.
 
 ## Define a source
 

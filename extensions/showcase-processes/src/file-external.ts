@@ -1,9 +1,4 @@
-import {
-	type CoreServerSetupDeps,
-	createFileExternalSourceProvider as createProvider,
-	defineFileExternalSource,
-	type FileExternalInput,
-} from "@leitwerk-dev/process-sdk";
+import { defineFileExternalSource, type FileExternalInput } from "@leitwerk-dev/process-sdk";
 
 /** @internal */
 export const FILE_EXTERNAL_INSTRUCTION_KIND = "@leitwerk-dev/showcase-processes.file.instruction";
@@ -20,16 +15,3 @@ export const fileExternal = {
 		});
 	},
 };
-
-/** @internal */
-export function createFileExternalSourceProvider(
-	deps: CoreServerSetupDeps,
-	aliases: Partial<Record<string, string>> = {},
-) {
-	return createProvider(deps, {
-		id: "showcase-file-external",
-		kind: FILE_EXTERNAL_INSTRUCTION_KIND,
-		inputMode: "instruction",
-		aliases,
-	});
-}

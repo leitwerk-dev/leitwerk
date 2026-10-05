@@ -8,18 +8,11 @@ import {
 	flow,
 	type HumanFlowBuilder,
 	type ProcessLauncherDefinition,
+	type ProcessLeafOutcomeDefinition,
 	type StructuralProcessState,
 	structuralStateCodec,
 } from "@leitwerk-dev/process-sdk";
 import { fileExternal } from "./file-external.js";
-import {
-	externalPromptCompletionTurnDescription,
-	externalPromptCompletionTurnId,
-} from "./turns/external-complete.js";
-import {
-	buildSinglePromptInstruction,
-	buildSinglePromptWithToolInstruction,
-} from "./turns/run-single-prompt.js";
 
 /** @internal */
 interface PromptProcessParams {
@@ -71,11 +64,7 @@ function promptLaunchResolution(options: {
 function createMarkdownLeafOutcome(rendererId: string) {
 	return {
 		rendererId,
-		capture(ctx: {
-			params: PromptProcessParams;
-			leaf: { entryId: string; turnRecordId: string | null };
-			turnRecord: { turnResultMarkdown: string | null } | null;
-		}) {
+		capture(ctx) {
 			const markdown = ctx.turnRecord?.turnResultMarkdown?.trim() ?? "";
 			return {
 				rendererId,
@@ -89,7 +78,7 @@ function createMarkdownLeafOutcome(rendererId: string) {
 				fallbackMarkdown: markdown.length > 0 ? markdown : null,
 			};
 		},
-	};
+	} satisfies ProcessLeafOutcomeDefinition<PromptProcessParams, StructuralProcessState>;
 }
 
 function promptProcess(processId: string, displayName: string, entry: string) {
@@ -104,6 +93,18 @@ function promptProcess(processId: string, displayName: string, entry: string) {
 				createMarkdownLeafOutcome(`@leitwerk-dev/showcase-processes:${processId}.leaf_outcome`),
 			),
 		);
+}
+
+function buildSinglePromptInstruction(promptText: string): string {
+	return `Run the following one-shot operator prompt exactly once.
+
+${promptText}`;
+}
+
+function buildSinglePromptWithToolInstruction(promptText: string): string {
+	return `${buildSinglePromptInstruction(promptText)}
+
+When you are done, call the done tool with a short summary of the result.`;
 }
 
 function promptTurn(turnId: string, instruction = buildSinglePromptInstruction) {
@@ -376,6 +377,8 @@ export const k8sSmokeLongProcess = defineK8sSmokeProcess({
 	},
 });
 
+const externalPromptCompletionTurnId = "await_external_prompt_completion";
+
 /** @internal */
 export const singlePromptExternalCompleteProcess = promptProcess(
 	"single_prompt_external_complete_process",
@@ -386,7 +389,7 @@ export const singlePromptExternalCompleteProcess = promptProcess(
 	.turn(
 		flow
 			.external<PromptProcessParams, StructuralProcessState>(externalPromptCompletionTurnId)
-			.description(externalPromptCompletionTurnDescription)
+			.description("Wait for an external completion trigger after the single prompt finishes")
 			.from(
 				fileExternal.presence({
 					path: "/tmp/complete-prompt",

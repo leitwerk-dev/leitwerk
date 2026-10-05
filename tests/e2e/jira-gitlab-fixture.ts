@@ -317,6 +317,30 @@ export async function jiraFixture(
 	}
 	await harness.ctx.listen({ host: "127.0.0.1", port: 0, useBoundAddressAsBaseUrl: true });
 	const driver = createProcessDriver(() => harness.ctx);
+	const wait: typeof driver.wait = (id, turn, lifecycle = "waiting", timeout = 12000) =>
+		driver.waitForProcess(
+			id,
+			(process) => {
+				if (process.selectedTurnId !== turn || process.lifecycleStatus !== lifecycle) return false;
+				if (turn !== "deliver_change" || lifecycle !== "waiting") return true;
+				const params = JSON.parse(process.paramsJson ?? "{}") as JiraGitLabParams;
+				const state = JSON.parse(process.stateJson ?? "{}");
+				return params.repositories.every(({ key }) => {
+					const current = readPublicationState(state, `jiraGitLabChange:${key}`);
+					return (
+						current.noChanges ||
+						current.delivery.terminalPullRequest ||
+						(current.delivery.stage === "awaiting" &&
+							!current.delivery.adjustment &&
+							!current.pendingEvidence &&
+							current.feedbackIds.length === 0)
+					);
+				});
+			},
+			`${turn}/${lifecycle} with delivery settled`,
+			timeout,
+			lifecycle === "error",
+		);
 	const poll = async () => {
 		clock += 180000;
 		for (const run of polls) {
@@ -335,6 +359,7 @@ export async function jiraFixture(
 		JSON.parse(harness.ctx.deps.processes.getById(id)?.stateJson ?? "{}");
 	return {
 		...driver,
+		wait,
 		issue,
 		comments,
 		gitlab,
@@ -396,7 +421,7 @@ export async function jiraFixture(
 				await driver.wait(id, "plan_decision");
 				await driver.action(id, "approve_plan");
 			}
-			await driver.wait(
+			await wait(
 				id,
 				options.noChanges ? null : "deliver_change",
 				options.noChanges ? "completed" : "waiting",

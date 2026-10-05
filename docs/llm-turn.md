@@ -1,5 +1,8 @@
 # LLM turn flow
 
+LLM turns may [wait for server-side readiness](process-sdk.md#readiness-before-a-worker-starts).
+Prompt and preparation remain on the same turn; no worker starts before readiness.
+
 An active LLM turn uses two server paths:
 
 - lifecycle messages mutate durable process state through ProcessEngine;

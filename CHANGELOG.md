@@ -1,8 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.4.0 (unreleased)
 
 ### Breaking changes
+
+* **process-sdk:** External transitions to LLM or automatic turns now require
+  `.waitFor(predicate)` on the target turn. Move read-only readiness assessment into
+  that callback; keep external writes in an executing turn or server delivery service.
+  Readiness checks create no worker starts, leases, or turn attempts. Literal LLM
+  prompts are supported. Existing process history remains intact. See the process SDK
+  readiness contract for polling, errors, retries and migration guidance.
 
 * **process-sdk:** Replace `flow.llm(...).forEach(...)` with
   `flow.mappedLlm<Params, State, Item, Result>(turnId, items)`. Move shared LLM
@@ -18,6 +25,7 @@
   to catalog loading or server setup. Independent errors are reported together.
   Move error handling to definition construction. This change requires a minor
   release while the package is in `0.x`.
+
 
 ## [0.3.1](https://github.com/leitwerk-dev/leitwerk/compare/v0.3.0...v0.3.1) (2026-09-24)
 

@@ -1,5 +1,5 @@
 import type {
-	CurrentErrorSummary,
+	CurrentProcessErrorSummary,
 	CurrentTurnRecoverySummary,
 	ProcessActionSummary,
 	ProcessExternalTriggerSummary,
@@ -9,7 +9,7 @@ import type { ProcessDetailData } from "../../lib/api.js";
 
 export interface CurrentTurnRecoveryViewModel extends CurrentTurnRecoverySummary {}
 
-export interface CurrentProcessErrorViewModel extends CurrentErrorSummary {}
+export interface CurrentProcessErrorViewModel extends CurrentProcessErrorSummary {}
 
 export interface PendingRailItemViewModel {
 	label: string;

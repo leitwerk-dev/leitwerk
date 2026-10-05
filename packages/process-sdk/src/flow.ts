@@ -2,12 +2,14 @@ import path from "node:path";
 import {
 	assertValidProcessProductName,
 	humanizeProcessLabel,
+	normalizeStringArray,
 	type ProcessInstance,
 	type ProcessProject,
 	type ProcessTurnStartSelection,
 	type ProcessTurnTerminalLifecycleStatus,
 	type TurnId,
 	type TurnProgressReport,
+	trimString,
 } from "@leitwerk-dev/domain";
 import type {
 	AutomaticTurnDefinition,
@@ -54,6 +56,7 @@ import type {
 	MappedTurnItemContext,
 	MappedTurnServerContext,
 } from "./mapped-turn.js";
+import type { TurnWaitPredicate } from "./turn-wait.js";
 import type { OutcomeToolParameterSpec, PiBuiltInToolName, ProcessPiConfig } from "./types.js";
 
 /** @public */
@@ -1010,14 +1013,33 @@ export class PlanResultBuilder<TParams = unknown, TState = unknown> extends Rout
 				acceptanceCriteria: this.acceptanceCriteriaSpec,
 			},
 			to: this.reviewTurnId,
-			lifecycleIntent: {
-				kind: "save_plan_result",
-				summaryParam: "summary",
-				acceptanceCriteriaParam: "acceptanceCriteria",
-				planMarkdownParam: "planMarkdown",
-				emitEventType: DEFAULT_PLAN_RESULT_OUTCOME_ID,
-				broadcastType: "plan.updated",
-				...(stateEffect ? { state: stateEffect } : {}),
+			async effect(execution) {
+				const plan = await stateEffect?.(execution);
+				const planRevision = execution.ctx.process.planRevision + 1;
+				const summary = trimString(execution.event.params.summary);
+				const acceptanceCriteria = normalizeStringArray(execution.event.params.acceptanceCriteria);
+				const planMarkdown =
+					typeof execution.event.turnResultMarkdown === "string"
+						? execution.event.turnResultMarkdown
+						: trimString(execution.event.params.planMarkdown);
+				return {
+					...plan,
+					processPatch: { ...plan?.processPatch, planRevision },
+					broadcasts: [
+						...(plan?.broadcasts ?? []),
+						{
+							type: "plan.updated",
+							payload: { planRevision, reviewState: "awaiting_approval", approved: false, summary },
+						},
+					],
+					emit: [
+						...(plan?.emit ?? []),
+						{
+							type: DEFAULT_PLAN_RESULT_OUTCOME_ID,
+							data: { planRevision, summary, planMarkdown, acceptanceCriteria },
+						},
+					],
+				};
 			},
 		};
 	}
@@ -1166,6 +1188,14 @@ abstract class LlmConfigurationBuilder<
 		LlmTurnDefinition<string, TParams, TState>,
 		"kind" | "description" | "prompt" | "outcomes" | "turnEnd" | "forEach"
 	> = { availableTools: [], branchType: "primary", context: "fresh", completionMode: "turn_end" };
+
+	/** Wait on the server before this turn may allocate a worker. @public */
+	waitFor(predicate: TurnWaitPredicate<TParams, TState>): this {
+		if (this.configuration.waitFor)
+			throw new Error(`Turn '${this.turnId}' already declares .waitFor(...)`);
+		this.configuration.waitFor = predicate;
+		return this;
+	}
 	private promptBuilder:
 		| ((ctx: ProcessRuntimeTurnContext<TParams, TState>) => MaybePromise<string>)
 		| null = null;
@@ -1366,8 +1396,10 @@ abstract class LlmConfigurationBuilder<
 	}
 
 	/** @public */
-	prompt(prompt: (ctx: ProcessRuntimeTurnContext<TParams, TState>) => MaybePromise<string>): this {
-		this.promptBuilder = prompt;
+	prompt(
+		prompt: string | ((ctx: ProcessRuntimeTurnContext<TParams, TState>) => MaybePromise<string>),
+	): this {
+		this.promptBuilder = typeof prompt === "string" ? () => prompt : prompt;
 		return this;
 	}
 
@@ -1856,6 +1888,13 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 		| null = null;
 	private outcomeBuilders = new Map<string, AutomaticOutcomeBuilder<TParams, TState>>();
 	private availableIntegrationTools: readonly string[] = [];
+	private waitPredicate: TurnWaitPredicate<TParams, TState> | undefined;
+	/** Wait on the server before this turn may allocate a worker. @public */
+	waitFor(predicate: TurnWaitPredicate<TParams, TState>): this {
+		if (this.waitPredicate) throw new Error(`Turn '${this.turnId}' already declares .waitFor(...)`);
+		this.waitPredicate = predicate;
+		return this;
+	}
 
 	/** @public */
 	run(
@@ -1909,6 +1948,7 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 		return {
 			kind: "automatic",
 			description: this.turnDescription,
+			...(this.waitPredicate ? { waitFor: this.waitPredicate } : {}),
 			...(this.availableIntegrationTools.length > 0
 				? { integrationTools: this.availableIntegrationTools }
 				: {}),

@@ -42,11 +42,7 @@ describe("flow", () => {
 				summary: { type: "string", required: true },
 				acceptanceCriteria: { type: "array", required: true, minItems: 1 },
 			},
-			lifecycleIntent: {
-				kind: "save_plan_result",
-				emitEventType: "plan_saved",
-				broadcastType: "plan.updated",
-			},
+			effect: expect.any(Function),
 		});
 	});
 

@@ -258,6 +258,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 	const implement = flow
 		.llm<TParams, RepositoryChangeState>("implement")
 		.description("Implement")
+		.waitFor(({ state }) => !!state.productRefs.plan)
 		.executionPurpose(codingPurposes.implementation)
 		.tools(...tools)
 		.freshSeededPrimary()

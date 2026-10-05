@@ -138,7 +138,7 @@ export interface PublicationSource<P> {
 	source: ExternalActionSource<P, RepositoryChangeState, unknown>;
 
 	/** @public */
-	enabled?(params: P): boolean;
+	enabled?(params: P, state: RepositoryChangeState): boolean;
 
 	/** @public */
 	read(input: {
@@ -660,6 +660,21 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 	const delivery = flow
 		.automatic<P, RepositoryChangeState>(ids.deliver)
 		.description("Deliver")
+		.waitFor(({ state, params }) => {
+			const states = adapter.repositories
+				? adapter.repositories(params).map(({ key }) => select(state, key))
+				: [state];
+			return states.some((state) => {
+				const current = remote(state);
+				return (
+					current.delivery.stage !== "awaiting" ||
+					!!current.pendingEvidence ||
+					!!current.delivery.adjustment ||
+					current.feedbackIds.length > 0 ||
+					!!current.delivery.terminalPullRequest
+				);
+			});
+		})
 		.integrationTools(...adapter.tools.delivery)
 		.run(async (ctx) => {
 			if (!adapter.repositories) return runRepository(ctx);
@@ -746,7 +761,17 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 					.label(source.label)
 					.when(
 						({ params, state }) =>
-							(!source.enabled || source.enabled(params)) &&
+							(!source.enabled || source.enabled(params, state)) &&
+							(source.kind === "cancelled" ||
+								(adapter.repositories
+									? adapter.repositories(params).map(({ key }) => remote(select(state, key)))
+									: [remote(state)]
+								).every(
+									(current) =>
+										current.noChanges ||
+										current.delivery.terminalPullRequest ||
+										!!(current.headSha && current.prNumber && current.prUrl),
+								)) &&
 							(source.kind !== "failure" || remote(state).ciRecoveryCycles >= 3 === operator),
 					);
 				if (source.kind === "cancelled") return external.lifecycleStatus("aborted");
@@ -811,6 +836,15 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 		const turn = flow
 			.llm<P, RepositoryChangeState>(id)
 			.description(kind === "feedback" ? "Address Feedback" : "Fix CI")
+			.waitFor(({ state }) => {
+				const current = remote(state);
+				return (
+					!current.delivery.terminalPullRequest &&
+					(kind === "feedback"
+						? current.feedbackIds.length > 0 || !!current.conflict
+						: current.repairReason === "ci" && current.pipeline !== null)
+				);
+			})
 			.executionPurpose(codingPurposes.implementation)
 			.tools("read", "bash", "edit", "write")
 			.resolveIntegrationTools((_params, state) =>

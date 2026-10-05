@@ -46,6 +46,7 @@ describe("flow automatic turns", () => {
 			.turn(
 				flow
 					.automatic("deliver")
+					.waitFor(({ state }) => (state as { ready?: boolean }).ready === true)
 					.description("Deliver")
 					.run(() => ({ outcome: "awaiting" }))
 					.outcome("awaiting", (outcome) => outcome.description("Await events").wait())

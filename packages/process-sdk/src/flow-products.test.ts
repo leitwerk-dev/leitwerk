@@ -246,6 +246,7 @@ describe("flow product publication and consumption", () => {
 	it("allows selected-turn external actions to publish input consumed by their target LLM", () => {
 		const review = inputPublishingReview("draft");
 		const draft = llmTurn("draft")
+			.waitFor(({ state }) => !!state)
 			.optionalConsume("message")
 			.buildPrompt((ctx) => ctx.input.message ?? "initial")
 			.end("done")

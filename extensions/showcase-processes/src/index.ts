@@ -1,6 +1,9 @@
-import type { LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
-import { coreHostCapabilities } from "@leitwerk-dev/process-sdk";
-import { createFileExternalSourceProvider } from "./file-external.js";
+import {
+	coreHostCapabilities,
+	createFileExternalSourceProvider,
+	type LeitwerkExtensionModule,
+} from "@leitwerk-dev/process-sdk";
+import { FILE_EXTERNAL_INSTRUCTION_KIND } from "./file-external.js";
 import { createFilesystemWatcherProvider } from "./filesystem-watcher.js";
 import { poemCreatorProcess } from "./process-definition.js";
 import { leaveFeedbackToolRenderer } from "./turns/poem-creator.js";
@@ -24,11 +27,6 @@ const manifest = {
 	version: "0.1.0",
 } as const;
 
-const fileTriggerDefaults = {
-	poll_interval: "1s",
-	poem_review_path: "/tmp/poem-review-{instanceId}",
-};
-
 /** @public */
 const showcaseProcessesExtension: LeitwerkExtensionModule = {
 	manifest,
@@ -42,12 +40,11 @@ const showcaseProcessesExtension: LeitwerkExtensionModule = {
 			return;
 		}
 		const config = (rawConfig ?? {}) as ShowcaseProcessesConfig;
-		const resolvedFileTriggerConfig = {
-			...fileTriggerDefaults,
-			...config.file_triggers,
-		};
 		createFileExternalSourceProvider(deps, {
-			"/tmp/poem-review-{instanceId}": resolvedFileTriggerConfig.poem_review_path,
+			id: "showcase-file-external",
+			kind: FILE_EXTERNAL_INSTRUCTION_KIND,
+			inputMode: "instruction",
+			aliases: { "/tmp/poem-review-{instanceId}": config.file_triggers?.poem_review_path },
 		});
 		createFilesystemWatcherProvider(deps);
 	},

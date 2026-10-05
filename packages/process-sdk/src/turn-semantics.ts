@@ -11,7 +11,7 @@ import type {
 	ProcessToolOutcomeSpec,
 	TurnDefinition,
 } from "./define-process.js";
-import { llmTurn, resolveHumanTurnView } from "./define-process.js";
+import { llmTurn } from "./define-process.js";
 import { validateMappedTurn } from "./mapped-turn.js";
 import { validatePiBuiltInToolArray } from "./pi-config.js";
 import { REQUIRED_MARKDOWN_RESULT_TURN_RESULT } from "./tool-renderers.js";
@@ -346,7 +346,7 @@ export function validateAutomaticTurnDefinition<
 }
 
 /** Intrinsic metadata checked before action derivation, which also validates routing. @internal */
-export function validateHumanTurnMetadata<TParams = unknown, TState = unknown>(
+export function validateHumanTurnDefinition<TParams = unknown, TState = unknown>(
 	turnId: string,
 	turnDef: HumanTurnDefinition<TParams, TState>,
 ): string[] {
@@ -412,20 +412,6 @@ export function validateHumanTurnMetadata<TParams = unknown, TState = unknown>(
 }
 
 /** @internal */
-export function validateHumanTurnDefinition<TParams = unknown, TState = unknown>(
-	turnId: string,
-	turnDef: HumanTurnDefinition<TParams, TState>,
-): string[] {
-	const errors = validateHumanTurnMetadata(turnId, turnDef);
-	try {
-		resolveHumanTurnView({ turnId, turn: turnDef });
-	} catch (error) {
-		errors.push(error instanceof Error ? error.message : String(error));
-	}
-	return errors;
-}
-
-/** @internal */
 export function validateExternalTurnDefinition<TParams = unknown, TState = unknown>(
 	turnId: string,
 	turnDef: ExternalTurnDefinition<TParams, TState>,
@@ -457,31 +443,14 @@ export function validateExternalTurnDefinition<TParams = unknown, TState = unkno
 export function validateTurnDefinition<TParams = unknown, TState = unknown>(
 	turnId: string,
 	turnDef: TurnDefinition<TParams, TState>,
-): string[];
-/** @internal */
-export function validateTurnDefinition<TParams = unknown, TState = unknown>(
-	turnDef: TurnDefinition<TParams, TState>,
-): string[];
-/** @internal */
-export function validateTurnDefinition<TParams = unknown, TState = unknown>(
-	turnIdOrDef: string | TurnDefinition<TParams, TState>,
-	turnDef?: TurnDefinition<TParams, TState>,
 ): string[] {
-	const effectiveTurnDef = typeof turnIdOrDef === "string" ? turnDef : turnIdOrDef;
-	const effectiveTurnId =
-		typeof turnIdOrDef === "string"
-			? turnIdOrDef
-			: ((turnIdOrDef as { id?: string }).id ?? "unknown_turn");
-	if (!effectiveTurnDef) {
-		return ["Turn definition is required"];
-	}
-	return isLlmTurnDefinition(effectiveTurnDef)
-		? validateLlmTurnDefinition(effectiveTurnId, effectiveTurnDef)
-		: isAutomaticTurnDefinition(effectiveTurnDef)
-			? validateAutomaticTurnDefinition(effectiveTurnId, effectiveTurnDef)
-			: isHumanTurnDefinition(effectiveTurnDef)
-				? validateHumanTurnDefinition(effectiveTurnId, effectiveTurnDef)
-				: validateExternalTurnDefinition(effectiveTurnId, effectiveTurnDef);
+	return isLlmTurnDefinition(turnDef)
+		? validateLlmTurnDefinition(turnId, turnDef)
+		: isAutomaticTurnDefinition(turnDef)
+			? validateAutomaticTurnDefinition(turnId, turnDef)
+			: isHumanTurnDefinition(turnDef)
+				? validateHumanTurnDefinition(turnId, turnDef)
+				: validateExternalTurnDefinition(turnId, turnDef);
 }
 
 /** @internal */

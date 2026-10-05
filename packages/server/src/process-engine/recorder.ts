@@ -20,6 +20,7 @@ import type {
 	OperationInputBase,
 	OperationSpec,
 } from "./operation.js";
+import { deferTurnWaitStarts, pendingTurnWait } from "./turn-wait-state.js";
 import type {
 	EngineErrorCode,
 	ProcessEngineDeps,
@@ -162,6 +163,7 @@ export async function record<TOp extends OperationSpec<string, OperationInputBas
 	 * commits all writes in one SQLite transaction, then derives a complete
 	 * reaction list for the post-commit stage.
 	 */
+	deferTurnWaitStarts(deps.processGraphs, initialProcess, decision.writes, decision.metadata);
 	const mappedPlan = await planMappedTurnEntries({
 		processGraphs: deps.processGraphs,
 		registry: deps.getProcessActionRegistry?.(),
@@ -173,6 +175,7 @@ export async function record<TOp extends OperationSpec<string, OperationInputBas
 	if (!mappedPlan.ok) {
 		return { ok: false, stage: "pre_commit", code: mappedPlan.code, message: mappedPlan.message };
 	}
+	deferTurnWaitStarts(deps.processGraphs, initialProcess, decision.writes, decision.metadata);
 	const baselineWrites = structuredClone(decision.writes);
 	const runModelPreparation = async (availability: ModelStatusCacheSnapshot) => {
 		const candidateProcess: ProcessInstance = {
@@ -184,6 +187,7 @@ export async function record<TOp extends OperationSpec<string, OperationInputBas
 				write.kind === "create" && write.input.turnType === "llm",
 		);
 		const shouldResolveSelection =
+			!pendingTurnWait(candidateProcess) &&
 			!!candidateProcess.selectedTurnId &&
 			(!!createdStart ||
 				candidateProcess.selectedTurnId !== initialProcess.selectedTurnId ||
@@ -208,10 +212,12 @@ export async function record<TOp extends OperationSpec<string, OperationInputBas
 				availability,
 				startKind: createdStart?.input.startKind,
 				initialSelection:
-					createdStart?.input.startKind === "selected_turn" &&
-					initialProcess.selectedTurnId === null &&
-					initialProcess.lifecycleStatus === "discovered" &&
-					initialProcess.planRevision === 0,
+					(decision.writes.waitForAdmission === pendingTurnWait(initialProcess)?.id &&
+						pendingTurnWait(initialProcess)?.initialSelection === true) ||
+					(createdStart?.input.startKind === "selected_turn" &&
+						initialProcess.selectedTurnId === null &&
+						initialProcess.lifecycleStatus === "discovered" &&
+						initialProcess.planRevision === 0),
 				...(Object.hasOwn(decision.metadata ?? {}, "nextTurnModelProfileId")
 					? { modelOverride: decision.metadata?.nextTurnModelProfileId ?? null }
 					: {}),

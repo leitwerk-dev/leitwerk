@@ -36,6 +36,11 @@ function checkMappedAuthoring(itemCodec: Codec<Item>, resultCodec: Codec<Result>
 			return { label: `${params.prefix}${item.id}`, count: state.kept.length };
 		})
 		.optionalConsume("review")
+		.waitFor(({ params, state }) => {
+			const prefix: string = params.prefix;
+			const kept: string[] = state.kept;
+			return prefix.length > 0 && kept.length > 0;
+		})
 		.askQuestions()
 		.executionPurpose("assessment")
 		.resolveIntegrationTools((params, state) => [params.prefix, ...state.kept])

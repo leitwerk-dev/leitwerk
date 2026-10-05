@@ -16,6 +16,7 @@ import { generateId } from "../db/repo-helpers.js";
 import type { RepositoryBundle } from "../db/repositories.js";
 import type { ProcessActionRegistry } from "../process-action-registry.js";
 import type { ProcessGraphRegistry } from "../process-graph.js";
+import { deferTurnWaitStarts } from "./turn-wait-state.js";
 import { buildServerTransitionWrites } from "./writes/build-server-transition-writes.js";
 import { reserveSelectedTurnStart } from "./writes/reserve-selected-turn-start.js";
 import {
@@ -129,6 +130,8 @@ export async function planMappedTurnEntries(input: {
 	const active = input.mappedRuns?.getActiveByInstance(input.process.id) ?? null;
 	let activeAborted = false;
 	for (let entry = 0; entry <= MAX_EMPTY_MAPPED_ENTRIES; entry += 1) {
+		// An empty mapped run may route straight into another gated turn.
+		deferTurnWaitStarts(input.processGraphs, input.process, writes);
 		const candidate: ProcessInstance = { ...input.process, ...writes.processPatch };
 		const startIndex = writes.turnStartWrites.findIndex(
 			(write) =>

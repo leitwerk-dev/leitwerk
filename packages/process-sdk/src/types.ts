@@ -555,20 +555,6 @@ export interface HumanTurnExternalTrigger {
 }
 
 /** @internal */
-export interface HumanTurnExternalActionView {
-	/** Process-local arming id exposed to providers and UI. @internal */
-	id: string;
-	/** @internal */
-	externalActionId: string;
-	/** @internal */
-	sourceKind: string;
-	/** @internal */
-	label: string | null;
-	/** @internal */
-	description: string | null;
-}
-
-/** @internal */
 export interface EventBus<TEventMap extends object = Record<string, unknown>> {
 	/** @internal */
 	emit<K extends keyof TEventMap & string>(event: K, data: TEventMap[K]): void;

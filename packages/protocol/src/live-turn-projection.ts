@@ -97,10 +97,6 @@ export const PRIMARY_PATH_OPERATIONAL_PI_EVENT_TYPES = [
 	"pi.compaction.end",
 ] as const;
 
-const PRIMARY_PATH_OPERATIONAL_PI_EVENT_TYPE_SET = new Set<string>(
-	PRIMARY_PATH_OPERATIONAL_PI_EVENT_TYPES,
-);
-
 function cloneToolCall(toolCall: ProjectionToolCall): ProjectionToolCall {
 	return {
 		...toolCall,
@@ -153,84 +149,67 @@ export function buildPrimaryPathOperationalTraceItem(input: {
 	/** @internal */
 	fallbackTimestamp: string;
 }): PrimaryPathOperationalTraceItemSnapshot | null {
-	if (!PRIMARY_PATH_OPERATIONAL_PI_EVENT_TYPE_SET.has(input.eventType)) {
-		return null;
-	}
-	const timestamp = readWsEventTimestamp(input.data, input.fallbackTimestamp);
+	let presentation: Pick<PrimaryPathOperationalTraceItemSnapshot, "severity" | "title" | "message">;
 	if (input.eventType === "pi.error") {
-		return {
-			kind: "operational_event",
-			eventType: input.eventType,
+		presentation = {
 			severity: "error",
 			title: "Pi request failed",
 			message:
 				firstMessage(input.data, ["message", "errorMessage", "finalError"]) ??
 				"Pi reported an error.",
-			timestamp,
 		};
-	}
-	if (input.eventType === "pi.retry.start") {
-		return {
-			kind: "operational_event",
-			eventType: input.eventType,
+	} else if (input.eventType === "pi.retry.start") {
+		presentation = {
 			severity: "warning",
 			title: "Retry scheduled",
 			message:
 				firstMessage(input.data, ["message", "errorMessage"]) ??
 				retryStartFallbackMessage(input.data),
-			timestamp,
 		};
-	}
-	if (input.eventType === "pi.retry.end") {
+	} else if (input.eventType === "pi.retry.end") {
 		const success = input.data.success === true;
-		return {
-			kind: "operational_event",
-			eventType: input.eventType,
+		presentation = {
 			severity: success ? "success" : "error",
 			title: success ? "Retry succeeded" : "Retry exhausted",
 			message:
 				firstMessage(input.data, ["message", "finalError", "errorMessage"]) ??
 				retryEndFallbackMessage(input.data),
-			timestamp,
 		};
-	}
-	if (input.eventType === "pi.compaction.start") {
+	} else if (input.eventType === "pi.compaction.start") {
 		const reason = formatReason(input.data.reason);
-		return {
-			kind: "operational_event",
-			eventType: input.eventType,
+		presentation = {
 			severity: "info",
 			title: "Context compaction started",
 			message: reason
 				? `Pi started compacting context (${reason}).`
 				: "Pi started compacting context.",
-			timestamp,
 		};
-	}
-	if (input.eventType === "pi.compaction.end") {
+	} else if (input.eventType === "pi.compaction.end") {
 		const reason = formatReason(input.data.reason);
 		const errorMessage = firstMessage(input.data, ["errorMessage", "message"]);
 		const aborted = input.data.aborted === true;
-		const willRetry = input.data.willRetry === true;
-		const statusMessage = errorMessage
-			? errorMessage
-			: aborted
-				? "Context compaction was cancelled."
-				: `Pi compacted context${reason ? ` (${reason})` : ""}.${willRetry ? " Pi will continue automatically." : ""}`;
-		return {
-			kind: "operational_event",
-			eventType: input.eventType,
+		presentation = {
 			severity: errorMessage ? "error" : aborted ? "warning" : "success",
 			title: errorMessage
 				? "Context compaction failed"
 				: aborted
 					? "Context compaction cancelled"
 					: "Context compacted",
-			message: statusMessage,
-			timestamp,
+			message:
+				errorMessage ??
+				(aborted
+					? "Context compaction was cancelled."
+					: `Pi compacted context${reason ? ` (${reason})` : ""}.${input.data.willRetry === true ? " Pi will continue automatically." : ""}`),
 		};
+	} else {
+		return null;
 	}
-	return null;
+	return {
+		kind: "operational_event",
+		eventType: input.eventType,
+		timestamp: readWsEventTimestamp(input.data, input.fallbackTimestamp),
+		...presentation,
+	};
 }
 
 function canonicalizeToolCallId(input: {
