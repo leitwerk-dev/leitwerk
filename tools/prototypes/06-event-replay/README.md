@@ -46,6 +46,7 @@ Validated with real clicks in `agent-browser --session idea-06`:
 - Moved the HTTP response before reconnect: it was rejected for lacking a matching pending request, and later frames stayed buffered.
 - Desktop 1440 × 1100 and mobile 390 × 844 screenshots were opened and visually inspected. Mobile document width was 390px with no horizontal overflow. Browser errors were empty.
 - Extracted inline JavaScript passed `node --check`. `git diff --check` passed.
+- After visual review, the notice and current delivery use flat fills without accent stripes. The first scenario was replayed for refreshed desktop/mobile captures; independent review confirmed the current delivery remains clear, with `aria-current="step"` retained.
 
 ![Desktop](screenshots/desktop.png)
 
