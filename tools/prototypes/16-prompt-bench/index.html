@@ -271,7 +271,16 @@ function dirty() {
 	return !current || JSON.stringify(current.input) !== JSON.stringify(input());
 }
 function notify(message) {
-	byId("status").textContent = message;
+	byId("status").textContent =
+		message +
+		(current && dirty()
+			? " Current edits have not been run; displayed evidence uses earlier inputs."
+			: "");
+}
+function renderRunMeta() {
+	byId("run-meta").textContent = current
+		? `Run ${current.id} · ${current.fingerprint}${dirty() ? " · edits not run" : ""}`
+		: "No comparison yet";
 }
 function validate() {
 	let valid = true;
@@ -293,9 +302,7 @@ function validate() {
 }
 function edited() {
 	validate();
-	byId("run-meta").textContent = current
-		? `Run ${current.id} · ${current.fingerprint}${dirty() ? " · edits not run" : ""}`
-		: "No comparison yet";
+	renderRunMeta();
 	notify(
 		dirty()
 			? "Instructions or evidence settings changed. Run again before freezing these edits."
@@ -311,11 +318,17 @@ function renderScenario() {
 	byId("scenario-detail").innerHTML =
 		`<p class="muted">${escapeHtml(guide.description)}</p><button type="button" id="guide-next" ${step >= guide.steps.length ? "disabled" : ""}>${step >= guide.steps.length ? "Walkthrough complete" : `${step + 1}. ${guide.steps[step]}`}</button>`;
 	byId("guide-next").onclick = () => {
-		if (step === 0) run();
-		else if (scenario === 2 && step === 1) {
+		if (step === 0) {
+			if (!run()) return;
+		} else if (scenario === 2 && step === 1) {
 			byId("check-disclosure").checked = false;
-			run();
+			edited();
+			if (!run()) return;
 		} else if (step === 1 || scenario === 2) {
+			if (!current) {
+				notify("Run a comparison before inspecting its evidence.");
+				return;
+			}
 			selected = "migration";
 			renderInspection();
 			byId("inspection-heading").scrollIntoView({ behavior: "instant", block: "start" });
@@ -324,7 +337,7 @@ function renderScenario() {
 					? "Missing response: every enabled check is unknown. Disabled disclosure is also unknown."
 					: "Inspect the required-content check: the word ‘survives’ determines the migration regression.",
 			);
-		} else freeze();
+		} else if (!freeze()) return;
 		step++;
 		renderScenario();
 	};
@@ -351,7 +364,10 @@ function setup(which) {
 	renderScenario();
 }
 function run() {
-	if (!validate()) return;
+	if (!validate()) {
+		notify("Fix the instruction errors before running this comparison.");
+		return false;
+	}
 	current = Bench.run(input(), ++serial);
 	renderResults();
 	renderInspection();
@@ -361,11 +377,12 @@ function run() {
 	notify(
 		`Run ${current.id} complete. ${changes} case${changes === 1 ? "" : "s"} with an observed regression; ${unknown} unknown case${unknown === 1 ? "" : "s"}. Inspect individual checks before accepting a revision.`,
 	);
+	return true;
 }
 function renderResults() {
 	const a = Bench.totals(current, "a");
 	const b = Bench.totals(current, "b");
-	byId("run-meta").textContent = `Run ${current.id} · ${current.fingerprint}`;
+	renderRunMeta();
 	byId("results").innerHTML =
 		`<div class="summary"><span><strong>${a.pass}/${a.total}</strong> baseline passes · ${a.fail} fail · ${a.unknown} unknown</span><span><strong>${b.pass}/${b.total}</strong> candidate passes · ${b.fail} fail · ${b.unknown} unknown</span></div><div class="table-wrap" tabindex="0" role="region" aria-label="Scrollable case comparison"><table><thead><tr><th scope="col">Fixture case</th><th scope="col">Baseline</th><th scope="col">Candidate</th><th scope="col">Change</th><th scope="col">Evidence</th></tr></thead><tbody>${current.cases.map((item) => `<tr class="${selected === item.fixture.id ? "selected" : ""}"><td><strong>${item.fixture.name}</strong><small>${item.fixture.id} · operations-v1</small></td><td class="numbers">${item.a.filter((result) => result.status === "pass").length}/4 pass</td><td class="numbers">${item.b.filter((result) => result.status === "pass").length}/4 pass${item.b.some((result) => result.status === "unknown") ? "<small>Incomplete evidence</small>" : ""}</td><td><span class="tag ${item.comparison.status}">${title(item.comparison.status)}</span>${item.comparison.regression.length ? `<small>${item.comparison.regression.length} pass → fail</small>` : ""}</td><td><button type="button" data-inspect="${item.fixture.id}" aria-label="Inspect ${item.fixture.name}">Inspect</button></td></tr>`).join("")}</tbody></table></div>`;
 	document.querySelectorAll("[data-inspect]").forEach((button) => {
@@ -386,13 +403,17 @@ function renderInspection() {
 		`<div class="row between"><h3>${item.fixture.name}</h3><span class="tag ${item.comparison.status}">${title(item.comparison.status)}</span></div><div class="input-text"><strong>Fixture input</strong><p>${escapeHtml(item.fixture.input)}</p><small>Required terms: ${item.fixture.required.map(escapeHtml).join(", ")} · evidence ID: ${item.fixture.id}</small></div><p class="muted">${item.comparison.regression.length ? `Lost passes: ${item.comparison.regression.join(", ")}. ` : ""}${item.comparison.improvement.length ? `New passes: ${item.comparison.improvement.join(", ")}. ` : ""}${item.comparison.status === "unknown" ? "Comparison is incomplete; unknown checks cannot pass." : "Each criterion compares the same fixture and rule."}</p><div class="inspect">${["a", "b"].map((side) => `<div><h3>${side === "a" ? "Baseline" : "Candidate"} output</h3><pre>${escapeHtml((side === "a" ? item.before : item.after) ?? "No response captured")}</pre><ul class="criteria-list">${item[side].map((result) => `<li><strong class="${result.status}">${title(result.status)}</strong> · ${result.name}<small>${escapeHtml(result.detail)}</small></li>`).join("")}</ul></div>`).join("")}</div>`;
 }
 function freeze() {
-	if (!current || dirty()) return;
+	if (!current || dirty()) {
+		notify("Run the current instructions and evidence settings before freezing.");
+		return false;
+	}
 	const snapshot = structuredClone(current);
 	frozen.push(snapshot);
 	renderFrozen();
 	notify(
 		`Frozen run ${snapshot.id} (${snapshot.fingerprint}). The copy includes incomplete or failing evidence without upgrading its result.`,
 	);
+	return true;
 }
 function renderFrozen() {
 	byId("frozen").innerHTML = frozen.length
@@ -424,7 +445,7 @@ function renderFrozen() {
 			renderResults();
 			renderInspection();
 			validate();
-			byId("run-meta").textContent += dirty() ? " · current edits differ" : " · frozen evidence";
+			if (!dirty()) byId("run-meta").textContent += " · frozen evidence";
 			notify(`Inspecting frozen run ${current.id}. Editors retain your current instructions.`);
 		};
 	});

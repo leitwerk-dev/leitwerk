@@ -14,7 +14,8 @@ a frozen snapshot downloads a JSON file.
 
 The three guided tabs reset the editable comparison and retain frozen snapshots.
 Each tab offers sequential buttons that perform the same actions as the free-play
-controls.
+controls. A rejected run or freeze keeps the guide on the current step until the
+inputs are corrected or rerun.
 
 1. **Better score, hidden loss:** Run the original and strict revisions. Passes rise
    from 11/16 to 15/16, but Migration evidence changes from a content pass to a
@@ -97,10 +98,16 @@ This standalone artifact does not import or change application packages.
   marked the old run as having unrun edits. Invalid directives disabled both Run
   and Freeze with an inline reason. Inspecting a snapshot preserved the current
   editors and identified their differences.
+- Follow-up browser checks confirmed case inspection retains the stale-run marker
+  and mismatch status, including after loading a frozen snapshot. Invalid first
+  and second guided runs kept their steps; a stale guided freeze kept step 3 and
+  created no snapshot. Correcting inputs and rerunning allowed the guide to finish
+  with a real snapshot.
 - Inspected the actual Blob created by Export JSON: four cases, versioned simulator
   and scorer, original fixture provenance, and the migration regression were present.
 - Captured and opened both screenshots. Mobile uses stacked case rows so status and
-  Inspect remain visible; document width was 390px at a 390px viewport.
+  Inspect remain visible; document width was 390px at a 390px viewport. Refreshed
+  captures show a frozen comparison inspected after an unrun instruction edit.
 - The optional Impeccable detector ran in degraded regex mode because parser modules
   were unavailable. Font warning corrected to the product sans stack; the remaining
   prose warning is not a behavioral or accessibility verdict.
