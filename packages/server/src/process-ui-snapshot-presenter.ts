@@ -20,12 +20,12 @@ import {
 import { parseStructuralProcessState } from "@leitwerk-dev/process-sdk";
 import {
 	buildActiveTimelineTurnSummary,
-	buildLiveTurnProjectionFromEvents,
 	buildUsageSnapshotsByTurnRecordId,
 	type CompactActiveTurnSnapshot,
 	type CompactTurnSummary,
 	type CurrentProcessErrorSummary,
 	type CurrentTurnRecoverySummary,
+	createLiveTurnProjection,
 	emptyCompactTurnSummary,
 	extractFirstUserPromptOnBranch,
 	extractInitialPromptFromParamsJson,
@@ -47,7 +47,6 @@ import {
 	type ReadonlyEntryTree,
 	reasoningPreviewTail,
 	resolveTurnContinuationUserPrompt,
-	snapshotTurnTrace,
 	type TurnReasoningDetailResponseBody,
 	type TurnTracePreview,
 	type TurnTraceSnapshot,
@@ -1416,7 +1415,7 @@ export class ProcessUiSnapshotAssembler {
 		const trace =
 			!live && session
 				? buildCommittedTurnTrace({ tree: session.piTree, turnRecord, events })
-				: snapshotTurnTrace(buildLiveTurnProjectionFromEvents(events));
+				: createLiveTurnProjection(events).snapshot();
 		if (!live) trace.usage ??= buildUsageSnapshotsByTurnRecordId(events)[turnRecord.id] ?? null;
 		const detail: TurnReasoningDetailResponseBody = {
 			instanceId: input.instanceId,

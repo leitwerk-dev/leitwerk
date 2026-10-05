@@ -125,6 +125,24 @@ export function getPrimaryPathActiveTurnOutput(
 	return activeTurn.assistant.text.trim();
 }
 
+function updateActiveTurn<TSnapshot extends PrimaryPathSnapshot>(
+	snapshot: TSnapshot,
+	turnRecordId: string | null | undefined,
+	update: (activeTurn: PrimaryPathActiveTurnSnapshot) => Partial<PrimaryPathActiveTurnSnapshot>,
+	isStreaming = snapshot.turnState.isStreaming,
+): TSnapshot {
+	const activeTurn = snapshot.turnState.activeTurn;
+	if (!activeTurn || (turnRecordId && activeTurn.turnRecordId !== turnRecordId)) return snapshot;
+	return {
+		...snapshot,
+		turnState: {
+			...snapshot.turnState,
+			isStreaming,
+			activeTurn: { ...activeTurn, ...update(activeTurn) },
+		},
+	};
+}
+
 function applyFullPrimaryPathFrame<TSnapshot extends PrimaryPathSnapshot>(
 	snapshot: TSnapshot,
 	frame: PrimaryPathWsFrame,
@@ -140,121 +158,67 @@ function applyFullPrimaryPathFrame<TSnapshot extends PrimaryPathSnapshot>(
 					activeTurn: createActiveTurnSnapshot(frame.payload.turnRecord),
 				},
 			};
-		case WS_PRIMARY_PATH_TYPES.ASSISTANT_PARTIAL: {
-			const activeTurn = snapshot.turnState.activeTurn;
-			if (
-				!activeTurn ||
-				(frame.payload.turnRecordId && activeTurn.turnRecordId !== frame.payload.turnRecordId)
-			) {
-				return snapshot;
-			}
-			return {
-				...snapshot,
-				turnState: {
-					...snapshot.turnState,
-					isStreaming: true,
-					activeTurn: {
-						...activeTurn,
-						assistant: {
-							...activeTurn.assistant,
-							text:
-								frame.payload.streamType === "thinking"
-									? activeTurn.assistant.text
-									: activeTurn.assistant.text + frame.payload.text,
-							thinking:
-								frame.payload.streamType === "thinking"
-									? activeTurn.assistant.thinking + frame.payload.text
-									: activeTurn.assistant.thinking,
-							lastUpdatedAt: frame.payload.timestamp,
-						},
-						traceItems:
+		case WS_PRIMARY_PATH_TYPES.ASSISTANT_PARTIAL:
+			return updateActiveTurn(
+				snapshot,
+				frame.payload.turnRecordId,
+				(activeTurn) => ({
+					assistant: {
+						...activeTurn.assistant,
+						text:
 							frame.payload.streamType === "thinking"
-								? appendThinkingTraceItems(activeTurn.traceItems, frame.payload.text)
-								: cloneTraceItems(activeTurn.traceItems),
+								? activeTurn.assistant.text
+								: activeTurn.assistant.text + frame.payload.text,
+						thinking:
+							frame.payload.streamType === "thinking"
+								? activeTurn.assistant.thinking + frame.payload.text
+								: activeTurn.assistant.thinking,
+						lastUpdatedAt: frame.payload.timestamp,
 					},
-				},
-			};
-		}
-		case WS_PRIMARY_PATH_TYPES.USAGE_UPDATED: {
-			const activeTurn = snapshot.turnState.activeTurn;
-			if (
-				!activeTurn ||
-				(frame.payload.turnRecordId && activeTurn.turnRecordId !== frame.payload.turnRecordId)
-			) {
-				return snapshot;
-			}
-			return {
-				...snapshot,
-				turnState: {
-					...snapshot.turnState,
-					activeTurn: {
-						...activeTurn,
-						usage: cloneTurnUsageSnapshot(frame.payload.usage),
-					},
-				},
-			};
-		}
-		case WS_PRIMARY_PATH_TYPES.TOOL_CALL_STARTED: {
-			const activeTurn = snapshot.turnState.activeTurn;
-			if (
-				!activeTurn ||
-				(frame.payload.turnRecordId && activeTurn.turnRecordId !== frame.payload.turnRecordId)
-			) {
-				return snapshot;
-			}
-			return {
-				...snapshot,
-				turnState: {
-					...snapshot.turnState,
-					activeTurn: {
-						...activeTurn,
-						toolCalls: upsertToolCall(activeTurn.toolCalls, {
-							toolCallId: frame.payload.toolCallId,
-							toolName: frame.payload.toolName,
-							status: "running",
-							startedAt: frame.payload.timestamp,
-							completedAt: null,
-							arguments: frame.payload.arguments,
-							result: null,
-							isError: false,
-						}),
-						traceItems: ensureToolTraceItem(activeTurn.traceItems, frame.payload.toolCallId),
-					},
-				},
-			};
-		}
-		case WS_PRIMARY_PATH_TYPES.TOOL_CALL_COMPLETED: {
-			const activeTurn = snapshot.turnState.activeTurn;
-			if (
-				!activeTurn ||
-				(frame.payload.turnRecordId && activeTurn.turnRecordId !== frame.payload.turnRecordId)
-			) {
-				return snapshot;
-			}
-			const existingToolCall = activeTurn.toolCalls.find(
-				(toolCall) => toolCall.toolCallId === frame.payload.toolCallId,
+					traceItems:
+						frame.payload.streamType === "thinking"
+							? appendThinkingTraceItems(activeTurn.traceItems, frame.payload.text)
+							: cloneTraceItems(activeTurn.traceItems),
+				}),
+				true,
 			);
-			return {
-				...snapshot,
-				turnState: {
-					...snapshot.turnState,
-					activeTurn: {
-						...activeTurn,
-						toolCalls: upsertToolCall(activeTurn.toolCalls, {
-							toolCallId: frame.payload.toolCallId,
-							toolName: frame.payload.toolName,
-							status: "completed",
-							startedAt: existingToolCall?.startedAt ?? frame.payload.timestamp,
-							completedAt: frame.payload.timestamp,
-							arguments: existingToolCall?.arguments ?? null,
-							result: frame.payload.result,
-							isError: frame.payload.isError,
-						}),
-						traceItems: ensureToolTraceItem(activeTurn.traceItems, frame.payload.toolCallId),
-					},
-				},
-			};
-		}
+		case WS_PRIMARY_PATH_TYPES.USAGE_UPDATED:
+			return updateActiveTurn(snapshot, frame.payload.turnRecordId, () => ({
+				usage: cloneTurnUsageSnapshot(frame.payload.usage),
+			}));
+		case WS_PRIMARY_PATH_TYPES.TOOL_CALL_STARTED:
+			return updateActiveTurn(snapshot, frame.payload.turnRecordId, (activeTurn) => ({
+				toolCalls: upsertToolCall(activeTurn.toolCalls, {
+					toolCallId: frame.payload.toolCallId,
+					toolName: frame.payload.toolName,
+					status: "running",
+					startedAt: frame.payload.timestamp,
+					completedAt: null,
+					arguments: frame.payload.arguments,
+					result: null,
+					isError: false,
+				}),
+				traceItems: ensureToolTraceItem(activeTurn.traceItems, frame.payload.toolCallId),
+			}));
+		case WS_PRIMARY_PATH_TYPES.TOOL_CALL_COMPLETED:
+			return updateActiveTurn(snapshot, frame.payload.turnRecordId, (activeTurn) => {
+				const existingToolCall = activeTurn.toolCalls.find(
+					(toolCall) => toolCall.toolCallId === frame.payload.toolCallId,
+				);
+				return {
+					toolCalls: upsertToolCall(activeTurn.toolCalls, {
+						toolCallId: frame.payload.toolCallId,
+						toolName: frame.payload.toolName,
+						status: "completed",
+						startedAt: existingToolCall?.startedAt ?? frame.payload.timestamp,
+						completedAt: frame.payload.timestamp,
+						arguments: existingToolCall?.arguments ?? null,
+						result: frame.payload.result,
+						isError: frame.payload.isError,
+					}),
+					traceItems: ensureToolTraceItem(activeTurn.traceItems, frame.payload.toolCallId),
+				};
+			});
 		case WS_PRIMARY_PATH_TYPES.ASSISTANT_COMMITTED: {
 			const nextSnapshot = updateSemanticLeafRefs(
 				snapshot,

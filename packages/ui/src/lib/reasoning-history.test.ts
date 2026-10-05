@@ -118,3 +118,53 @@ it("retains durable inspection event identities across a buffered HTTP refresh",
 	history.push(delta(3, "duplicate"));
 	expect(history.snapshot().events).toHaveLength(2);
 });
+
+it("completes a restored running tool with a result buffered during snapshot recovery", () => {
+	const history = new ReasoningHistory("process", "turn");
+	history.beginRequest();
+	const completion = createEphemeralWsFrame({
+		type: "pi.tool.completed",
+		instanceId: "process",
+		eventSequence: 3,
+		payload: {
+			turnRecordId: "turn",
+			toolCallId: "read",
+			toolName: "read",
+			result: {
+				content: [{ type: "text", text: "  recovered output\n\n" }],
+				details: { truncation: { truncated: true } },
+			},
+		},
+	});
+	history.push(completion);
+	const base = response("thinking", 2);
+	base.reasoning.toolCalls = [
+		{
+			toolCallId: "read",
+			toolName: "read",
+			status: "running",
+			startedAt: "2026-10-05T00:00:00Z",
+			completedAt: null,
+			arguments: { path: "file" },
+			resultText: null,
+			truncated: false,
+			isError: false,
+		},
+	];
+	base.reasoning.traceItems.push({ kind: "tool_call", toolCallId: "read" });
+	const trace = history.accept(base);
+	expect(trace.toolCalls).toMatchObject([
+		{
+			toolCallId: "read",
+			status: "completed",
+			arguments: { path: "file" },
+			resultText: "  recovered output\n\n",
+			truncated: true,
+		},
+	]);
+	expect(trace.traceItems).toEqual([
+		{ kind: "thinking", text: "thinking" },
+		{ kind: "tool_call", toolCallId: "read" },
+	]);
+	expect(history.push(completion)).toBeNull();
+});

@@ -1,12 +1,10 @@
 import {
-	applyPiEventToLiveTurnProjection,
 	asWsEventPayloadRecord,
-	buildLiveTurnProjectionFromEvents,
 	createDurableWsFrame,
 	createEphemeralWsFrame,
-	createMutableLiveTurnProjection,
+	createLiveTurnProjection,
 	isStreamableEvent,
-	type MutableLiveTurnProjection,
+	type LiveTurnProjection,
 	mapWorkerEventToWsType,
 	readWsEventNonEmptyString,
 	readWsEventPiTurnId,
@@ -72,28 +70,28 @@ function hydrateLiveTurnProjection(
 	deps: Pick<WorkerEventIngestorDeps, "events" | "turnRecords">,
 	instanceId: string,
 	turnRecordId: string | null,
-): MutableLiveTurnProjection {
+): LiveTurnProjection {
 	if (!turnRecordId) {
-		return createMutableLiveTurnProjection();
+		return createLiveTurnProjection();
 	}
 	const turnRecord = deps.turnRecords.getById(turnRecordId);
 	if (!turnRecord) {
-		return createMutableLiveTurnProjection();
+		return createLiveTurnProjection();
 	}
-	return buildLiveTurnProjectionFromEvents(deps.events.listByTurnRecord(instanceId, turnRecordId));
+	return createLiveTurnProjection(deps.events.listByTurnRecord(instanceId, turnRecordId));
 }
 
 export function createWorkerEventIngestor(deps: WorkerEventIngestorDeps) {
 	const liveTurnRecordIds = new Map<string, string>();
 	const liveTurnProjections = new Map<
 		string,
-		{ turnRecordId: string | null; projection: MutableLiveTurnProjection }
+		{ turnRecordId: string | null; projection: LiveTurnProjection }
 	>();
 
 	function getLiveTurnProjection(
 		instanceId: string,
 		turnRecordId: string | null,
-	): MutableLiveTurnProjection {
+	): LiveTurnProjection {
 		const existing = liveTurnProjections.get(instanceId);
 		if (existing && existing.turnRecordId === turnRecordId) {
 			return existing.projection;
@@ -106,7 +104,7 @@ export function createWorkerEventIngestor(deps: WorkerEventIngestorDeps) {
 	function setLiveTurnProjection(instanceId: string, turnRecordId: string | null) {
 		liveTurnProjections.set(instanceId, {
 			turnRecordId,
-			projection: createMutableLiveTurnProjection(),
+			projection: createLiveTurnProjection(),
 		});
 	}
 
@@ -206,7 +204,7 @@ export function createWorkerEventIngestor(deps: WorkerEventIngestorDeps) {
 				return;
 			}
 			const projection = getLiveTurnProjection(instanceId, currentTurnRecordId);
-			const appliedProjectionEvent = applyPiEventToLiveTurnProjection(projection, {
+			const appliedProjectionEvent = projection.apply({
 				eventType: payload.eventType,
 				data,
 				fallbackTimestamp: new Date().toISOString(),
@@ -281,7 +279,7 @@ export function createWorkerEventIngestor(deps: WorkerEventIngestorDeps) {
 					);
 				}
 			} else if (payload.eventType === "pi.usage") {
-				const usage = projection.usage;
+				const usage = appliedProjectionEvent.usage;
 				if (usage) {
 					deps.broadcaster.broadcast(
 						createEphemeralWsFrame({

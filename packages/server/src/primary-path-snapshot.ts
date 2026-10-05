@@ -12,12 +12,11 @@ import { parseProcessStateJsonLenient } from "@leitwerk-dev/domain";
 import { parseStructuralProcessState } from "@leitwerk-dev/process-sdk";
 import {
 	asWsEventPayloadRecord,
-	buildLiveTurnProjectionFromEvents,
+	createLiveTurnProjection,
 	type PrimaryPathActiveTurnSnapshot,
 	type PrimaryPathEntrySnapshot,
 	type PrimaryPathSnapshot,
 	readWsEventTurnRecordId,
-	snapshotLiveTurnProjection,
 } from "@leitwerk-dev/protocol";
 import type { ParsedInstanceTree } from "./instance-tree.js";
 
@@ -239,8 +238,8 @@ function buildActiveTurnSnapshot(input: {
 		}
 		return event.createdAt >= currentTurnRecord.startedAt;
 	});
-	const projection = buildLiveTurnProjectionFromEvents(activeTurnEvents);
-	const { assistant, toolCalls, traceItems, usage } = snapshotLiveTurnProjection(projection);
+	const { assistant, toolCalls, traceItems, usage } =
+		createLiveTurnProjection(activeTurnEvents).rawSnapshot();
 
 	return {
 		turnRecordId: currentTurnRecord.id,

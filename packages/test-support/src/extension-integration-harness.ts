@@ -7,6 +7,7 @@ import path from "node:path";
 import type {
 	Actor,
 	ExternalWriteLog,
+	LaunchModelConfigInput,
 	ProcessInstance,
 	ProcessProject,
 	ProcessTurnRecord,
@@ -397,7 +398,11 @@ export interface ExtensionIntegrationHarness {
 	/** @public */
 	process(id: string): ExtensionIntegrationProcess;
 	/** @public */
-	launch(id: string, input: Record<string, unknown>): Promise<ExtensionIntegrationProcess>;
+	launch(
+		id: string,
+		input: Record<string, unknown>,
+		modelConfig?: LaunchModelConfigInput,
+	): Promise<ExtensionIntegrationProcess>;
 	/** @public */
 	createProcess<TParams, TState>(
 		definition: ExtensionProcessDefinition<TParams, TState>,
@@ -864,9 +869,10 @@ export async function createExtensionIntegrationHarness(
 		/** Get a handle that remains valid across restart. @public */
 		process: processHandle,
 		/** Admit work through a registered UI launcher. @public */
-		async launch(id, input) {
+		async launch(id, input, modelConfig) {
 			const response = await postImmediateLaunch(context().config.server.base_url, id, {
 				launcherInput: input,
+				...(modelConfig ? { modelConfig } : {}),
 			});
 			const body = (await response.json()) as { process?: { id: string } };
 			if (!response.ok || !body.process)
