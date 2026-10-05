@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mapped turn mission control · Leitwerk prototype</title>
+<style>
+:root{font-family:"Public Sans",ui-sans-serif,system-ui,sans-serif;color:#18212b;background:#fff;font-size:15px;line-height:1.5;--blue:#2f61b7;--line:#d9dee5;--muted:#4c5968}*{box-sizing:border-box}body{margin:0}button,input,textarea,select{font:inherit}button{min-height:42px;border:1px solid #aeb7c2;background:#fff;color:#18212b;border-radius:7px;padding:8px 13px;cursor:pointer}button:hover:not(:disabled){border-color:var(--blue);background:#f2f6fc}button:disabled{color:#687483;background:#f2f4f7;cursor:not-allowed;border-color:var(--line)}button.primary{background:var(--blue);border-color:var(--blue);color:white}button.primary:hover:not(:disabled){background:#234c94}button.primary:disabled{background:#e6ecf6;color:#4c5968;border-color:var(--line)}button:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--blue);outline-offset:3px}::selection{background:#e6ecf6}header,main{max-width:1180px;margin:auto;padding:28px 32px}header{padding-bottom:10px}h1{font-size:30px;line-height:1.2;letter-spacing:-.025em;margin:12px 0}h2{font-size:19px;margin:0 0 12px}h3{font-size:16px;margin:0 0 8px}p{margin:8px 0;max-width:76ch}small,.muted{color:var(--muted)}small{font-size:13px}.topline,.heading-row,.actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.topline,.heading-row{justify-content:space-between}.brand{font-weight:700;font-size:16px}.prototype{color:var(--muted);font-size:13px}.question{font-size:16px}.summary{display:flex;gap:26px;flex-wrap:wrap;border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:16px 0;margin-bottom:22px}.summary span{display:block;font-size:13px;color:var(--muted)}.summary strong{font-size:15px;overflow-wrap:anywhere}.diagram{display:grid;grid-template-columns:1fr auto 1.35fr auto 1fr;align-items:center;gap:14px;margin:0 0 24px}.node{padding:13px 16px;border:1px solid var(--line);border-radius:7px;min-height:78px}.node.selected{border-color:var(--blue);background:#f2f6fc}.node span{display:block;font-size:13px;color:var(--muted)}.arrow{color:var(--muted)}.workspace{display:grid;grid-template-columns:1.14fr 1fr;gap:30px;margin-bottom:24px}.queue{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}.queue li{border-bottom:1px solid var(--line)}.item{width:100%;display:grid;grid-template-columns:28px 1fr auto;align-items:center;gap:10px;padding:15px 10px;text-align:left;border:0;border-radius:0;background:#fff;min-height:77px}.item[aria-pressed=true]{background:#e6ecf6}.item small{display:block;font-size:12px}.order{color:var(--muted);font-variant-numeric:tabular-nums}.status{font-size:12px;padding:3px 7px;background:#f2f4f7;white-space:nowrap;border-radius:4px}.status.error{background:#f9eceb;color:#7d2d27}.status.done{background:#eaf5f0;color:#146342}.status.running{color:#234c94;background:#e6ecf6}.details{background:#f7f8fa;padding:20px;border-radius:7px;min-width:0}.detail-fields{display:grid;grid-template-columns:1fr 1fr;gap:10px 20px;margin:16px 0}.detail-fields dt{color:var(--muted);font-size:12px}.detail-fields dd{margin:0;overflow-wrap:anywhere}.history{padding-left:20px;margin:8px 0}.history li{padding:6px 0}.history small{display:block}.result{border-top:1px solid var(--line);padding-top:12px;margin-top:15px}.controls{border-top:1px solid var(--line);padding-top:22px}.control-label{display:block;font-size:13px;color:var(--muted);margin-bottom:10px}select,textarea{border:1px solid #aeb7c2;border-radius:6px;background:white;padding:10px;color:#18212b}select{max-width:100%}.message{padding:13px 16px;background:#f2f6fc;border:1px solid #cfdaed;border-radius:7px;margin:18px 0;min-height:50px}.message.error{background:#f9eceb;border-color:#e6c9c5;color:#7d2d27}.lower{display:grid;grid-template-columns:1fr 1.14fr;gap:30px;border-top:1px solid var(--line);padding-top:24px}.source textarea{width:100%;resize:vertical;min-height:120px;margin:9px 0 7px}.source label{display:block}.source .actions{margin:8px 0}.tabs{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px}.tabs button{border:0;border-radius:0;border-bottom:2px solid transparent;padding:8px 10px}.tabs button[aria-selected=true]{border-bottom-color:var(--blue);color:var(--blue)}.steps{margin:12px 0;padding-left:25px}.steps li{margin:7px 0}.steps button{text-align:left;min-height:36px;width:100%;padding:6px 10px}.steps .visited{color:#146342;background:#eaf5f0}.guide-note{font-size:13px;color:var(--muted)}.collection{border-top:1px solid var(--line);margin-top:15px;padding-top:14px}.collection ol{padding-left:22px}.collection li{padding:4px 0}.empty{padding:25px 12px;color:var(--muted);background:#f7f8fa}footer{border-top:1px solid var(--line);margin-top:28px;padding:16px 0;color:var(--muted);font-size:13px}.tree{font-family:ui-monospace,SFMono-Regular,monospace;font-size:12px;overflow-wrap:anywhere}.secondary-actions{margin-top:9px}.logs{margin-top:18px}.logs ol{padding-left:22px;font-size:13px;color:var(--muted)}.logs li{padding:3px 0}@media(max-width:720px){header,main{padding:20px 18px}h1{font-size:26px}.workspace,.lower{grid-template-columns:1fr;gap:22px}.summary{gap:14px 25px}.diagram{gap:6px;grid-template-columns:1fr auto 1.2fr auto 1fr}.node{padding:10px 7px;font-size:12px;min-height:100px}.node span{font-size:11px}.arrow{font-size:12px}.item{grid-template-columns:22px 1fr auto;padding:12px 6px;gap:6px}.status{padding:3px 5px}.details{padding:16px}.actions{gap:8px}.actions button{flex:1 1 135px}.topline{gap:5px}.prototype{font-size:12px}.tabs button{flex:1 1 40%;font-size:13px}.steps button{font-size:13px}.summary strong{font-size:14px}}
+</style>
+</head>
+<body>
+<!-- Existing Leitwerk visual language, Operate mode. Frozen sequence on the left and item evidence on the right keep execution and inspection distinct. A last successful outcome closes the queue and exposes its one collection route. At narrow widths the sequence precedes evidence. All fixtures and transitions are simulated in memory. -->
+<header>
+<div class="topline"><span class="brand">Leitwerk / Process lab</span><span class="prototype">Prototype • synthetic data • idea 14</span></div>
+<h1>Mapped turn mission control</h1>
+<p class="question">Can an operator recover one failed item without losing sight of the frozen queue or repeating successful work?</p>
+<p class="muted">Explore a candidate investigation in one process and one tree. Each item runs in order; the final result collects the queue and routes once.</p>
+</header>
+<main>
+<div class="heading-row"><h2>Candidate investigation</h2><button type="button" id="reset">Reset experiment</button></div>
+<div id="summary" class="summary"></div>
+<div id="diagram" class="diagram" aria-label="Mapped turn flow"></div>
+<div class="workspace">
+<section aria-labelledby="queue-title"><div class="heading-row"><h2 id="queue-title">Frozen item queue</h2><span id="progress" class="muted"></span></div><ol id="queue" class="queue"></ol><div id="collection" class="collection"></div></section>
+<section id="evidence" class="details" aria-label="Selected item evidence"></section>
+</div>
+<section class="controls" aria-labelledby="control-title">
+<h2 id="control-title">Drive the simulation</h2>
+<label class="control-label" for="classification">Result for the current item <select id="classification"><option value="clear">No follow-up needed</option><option value="review">Needs review</option></select></label>
+<div class="actions"><button type="button" id="freeze" class="primary">Freeze queue & enter turn</button><button type="button" id="accept">Accept worker start</button><button type="button" id="succeed">Complete current item</button><button type="button" id="fail">Fail current attempt</button><button type="button" id="retry">Retry failed item</button></div>
+<div class="actions secondary-actions"><button type="button" id="stale">Replay previous outcome</button><small>Inspecting an item never changes the item being executed.</small></div>
+<div id="message" class="message" role="status" aria-live="polite"></div>
+</section>
+<div class="lower">
+<section class="source"><h2>Live source list</h2><p class="muted">One candidate per line. Saving after entry changes the source only; this run keeps its original items, labels and order.</p><label for="source">Candidate labels</label><textarea id="source" spellcheck="false"></textarea><div class="actions"><button type="button" id="save">Save source list</button><button type="button" id="change">Simulate source change</button></div><small id="source-state"></small><details class="logs"><summary>Process event trail</summary><ol id="events"></ol></details></section>
+<section aria-labelledby="guide-title"><h2 id="guide-title">Guided walkthroughs</h2><div id="tabs" class="tabs" role="tablist" aria-label="Walkthroughs"></div><div id="guide" role="tabpanel"></div></section>
+</div>
+<footer>Future operator surface; current mapped-turn semantics. This file makes no server calls and stores nothing. Reload or reset to start again.</footer>
+</main>
+<script>
+const fixture = ["API timeout", "Worker restart", "Cache pressure"];
+const changedFixture = ["Cache pressure (revised)", "New database alert"];
+function initial() {
+  return {source:[...fixture],sourceRevision:1,frozenRevision:null,items:[],entered:false,current:0,inspected:0,selectedTurnId:"shortlist",lifecycle:"waiting",reservation:null,records:[],nextId:1,collected:null,routes:0,message:"Freeze the source list to reserve the first item. A reservation is not an attempt.",events:[]};
+}
+function addEvent(state,message){state.message=message;state.events.push(message);}
+function reserve(state){state.reservation={id:`tr-${state.nextId}`,itemIndex:state.current};state.nextId+=1;}
+function collect(state){state.collected=state.items.map(item=>({...item.result}));state.routes+=1;state.selectedTurnId=state.collected.some(result=>result.classification==="review")?"check_writing":"deliver";state.lifecycle="waiting";state.reservation=null;addEvent(state,`Collected ${state.collected.length} results in frozen order. Routed once to ${state.selectedTurnId}; this process is waiting at the next human turn.`);}
+// Pure reducer: DOM-free, deterministic and clone-in / clone-out.
+function reduce(previous,action){
+  if(action.type==="reset")return initial();
+  const state=structuredClone(previous);
+  const reject=(message)=>{addEvent(state,message);return state;};
+  if(action.type==="source"){
+    const labels=action.labels.map(label=>label.trim()).filter(Boolean);
+    if(labels.length>500||labels.some(label=>label.length>200)||new Set(labels).size!==labels.length)return reject("Source not saved: use unique labels, at most 200 characters each and 500 items.");
+    state.source=labels;state.sourceRevision+=1;return reject(state.entered?"Source saved. Frozen items and their order are unchanged.":"Source saved. Enter the turn to freeze this list.");
+  }
+  if(action.type==="inspect"){
+    if(state.items[action.index]){state.inspected=action.index;addEvent(state,`Inspecting ${state.items[action.index].label}. Execution remains on ${state.current<state.items.length?state.items[state.current].label:state.selectedTurnId}.`);}return state;
+  }
+  if(action.type==="freeze"){
+    if(state.entered)return reject("This run is already frozen. Reset to create another run.");
+    state.entered=true;state.frozenRevision=state.sourceRevision;state.selectedTurnId="investigate_candidate";state.lifecycle="active";
+    state.items=state.source.map((label,index)=>({key:`candidate-${index+1}`,label,index,status:"pending",result:null}));
+    if(!state.items.length){collect(state);return state;}
+    reserve(state);return reject(`Froze ${state.items.length} items. Reserved ${state.reservation.id} for ${state.items[0].label}; no attempt exists until acceptance.`);
+  }
+  if(action.type==="stale"){
+    const replay=state.records.find(record=>record.status!=="running");
+    const active=state.records.findLast(record=>record.status==="running");
+    if(!replay)return reject("No previous outcome exists to replay.");
+    if(replay.id!==active?.id||replay.itemIndex!==state.current)return reject(`Rejected stale outcome ${replay.id}: expected ${active?.id??state.reservation?.id??"no active record"}. No result, item or route changed.`);
+    return reject("Replay rejected: only an active record can finish its current item.");
+  }
+  const item=state.items[state.current];
+  if(!item||state.collected!==null)return reject("No current mapped item. The run has collected or has not started.");
+  if(action.type==="accept"){
+    if(!state.reservation||state.lifecycle==="error")return reject("There is no prepared start to accept.");
+    const attempt=state.records.filter(record=>record.itemIndex===state.current).length+1;
+    state.records.push({id:state.reservation.id,itemIndex:state.current,attempt,status:"running",result:null});state.reservation=null;item.status="running";
+    return reject(`Worker accepted ${item.label}, item attempt ${attempt}. Its turn record now exists.`);
+  }
+  if(action.type==="retry"){
+    if(state.lifecycle!=="error")return reject("Generic Retry applies only to the current failed turn record.");
+    state.lifecycle="active";item.status="pending";reserve(state);
+    return reject(`Retry reserved for ${item.label}. Completed results are preserved; acceptance creates its next attempt.`);
+  }
+  const record=state.records.at(-1);
+  if(!record||record.status!=="running"||record.itemIndex!==state.current)return reject("Accept the reserved worker start before finishing an attempt.");
+  if(action.type==="fail"){
+    record.status="failed";item.status="error";state.lifecycle="error";
+    return reject(`${item.label}: simulated provider connection lost. The selected turn and current item stay unchanged. Use generic Retry to resume this item.`);
+  }
+  if(action.type==="succeed"){
+    const classification=action.classification??"clear";
+    record.status="succeeded";record.result=classification;item.status="completed";
+    item.result={key:item.key,label:item.label,classification,turnRecordId:record.id,summary:classification==="review"?"Evidence warrants a human review.":"Investigation found no follow-up work."};
+    state.current+=1;
+    if(state.current===state.items.length){collect(state);return state;}
+    state.inspected=state.current;reserve(state);return reject(`Saved ${item.label}'s result. Reserved the next item; no collection route has run yet.`);
+  }
+  return state;
+}
+const success={type:"succeed",classification:"clear"};
+const accept={type:"accept"};
+const scenarios=[
+  {name:"All complete",description:"Run three candidates. Watch each reservation become an attempt only after acceptance. The last result routes exactly once.",steps:[["Freeze the three candidates",{type:"freeze"}],["Accept API timeout",accept],["Complete API timeout",success],["Accept Worker restart",accept],["Complete Worker restart",success],["Accept Cache pressure",accept],["Complete & collect the final item",success]]},
+  {name:"Middle item retry",description:"Keep the first success while the middle item fails. Generic Retry reserves only that item; its next attempt starts on acceptance.",steps:[["Freeze candidates",{type:"freeze"}],["Accept first item",accept],["Complete first item",success],["Accept middle item",accept],["Fail the middle attempt",{type:"fail"}],["Inspect the preserved first result",{type:"inspect",index:0}],["Retry the failed middle item",{type:"retry"}],["Accept its second attempt",accept],["Replay an old outcome (rejected)",{type:"stale"}],["Complete middle item: needs review",{type:"succeed",classification:"review"}],["Accept final item",accept],["Complete & route to review",success]]},
+  {name:"Source changes",description:"After freezing, replace the live source with a reordered, relabelled list. The running queue still investigates the original three candidates.",steps:[["Freeze original candidates",{type:"freeze"}],["Replace the live source",{type:"source",labels:changedFixture}],["Accept original API timeout",accept],["Complete original first item",success],["Accept original Worker restart",accept],["Complete original middle item",success],["Accept original Cache pressure",accept],["Collect original three results",success]]},
+  {name:"Empty source",description:"An empty source is valid. It collects an empty result list immediately, routes once and never reserves or accepts a worker start.",steps:[["Clear source candidates",{type:"source",labels:[]}],["Enter turn & collect empty list",{type:"freeze"}]]}
+];
+let state=initial();let scenarioIndex=0;let step=0;let guided=true;
+const byId=id=>document.getElementById(id);
+const escapeHtml=value=>String(value).replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[char]);
+function dispatch(action,fromGuide=false){state=reduce(state,action);if(!fromGuide)guided=false;render();}
+function statusLabel(item){if(item.status==="pending")return item.index===state.current?"Start reserved":"Queued";return {running:"Running",completed:"Complete",error:"Needs retry"}[item.status];}
+function render(){
+  const completed=state.items.filter(item=>item.status==="completed").length;
+  byId("summary").innerHTML=`<div><span>Process / tree</span><strong>candidate-review-14 / tree-14</strong></div><div><span>Selected turn</span><strong>${escapeHtml(state.selectedTurnId)}</strong></div><div><span>Lifecycle</span><strong>${state.lifecycle}</strong></div><div><span>Accepted attempts</span><strong>${state.records.length}</strong></div><div><span>Collection routes</span><strong>${state.routes}</strong></div>`;
+  byId("diagram").innerHTML=`<div class="node"><strong>Live source</strong><span>Revision ${state.sourceRevision} · ${state.source.length} candidates</span></div><span class="arrow" aria-hidden="true">→</span><div class="node ${state.entered&&state.collected===null?"selected":""}"><strong>Investigate candidates</strong><span>${state.entered?`${completed} / ${state.items.length} results · sequential`:"Freeze once on entry"}</span></div><span class="arrow" aria-hidden="true">→</span><div class="node ${state.collected!==null?"selected":""}"><strong>${state.collected!==null?escapeHtml(state.selectedTurnId):"Collect & route"}</strong><span>${state.collected!==null?"Waiting · route applied":"After every item succeeds"}</span></div>`;
+  byId("progress").textContent=state.entered?`${completed} of ${state.items.length} complete`:"Not frozen";
+  byId("queue").innerHTML=state.items.length?state.items.map(item=>`<li><button type="button" class="item" data-inspect="${item.index}" aria-pressed="${state.inspected===item.index}" aria-label="Inspect ${escapeHtml(item.label)}"><span class="order">${item.index+1}</span><span><strong>${escapeHtml(item.label)}</strong><small>${escapeHtml(item.key)} · ${state.records.filter(record=>record.itemIndex===item.index).length} accepted attempts</small></span><span class="status ${item.status==="completed"?"done":item.status}">${statusLabel(item)}</span></button></li>`).join(""):`<li class="empty">${state.entered?"No items were frozen. The empty collection has already routed.":"The live source becomes an ordered snapshot when you enter the mapped turn."}</li>`;
+  byId("collection").innerHTML=state.collected===null?`<h3>Collection is pending</h3><p class="muted">${completed} saved ${completed===1?"result":"results"}. Individual outcomes stay inside this turn.</p>`:`<h3>Collected once · ${state.collected.length} results</h3>${state.collected.length?`<ol>${state.collected.map(result=>`<li>${escapeHtml(result.label)} — ${result.classification==="review"?"needs review":"clear"}</li>`).join("")}</ol>`:"<p>Empty result list accepted.</p>"}<p>Next turn: <strong>${state.selectedTurnId}</strong></p>`;
+  const inspected=state.items[state.inspected];
+  const current=state.items[state.current];
+  if(inspected){
+    const records=state.records.filter(record=>record.itemIndex===inspected.index);
+    const reservation=state.reservation?.itemIndex===inspected.index?state.reservation:null;
+    byId("evidence").innerHTML=`<div class="heading-row"><h2>Item evidence</h2><span class="muted">${inspected.index+1} of ${state.items.length}</span></div><h3>${escapeHtml(inspected.label)}</h3><p class="muted">${inspected.index===state.current?"This is the current execution item.":"You are inspecting another item. Execution selection is unchanged."}</p><dl class="detail-fields"><div><dt>Frozen source</dt><dd>Revision ${state.frozenRevision}</dd></div><div><dt>Item state</dt><dd>${statusLabel(inspected)}</dd></div><div><dt>Reserved start</dt><dd>${reservation?reservation.id:"None"}</dd></div><div><dt>Accepted attempts</dt><dd>${records.length}</dd></div></dl><h3>Attempt history</h3>${records.length?`<ol class="history">${records.map(record=>`<li>Attempt ${record.attempt} · <strong>${record.status}</strong><small>${record.id} · ${record.status==="failed"?"Provider connection lost":record.status==="running"?"Worker accepted; result pending":"Result saved"}</small></li>`).join("")}</ol>`:"<p class=\"muted\">No accepted attempt. A reserved start has not created a turn record.</p>"}<div class="result"><h3>Saved result</h3><p>${inspected.result?escapeHtml(inspected.result.summary):"No result yet."}</p>${inspected.result?`<small>Evidence: ${inspected.result.turnRecordId} · result retained through later retries</small>`:""}</div><p class="tree">tree-14 / investigate_candidate / ${escapeHtml(inspected.key)}</p>`;
+  }else byId("evidence").innerHTML="<h2>Item evidence</h2><p>Select an item after freezing the queue to inspect its accepted attempts and saved result.</p><p class=\"muted\">All items belong to the same process tree. Opening evidence changes only this view.</p>";
+  byId("freeze").disabled=state.entered;
+  byId("accept").disabled=!state.reservation||state.lifecycle==="error";
+  byId("succeed").disabled=current?.status!=="running";
+  byId("fail").disabled=current?.status!=="running";
+  byId("retry").disabled=state.lifecycle!=="error";byId("retry").className=state.lifecycle==="error"?"primary":"";
+  byId("stale").disabled=!state.records.some(record=>record.status!=="running");
+  byId("classification").disabled=current?.status!=="running";
+  byId("message").textContent=state.message;
+  byId("message").className=`message ${state.lifecycle==="error"?"error":""}`;
+  byId("source").value=state.source.join("\n");
+  byId("source-state").textContent=state.entered?`Run snapshot: revision ${state.frozenRevision}. Live source: revision ${state.sourceRevision}. ${state.sourceRevision!==state.frozenRevision?"Later source edits do not enter this run.":"Snapshot matches the current source."}`:`Revision ${state.sourceRevision} · ${state.source.length} candidates ready to freeze.`;
+  byId("events").innerHTML=state.events.map(event=>`<li>${escapeHtml(event)}</li>`).join("")||"<li>No simulated events yet.</li>";
+  byId("tabs").innerHTML=scenarios.map((scenario,index)=>`<button type="button" id="tab-${index}" role="tab" aria-controls="guide" aria-selected="${scenarioIndex===index}" tabindex="${scenarioIndex===index?0:-1}" data-scenario="${index}">${scenario.name}</button>`).join("");
+  const scenario=scenarios[scenarioIndex];byId("guide").setAttribute("aria-labelledby",`tab-${scenarioIndex}`);
+  byId("guide").innerHTML=`<p>${scenario.description}</p>${!guided?"<p class=\"guide-note\">Free play is active. Select any walkthrough tab to reset and begin its sequence.</p>":""}<ol class="steps">${scenario.steps.map(([label],index)=>`<li><button type="button" data-step="${index}" class="${index<step?"visited":""}" ${!guided||index!==step?"disabled":""}>${index<step?"Done · ":""}${label}</button></li>`).join("")}</ol>${step===scenario.steps.length?"<p><strong>Walkthrough complete.</strong> Inspect the resulting state or select another scenario.</p>":""}`;
+}
+byId("reset").addEventListener("click",()=>{state=initial();step=0;guided=true;render();});
+for(const type of ["freeze","accept","fail","retry","stale"])byId(type).addEventListener("click",()=>dispatch({type}));
+byId("succeed").addEventListener("click",()=>dispatch({type:"succeed",classification:byId("classification").value}));
+byId("save").addEventListener("click",()=>dispatch({type:"source",labels:byId("source").value.split("\n")}));
+byId("change").addEventListener("click",()=>dispatch({type:"source",labels:changedFixture}));
+byId("queue").addEventListener("click",event=>{const button=event.target.closest("[data-inspect]");if(button){const index=Number(button.dataset.inspect);dispatch({type:"inspect",index},true);byId("queue").querySelector(`[data-inspect="${index}"]`).focus();}});
+byId("tabs").addEventListener("click",event=>{const button=event.target.closest("[data-scenario]");if(button){scenarioIndex=Number(button.dataset.scenario);state=initial();step=0;guided=true;render();byId(`tab-${scenarioIndex}`).focus();}});
+byId("tabs").addEventListener("keydown",event=>{if(["ArrowLeft","ArrowRight","Home","End"].includes(event.key)){event.preventDefault();const next=event.key==="Home"?0:event.key==="End"?scenarios.length-1:(scenarioIndex+(event.key==="ArrowRight"?1:-1)+scenarios.length)%scenarios.length;byId(`tab-${next}`).click();}});
+byId("guide").addEventListener("click",event=>{const button=event.target.closest("[data-step]");if(button&&Number(button.dataset.step)===step){const action=scenarios[scenarioIndex].steps[step][1];step+=1;dispatch(action,true);const next=byId("guide").querySelector("button:not(:disabled)");if(next)next.focus();}});
+render();
+</script>
+</body>
+</html>
