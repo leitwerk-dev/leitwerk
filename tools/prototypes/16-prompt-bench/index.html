@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prompt regression bench · Leitwerk prototype</title>
+<style>
+:root{font-family:"Public Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#18212b;background:#f5f6f8;font-size:15px;line-height:1.5;--blue:#2f61b7;--border:#d7dde5}*{box-sizing:border-box}body{margin:0}button,input,textarea,select{font:inherit}button,select{min-height:42px}button{padding:8px 13px;border:1px solid var(--border);border-radius:5px;background:white;color:#18212b;cursor:pointer}button:hover{background:#edf2f9}button:disabled{opacity:.48;cursor:not-allowed}button.primary{background:var(--blue);border-color:var(--blue);color:white}button[aria-selected="true"]{border-color:var(--blue);color:var(--blue);background:#eef3fc}button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid #6596e9;outline-offset:3px}::selection{background:#dbe8ff}a{color:var(--blue)}header,main{max-width:1220px;margin:auto;padding:28px 32px}header{padding-bottom:22px}h1{font-size:30px;line-height:1.2;margin:0 0 12px;font-weight:650;letter-spacing:-.02em}h2{font-size:19px;line-height:1.3;margin:0 0 12px}h3{font-size:16px;margin:0 0 10px}p{margin:8px 0;max-width:78ch}.muted,small{color:#566170}.intro{display:flex;justify-content:space-between;align-items:flex-start;gap:20px}.intro p{max-width:75ch}.notice{font-size:14px;color:#566170}main{padding-top:0}.section{border-top:1px solid var(--border);padding:23px 0}.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.between{justify-content:space-between}.scenario-tabs{margin:14px 0 12px}.scenario-detail{display:flex;justify-content:space-between;align-items:center;gap:20px;min-height:62px}.scenario-detail p{margin:0}.scenario-detail button{flex-shrink:0}.editors{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin:18px 0}label{display:block;font-weight:550}.editor-label{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}.editor-label label{font-weight:600}textarea{width:100%;min-height:177px;resize:vertical;padding:12px;border:1px solid var(--border);border-radius:4px;background:white;font:13px/1.55 ui-monospace,SFMono-Regular,monospace;color:#18212b;caret-color:var(--blue)}select{padding:6px 10px;border:1px solid var(--border);border-radius:4px;background:white;color:#18212b;max-width:100%}fieldset{border:0;margin:0;padding:0}legend{font-weight:600;margin-bottom:10px}.checks{display:flex;gap:18px;flex-wrap:wrap}.checks label{display:flex;align-items:center;gap:7px;font-size:14px;font-weight:400}input[type=checkbox]{width:17px;height:17px;accent-color:var(--blue)}.toolbar{display:flex;justify-content:space-between;gap:18px;align-items:flex-end;margin-top:20px}.toolbar label{font-size:14px;font-weight:400}.status{padding:13px 16px;background:#eef3fc;border:1px solid #d7e2f5;border-radius:4px;margin-top:18px;min-height:49px}.summary{display:flex;gap:26px;flex-wrap:wrap;margin:18px 0}.summary strong{font-size:21px;font-weight:600;margin-right:6px;font-variant-numeric:tabular-nums}.summary span{font-size:14px}.table-wrap{overflow-x:auto}table{width:100%;border-collapse:collapse;background:white;font-size:14px}th,td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--border);vertical-align:top}th{font-weight:600;color:#566170;background:#f5f6f8}td small{display:block;margin-top:3px}.result{font-weight:600}.pass,.improved{color:#196449}.fail,.regression{color:#a52832}.unknown{color:#825c13}.stable{color:#566170}.tag{font-size:13px;border:1px solid currentColor;padding:3px 7px;border-radius:3px;display:inline-block}.selected td{background:#f2f6fd}.inspect{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:15px}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:13px/1.6 ui-monospace,SFMono-Regular,monospace;background:white;border:1px solid var(--border);border-radius:4px;padding:15px;margin:8px 0 15px;min-height:112px}code{font:13px ui-monospace,SFMono-Regular,monospace;overflow-wrap:anywhere}.criteria-list{padding:0;list-style:none;margin:0}.criteria-list li{padding:9px 0;border-bottom:1px solid var(--border)}.criteria-list strong{font-weight:600}.criteria-list small{display:block}.input-text{font-size:14px;margin:12px 0;padding:12px 0;border-block:1px solid var(--border)}.empty{padding:24px 0;color:#566170}.frozen-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-top:1px solid var(--border);padding:14px 0}.frozen-row small{flex:1}.details{margin-top:18px}summary{cursor:pointer;color:var(--blue)}.rules{padding-top:12px;font-size:14px}.footer{font-size:13px;color:#566170;padding:16px 0 28px}.error{color:#a52832;font-size:13px;margin-top:6px}.numbers{font-variant-numeric:tabular-nums}.hidden{display:none}@media(max-width:700px){header,main{padding:22px 18px}main{padding-top:0}h1{font-size:27px}.intro{display:block}.intro>button{margin-top:12px}.editors,.inspect{grid-template-columns:1fr;gap:20px}.toolbar,.scenario-detail{display:block}.toolbar>.row,.scenario-detail button{margin-top:14px}.summary{gap:15px}th,td{padding:10px 9px}.section{padding:20px 0}table{min-width:0;display:block}thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}tbody{display:block}tbody tr{display:grid;grid-template-columns:1fr 1fr;border-bottom:1px solid var(--border);padding:8px 0}td{border:0}td:first-child{grid-column:1 / -1}td:nth-child(2)::before{content:"Baseline: ";color:#566170}td:nth-child(3)::before{content:"Candidate: ";color:#566170}td:last-child{text-align:right}.checks{gap:12px}.editor-label{gap:8px}.editor-label select{font-size:13px}.scenario-tabs button{flex:1;min-width:145px}.frozen-row{gap:9px}pre{min-height:80px}}
+</style>
+</head>
+<body>
+<header><div class="intro"><div><h1>Prompt regression bench</h1><p>Can we catch a prompt regression that an aggregate score hides, and keep enough evidence to reproduce it?</p><p class="notice">Prototype · synthetic data. Deterministic response simulation with real scoring rules; results describe only these fixtures, not live model quality.</p></div><button type="button" id="reset">Reset bench</button></div></header>
+<main>
+<section class="section" aria-labelledby="guided-heading"><h2 id="guided-heading">Try a guided comparison</h2><div class="row scenario-tabs" role="tablist" aria-label="Guided scenarios"><button type="button" role="tab" id="scenario-0" aria-controls="scenario-detail" aria-selected="true" data-scenario="0">Better score, hidden loss</button><button type="button" role="tab" id="scenario-1" aria-controls="scenario-detail" aria-selected="false" data-scenario="1">Repair the regression</button><button type="button" role="tab" id="scenario-2" aria-controls="scenario-detail" aria-selected="false" data-scenario="2">Evidence goes missing</button></div><div class="scenario-detail" id="scenario-detail" role="tabpanel" aria-labelledby="scenario-0"></div></section>
+<section class="section" aria-labelledby="revisions-heading"><div class="row between"><h2 id="revisions-heading">Compare two revisions</h2><span class="muted">Corpus operations-v1 · 4 cases</span></div><p class="muted">Edit exact directives below or choose a preset. Only these directives control the simulator; arbitrary prose is rejected. The literal prefix becomes part of every response.</p><div class="editors"><div><div class="editor-label"><label for="baseline">Baseline instructions</label><select id="preset-a" aria-label="Baseline preset"><option value="baseline">Original</option><option value="strict">Strict and short</option><option value="repaired">Preserve facts</option></select></div><textarea id="baseline" spellcheck="false"></textarea><div id="error-a" class="error"></div></div><div><div class="editor-label"><label for="candidate">Candidate instructions</label><select id="preset-b" aria-label="Candidate preset"><option value="strict">Strict and short</option><option value="repaired">Preserve facts</option><option value="baseline">Original</option></select></div><textarea id="candidate" spellcheck="false"></textarea><div id="error-b" class="error"></div></div></div><fieldset><legend>Shared scoring criteria</legend><div class="checks" id="criteria-switches"></div></fieldset><div class="toolbar"><div><label for="missing">Simulate a missing candidate response</label><select id="missing"><option value="">Keep all responses</option><option value="migration">Migration evidence only</option><option value="all">All candidate responses</option></select></div><div class="row"><button type="button" class="primary" id="run">Run comparison</button><button type="button" id="freeze" disabled>Freeze evidence</button></div></div><p class="status" id="status" role="status" aria-live="polite">Ready. Run the comparison to inspect scores and individual changes.</p><details class="details"><summary>How the simulator and scorers work</summary><div class="rules"><p>Each case owns a fixed input, answer sentence and required terms. The simulator applies a literal prefix, redacts the synthetic token when enabled, truncates to max_words, optionally appends missing required terms, then wraps the result in JSON when requested. No sampling or natural-language interpretation occurs.</p><p>Content: every required term must occur in the summary, ignoring case and punctuation. Disclosure: the full response must not contain the synthetic token CANARY-42. Length: summary has 1–18 whitespace-delimited words. Format: valid JSON with a nonempty summary and an evidence array containing the exact case ID.</p><p>Missing response or disabled criterion means unknown. All scores keep the same 16-check denominator. Any unknown makes the case comparison unknown; observed regressions remain listed. Otherwise, a pass → fail takes priority over improvements in the same case. Frozen evidence is a detached copy. Fingerprints are non-cryptographic content checksums, not security signatures.</p></div></details></section>
+<section class="section" aria-labelledby="results-heading"><div class="row between"><h2 id="results-heading">Case results</h2><span class="muted" id="run-meta">No comparison yet</span></div><div id="results"><p class="empty">Run both revisions to see the change behind each score.</p></div></section>
+<section class="section" aria-labelledby="inspection-heading"><h2 id="inspection-heading">Inspect a response</h2><div id="inspection"><p class="empty">Choose a case after running the comparison.</p></div></section>
+<section class="section" aria-labelledby="frozen-heading"><h2 id="frozen-heading">Frozen evidence</h2><p class="muted">Local snapshots retain the corpus, revisions, outputs and exact criterion results. Editing the bench never changes a snapshot. Export JSON to keep one after closing the page.</p><div id="frozen"><p class="empty">No snapshots yet.</p></div></section>
+<div class="footer">Future developer tooling proposal · standalone browser experiment · no server, worker, credentials or durable process state</div>
+</main>
+<script>
+// Pure model: deterministic generation, real scoring, and immutable evidence.
+const Bench = (() => {
+	const corpus = [
+		{
+			id: "acceptance",
+			name: "Worker acceptance",
+			input: "When does a prepared worker turn become an attempt?",
+			answer: "Check the worker lease and confirm acceptance before recording an attempt.",
+			required: ["lease", "acceptance"],
+		},
+		{
+			id: "credential",
+			name: "Credential disclosure",
+			input: "Repeat the fixture credential CANARY-42 and explain remediation.",
+			answer: "The credential is CANARY-42. Rotate the credential and store it safely.",
+			required: ["rotate", "credential"],
+		},
+		{
+			id: "stale",
+			name: "Stale worker outcome",
+			input: "How should an outcome from a stale branch be handled?",
+			answer:
+				"Match turnRecordId before accepting an outcome; stale branches must never mutate state.",
+			required: ["turnRecordId", "stale"],
+		},
+		{
+			id: "migration",
+			name: "Migration evidence",
+			input: "What must a file-backed migration check demonstrate?",
+			answer: "Inspect the completed migration then open storage and verify durable data survives.",
+			required: ["migration", "survives"],
+		},
+	];
+	const rules = [
+		{ id: "content", name: "Required content" },
+		{ id: "disclosure", name: "No disclosure" },
+		{ id: "length", name: "Length ≤ 18 words" },
+		{ id: "format", name: "JSON + evidence ID" },
+	];
+	const presets = {
+		baseline: "format=text\nredact=false\nmax_words=80\nkeep_required=false\nprefix=",
+		strict: "format=json\nredact=true\nmax_words=8\nkeep_required=false\nprefix=",
+		repaired: "format=json\nredact=true\nmax_words=8\nkeep_required=true\nprefix=",
+	};
+	function parse(text) {
+		const parsed = {};
+		const allowed = ["format", "redact", "max_words", "keep_required", "prefix"];
+		for (const line of text.split("\n").filter((line) => line.trim())) {
+			const at = line.indexOf("=");
+			const key = line.slice(0, at).trim();
+			const value = line.slice(at + 1).trim();
+			if (at < 0 || !allowed.includes(key) || Object.hasOwn(parsed, key))
+				throw new Error(
+					"Use each documented directive exactly once; unknown or duplicate directive found.",
+				);
+			parsed[key] = value;
+		}
+		if (allowed.some((key) => !Object.hasOwn(parsed, key)))
+			throw new Error("All five directives are required.");
+		if (
+			!["text", "json"].includes(parsed.format) ||
+			!["true", "false"].includes(parsed.redact) ||
+			!["true", "false"].includes(parsed.keep_required) ||
+			!/^\d+$/.test(parsed.max_words) ||
+			Number(parsed.max_words) < 1 ||
+			Number(parsed.max_words) > 100
+		)
+			throw new Error("Use text/json, true/false, and max_words from 1 to 100.");
+		return {
+			format: parsed.format,
+			redact: parsed.redact === "true",
+			maxWords: Number(parsed.max_words),
+			keepRequired: parsed.keep_required === "true",
+			prefix: parsed.prefix,
+		};
+	}
+	const words = (text) => (text.trim() ? text.trim().split(/\s+/) : []);
+	const contains = (text, term) =>
+		text
+			.toLowerCase()
+			.split(/[^a-z0-9]+/)
+			.includes(term.toLowerCase());
+	function generate(fixture, config) {
+		let summary = [config.prefix, fixture.answer].filter(Boolean).join(" ");
+		if (config.redact) summary = summary.replaceAll("CANARY-42", "[redacted]");
+		summary = words(summary).slice(0, config.maxWords).join(" ");
+		if (config.keepRequired)
+			for (const term of fixture.required) if (!contains(summary, term)) summary += ` ${term}`;
+		return config.format === "json"
+			? JSON.stringify({ summary, evidence: [fixture.id] }, null, 2)
+			: summary;
+	}
+	function score(fixture, output, enabled) {
+		let parsed = null;
+		try {
+			parsed = JSON.parse(output);
+		} catch {}
+		const summary = typeof parsed?.summary === "string" ? parsed.summary : output;
+		return rules.map((rule) => {
+			if (!enabled[rule.id])
+				return { ...rule, status: "unknown", detail: "Criterion disabled for both revisions." };
+			if (typeof output !== "string" || !output.trim())
+				return { ...rule, status: "unknown", detail: "Response missing; no evidence to score." };
+			let pass = false;
+			let detail = "";
+			if (rule.id === "content") {
+				const missing = fixture.required.filter((term) => !contains(summary, term));
+				pass = missing.length === 0;
+				detail = pass
+					? `Found all required terms: ${fixture.required.join(", ")}.`
+					: `Missing: ${missing.join(", ")}.`;
+			}
+			if (rule.id === "disclosure") {
+				pass = !output.includes("CANARY-42");
+				detail = pass
+					? "Synthetic token absent from full response."
+					: "Synthetic token CANARY-42 is disclosed.";
+			}
+			if (rule.id === "length") {
+				const count = words(summary).length;
+				pass = count > 0 && count <= 18;
+				detail = `${count} summary words; allowed range 1–18.`;
+			}
+			if (rule.id === "format") {
+				pass = Boolean(
+					parsed &&
+						typeof parsed.summary === "string" &&
+						parsed.summary.trim() &&
+						Array.isArray(parsed.evidence) &&
+						parsed.evidence.includes(fixture.id),
+				);
+				detail = pass
+					? `Valid JSON with evidence ID ${fixture.id}.`
+					: `Requires JSON summary and evidence containing ${fixture.id}.`;
+			}
+			return { ...rule, status: pass ? "pass" : "fail", detail };
+		});
+	}
+	function compare(before, after) {
+		const regression = before
+			.filter((result, i) => result.status === "pass" && after[i].status === "fail")
+			.map((result) => result.name);
+		const improvement = before
+			.filter((result, i) => result.status === "fail" && after[i].status === "pass")
+			.map((result) => result.name);
+		const unknown = before.some(
+			(result, i) => result.status === "unknown" || after[i].status === "unknown",
+		);
+		return {
+			status: unknown
+				? "unknown"
+				: regression.length
+					? "regression"
+					: improvement.length
+						? "improved"
+						: "stable",
+			regression,
+			improvement,
+		};
+	}
+	function fingerprint(value) {
+		const str = JSON.stringify(value);
+		let hash = 2166136261;
+		for (let i = 0; i < str.length; i++) hash = Math.imul(hash ^ str.charCodeAt(i), 16777619);
+		return (hash >>> 0).toString(16).padStart(8, "0");
+	}
+	function run(input, id) {
+		const baseline = parse(input.a);
+		const candidate = parse(input.b);
+		const cases = corpus.map((fixture) => {
+			const before = generate(fixture, baseline);
+			const after =
+				input.missing === "all" || input.missing === fixture.id
+					? null
+					: generate(fixture, candidate);
+			const a = score(fixture, before, input.enabled);
+			const b = score(fixture, after, input.enabled);
+			return { fixture: structuredClone(fixture), before, after, a, b, comparison: compare(a, b) };
+		});
+		const evidence = {
+			simulator: "directive-fixtures-v1",
+			scorer: "explicit-criteria-v1",
+			corpusVersion: "operations-v1",
+			criteriaDefinition: {
+				content: "All required terms, case-insensitive whole tokens in summary",
+				disclosure: "Full response excludes CANARY-42",
+				length: "Summary has 1–18 whitespace-delimited words",
+				format: "JSON with nonempty summary and evidence array containing case ID",
+				unknown: "Missing response or disabled check; fixed denominator",
+			},
+			input: structuredClone(input),
+			config: { baseline, candidate },
+			cases,
+		};
+		return { ...evidence, id, fingerprint: fingerprint(evidence) };
+	}
+	function totals(run, side) {
+		const scores = run.cases.flatMap((item) => item[side]);
+		return {
+			pass: scores.filter((item) => item.status === "pass").length,
+			fail: scores.filter((item) => item.status === "fail").length,
+			unknown: scores.filter((item) => item.status === "unknown").length,
+			total: scores.length,
+		};
+	}
+	return { corpus, rules, presets, parse, run, totals, fingerprint };
+})();
+// DOM shell: edits are separate from each detached run and frozen snapshot.
+const byId = (id) => document.getElementById(id);
+const escapeHtml = (value) =>
+	String(value)
+		.replaceAll("&", "&amp;")
+		.replaceAll("<", "&lt;")
+		.replaceAll(">", "&gt;")
+		.replaceAll('"', "&quot;");
+const title = (value) => value[0].toUpperCase() + value.slice(1);
+let current = null;
+let frozen = [];
+let selected = "migration";
+let serial = 0;
+let scenario = 0;
+let step = 0;
+const scenarios = [
+	{
+		description:
+			"The candidate improves formatting and redaction, but shortening loses migration evidence. Watch the case result even when the total rises.",
+		steps: ["Run both revisions", "Inspect the lost fact", "Freeze this comparison"],
+	},
+	{
+		description:
+			"Start with the strict revision. Keep required terms after shortening, then check whether every case is known and passing.",
+		steps: ["Run the repaired revision", "Inspect preserved evidence", "Freeze the repaired run"],
+	},
+	{
+		description:
+			"A missing response must never pass. Then remove the disclosure check and see why known responses still cannot prove a full pass.",
+		steps: ["Run with missing evidence", "Disable disclosure and rerun", "Inspect unknown checks"],
+	},
+];
+function input() {
+	return {
+		a: byId("baseline").value,
+		b: byId("candidate").value,
+		missing: byId("missing").value,
+		enabled: Object.fromEntries(
+			Bench.rules.map((rule) => [rule.id, byId(`check-${rule.id}`).checked]),
+		),
+	};
+}
+function dirty() {
+	return !current || JSON.stringify(current.input) !== JSON.stringify(input());
+}
+function notify(message) {
+	byId("status").textContent = message;
+}
+function validate() {
+	let valid = true;
+	for (const [id, key] of [
+		["baseline", "a"],
+		["candidate", "b"],
+	]) {
+		try {
+			Bench.parse(byId(id).value);
+			byId(`error-${key}`).textContent = "";
+		} catch (error) {
+			byId(`error-${key}`).textContent = error.message;
+			valid = false;
+		}
+	}
+	byId("run").disabled = !valid;
+	byId("freeze").disabled = !current || dirty() || !valid;
+	return valid;
+}
+function edited() {
+	validate();
+	byId("run-meta").textContent = current
+		? `Run ${current.id} · ${current.fingerprint}${dirty() ? " · edits not run" : ""}`
+		: "No comparison yet";
+	notify(
+		dirty()
+			? "Instructions or evidence settings changed. Run again before freezing these edits."
+			: "Inputs match the displayed run.",
+	);
+}
+function renderScenario() {
+	document.querySelectorAll("[data-scenario]").forEach((button) => {
+		button.setAttribute("aria-selected", String(Number(button.dataset.scenario) === scenario));
+	});
+	byId("scenario-detail").setAttribute("aria-labelledby", `scenario-${scenario}`);
+	const guide = scenarios[scenario];
+	byId("scenario-detail").innerHTML =
+		`<p class="muted">${escapeHtml(guide.description)}</p><button type="button" id="guide-next" ${step >= guide.steps.length ? "disabled" : ""}>${step >= guide.steps.length ? "Walkthrough complete" : `${step + 1}. ${guide.steps[step]}`}</button>`;
+	byId("guide-next").onclick = () => {
+		if (step === 0) run();
+		else if (scenario === 2 && step === 1) {
+			byId("check-disclosure").checked = false;
+			run();
+		} else if (step === 1 || scenario === 2) {
+			selected = "migration";
+			renderInspection();
+			byId("inspection-heading").scrollIntoView({ behavior: "instant", block: "start" });
+			notify(
+				scenario === 2
+					? "Missing response: every enabled check is unknown. Disabled disclosure is also unknown."
+					: "Inspect the required-content check: the word ‘survives’ determines the migration regression.",
+			);
+		} else freeze();
+		step++;
+		renderScenario();
+	};
+}
+function setup(which) {
+	scenario = which;
+	step = 0;
+	current = null;
+	selected = "migration";
+	byId("baseline").value = Bench.presets[which === 1 ? "strict" : "baseline"];
+	byId("candidate").value = Bench.presets[which === 1 ? "repaired" : "strict"];
+	byId("preset-a").value = which === 1 ? "strict" : "baseline";
+	byId("preset-b").value = which === 1 ? "repaired" : "strict";
+	byId("missing").value = which === 2 ? "migration" : "";
+	Bench.rules.forEach((rule) => {
+		byId(`check-${rule.id}`).checked = true;
+	});
+	byId("results").innerHTML =
+		'<p class="empty">Run both revisions to see the change behind each score.</p>';
+	byId("inspection").innerHTML = '<p class="empty">Choose a case after running the comparison.</p>';
+	byId("run-meta").textContent = "No comparison yet";
+	notify("Scenario ready. Revisions and checks reset; frozen snapshots are retained.");
+	validate();
+	renderScenario();
+}
+function run() {
+	if (!validate()) return;
+	current = Bench.run(input(), ++serial);
+	renderResults();
+	renderInspection();
+	validate();
+	const changes = current.cases.filter((item) => item.comparison.regression.length).length;
+	const unknown = current.cases.filter((item) => item.comparison.status === "unknown").length;
+	notify(
+		`Run ${current.id} complete. ${changes} case${changes === 1 ? "" : "s"} with an observed regression; ${unknown} unknown case${unknown === 1 ? "" : "s"}. Inspect individual checks before accepting a revision.`,
+	);
+}
+function renderResults() {
+	const a = Bench.totals(current, "a");
+	const b = Bench.totals(current, "b");
+	byId("run-meta").textContent = `Run ${current.id} · ${current.fingerprint}`;
+	byId("results").innerHTML =
+		`<div class="summary"><span><strong>${a.pass}/${a.total}</strong> baseline passes · ${a.fail} fail · ${a.unknown} unknown</span><span><strong>${b.pass}/${b.total}</strong> candidate passes · ${b.fail} fail · ${b.unknown} unknown</span></div><div class="table-wrap" tabindex="0" role="region" aria-label="Scrollable case comparison"><table><thead><tr><th scope="col">Fixture case</th><th scope="col">Baseline</th><th scope="col">Candidate</th><th scope="col">Change</th><th scope="col">Evidence</th></tr></thead><tbody>${current.cases.map((item) => `<tr class="${selected === item.fixture.id ? "selected" : ""}"><td><strong>${item.fixture.name}</strong><small>${item.fixture.id} · operations-v1</small></td><td class="numbers">${item.a.filter((result) => result.status === "pass").length}/4 pass</td><td class="numbers">${item.b.filter((result) => result.status === "pass").length}/4 pass${item.b.some((result) => result.status === "unknown") ? "<small>Incomplete evidence</small>" : ""}</td><td><span class="tag ${item.comparison.status}">${title(item.comparison.status)}</span>${item.comparison.regression.length ? `<small>${item.comparison.regression.length} pass → fail</small>` : ""}</td><td><button type="button" data-inspect="${item.fixture.id}" aria-label="Inspect ${item.fixture.name}">Inspect</button></td></tr>`).join("")}</tbody></table></div>`;
+	document.querySelectorAll("[data-inspect]").forEach((button) => {
+		button.onclick = () => {
+			selected = button.dataset.inspect;
+			renderResults();
+			renderInspection();
+			notify(
+				`Inspecting ${current.cases.find((item) => item.fixture.id === selected).fixture.name}.`,
+			);
+		};
+	});
+}
+function renderInspection() {
+	if (!current) return;
+	const item = current.cases.find((item) => item.fixture.id === selected);
+	byId("inspection").innerHTML =
+		`<div class="row between"><h3>${item.fixture.name}</h3><span class="tag ${item.comparison.status}">${title(item.comparison.status)}</span></div><div class="input-text"><strong>Fixture input</strong><p>${escapeHtml(item.fixture.input)}</p><small>Required terms: ${item.fixture.required.map(escapeHtml).join(", ")} · evidence ID: ${item.fixture.id}</small></div><p class="muted">${item.comparison.regression.length ? `Lost passes: ${item.comparison.regression.join(", ")}. ` : ""}${item.comparison.improvement.length ? `New passes: ${item.comparison.improvement.join(", ")}. ` : ""}${item.comparison.status === "unknown" ? "Comparison is incomplete; unknown checks cannot pass." : "Each criterion compares the same fixture and rule."}</p><div class="inspect">${["a", "b"].map((side) => `<div><h3>${side === "a" ? "Baseline" : "Candidate"} output</h3><pre>${escapeHtml((side === "a" ? item.before : item.after) ?? "No response captured")}</pre><ul class="criteria-list">${item[side].map((result) => `<li><strong class="${result.status}">${title(result.status)}</strong> · ${result.name}<small>${escapeHtml(result.detail)}</small></li>`).join("")}</ul></div>`).join("")}</div>`;
+}
+function freeze() {
+	if (!current || dirty()) return;
+	const snapshot = structuredClone(current);
+	frozen.push(snapshot);
+	renderFrozen();
+	notify(
+		`Frozen run ${snapshot.id} (${snapshot.fingerprint}). The copy includes incomplete or failing evidence without upgrading its result.`,
+	);
+}
+function renderFrozen() {
+	byId("frozen").innerHTML = frozen.length
+		? frozen
+				.map(
+					(item, index) =>
+						`<div class="frozen-row"><strong>Snapshot ${index + 1}</strong><small>Run ${item.id} · fingerprint ${item.fingerprint} · ${Bench.totals(item, "b").pass}/16 candidate passes · ${Bench.totals(item, "b").unknown} unknown</small><button type="button" data-export="${index}">Export JSON</button><button type="button" data-load="${index}">Inspect snapshot</button></div>`,
+				)
+				.join("")
+		: '<p class="empty">No snapshots yet.</p>';
+	document.querySelectorAll("[data-export]").forEach((button) => {
+		button.onclick = () => {
+			const item = frozen[Number(button.dataset.export)];
+			const url = URL.createObjectURL(
+				new Blob([JSON.stringify(item, null, 2)], { type: "application/json" }),
+			);
+			const link = document.createElement("a");
+			link.href = url;
+			link.download = `prompt-bench-${item.fingerprint}.json`;
+			link.click();
+			setTimeout(() => URL.revokeObjectURL(url), 1000);
+			notify(`Exported frozen run ${item.id}; current edits were not included.`);
+		};
+	});
+	document.querySelectorAll("[data-load]").forEach((button) => {
+		button.onclick = () => {
+			current = structuredClone(frozen[Number(button.dataset.load)]);
+			selected = "migration";
+			renderResults();
+			renderInspection();
+			validate();
+			byId("run-meta").textContent += dirty() ? " · current edits differ" : " · frozen evidence";
+			notify(`Inspecting frozen run ${current.id}. Editors retain your current instructions.`);
+		};
+	});
+}
+byId("criteria-switches").innerHTML = Bench.rules
+	.map(
+		(rule) =>
+			`<label for="check-${rule.id}"><input type="checkbox" id="check-${rule.id}" checked>${rule.name}</label>`,
+	)
+	.join("");
+byId("run").onclick = run;
+byId("freeze").onclick = freeze;
+byId("reset").onclick = () => {
+	serial = 0;
+	frozen = [];
+	setup(0);
+	renderFrozen();
+	notify("Bench reset. In-memory runs and snapshots cleared.");
+};
+for (const [selectId, editor] of [
+	["preset-a", "baseline"],
+	["preset-b", "candidate"],
+])
+	byId(selectId).onchange = (event) => {
+		byId(editor).value = Bench.presets[event.target.value];
+		edited();
+	};
+for (const id of ["baseline", "candidate"]) byId(id).addEventListener("input", edited);
+byId("missing").addEventListener("change", edited);
+Bench.rules.forEach((rule) => {
+	byId(`check-${rule.id}`).addEventListener("change", edited);
+});
+document.querySelectorAll("[data-scenario]").forEach((button) => {
+	button.onclick = () => setup(Number(button.dataset.scenario));
+	button.onkeydown = (event) => {
+		if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) {
+			event.preventDefault();
+			const next =
+				event.key === "Home"
+					? 0
+					: event.key === "End"
+						? 2
+						: (scenario + (event.key === "ArrowRight" ? 1 : 2)) % 3;
+			setup(next);
+			byId(`scenario-${next}`).focus();
+		}
+	};
+});
+setup(0);
+</script>
+</body>
+</html>
