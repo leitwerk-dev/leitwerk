@@ -602,12 +602,17 @@ class RouteAndEffectBuilder<TParams, TState, TContext> {
 	}
 
 	/** @internal */
+	getEffect(): FlowOutcomeEffect<TParams, TState, TContext> | undefined {
+		return this.flowEffect;
+	}
+
+	/** @internal */
 	hasRoute(): boolean {
 		return this.target !== null;
 	}
 
 	/** @internal */
-	protected buildRouteTarget(): {
+	buildRouteTarget(): {
 		/** @internal */
 		to?: TurnId;
 		/** @internal */
@@ -690,17 +695,11 @@ function isStringArray(value: unknown): value is readonly string[] {
 }
 
 /** @public */
-class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends RouteAndEffectBuilder<
-	TParams,
-	TState,
-	TContext
-> {
+class OutcomeParametersBuilder {
 	/** @internal */
 	protected outcomeDescription: string | null = null;
 	/** @internal */
 	protected parameters: Record<string, OutcomeToolParameterSpec> = {};
-	/** @internal */
-	protected publishedMarkdownParameter: string | null = null;
 	/** @internal */
 	protected summaryParameter: string | null = null;
 
@@ -714,18 +713,14 @@ class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends RouteAndEff
 	}
 
 	/** @internal */
-	protected buildParameterSpec(kind: string): ProcessToolOutcomeSpec<TParams, TState> {
+	protected buildParameterSpec(
+		kind: string,
+	): Pick<ProcessToolOutcomeSpec, "description" | "parameters" | "resultSummaryParameter"> {
 		if (!this.outcomeDescription) throw new Error(`${kind} must declare .description(...)`);
 		return {
 			description: this.outcomeDescription,
 			parameters: this.parameters,
 			...(this.summaryParameter ? { resultSummaryParameter: this.summaryParameter } : {}),
-			...(this.publishedMarkdownParameter
-				? {
-						publishedProduct: this.publishedMarkdownParameter,
-						turnResultMarkdownParameter: this.publishedMarkdownParameter,
-					}
-				: {}),
 		};
 	}
 
@@ -759,7 +754,8 @@ class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends RouteAndEff
 		};
 	}
 
-	private typedParameter(
+	/** @internal */
+	protected typedParameter(
 		name: string,
 		type: OutcomeToolParameterSpec["type"],
 		options: string | ArrayParameterOptions = {},
@@ -773,27 +769,9 @@ class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends RouteAndEff
 		});
 	}
 
-	/** @internal */
+	/** @public */
 	string(name: string, options: string | ParameterOptions = {}): this {
 		return this.typedParameter(name, "string", options);
-	}
-
-	/** @public */
-	markdown(name: string, options: string | MarkdownParameterOptions = {}): this {
-		const resolved = typeof options === "string" ? { description: options } : options;
-		const { publish, ...parameterOptions } = resolved;
-		if (publish) {
-			if (this.publishedMarkdownParameter && this.publishedMarkdownParameter !== name) {
-				throw new Error("Outcome can publish only one markdown parameter");
-			}
-			normalizeProductName(name);
-			this.publishedMarkdownParameter = name;
-		}
-		return this.typedParameter(name, "string", {
-			...parameterOptions,
-			required: publish ? true : resolved.required,
-			requiredErrorCode: resolved.requiredErrorCode ?? (publish ? `${name}_required` : undefined),
-		});
 	}
 
 	/** @public */
@@ -806,7 +784,7 @@ class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends RouteAndEff
 		return this.typedParameter(name, "number", options);
 	}
 
-	/** @internal */
+	/** @public */
 	requiredNumber(name: string, options: string | ParameterOptions = {}): this {
 		return this.typedParameter(name, "number", this.withRequired(name, options));
 	}
@@ -816,7 +794,7 @@ class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends RouteAndEff
 		return this.typedParameter(name, "boolean", options);
 	}
 
-	/** @internal */
+	/** @public */
 	requiredBoolean(name: string, options: string | ParameterOptions = {}): this {
 		return this.typedParameter(name, "boolean", this.withRequired(name, options));
 	}
@@ -826,7 +804,7 @@ class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends RouteAndEff
 		return this.typedParameter(name, "array", options);
 	}
 
-	/** @internal */
+	/** @public */
 	requiredStringArray(name: string, options: string | ArrayParameterOptions = {}): this {
 		return this.typedParameter(name, "array", this.withRequired(name, options));
 	}
@@ -858,6 +836,94 @@ class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends RouteAndEff
 	/** @public */
 	requiredArray(name: string, options: string | ArrayParameterOptions = {}): this {
 		return this.typedParameter(name, "array", this.withRequired(name, options));
+	}
+}
+
+/** @public */
+class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends OutcomeParametersBuilder {
+	private readonly route = new RouteAndEffectBuilder<TParams, TState, TContext>();
+	private publishedMarkdownParameter: string | null = null;
+
+	/** @public */
+	to(turnId: TurnId): this {
+		this.route.to(turnId);
+		return this;
+	}
+
+	/** @public */
+	complete(): this {
+		this.route.complete();
+		return this;
+	}
+
+	/** @public */
+	lifecycleStatus(status: ProcessTurnTerminalLifecycleStatus): this {
+		this.route.lifecycleStatus(status);
+		return this;
+	}
+
+	/** @internal */
+	stay(): this {
+		this.route.stay();
+		return this;
+	}
+
+	/** @public */
+	state(fn: FlowOutcomeStateEffect<TParams, TState, TContext>): this {
+		this.route.state(fn);
+		return this;
+	}
+
+	/** @public */
+	effect(fn: FlowOutcomeEffect<TParams, TState, TContext>): this {
+		this.route.effect(fn);
+		return this;
+	}
+
+	/** @internal */
+	hasRoute(): boolean {
+		return this.route.hasRoute();
+	}
+
+	/** @internal */
+	protected get flowEffect(): FlowOutcomeEffect<TParams, TState, TContext> | undefined {
+		return this.route.getEffect();
+	}
+
+	/** @internal */
+	protected buildRouteTarget() {
+		return this.route.buildRouteTarget();
+	}
+
+	/** @internal */
+	protected override buildParameterSpec(kind: string): ProcessToolOutcomeSpec<TParams, TState> {
+		return {
+			...super.buildParameterSpec(kind),
+			...(this.publishedMarkdownParameter
+				? {
+						publishedProduct: this.publishedMarkdownParameter,
+						turnResultMarkdownParameter: this.publishedMarkdownParameter,
+					}
+				: {}),
+		};
+	}
+
+	/** @public */
+	markdown(name: string, options: string | MarkdownParameterOptions = {}): this {
+		const resolved = typeof options === "string" ? { description: options } : options;
+		const { publish, ...parameterOptions } = resolved;
+		if (publish) {
+			if (this.publishedMarkdownParameter && this.publishedMarkdownParameter !== name) {
+				throw new Error("Outcome can publish only one markdown parameter");
+			}
+			normalizeProductName(name);
+			this.publishedMarkdownParameter = name;
+		}
+		return this.typedParameter(name, "string", {
+			...parameterOptions,
+			required: publish ? true : resolved.required,
+			requiredErrorCode: resolved.requiredErrorCode ?? (publish ? `${name}_required` : undefined),
+		});
 	}
 }
 
@@ -1120,11 +1186,6 @@ export class LlmTurnEndBuilder<TParams = unknown, TState = unknown> extends Turn
 }
 
 /** @public */
-type LlmPromptBuilder<TParams, TState, TConsumedProducts extends string, TPrepared> = (
-	ctx: FlowPromptContext<TParams, TState, TConsumedProducts, TPrepared>,
-) => MaybePromise<string>;
-
-/** @public */
 abstract class DescribedTurnBuilder {
 	/** @internal */
 	protected turnDescription: string | null = null;
@@ -1147,16 +1208,61 @@ abstract class DescribedTurnBuilder {
 	}
 }
 
+function assertLlmOutcomeParameters<TParams, TState>(
+	turnId: TurnId,
+	outcomes: Record<string, ProcessToolOutcomeSpec<TParams, TState>>,
+): void {
+	for (const [outcomeId, outcome] of Object.entries(outcomes)) {
+		if (OUTCOME_TOOL_MARKDOWN_PARAMETER_NAME in outcome.parameters) {
+			throw new Error(
+				`LLM turn '${turnId}' outcome tool '${outcomeId}' cannot declare reserved markdown parameter '${OUTCOME_TOOL_MARKDOWN_PARAMETER_NAME}'`,
+			);
+		}
+	}
+}
+
+/** LLM authoring families used to preserve fluent context and completion types. @public */
+type LlmBuilderFamily =
+	| {
+			/** @public */
+			kind: "ordinary";
+	  }
+	| {
+			/** @public */
+			kind: "mapped";
+			/** @public */
+			item: unknown;
+			/** @public */
+			result: unknown;
+	  };
+
+/** Active-item context supplied by an LLM authoring family. @public */
+type LlmItemContext<TFamily extends LlmBuilderFamily> = TFamily extends {
+	kind: "mapped";
+	item: infer TItem;
+}
+	? MappedTurnItemContext<TItem>
+	: Record<never, never>;
+
+/** Preserve the concrete completion API when preparation or products refine its types. @public */
+type ConfiguredLlmBuilder<
+	TFamily extends LlmBuilderFamily,
+	TParams,
+	TState,
+	TConsumedProducts extends string,
+	TPrepared,
+> = TFamily extends { kind: "mapped"; item: infer TItem; result: infer TResult }
+	? MappedLlmFlowBuilder<TParams, TState, TItem, TResult, TConsumedProducts, TPrepared>
+	: LlmFlowBuilder<TParams, TState, TConsumedProducts, TPrepared>;
+
 /** @public */
-export class LlmFlowBuilder<
-		TParams = unknown,
-		TState = unknown,
-		TConsumedProducts extends string = never,
-		TPrepared = undefined,
-	>
-	extends DescribedTurnBuilder
-	implements FlowLlmTurn<TParams, TState, string>
-{
+abstract class LlmConfigurationBuilder<
+	TParams,
+	TState,
+	TConsumedProducts extends string,
+	TPrepared,
+	TFamily extends LlmBuilderFamily,
+> extends DescribedTurnBuilder {
 	private executionPurposeValue: string | undefined;
 	private modelPurposeValue: LlmModelPurpose | undefined;
 	private availableTools: readonly PiBuiltInToolName[] = [];
@@ -1165,7 +1271,9 @@ export class LlmFlowBuilder<
 		| ((params: TParams, state: TState) => readonly string[])
 		| undefined;
 	private preparation:
-		| ((ctx: FlowLlmPreparationContext<TParams, TState>) => MaybePromise<unknown>)
+		| ((
+				ctx: FlowLlmPreparationContext<TParams, TState> & LlmItemContext<TFamily>,
+		  ) => MaybePromise<unknown>)
 		| null = null;
 	private promptBuilder:
 		| ((ctx: ProcessRuntimeTurnContext<TParams, TState>) => MaybePromise<string>)
@@ -1177,121 +1285,16 @@ export class LlmFlowBuilder<
 	private restorePrimaryLeafAfterTurn: boolean | undefined;
 	private readonly consumedProductNames = new Set<string>();
 	private readonly optionalConsumedProductNames = new Set<string>();
-	private publishedResult: {
-		productName: string;
-		builder: PublishedResultBuilder<TParams, TState>;
-	} | null = null;
-	private endResult: LlmTurnEndBuilder<TParams, TState> | null = null;
-	private outcomeToolBuilders = new Map<string, OutcomeToolBuilder<TParams, TState>>();
-	private mapped: {
-		options: FlowForEachOptions<TParams, TState, unknown, unknown>;
-		yields: Map<string, MappedItemYield<TParams, TState, unknown, unknown>>;
-		collect?: MappedCollect<TParams, TState, unknown>;
-		routing?: MappedCollectRouting<TParams, TState>;
-	} | null = null;
 
 	/** @internal */
-	get definition(): LlmTurnDefinition<string, TParams, TState> {
-		return this.buildDefinition();
-	}
+	protected abstract itemContext(
+		ctx: ProcessRuntimeTurnContext<TParams, TState>,
+	): LlmItemContext<TFamily>;
 
 	/** @public */
 	executionPurpose(purpose: string): this {
 		this.executionPurposeValue = purpose;
 		return this;
-	}
-
-	/**
-	 * Run this turn once per frozen item. Items run sequentially; each item's
-	 * outcome yields a typed result, and `collect` updates state and routes once.
-	 * @public
-	 */
-	forEach<TItem, TResult>(
-		options: FlowForEachOptions<TParams, TState, TItem, TResult>,
-	): MappedLlmFlowBuilder<TParams, TState, TItem, TResult, TConsumedProducts, TPrepared> {
-		if (this.mapped) {
-			throw new Error(`LLM turn '${this.turnId}' declares .forEach(...) more than once`);
-		}
-		if (this.outcomeToolBuilders.size > 0 || this.publishedResult || this.endResult) {
-			throw new Error(
-				`LLM turn '${this.turnId}' must declare .forEach(...) before its completion path`,
-			);
-		}
-		this.mapped = {
-			options: options as FlowForEachOptions<TParams, TState, unknown, unknown>,
-			yields: new Map(),
-		};
-		return new MappedLlmFlowBuilder<TParams, TState, TItem, TResult, TConsumedProducts, TPrepared>(
-			this,
-		);
-	}
-
-	/** @internal */
-	addMappedOutcome(
-		id: string,
-		builder: OutcomeToolBuilder<TParams, TState>,
-		yieldResult: MappedItemYield<TParams, TState, unknown, unknown>,
-	): void {
-		if (!this.mapped) throw new Error(`LLM turn '${this.turnId}' is not mapped`);
-		if (id.trim() === "") {
-			throw new Error(`LLM turn '${this.turnId}' declares an empty outcome tool id`);
-		}
-		if (this.outcomeToolBuilders.has(id)) {
-			throw new Error(`LLM turn '${this.turnId}' declares duplicate outcome tool '${id}'`);
-		}
-		this.outcomeToolBuilders.set(id, builder);
-		this.mapped.yields.set(id, yieldResult);
-	}
-
-	/** @internal */
-	setMappedCollect(collect: MappedCollect<TParams, TState, unknown>): void {
-		if (!this.mapped) throw new Error(`LLM turn '${this.turnId}' is not mapped`);
-		if (this.mapped.collect) {
-			throw new Error(`Mapped turn '${this.turnId}' declares .collect(...) more than once`);
-		}
-		this.mapped.collect = collect;
-	}
-
-	/** @internal */
-	setMappedRouting(routing: MappedCollectRouting<TParams, TState>): void {
-		if (!this.mapped) throw new Error(`LLM turn '${this.turnId}' is not mapped`);
-		if (this.mapped.routing) {
-			throw new Error(`Mapped turn '${this.turnId}' collection already declares a route`);
-		}
-		this.mapped.routing = routing;
-	}
-
-	private mappedItemContext(
-		ctx: ProcessRuntimeTurnContext<TParams, TState>,
-	): Partial<MappedTurnItemContext<unknown>> {
-		if (!this.mapped) return {};
-		const iteration = ctx.iteration;
-		if (!iteration) {
-			throw new Error(`Mapped turn '${this.turnId}' requires an active item`);
-		}
-		return {
-			item: this.mapped.options.itemCodec.parse(iteration.item),
-			itemKey: iteration.itemKey,
-			itemLabel: iteration.itemLabel,
-			itemIndex: iteration.itemIndex,
-			itemCount: iteration.itemCount,
-		};
-	}
-
-	private buildMappedSpec(): MappedLlmTurnSpec<TParams, TState> | undefined {
-		if (!this.mapped) return undefined;
-		if (!this.mapped.collect) {
-			throw new Error(`Mapped turn '${this.turnId}' must declare .collect(...)`);
-		}
-		if (!this.mapped.routing) {
-			throw new Error(`Mapped turn '${this.turnId}' must declare a collection route`);
-		}
-		return {
-			...this.mapped.options,
-			yields: Object.fromEntries(this.mapped.yields),
-			collect: this.mapped.collect,
-			routing: this.mapped.routing,
-		};
 	}
 
 	/** @internal */
@@ -1320,10 +1323,12 @@ export class LlmFlowBuilder<
 
 	/** @public */
 	prepare<TNextPrepared>(
-		fn: (ctx: FlowLlmPreparationContext<TParams, TState>) => MaybePromise<TNextPrepared>,
-	): LlmFlowBuilder<TParams, TState, TConsumedProducts, TNextPrepared> {
+		fn: (
+			ctx: FlowLlmPreparationContext<TParams, TState> & LlmItemContext<TFamily>,
+		) => MaybePromise<TNextPrepared>,
+	): ConfiguredLlmBuilder<TFamily, TParams, TState, TConsumedProducts, TNextPrepared> {
 		this.preparation = fn;
-		return this as unknown as LlmFlowBuilder<TParams, TState, TConsumedProducts, TNextPrepared>;
+		return this.refineContext<TConsumedProducts, TNextPrepared>();
 	}
 
 	/** Enable durable operator questions for this LLM turn. @public */
@@ -1425,62 +1430,40 @@ export class LlmFlowBuilder<
 	/** @public */
 	consume<TProductName extends string>(
 		productName: TProductName,
-	): LlmFlowBuilder<TParams, TState, TConsumedProducts | TProductName, TPrepared> {
+	): ConfiguredLlmBuilder<TFamily, TParams, TState, TConsumedProducts | TProductName, TPrepared> {
 		this.consumedProductNames.add(normalizeProductName(productName));
-		return this as unknown as LlmFlowBuilder<
-			TParams,
-			TState,
-			TConsumedProducts | TProductName,
-			TPrepared
-		>;
+		return this.refineContext<TConsumedProducts | TProductName, TPrepared>();
 	}
 
 	/** @public */
 	optionalConsume<TProductName extends string>(
 		productName: TProductName,
-	): LlmFlowBuilder<TParams, TState, TConsumedProducts | TProductName, TPrepared> {
+	): ConfiguredLlmBuilder<TFamily, TParams, TState, TConsumedProducts | TProductName, TPrepared> {
 		this.optionalConsumedProductNames.add(normalizeProductName(productName));
-		return this as unknown as LlmFlowBuilder<
+		return this.refineContext<TConsumedProducts | TProductName, TPrepared>();
+	}
+
+	private refineContext<
+		TNextConsumedProducts extends string,
+		TNextPrepared,
+	>(): ConfiguredLlmBuilder<TFamily, TParams, TState, TNextConsumedProducts, TNextPrepared> {
+		// Fluent configuration mutates this builder; only its context type changes.
+		return this as unknown as ConfiguredLlmBuilder<
+			TFamily,
 			TParams,
 			TState,
-			TConsumedProducts | TProductName,
-			TPrepared
+			TNextConsumedProducts,
+			TNextPrepared
 		>;
 	}
 
 	/** @public */
-	publish(productName: string): PublishedResultBuilder<TParams, TState> {
-		this.assertNotMapped(".publish(...)");
-		const normalized = normalizeProductName(productName);
-		if (this.publishedResult) {
-			throw new Error(`LLM turn '${this.turnId}' can publish only one product in flow v1`);
-		}
-		if (this.endResult) {
-			throw new Error(`LLM turn '${this.turnId}' cannot declare both .publish(...) and .end(...)`);
-		}
-		const builder = new PublishedResultBuilder<TParams, TState>(normalized, this);
-		this.publishedResult = { productName: normalized, builder };
-		return builder;
-	}
-
-	/** @public */
-	end(outcomeId: string): LlmTurnEndBuilder<TParams, TState> {
-		this.assertNotMapped(".end(...)");
-		if (this.endResult) {
-			throw new Error(`LLM turn '${this.turnId}' declares duplicate .end(...) completion`);
-		}
-		if (this.publishedResult) {
-			throw new Error(`LLM turn '${this.turnId}' cannot declare both .publish(...) and .end(...)`);
-		}
-		if (this.outcomeToolBuilders.size > 0) {
-			throw new Error(`LLM turn '${this.turnId}' cannot declare both .end(...) and outcome tools`);
-		}
-		this.endResult = new LlmTurnEndBuilder<TParams, TState>(outcomeId, this);
-		return this.endResult;
-	}
-
-	/** @public */
-	buildPrompt(fn: LlmPromptBuilder<TParams, TState, TConsumedProducts, TPrepared>): this {
+	buildPrompt(
+		fn: (
+			ctx: FlowPromptContext<TParams, TState, TConsumedProducts, TPrepared> &
+				LlmItemContext<TFamily>,
+		) => MaybePromise<string>,
+	): this {
 		this.promptBuilder = (ctx) =>
 			fn({
 				...createFlowPromptContext<TParams, TState, TConsumedProducts, TPrepared>(
@@ -1488,17 +1471,9 @@ export class LlmFlowBuilder<
 					[...this.consumedProductNames] as TConsumedProducts[],
 					[...this.optionalConsumedProductNames],
 				),
-				...this.mappedItemContext(ctx),
+				...this.itemContext(ctx),
 			});
 		return this;
-	}
-
-	private assertNotMapped(feature: string): void {
-		if (this.mapped) {
-			throw new Error(
-				`Mapped turn '${this.turnId}' cannot declare ${feature}; items yield results and .collect(...) routes`,
-			);
-		}
 	}
 
 	/** @public */
@@ -1507,33 +1482,27 @@ export class LlmFlowBuilder<
 		return this;
 	}
 
-	/** @public */
-	outcomeTool(
-		id: string,
-		configure: (
-			tool: OutcomeToolBuilder<TParams, TState>,
-		) => OutcomeToolBuilder<TParams, TState> | undefined,
-	): this {
-		this.assertNotMapped("routed outcome tools");
-		if (id.trim() === "") {
-			throw new Error(`LLM turn '${this.turnId}' declares an empty outcome tool id`);
-		}
-		if (this.endResult) {
-			throw new Error(`LLM turn '${this.turnId}' cannot declare both .end(...) and outcome tools`);
-		}
-		if (this.publishedResult) {
-			throw new Error(`LLM turn '${this.turnId}' cannot declare outcome tools after .publish(...)`);
-		}
-		if (this.outcomeToolBuilders.has(id)) {
-			throw new Error(`LLM turn '${this.turnId}' declares duplicate outcome tool '${id}'`);
-		}
-		const builder = new OutcomeToolBuilder<TParams, TState>();
-		configure(builder);
-		this.outcomeToolBuilders.set(id, builder);
-		return this;
-	}
-
-	private buildBaseDefinition() {
+	/** @internal */
+	protected buildBaseDefinition(): Pick<
+		LlmTurnDefinition<string, TParams, TState>,
+		| "kind"
+		| "description"
+		| "modelPurpose"
+		| "executionPurpose"
+		| "availableTools"
+		| "integrationTools"
+		| "resolveIntegrationTools"
+		| "askQuestions"
+		| "prepare"
+		| "completionMode"
+		| "branchType"
+		| "context"
+		| "startFrom"
+		| "restorePrimaryLeafAfterTurn"
+		| "prompt"
+		| "consumedProducts"
+		| "optionalConsumedProducts"
+	> {
 		if (!this.turnDescription) {
 			throw new Error(`LLM turn '${this.turnId}' must declare .description(...)`);
 		}
@@ -1560,7 +1529,7 @@ export class LlmFlowBuilder<
 						prepare: (ctx: ProcessRuntimeTurnContext<TParams, TState>) =>
 							preparation({
 								...createFlowAutomaticRunContext(ctx),
-								...this.mappedItemContext(ctx),
+								...this.itemContext(ctx),
 							}),
 					}
 				: {}),
@@ -1572,7 +1541,101 @@ export class LlmFlowBuilder<
 				? { restorePrimaryLeafAfterTurn: this.restorePrimaryLeafAfterTurn }
 				: {}),
 			prompt,
+			...(this.consumedProductNames.size > 0
+				? { consumedProducts: [...this.consumedProductNames] }
+				: {}),
+			...(this.optionalConsumedProductNames.size > 0
+				? { optionalConsumedProducts: [...this.optionalConsumedProductNames] }
+				: {}),
 		};
+	}
+}
+
+/** @public */
+export class LlmFlowBuilder<
+		TParams = unknown,
+		TState = unknown,
+		TConsumedProducts extends string = never,
+		TPrepared = undefined,
+	>
+	extends LlmConfigurationBuilder<
+		TParams,
+		TState,
+		TConsumedProducts,
+		TPrepared,
+		{ kind: "ordinary" }
+	>
+	implements FlowLlmTurn<TParams, TState, string>
+{
+	private publishedResult: {
+		productName: string;
+		builder: PublishedResultBuilder<TParams, TState>;
+	} | null = null;
+	private endResult: LlmTurnEndBuilder<TParams, TState> | null = null;
+	private outcomeToolBuilders = new Map<string, OutcomeToolBuilder<TParams, TState>>();
+
+	/** @internal */
+	protected itemContext(): Record<never, never> {
+		return {};
+	}
+
+	/** @internal */
+	get definition(): LlmTurnDefinition<string, TParams, TState> {
+		return this.buildDefinition();
+	}
+
+	/** @public */
+	publish(productName: string): PublishedResultBuilder<TParams, TState> {
+		const normalized = normalizeProductName(productName);
+		if (this.publishedResult) {
+			throw new Error(`LLM turn '${this.turnId}' can publish only one product in flow v1`);
+		}
+		if (this.endResult) {
+			throw new Error(`LLM turn '${this.turnId}' cannot declare both .publish(...) and .end(...)`);
+		}
+		const builder = new PublishedResultBuilder<TParams, TState>(normalized, this);
+		this.publishedResult = { productName: normalized, builder };
+		return builder;
+	}
+
+	/** @public */
+	end(outcomeId: string): LlmTurnEndBuilder<TParams, TState> {
+		if (this.endResult) {
+			throw new Error(`LLM turn '${this.turnId}' declares duplicate .end(...) completion`);
+		}
+		if (this.publishedResult) {
+			throw new Error(`LLM turn '${this.turnId}' cannot declare both .publish(...) and .end(...)`);
+		}
+		if (this.outcomeToolBuilders.size > 0) {
+			throw new Error(`LLM turn '${this.turnId}' cannot declare both .end(...) and outcome tools`);
+		}
+		this.endResult = new LlmTurnEndBuilder<TParams, TState>(outcomeId, this);
+		return this.endResult;
+	}
+
+	/** @public */
+	outcomeTool(
+		id: string,
+		configure: (
+			tool: OutcomeToolBuilder<TParams, TState>,
+		) => OutcomeToolBuilder<TParams, TState> | undefined,
+	): this {
+		if (id.trim() === "") {
+			throw new Error(`LLM turn '${this.turnId}' declares an empty outcome tool id`);
+		}
+		if (this.endResult) {
+			throw new Error(`LLM turn '${this.turnId}' cannot declare both .end(...) and outcome tools`);
+		}
+		if (this.publishedResult) {
+			throw new Error(`LLM turn '${this.turnId}' cannot declare outcome tools after .publish(...)`);
+		}
+		if (this.outcomeToolBuilders.has(id)) {
+			throw new Error(`LLM turn '${this.turnId}' declares duplicate outcome tool '${id}'`);
+		}
+		const builder = new OutcomeToolBuilder<TParams, TState>();
+		configure(builder);
+		this.outcomeToolBuilders.set(id, builder);
+		return this;
 	}
 
 	/** @internal */
@@ -1652,15 +1715,7 @@ export class LlmFlowBuilder<
 			turnResultMarkdown = ASSISTANT_OUTPUT_TURN_RESULT;
 		}
 
-		if (hasOutcomeTools) {
-			for (const [outcomeId, outcome] of Object.entries(outcomes)) {
-				if (OUTCOME_TOOL_MARKDOWN_PARAMETER_NAME in outcome.parameters) {
-					throw new Error(
-						`LLM turn '${this.turnId}' outcome tool '${outcomeId}' cannot declare reserved markdown parameter '${OUTCOME_TOOL_MARKDOWN_PARAMETER_NAME}'`,
-					);
-				}
-			}
-		}
+		assertLlmOutcomeParameters(this.turnId, outcomes);
 
 		if (explicitTurnEnd) {
 			if (turnEnd || Object.keys(outcomes).length > 0) {
@@ -1671,27 +1726,19 @@ export class LlmFlowBuilder<
 		if (Object.keys(outcomes).length === 0 && !turnEnd) {
 			throw new Error(`LLM turn '${this.turnId}' must declare a completion path`);
 		}
-		const forEach = this.buildMappedSpec();
 
 		return {
 			...definition,
-			...(forEach ? { forEach } : {}),
 			...(Object.keys(outcomes).length > 0 ? { outcomes } : {}),
 			...(turnEnd ? { turnEnd } : {}),
 			...(turnResultMarkdown ? { turnResultMarkdown } : {}),
 			...(resultSemanticRef ? { resultSemanticRef } : {}),
 			...(publishedProduct ? { publishedProduct } : {}),
-			...(this.consumedProductNames.size > 0
-				? { consumedProducts: [...this.consumedProductNames] }
-				: {}),
-			...(this.optionalConsumedProductNames.size > 0
-				? { optionalConsumedProducts: [...this.optionalConsumedProductNames] }
-				: {}),
 		};
 	}
 }
 
-/** Item selection for `flow.llm(...).forEach(...)`. @public */
+/** Item selection for `flow.mappedLlm(...)`. @public */
 export type FlowForEachOptions<TParams, TState, TItem, TResult> = Pick<
 	MappedLlmTurnSpec<TParams, TState, TItem, TResult>,
 	"items" | "itemCodec" | "resultCodec" | "key" | "label" | "stateAfterSnapshot"
@@ -1723,63 +1770,8 @@ export class MappedOutcomeBuilder<
 	TState = unknown,
 	TItem = unknown,
 	TResult = unknown,
-> {
-	private readonly tool = new OutcomeToolBuilder<TParams, TState>();
+> extends OutcomeParametersBuilder {
 	private yieldResult: MappedItemYield<TParams, TState, TItem, TResult> | null = null;
-
-	/** @public */
-	description(text: string): this {
-		this.tool.description(text);
-		return this;
-	}
-
-	/** @public */
-	resultSummary(name?: string): this {
-		this.tool.resultSummary(name);
-		return this;
-	}
-
-	/** @public */
-	requiredString(name: string, options: string | ParameterOptions = {}): this {
-		this.tool.requiredString(name, options);
-		return this;
-	}
-
-	/** @public */
-	string(name: string, options: string | ParameterOptions = {}): this {
-		this.tool.string(name, options);
-		return this;
-	}
-
-	/** @public */
-	requiredNumber(name: string, options: string | ParameterOptions = {}): this {
-		this.tool.requiredNumber(name, options);
-		return this;
-	}
-
-	/** @public */
-	requiredBoolean(name: string, options: string | ParameterOptions = {}): this {
-		this.tool.requiredBoolean(name, options);
-		return this;
-	}
-
-	/** @public */
-	requiredStringArray(name: string, options: string | ArrayParameterOptions = {}): this {
-		this.tool.requiredStringArray(name, options);
-		return this;
-	}
-
-	/** @public */
-	object(name: string, options: string | ParameterOptions = {}): this {
-		this.tool.object(name, options);
-		return this;
-	}
-
-	/** @public */
-	requiredArray(name: string, options: string | ArrayParameterOptions = {}): this {
-		this.tool.requiredArray(name, options);
-		return this;
-	}
 
 	/** Map this outcome to the item's typed result. @public */
 	yield(fn: MappedItemYield<TParams, TState, TItem, TResult>): this {
@@ -1790,59 +1782,52 @@ export class MappedOutcomeBuilder<
 	/** @internal */
 	build(): {
 		/** @internal */
-		tool: OutcomeToolBuilder<TParams, TState>;
+		tool: ProcessToolOutcomeSpec<TParams, TState>;
 		/** @internal */
 		yieldResult: MappedItemYield<TParams, TState, TItem, TResult>;
 	} {
 		if (!this.yieldResult) {
 			throw new Error("Mapped outcome must declare .yield(...)");
 		}
-		return { tool: this.tool, yieldResult: this.yieldResult };
+		return { tool: this.buildParameterSpec("Mapped outcome tool"), yieldResult: this.yieldResult };
 	}
 }
 
-/** @public */
-abstract class MappedTurnFacade<TParams, TState> implements FlowLlmTurn<TParams, TState, string> {
+/** Routes a mapped turn once, after all item results are collected. @public */
+export class MappedCollectBuilder<TParams = unknown, TState = unknown>
+	implements FlowLlmTurn<TParams, TState, string>
+{
 	/** @internal */
 	constructor(
-		/** @internal */
-		protected readonly base: LlmFlowBuilder<TParams, TState, string, unknown>,
+		private readonly turn: FlowLlmTurn<TParams, TState, string>,
+		private readonly setRouting: (routing: MappedCollectRouting<TParams, TState>) => void,
 	) {}
 
 	/** @internal */
 	get id(): TurnId {
-		return this.base.id;
+		return this.turn.id;
 	}
 
 	/** @internal */
 	get definition(): LlmTurnDefinition<string, TParams, TState> {
-		return this.base.definition;
+		return this.turn.definition;
 	}
-}
 
-/**
- * Routes a mapped turn once, after all item results are collected.
- * @public
- */
-export class MappedCollectBuilder<TParams = unknown, TState = unknown> extends MappedTurnFacade<
-	TParams,
-	TState
-> {
 	/** @public */
 	to(turnId: TurnId): this {
-		this.base.setMappedRouting({ kind: "static", to: turnId });
+		this.setRouting({ kind: "static", to: turnId });
 		return this;
 	}
 
 	/** @public */
 	complete(): this {
-		this.base.setMappedRouting({ kind: "static", lifecycleStatus: "completed" });
+		this.setRouting({ kind: "static", lifecycleStatus: "completed" });
 		return this;
 	}
 
 	/** @public */
 	lifecycleStatus(status: ProcessTurnTerminalLifecycleStatus): this {
-		this.base.setMappedRouting({ kind: "static", lifecycleStatus: status });
+		this.setRouting({ kind: "static", lifecycleStatus: status });
 		return this;
 	}
 
@@ -1854,7 +1839,7 @@ export class MappedCollectBuilder<TParams = unknown, TState = unknown> extends M
 		if (Object.keys(branches).length === 0) {
 			throw new Error("Mapped collection routing must declare at least one branch");
 		}
-		this.base.setMappedRouting({ kind: "branches", branches: { ...branches }, choose });
+		this.setRouting({ kind: "branches", branches: { ...branches }, choose });
 		return this;
 	}
 }
@@ -1865,97 +1850,52 @@ export class MappedCollectBuilder<TParams = unknown, TState = unknown> extends M
  * @public
  */
 export class MappedLlmFlowBuilder<
-	TParams = unknown,
-	TState = unknown,
-	TItem = unknown,
-	TResult = unknown,
-	TConsumedProducts extends string = never,
-	TPrepared = undefined,
-> extends MappedTurnFacade<TParams, TState> {
-	/** @internal */
-	constructor(base: LlmFlowBuilder<TParams, TState, TConsumedProducts, TPrepared>) {
-		super(base as unknown as LlmFlowBuilder<TParams, TState, string, unknown>);
-	}
-
-	/** @public */
-	description(description: string): this {
-		this.base.description(description);
-		return this;
-	}
-
-	/** @public */
-	tools(...tools: readonly PiBuiltInToolName[]): this {
-		this.base.tools(...tools);
-		return this;
-	}
-
-	/** @public */
-	integrationTools(...tools: readonly string[]): this {
-		this.base.integrationTools(...tools);
-		return this;
-	}
-
-	/** @public */
-	freshPrimary(): this {
-		this.base.freshPrimary();
-		return this;
-	}
-
-	/** @public */
-	consume<TProductName extends string>(
-		productName: TProductName,
-	): MappedLlmFlowBuilder<
+		TParams = unknown,
+		TState = unknown,
+		TItem = unknown,
+		TResult = unknown,
+		TConsumedProducts extends string = never,
+		TPrepared = undefined,
+	>
+	extends LlmConfigurationBuilder<
 		TParams,
 		TState,
-		TItem,
-		TResult,
-		TConsumedProducts | TProductName,
-		TPrepared
-	> {
-		this.base.consume(productName);
-		return this as unknown as MappedLlmFlowBuilder<
-			TParams,
-			TState,
-			TItem,
-			TResult,
-			TConsumedProducts | TProductName,
-			TPrepared
-		>;
+		TConsumedProducts,
+		TPrepared,
+		{ kind: "mapped"; item: TItem; result: TResult }
+	>
+	implements FlowLlmTurn<TParams, TState, string>
+{
+	private readonly outcomes = new Map<
+		string,
+		MappedOutcomeBuilder<TParams, TState, TItem, TResult>
+	>();
+	private collection: MappedCollect<TParams, TState, TResult> | undefined;
+	private routing: MappedCollectRouting<TParams, TState> | undefined;
+
+	/** @internal */
+	constructor(
+		turnId: TurnId,
+		private readonly items: FlowForEachOptions<TParams, TState, TItem, TResult>,
+	) {
+		super(turnId);
 	}
 
-	/** Deterministic worker preparation for the active item. @public */
-	prepare<TNextPrepared>(
-		fn: (ctx: FlowMappedPreparationContext<TParams, TState, TItem>) => MaybePromise<TNextPrepared>,
-	): MappedLlmFlowBuilder<TParams, TState, TItem, TResult, TConsumedProducts, TNextPrepared> {
-		this.base.prepare((ctx) => fn(ctx as FlowMappedPreparationContext<TParams, TState, TItem>));
-		return this as unknown as MappedLlmFlowBuilder<
-			TParams,
-			TState,
-			TItem,
-			TResult,
-			TConsumedProducts,
-			TNextPrepared
-		>;
-	}
-
-	/** Build the prompt for the active item. @public */
-	buildPrompt(
-		fn: (
-			ctx: FlowMappedPromptContext<TParams, TState, TItem, TConsumedProducts, TPrepared>,
-		) => MaybePromise<string>,
-	): this {
-		this.base.buildPrompt((ctx) =>
-			fn(
-				ctx as unknown as FlowMappedPromptContext<
-					TParams,
-					TState,
-					TItem,
-					TConsumedProducts,
-					TPrepared
-				>,
-			),
-		);
-		return this;
+	/** @internal */
+	protected itemContext(
+		ctx: ProcessRuntimeTurnContext<TParams, TState>,
+	): MappedTurnItemContext<TItem> {
+		const iteration = ctx.iteration;
+		if (!iteration) {
+			throw new Error(`Mapped turn '${this.turnId}' requires an active item`);
+		}
+		return {
+			item: this.items.itemCodec.parse(iteration.item),
+			itemKey: iteration.itemKey,
+			itemLabel: iteration.itemLabel,
+			itemIndex: iteration.itemIndex,
+			itemCount: iteration.itemCount,
+		};
 	}
 
 	/** @public */
@@ -1965,21 +1905,66 @@ export class MappedLlmFlowBuilder<
 			outcome: MappedOutcomeBuilder<TParams, TState, TItem, TResult>,
 		) => MappedOutcomeBuilder<TParams, TState, TItem, TResult> | undefined,
 	): this {
+		if (id.trim() === "") {
+			throw new Error(`LLM turn '${this.turnId}' declares an empty outcome tool id`);
+		}
+		if (this.outcomes.has(id)) {
+			throw new Error(`LLM turn '${this.turnId}' declares duplicate outcome tool '${id}'`);
+		}
 		const outcome = new MappedOutcomeBuilder<TParams, TState, TItem, TResult>();
 		configure(outcome);
-		const built = outcome.build();
-		this.base.addMappedOutcome(
-			id,
-			built.tool,
-			built.yieldResult as MappedItemYield<TParams, TState, unknown, unknown>,
-		);
+		outcome.build();
+		this.outcomes.set(id, outcome);
 		return this;
 	}
 
 	/** Combine ordered item results into process state, once. @public */
 	collect(fn: MappedCollect<TParams, TState, TResult>): MappedCollectBuilder<TParams, TState> {
-		this.base.setMappedCollect(fn as MappedCollect<TParams, TState, unknown>);
-		return new MappedCollectBuilder<TParams, TState>(this.base);
+		if (this.collection) {
+			throw new Error(`Mapped turn '${this.turnId}' declares .collect(...) more than once`);
+		}
+		this.collection = fn;
+		return new MappedCollectBuilder(this, (routing) => {
+			if (this.routing) {
+				throw new Error(`Mapped turn '${this.turnId}' collection already declares a route`);
+			}
+			this.routing = routing;
+		});
+	}
+
+	/** @internal */
+	get definition(): LlmTurnDefinition<string, TParams, TState> {
+		const definition = this.buildBaseDefinition();
+		if (this.outcomes.size === 0) {
+			throw new Error(`Mapped turn '${this.turnId}' must declare an item outcome tool`);
+		}
+		if (!this.collection) {
+			throw new Error(`Mapped turn '${this.turnId}' must declare .collect(...)`);
+		}
+		if (!this.routing) {
+			throw new Error(`Mapped turn '${this.turnId}' must declare a collection route`);
+		}
+		const outcomes: Record<string, ProcessToolOutcomeSpec<TParams, TState>> = {};
+		const yields: Record<string, MappedItemYield<TParams, TState, TItem, TResult>> = {};
+		for (const [id, builder] of this.outcomes) {
+			const built = builder.build();
+			outcomes[id] = built.tool;
+			yields[id] = built.yieldResult;
+		}
+		assertLlmOutcomeParameters(this.turnId, outcomes);
+		const forEach: MappedLlmTurnSpec<TParams, TState, TItem, TResult> = {
+			...this.items,
+			yields,
+			collect: this.collection,
+			routing: this.routing,
+		};
+		return {
+			...definition,
+			outcomes,
+			turnResultMarkdown: OUTCOME_TOOL_ARGUMENT_TURN_RESULT,
+			// The codecs preserve item/result types across the erased runtime definition boundary.
+			forEach: forEach as MappedLlmTurnSpec<TParams, TState>,
+		};
 	}
 }
 
@@ -2776,6 +2761,13 @@ export const flow = {
 	/** @public */
 	llm<TParams = unknown, TState = unknown>(turnId: TurnId): LlmFlowBuilder<TParams, TState> {
 		return new LlmFlowBuilder<TParams, TState>(turnId);
+	},
+	/** Run an LLM turn sequentially over frozen items, then collect and route once. @public */
+	mappedLlm<TParams = unknown, TState = unknown, TItem = unknown, TResult = unknown>(
+		turnId: TurnId,
+		items: FlowForEachOptions<TParams, TState, TItem, TResult>,
+	): MappedLlmFlowBuilder<TParams, TState, TItem, TResult> {
+		return new MappedLlmFlowBuilder<TParams, TState, TItem, TResult>(turnId, items);
 	},
 	/** @public */
 	automatic<TParams = unknown, TState = unknown>(
