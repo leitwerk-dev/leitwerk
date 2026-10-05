@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Workflow contract explorer · Leitwerk prototype</title>
+<style>
+:root {font-family: "Public Sans", ui-sans-serif, system-ui, sans-serif; color:#18212b; background:#f7f8fa; font-size:15px; line-height:1.5; --blue:#2f61b7; --border:#d9dee5; --muted:#4c5968;}
+* {box-sizing:border-box;} body {margin:0;} button,input,select {font:inherit; color:inherit;} button {min-height:44px; padding:9px 14px; border:1px solid var(--border); border-radius:7px; background:white; cursor:pointer; text-align:left;} button:hover {border-color:var(--blue); background:#f3f6fb;} button:disabled {opacity:.5; cursor:default;} :focus-visible {outline:3px solid var(--blue); outline-offset:3px;} ::selection {background:#e6ecf6;} input {caret-color:var(--blue);} h1,h2,h3,p {margin:0;} h1 {font-size:28px; line-height:1.2;} h2 {font-size:19px;} h3 {font-size:16px;} p {max-width:75ch;} code,pre {font-family:ui-monospace, SFMono-Regular, monospace; font-size:13px;} code {overflow-wrap:anywhere;} pre {white-space:pre-wrap; overflow-wrap:anywhere; margin:10px 0 0; background:#f2f4f7; padding:14px; border-radius:6px; line-height:1.65;} .muted {color:var(--muted);} .shell {max-width:1350px; margin:auto; padding:28px 36px;} header {display:flex; gap:24px; justify-content:space-between; align-items:start; margin-bottom:24px;} header p {margin-top:10px;} .mark {font-size:14px; color:var(--muted); white-space:nowrap; padding-top:6px;} .scenario {background:white; border:1px solid var(--border); border-radius:10px; padding:20px; margin-bottom:22px;} .tabs {display:flex; flex-wrap:wrap; gap:8px; margin:12px 0;} button[aria-pressed="true"] {background:#e6ecf6; border-color:var(--blue); color:#204880;} .guide {display:flex; justify-content:space-between; align-items:center; gap:24px;} .guide p {color:var(--muted);} .guide button {flex-shrink:0; background:#18212b; color:white;} .summary {display:flex; gap:20px; flex-wrap:wrap; padding:0 0 18px; align-items:center; border-bottom:1px solid var(--border);} .summary strong {font-size:17px;} .summary span {color:var(--muted);} .workspace {display:grid; grid-template-columns:310px minmax(0,1fr); gap:24px; margin-top:22px;} .panel {min-width:0; background:white; padding:22px; border:1px solid var(--border); border-radius:10px;} .panel-head {display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:16px;} .view-switch {display:flex; gap:4px;} .view-switch button {min-height:36px; padding:5px 9px;} .nodes {display:flex; flex-direction:column; gap:0;} .node {width:100%; display:flex; flex-direction:column; padding:12px; border-radius:6px; position:relative;} .node strong {font-size:16px;} .node span {font-size:13px; color:var(--muted);} .node .issue-text {color:#8b3c13;} .edge {display:block; padding:7px 0 7px 17px; color:var(--muted); font-size:12px; border-left:1px solid #aeb7c2; margin-left:18px; overflow-wrap:anywhere;} .edge.missing {border-left-style:dashed; color:#a83a32;} .list .edge {border:0; margin:0; padding:5px 0 13px;} .list .node {border:0; border-bottom:1px solid var(--border); border-radius:0;} .legend {margin-top:18px; font-size:13px;} .meta {display:flex; gap:8px; flex-wrap:wrap; margin:8px 0 20px; font-size:13px; color:var(--muted);} .meta span {background:#f2f4f7; padding:3px 7px; border-radius:4px;} .fields {display:grid; grid-template-columns:1fr 1fr; gap:18px;} label {display:block; font-weight:600; font-size:14px;} input,select {display:block; width:100%; min-height:44px; margin-top:7px; border:1px solid #aeb7c2; border-radius:6px; background:white; padding:9px 11px;} .hint {font-size:13px; color:var(--muted); margin:6px 0 0;} .routes {margin:20px 0;} .route-row {display:grid; grid-template-columns:1fr 1fr; gap:16px; align-items:center; margin-top:10px;} .route-row input {margin:0;} .form-actions {display:flex; gap:10px; align-items:center; margin:20px 0;} .primary {background:var(--blue); color:white; border-color:var(--blue);} .primary:hover {background:#244d94; color:white;} .diagnostics {margin-top:24px; border-top:1px solid var(--border); padding-top:20px;} .diagnostic {border-bottom:1px solid var(--border); padding:16px 0;} .diagnostic:first-child {padding-top:8px;} .diagnostic p {margin:5px 0 8px;} .diagnostic code {display:block; color:var(--muted); margin-bottom:8px;} .diagnostic button {margin-top:8px;} .severity {font-size:13px; color:#a83a32; margin-right:8px; font-weight:650;} .warning {color:#8b571a;} .good {color:#157a52;} .notice {font-size:14px; margin:14px 0 0; padding:12px 14px; background:#e6ecf6; border-radius:6px;} details {margin-top:16px;} summary {cursor:pointer; color:var(--blue); padding:4px 0;} footer {margin:24px 0 0; color:var(--muted); font-size:13px;} .products {margin-top:20px; padding-top:18px; border-top:1px solid var(--border);} .product-row {font-size:13px; padding:9px 0; border-bottom:1px solid var(--border);} .product-row strong {display:block;} .empty {padding:16px 0;} .nowrap {white-space:nowrap;}
+@media(max-width:900px) {.shell {padding:24px;} .workspace {grid-template-columns:250px minmax(0,1fr); gap:16px;} .panel {padding:16px;} .fields {grid-template-columns:1fr;} header {flex-direction:column; gap:6px;}.mark {white-space:normal;}}
+@media(max-width:620px) {.shell {padding:20px 16px;} h1 {font-size:25px;} .workspace {grid-template-columns:1fr;} .scenario {padding:16px;} .guide {align-items:start; flex-direction:column; gap:14px;} .tabs button {flex:1 1 100%;}.route-row {grid-template-columns:1fr; gap:6px;} .summary {gap:8px 18px;} .form-actions {flex-wrap:wrap;} .nodes {display:grid; grid-template-columns:1fr 1fr; gap:8px;} .edge {border:0; padding:4px 0 12px; margin:0; font-size:12px;} .legend {margin-top:8px;} .panel-head {align-items:start;} .products {display:none;} }
+</style>
+</head>
+<body>
+<main class="shell">
+<header><div><h1>Workflow contract explorer</h1><p>Can an author find and repair routing and product mistakes in one place, before a process loads?</p><p class="muted">Prototype · synthetic data. Edit an in-memory projection of a code-defined workflow. No process runs and no source files change.</p></div><div class="mark">Leitwerk / Developer tools</div></header>
+<section class="scenario" aria-labelledby="scenario-title"><h2 id="scenario-title">Try a workflow</h2><div class="tabs" id="scenarios"></div><div class="guide"><p id="guide-text"></p><button type="button" id="guide-step"></button></div></section>
+<div class="summary" id="summary" aria-live="polite"></div>
+<div class="workspace">
+<aside class="panel"><div class="panel-head"><h2>Declared turns</h2><div class="view-switch"><button type="button" id="graph-view" aria-pressed="true">Graph</button><button type="button" id="list-view" aria-pressed="false">List</button></div></div><div id="nodes" class="nodes"></div><p class="muted legend">Entry: <code>brief</code>. Edges show declared routes; the “revise” route loops back to draft.</p><div class="products"><h3>Product references</h3><div id="products"></div><p class="hint">A declared publisher does not prove a product exists on every execution path.</p></div></aside>
+<section class="panel" aria-labelledby="editor-title"><div class="panel-head"><h2 id="editor-title"></h2><button type="button" id="reset">Reset scenario</button></div><div id="turn-meta" class="meta"></div><div class="fields"><div><label for="publishes">Publishes</label><input id="publishes" autocomplete="off" spellcheck="false" /><p class="hint">Product names, separated by commas.</p></div><div><label for="consumes">Consumes</label><input id="consumes" autocomplete="off" spellcheck="false" /><p class="hint">Each name needs a declared publisher.</p></div></div><div class="routes"><h3>Outcome routes</h3><div id="routes"></div></div><div class="form-actions"><button type="button" class="primary" id="apply">Apply metadata edit</button><button type="button" id="undo">Undo edit</button></div><p class="hint">Apply before navigating; unapplied inputs are discarded.</p><p class="notice" id="message" role="status"></p><details><summary>Selected metadata path</summary><pre id="snippet"></pre></details><section class="diagnostics" aria-labelledby="diagnostics-title"><h2 id="diagnostics-title">Diagnostics</h2><p id="diagnostic-context" class="hint"></p><div id="diagnostics"></div></section></section>
+</div><footer>Future developer tooling proposal. Route and product checks mirror a subset of SDK rules; reachability warnings and repair suggestions are experimental. Configuration never defines a process graph.</footer>
+</main>
+<script>
+// Pure fixture model and analysis. No DOM or runtime callbacks in this section.
+const Workflow = (() => {
+ const base = () => ({id:"release-note", entry:"brief", turns:[
+ {id:"brief", type:"automatic", publishes:["brief"], consumes:[], routes:[{outcome:"ready",to:"draft"}]},
+ {id:"draft", type:"llm", publishes:["draft"], consumes:["brief"], routes:[{outcome:"ready",to:"review"}]},
+ {id:"review", type:"human", publishes:[], consumes:["draft"], routes:[{outcome:"approve",to:"publish"},{outcome:"revise",to:"draft"}]},
+ {id:"publish", type:"automatic", publishes:[], consumes:["draft"], routes:[{outcome:"done",terminal:"completed"}]}
+ ]});
+ const fixture = (name) => {
+ const graph=base();
+ if(name==="broken") {graph.turns[1].routes[0].to="reveiw";graph.turns[2].consumes=["release-notes"];}
+ if(name==="unreachable") {graph.turns.splice(3,0,{id:"archive",type:"automatic",publishes:["archive"],consumes:["draft"],routes:[{outcome:"ready",to:"publish"}]});}
+ return graph;
+ };
+ const path = (id,field) => `graph.turns[${JSON.stringify(id)}].${field}`;
+ const analyze = (graph) => {
+ const diagnostics=[];
+ const ids=new Set(graph.turns.map(turn=>turn.id));
+ const products=new Set(graph.turns.flatMap(turn=>turn.publishes));
+ for(const turn of graph.turns) {
+ turn.routes.forEach((route,index)=> {
+ if(route.to!==undefined && !ids.has(route.to)) diagnostics.push({kind:"target",turn:turn.id,index,severity:"Error",message:`Outcome “${route.outcome}” targets undeclared turn “${route.to || "(empty)"}”.`,path:path(turn.id,`transitions[${index}].nextTurnId`),repair:route.to==="reveiw"?"review":null});
+ });
+ for(const field of ["publishes","consumes"]) {
+ turn[field].forEach((product,index)=> {
+ const fieldName=field==="publishes"?"publishedProducts":"consumedProducts";
+ if(!/^[a-z][a-z0-9-]*$/.test(product)) diagnostics.push({kind:"name",turn:turn.id,severity:"Error",message:`Invalid product name “${product}”. Use lowercase letters, digits and hyphens, starting with a letter.`,path:path(turn.id,`${fieldName}[${index}]`)});
+ else if(field==="consumes" && !products.has(product)) diagnostics.push({kind:"product",turn:turn.id,index,severity:"Error",message:`Product “${product}” is consumed here but never published by this process.`,path:path(turn.id,`${fieldName}[${index}]`),repair:product==="release-notes"?"draft":null});
+ });
+ }
+ }
+ const connectivityAvailable=!diagnostics.some(item=>item.kind==="target");
+ const reached=new Set();
+ if(connectivityAvailable) {
+ const queue=[graph.entry];
+ while(queue.length) {const id=queue.shift(); if(reached.has(id)) continue; reached.add(id); const turn=graph.turns.find(candidate=>candidate.id===id); if(turn) for(const route of turn.routes) if(route.to!==undefined) queue.push(route.to);}
+ for(const turn of graph.turns) if(!reached.has(turn.id)) diagnostics.push({kind:"unreachable",turn:turn.id,severity:"Warning",message:`No declared path leads from entry “${graph.entry}” to “${turn.id}”.`,path:path(turn.id,"transitions"),repair:turn.id==="archive"?"archive":null});
+ }
+ return {diagnostics,connectivityAvailable,reached:[...reached],errors:diagnostics.filter(item=>item.severity==="Error").length,warnings:diagnostics.filter(item=>item.severity==="Warning").length};
+ };
+ const edit = (graph,id,changes) => ({...graph,turns:graph.turns.map(turn=>turn.id===id?{...turn,...changes}:turn)});
+ const repair = (graph,diagnostic) => {
+ if(!diagnostic.repair) return graph;
+ const turn=graph.turns.find(item=>item.id===diagnostic.turn);
+ if(diagnostic.kind==="target") return edit(graph,turn.id,{routes:turn.routes.map((route,index)=>index===diagnostic.index?{...route,to:diagnostic.repair}:route)});
+ if(diagnostic.kind==="product") return edit(graph,turn.id,{consumes:turn.consumes.map((product,index)=>index===diagnostic.index?diagnostic.repair:product)});
+ if(diagnostic.kind==="unreachable") {const review=graph.turns.find(item=>item.id==="review");return edit(graph,"review",{routes:review.routes.map(route=>route.outcome==="approve"?{...route,to:"archive"}:route)});}
+ return graph;
+ };
+ return {fixture,analyze,edit,repair};
+})();
+// Imperative UI shell. All changes pass through the pure model above.
+const $ = (id) => document.getElementById(id);
+const escapeHtml = (value) => String(value).replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[char]);
+const scenarios = {
+ valid:{label:"Valid workflow",text:"All turns are reachable and every consumed product has a publisher. Inspect the review turn, then check the return route to draft.",steps:[{label:"Inspect review and its loop",select:"review"},{label:"Inspect draft’s publisher",select:"draft"}]},
+ broken:{label:"Two independent errors",text:"A misspelled route and a missing product reference coexist. Repair either first; the other diagnostic must stay visible.",steps:[{label:"Repair route to review",repair:"target"},{label:"Use the published draft product",repair:"product"}]},
+ unreachable:{label:"Unreachable turn",text:"Archive publishes a valid product but no route reaches it. Connect review → archive → publish without changing the entry turn.",steps:[{label:"Inspect unreachable archive",select:"archive"},{label:"Route approval through archive",repair:"unreachable"}]}
+};
+let scenario="broken",graph=Workflow.fixture(scenario),selected="draft",view="graph",history=[],step=0;
+let message="Loaded synthetic release-note metadata. Two independent errors are ready to inspect.";
+function load(name) {scenario=name;graph=Workflow.fixture(name);selected=name==="unreachable"?"archive":name==="broken"?"draft":"brief";history=[];step=0;message=`Loaded ${scenarios[name].label.toLowerCase()}. Edits are held only in this page.`;render();}
+function commit(next,note) {history.push(graph);graph=next;message=note;render();}
+function repairDiagnostic(diagnostic) {const next=Workflow.repair(graph,diagnostic);selected=diagnostic.kind==="unreachable"?"review":diagnostic.turn;commit(next,diagnostic.kind==="unreachable"?"Review approval now routes to archive; archive still routes to publish.":`Repaired ${diagnostic.path}. All independent checks ran again.`);}
+function render() {
+ const result=Workflow.analyze(graph),turn=graph.turns.find(item=>item.id===selected);
+ $("scenarios").innerHTML=Object.entries(scenarios).map(([key,value])=>`<button type="button" data-scenario="${key}" aria-pressed="${scenario===key}">${value.label}</button>`).join("");
+ $("guide-text").textContent=scenarios[scenario].text;
+ const nextStep=scenarios[scenario].steps[step];$("guide-step").textContent=nextStep?`${step+1}. ${nextStep.label}`:"Walkthrough complete";$("guide-step").disabled=!nextStep;
+ $("summary").innerHTML=`<strong class="${result.errors?"":"good"}">${result.errors?`${result.errors} ${result.errors===1?"error":"errors"} to resolve`:"No contract errors"}</strong><span>${result.warnings} experimental warnings</span><span>${graph.turns.length} turns · ${graph.turns.flatMap(item=>item.routes).length} routes · ${new Set(graph.turns.flatMap(item=>item.publishes)).size} published products</span>`;
+ $("graph-view").setAttribute("aria-pressed",String(view==="graph"));$("list-view").setAttribute("aria-pressed",String(view==="list"));$("nodes").className=`nodes ${view==="list"?"list":""}`;
+ $("nodes").innerHTML=graph.turns.map(item=>{const count=result.diagnostics.filter(diagnostic=>diagnostic.turn===item.id).length;return `<div><button type="button" class="node" data-turn="${item.id}" aria-pressed="${selected===item.id}"><strong>${item.id}</strong><span>${item.type}${item.id===graph.entry?" · entry":""}</span>${count?`<span class="issue-text">${count} ${count===1?"diagnostic":"diagnostics"}</span>`:""}</button><span class="edge ${item.routes.some(route=>route.to!==undefined && !graph.turns.some(candidate=>candidate.id===route.to))?"missing":""}">${item.routes.map(route=>`${route.outcome} → ${escapeHtml(route.to ?? route.terminal)}`).join("<br>")}</span></div>`;}).join("");
+ const productNames=[...new Set(graph.turns.flatMap(item=>[...item.publishes,...item.consumes]))];
+ $("products").innerHTML=productNames.map(name=>`<div class="product-row"><strong>${escapeHtml(name)}</strong>From ${graph.turns.filter(item=>item.publishes.includes(name)).map(item=>item.id).join(", ")||"no publisher"}<br>Used by ${graph.turns.filter(item=>item.consumes.includes(name)).map(item=>item.id).join(", ")||"no consumer"}</div>`).join("");
+ $("editor-title").textContent=`Inspect ${turn.id}`;$("turn-meta").innerHTML=`<span>${turn.type} turn</span><span>${result.connectivityAvailable?(result.reached.includes(turn.id)?"Reachable from entry":"Unreachable from entry"):"Reachability deferred"}</span>`;
+ $("publishes").value=turn.publishes.join(", ");$("consumes").value=turn.consumes.join(", ");
+ $("routes").innerHTML=turn.routes.map((route,index)=>route.to!==undefined?`<div class="route-row"><label for="route-${index}">${route.outcome} → target turn</label><input id="route-${index}" data-route="${index}" value="${escapeHtml(route.to)}" autocomplete="off" spellcheck="false" /></div>`:`<div class="route-row"><span>${route.outcome}</span><span>Lifecycle: <strong>${route.terminal}</strong></span></div>`).join("");
+ $("undo").disabled=history.length===0;$("message").textContent=message;
+ const projection={turnType:turn.type,publishedProducts:turn.publishes,consumedProducts:turn.consumes,transitions:turn.routes.map(route=>({outcome:route.outcome,...(route.to!==undefined?{nextTurnId:route.to}:{lifecycleStatus:route.terminal})}))};
+ $("snippet").textContent=`// Synthetic ProcessGraphView projection\n// graph.turns[${JSON.stringify(turn.id)}]\n${JSON.stringify(projection,null,2)}`;
+ $("diagnostic-context").textContent=result.connectivityAvailable?"Independent contract checks complete. Reachability is an experimental advisory check.":"Independent route and product checks complete. Reachability is deferred until all route targets exist.";
+ $("diagnostics").innerHTML=result.diagnostics.length?result.diagnostics.map((diagnostic,index)=>`<div class="diagnostic"><h3><span class="severity ${diagnostic.severity==="Warning"?"warning":""}">${diagnostic.severity}</span> ${diagnostic.kind==="unreachable"?"Unreachable turn":diagnostic.kind==="target"?"Missing route target":diagnostic.kind==="name"?"Invalid product name":"Missing product publisher"}</h3><p>${escapeHtml(diagnostic.message)}</p><code>${escapeHtml(diagnostic.path)}</code><button type="button" data-inspect="${diagnostic.turn}">Inspect ${diagnostic.turn}</button> ${diagnostic.repair?`<button type="button" data-repair="${index}">${diagnostic.kind==="target"?"Set target to review":diagnostic.kind==="product"?"Use draft product":"Route approval through archive"}</button>`:"<p class=\"hint\">Edit the referenced metadata above to resolve this diagnostic.</p>"}</div>`).join(""):'<p class="empty good">No diagnostics. All declared turns are reachable and consumed products have publishers.</p>';
+}
+$("scenarios").addEventListener("click",event=>{const button=event.target.closest("[data-scenario]");if(button)load(button.dataset.scenario);});
+$("nodes").addEventListener("click",event=>{const button=event.target.closest("[data-turn]");if(button){selected=button.dataset.turn;message=`Inspecting ${selected}. Apply edits before selecting another turn.`;render();}});
+$("diagnostics").addEventListener("click",event=>{const repair=event.target.closest("[data-repair]"),inspect=event.target.closest("[data-inspect]");if(repair)repairDiagnostic(Workflow.analyze(graph).diagnostics[Number(repair.dataset.repair)]);if(inspect){selected=inspect.dataset.inspect;render();}});
+$("graph-view").addEventListener("click",()=>{view="graph";render();});$("list-view").addEventListener("click",()=>{view="list";render();});
+$("reset").addEventListener("click",()=>load(scenario));
+$("undo").addEventListener("click",()=>{if(history.length){graph=history.pop();message="Undid the last applied edit. Diagnostics were recomputed.";render();}});
+$("apply").addEventListener("click",()=>{const turn=graph.turns.find(item=>item.id===selected);const names=value=>value.split(",").map(item=>item.trim()).filter(Boolean);const routes=turn.routes.map((route,index)=>route.to!==undefined?{...route,to:$(`route-${index}`).value.trim()}:route);commit(Workflow.edit(graph,selected,{publishes:names($("publishes").value),consumes:names($("consumes").value),routes}),`Applied edits to ${selected}. Diagnostics reflect the current fixture.`);});
+$("guide-step").addEventListener("click",()=>{const action=scenarios[scenario].steps[step];if(!action)return;step++;if(action.select){selected=action.select;message=`Inspecting ${selected}: routes and product references are shown below.`;render();}else{const diagnostic=Workflow.analyze(graph).diagnostics.find(item=>item.kind===action.repair);if(diagnostic)repairDiagnostic(diagnostic);else{message="That issue is already repaired. Continue exploring or reset the scenario.";render();}}});
+render();
+</script>
+</body>
+</html>
