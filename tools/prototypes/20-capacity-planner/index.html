@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scheduled capacity planner · Leitwerk prototype</title>
+<style>
+:root {font-family: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color:#18212b; background:#f4f5f7; font-size:15px; line-height:1.55; font-variant-numeric:tabular-nums; --blue:#2f61b7; --border:#d9dfe6;}
+*{box-sizing:border-box} body{margin:0} main{max-width:1180px; margin:auto; padding:36px 32px 64px} h1{font-size:32px; line-height:1.2; margin:0 0 12px; letter-spacing:-.02em} h2{font-size:20px; margin:0 0 12px} h3{font-size:16px; margin:0 0 12px} p{margin:8px 0; max-width:76ch} .muted{color:#556270} .small{font-size:13px} header{margin-bottom:28px} .topline,.actions,.tabs{display:flex; align-items:center; gap:10px; flex-wrap:wrap} .topline{justify-content:space-between} .tag{background:#e9eef7; color:#294f8e; border-radius:20px; padding:5px 12px; font-size:13px; white-space:nowrap} button,input{font:inherit} button{background:white; border:1px solid var(--border); border-radius:24px; min-height:44px; padding:9px 16px; cursor:pointer; color:inherit; font-weight:600} button:hover{border-color:var(--blue); background:#f5f8ff} button.primary{background:var(--blue); color:white; border-color:var(--blue)} button:disabled{opacity:.45; cursor:default} button[aria-pressed="true"]{background:#e9eef7; border-color:var(--blue); color:#294f8e} :focus-visible{outline:3px solid #2f61b7; outline-offset:3px} ::selection{background:#dbe7fc} input{width:100%; border:1px solid #aeb8c5; border-radius:8px; padding:8px 10px; min-height:44px; color:#18212b; caret-color:var(--blue); background:white} label{font-weight:600; display:block} label .small{font-weight:400; display:block; margin-bottom:5px} .panel{background:white; border:1px solid var(--border); border-radius:12px; padding:24px; margin-top:20px} .guide{background:#eef2f7; border-radius:10px; padding:20px; margin-top:20px} .guide p{margin:12px 0} .grid{display:grid; grid-template-columns:1fr 2fr; gap:30px} .settings{display:grid; grid-template-columns:1fr 1fr; gap:14px} .jobs-head,.job{display:grid; grid-template-columns:1.3fr 1fr 1fr 44px; align-items:center; gap:12px} .jobs-head{font-size:12px; color:#556270; padding-bottom:8px} .job{padding:10px 0; border-top:1px solid var(--border)} .job button{padding:4px; border-radius:8px} .running{padding-top:16px; margin-top:16px; border-top:1px solid var(--border)} .running label{display:flex; gap:12px; align-items:center; justify-content:space-between; font-size:14px; margin-top:10px} .running input{width:82px} .running .small{margin:0} .state{padding:14px 16px; background:#edf3fd; border-radius:8px; margin-top:20px} .state.stale{background:#fff5e0; color:#6b4d0c} .state.error{background:#fff0ee; color:#9b2d20} .summary{display:grid; grid-template-columns:2fr 1fr 1fr; gap:16px; padding:14px 0; border-bottom:1px solid var(--border)} .summary strong{font-size:18px} .summary .title{font-size:14px;font-weight:600} .timeline{margin:22px 0 16px} .axis,.time-row{display:grid; grid-template-columns:155px minmax(0,1fr); gap:12px} .axis{color:#556270; font-size:12px; margin-bottom:10px} .ticks{display:flex; justify-content:space-between} .time-row{align-items:center; min-height:40px; font-size:13px} .track{height:29px; position:relative; background:#f5f6f8; border-radius:3px} .bar{position:absolute; height:100%; background:#2f61b7; border-radius:3px; min-width:2px} .bar.occupied{background:#5a6676} .bar.wait{background:#e8eef8; border:1px dashed #7c8fb3} .legend{display:flex; flex-wrap:wrap; gap:18px; font-size:13px; color:#556270} .legend span:before{content:""; display:inline-block; width:16px; height:10px; background:#2f61b7; margin-right:7px; border-radius:2px} .legend .occupied:before{background:#5a6676} .legend .wait:before{background:#e8eef8; border:1px dashed #7c8fb3} .table-wrap{overflow:auto} table{border-collapse:collapse;width:100%; font-size:14px} th{text-align:left; font-size:12px; color:#556270; font-weight:600} th,td{padding:12px 10px; border-bottom:1px solid var(--border); white-space:nowrap} th:first-child,td:first-child{padding-left:0} .result-head{display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap} .note{margin-top:18px; color:#556270; font-size:13px} .frozen{margin-top:20px; background:#f3f5f8; border-radius:8px; padding:16px} details{margin-top:15px} summary{cursor:pointer;font-weight:600; padding:4px 0} footer{margin-top:24px;color:#556270;font-size:13px} .mobile-label{display:none}
+@media(max-width:760px){main{padding:24px 16px 40px}h1{font-size:28px}.grid{grid-template-columns:1fr;gap:24px}.panel{padding:18px}.summary{grid-template-columns:1.4fr 1fr 1fr;gap:8px}.summary strong{font-size:16px}.axis,.time-row{grid-template-columns:110px minmax(0,1fr);gap:8px}.time-row{font-size:12px}.jobs-head{display:none}.job{grid-template-columns:1fr 1fr 44px;gap:10px}.job>strong{grid-column:1/-1}.mobile-label{display:block;font-size:12px;font-weight:400;margin-bottom:4px}.job button{align-self:end}.tag{white-space:normal}.guide{padding:16px}.tabs{gap:8px}.tabs button{font-size:13px;padding:8px 12px}.settings{gap:12px}}
+</style>
+</head>
+<body><main>
+<header><div class="topline"><h1>Scheduled capacity planner</h1><span class="tag">Prototype • synthetic data</span></div><p>Can we spot a crowded launch window and compare a better schedule before work enters the queue?</p><p class="muted small">A future planning surface for Leitwerk. All durations are illustrative estimates. Nothing here reserves workers or changes a real schedule.</p></header>
+<div class="guide"><h2>Try a guided case</h2><div id="cases" class="tabs" aria-label="Guided cases"></div><p id="case-description"></p><div class="actions"><button type="button" id="next-step" class="primary"></button><span id="step-position" class="small muted"></span></div></div>
+<section class="panel" aria-labelledby="assumptions-title"><div class="topline"><h2 id="assumptions-title">Planning assumptions</h2><button type="button" id="reset">Reset case</button></div><p class="muted small">Clock fixed at 09:00. Times below are whole minutes from now. Duration includes startup, work, and release of the worker.</p><div class="grid" style="margin-top:20px"><div><div class="settings"><label for="capacity">Worker capacity<span class="small muted">Hypothetical limit · 1–8</span><input id="capacity" type="number" min="1" max="8" step="1"></label><label for="stretch">Slow estimate<span class="small muted">Duration multiplier · 1–3</span><input id="stretch" type="number" min="1" max="3" step="0.1"></label></div><div class="running"><h3>Already occupying workers</h3><p class="muted small">Keep their running position. Change only the estimated remaining time.</p><div id="running"></div></div></div><div><h3>Future launch requests</h3><div class="jobs-head"><span>Process</span><span>Request +minutes</span><span>Duration minutes</span><span></span></div><div id="jobs"></div><button type="button" id="add-job">Add future request</button></div></div><div class="actions" style="margin-top:22px"><button type="button" class="primary" id="forecast">Run forecast</button><button type="button" id="stagger">Stagger to admitted times</button><button type="button" id="baseline">Capture new baseline</button></div><div id="status" class="state" role="status" aria-live="polite"></div></section>
+<section class="panel" aria-labelledby="forecast-title"><div class="result-head"><h2 id="forecast-title">Baseline and proposal</h2><button type="button" id="freeze">Freeze proposal</button></div><div id="results"></div><div id="frozen"></div></section>
+<footer>FIFO admission is a server responsibility. Queued work creates no worker lease or turn attempt. The startup timeout starts at capacity admission and excludes queue time. This forecast makes no quotas, deadline guarantees, or actual reservations.</footer>
+</main>
+<script>
+// Pure model: an occupied worker is kept until its estimated release. Future
+// requests are ordered by request time, then permanent insertion sequence.
+const Planner = (() => {
+  function validate(input) {
+    const errors = [];
+    if (!Number.isInteger(input.capacity) || input.capacity < 1 || input.capacity > 8) errors.push("Worker capacity must be a whole number from 1 to 8.");
+    if (!Number.isFinite(input.stretch) || input.stretch < 1 || input.stretch > 3) errors.push("Slow estimate must be between 1 and 3.");
+    for (const job of input.running) if (!Number.isInteger(job.remaining) || job.remaining < 1 || job.remaining > 240) errors.push(`${job.name}: remaining time must be 1–240 whole minutes.`);
+    for (const job of input.jobs) {
+      if (!Number.isInteger(job.request) || job.request < 0 || job.request > 720) errors.push(`${job.name}: request must be 0–720 whole minutes from now.`);
+      if (!Number.isInteger(job.duration) || job.duration < 1 || job.duration > 240) errors.push(`${job.name}: duration must be 1–240 whole minutes.`);
+    }
+    if (!input.jobs.length) errors.push("Add at least one future request.");
+    return errors;
+  }
+  function simulate(input, factor = 1) {
+    const running = input.running.map(job => ({...job, admit:0, finish: Math.ceil(job.remaining * factor), current:true, wait:0}));
+    let active = running.map(job => job.finish);
+    let lastAdmission = 0;
+    const rows = [...input.jobs].sort((a,b) => a.request - b.request || a.sequence - b.sequence).map(job => {
+      let admit = Math.max(job.request, lastAdmission);
+      active = active.filter(end => end > admit);
+      while (active.length >= input.capacity) {
+        admit = Math.min(...active);
+        active = active.filter(end => end > admit);
+      }
+      const finish = admit + Math.ceil(job.duration * factor);
+      active.push(finish);
+      lastAdmission = admit;
+      return {...job, admit, finish, wait:admit-job.request, current:false};
+    });
+    return {running, rows, wait:rows.reduce((sum,row)=>sum+row.wait,0), maxWait:Math.max(0,...rows.map(row=>row.wait)), end:Math.max(0,...running.map(row=>row.finish),...rows.map(row=>row.finish)), queued:rows.filter(row=>row.wait>0).length};
+  }
+  function forecast(input) {return {input:structuredClone(input), typical:simulate(input), slow:simulate(input,input.stretch)};}
+  function stagger(input) {
+    const result = simulate(input);
+    return {...structuredClone(input), jobs:input.jobs.map(job=>({...job,request:result.rows.find(row=>row.id===job.id).admit}))};
+  }
+  return {validate, simulate, forecast, stagger};
+})();
+const fixture = (long = false) => ({capacity:2, stretch:1.5, running:[{id:"r1",name:"Ongoing audit",remaining:long?90:30},{id:"r2",name:"Release check",remaining:long?20:15}], jobs:[{id:"a",name:"API review",sequence:1,request:5,duration:20},{id:"b",name:"Docs refresh",sequence:2,request:5,duration:15},{id:"c",name:"Test triage",sequence:3,request:10,duration:25},{id:"d",name:"Dependency scan",sequence:4,request:20,duration:10}]});
+const cases = [
+ {title:"Crowded window",description:"Two workers are occupied and four requests arrive close together. Forecast the queue, then increase capacity. Equal request times keep their original insertion order.",steps:[{label:"1. Forecast the bottleneck",action:"forecast"},{label:"2. Try three workers",action:"capacity3"},{label:"3. Reforecast the proposal",action:"forecast"},{label:"4. Freeze this proposal",action:"freeze"}]},
+ {title:"Stagger future work",description:"Move future requests to their estimated admission times. Queue wait falls, but the work does not finish earlier. Compare the schedule shift as well as the queue.",steps:[{label:"1. Forecast the baseline",action:"forecast"},{label:"2. Stagger future requests",action:"stagger"},{label:"3. Reforecast the proposal",action:"forecast"},{label:"4. Freeze this proposal",action:"freeze"}]},
+ {title:"Long job, fewer workers",description:"An audit has 90 minutes remaining. Reduce capacity below today's two occupied workers. Neither running job is interrupted; new work waits. The slow estimate exposes uncertainty.",steps:[{label:"1. Forecast with a long audit",action:"forecast"},{label:"2. Reduce capacity to one",action:"capacity1"},{label:"3. Reforecast with uncertainty",action:"forecast"},{label:"4. Freeze this proposal",action:"freeze"}]}
+];
+let state;
+const $ = id => document.getElementById(id);
+const time = minutes => { const total = 540 + minutes; const day = Math.floor(total / 1440); return `${String(Math.floor(total / 60) % 24).padStart(2,"0")}:${String(total % 60).padStart(2,"0")}${day ? ` +${day}d` : ""}`; };
+function reset(index = state?.caseIndex ?? 0) {
+  const input = fixture(index===2);
+  state = {input, caseIndex:index,step:0, revision:1, forecast:null, baseline:Planner.forecast(input), frozen:null,nextId:5,message:"Baseline captured from this case. Run a forecast to inspect admission times.",error:false};
+  render();
+}
+function dirty(message) {state.revision++;state.message=message;state.error=false;renderResults();}
+function runForecast() {
+  const errors = Planner.validate(state.input);
+  if (errors.length) {state.error=true;state.message=errors.join(" ");renderResults();return false;}
+  state.forecast={...Planner.forecast(state.input),revision:state.revision};
+  state.message=`Forecast refreshed: ${state.forecast.typical.queued} of ${state.input.jobs.length} future requests wait for capacity. Results are estimates.`;state.error=false;renderResults();return true;
+}
+function freeze() {
+  if (!state.forecast || state.forecast.revision!==state.revision || Planner.validate(state.input).length) return false;
+  state.frozen=structuredClone(state.forecast);state.message="Proposal frozen in memory with its assumptions. No schedule was submitted.";renderResults();return true;
+}
+function stagger() {
+  const errors=Planner.validate(state.input);
+  if(errors.length){state.error=true;state.message=errors.join(" ");renderResults();return false;}
+  const next=Planner.stagger(state.input);
+  if(Planner.validate(next).length){state.error=true;state.message="Staggering exceeds the 720-minute planning window. Reduce durations or remove a request.";renderResults();return false;}
+  state.input=next;dirty("Future request times moved to estimated admission. Running work keeps its position. Reforecast to compare.");renderControls();return true;
+}
+function renderControls() {
+  $("capacity").value=Number.isNaN(state.input.capacity)?"":state.input.capacity;
+  $("stretch").value=Number.isNaN(state.input.stretch)?"":state.input.stretch;
+  $("running").innerHTML=state.input.running.map(job=>`<label for="${job.id}"><span>${job.name}<span class="small muted">Remaining minutes</span></span><input id="${job.id}" data-running="${job.id}" type="number" min="1" max="240" step="1" value="${Number.isNaN(job.remaining)?"":job.remaining}"></label>`).join("");
+  $("jobs").innerHTML=state.input.jobs.map(job=>`<div class="job"><strong>${job.name}</strong><label><span class="mobile-label">Request +minutes</span><input aria-label="${job.name} request minutes" data-job="${job.id}" data-field="request" type="number" min="0" max="720" step="1" value="${Number.isNaN(job.request)?"":job.request}"></label><label><span class="mobile-label">Duration minutes</span><input aria-label="${job.name} duration minutes" data-job="${job.id}" data-field="duration" type="number" min="1" max="240" step="1" value="${Number.isNaN(job.duration)?"":job.duration}"></label><button type="button" data-remove="${job.id}" aria-label="Remove ${job.name}">×</button></div>`).join("");
+  $("add-job").disabled=state.input.jobs.length>=8;
+}
+function chart(result) {
+  const end=Math.ceil(result.end/15)*15;
+  const rows=[...result.running,...result.rows];
+  return `<div class="timeline" aria-label="Forecast timeline"><div class="axis"><span>Estimated worker use</span><div class="ticks"><span>09:00</span><span>${time(Math.round(end/2))}</span><span>${time(end)}</span></div></div>${rows.map(row=>`<div class="time-row"><span>${row.name}${row.current?" · running":""}</span><div class="track" role="img" aria-label="${row.name}: ${row.current?"already running":`requested ${time(row.request)}, admitted ${time(row.admit)}, wait ${row.wait} minutes`}, finishes ${time(row.finish)}">${row.wait?`<span class="bar wait" style="left:${row.request/end*100}%;width:${row.wait/end*100}%"></span>`:""}<span class="bar ${row.current?"occupied":""}" style="left:${row.admit/end*100}%;width:${(row.finish-row.admit)/end*100}%"></span></div></div>`).join("")}</div><div class="legend"><span class="occupied">Already running</span><span class="wait">Waiting for capacity</span><span>Admitted work</span></div>`;
+}
+function summary(label,result) {return `<div class="summary"><div class="title">${label}<div class="small muted">${result.queued} requests wait · longest ${result.maxWait} min</div></div><div><strong>${result.wait} min</strong><div class="small muted">Total queue wait</div></div><div><strong>${time(result.end)}</strong><div class="small muted">All workers released</div></div></div>`;}
+function renderResults() {
+  const stale=state.forecast && state.forecast.revision!==state.revision;
+  const errors=Planner.validate(state.input);
+  $("status").className=`state ${state.error?"error":stale?"stale":""}`;
+  $("status").textContent=`${stale?"Forecast stale. ":""}${state.message}`;
+  $("freeze").disabled=!state.forecast||stale||errors.length>0;
+  $("stagger").disabled=errors.length>0;
+  $("baseline").disabled=!state.forecast||stale||errors.length>0;
+  let html=summary(`Baseline · ${state.baseline.input.capacity} workers`,state.baseline.typical);
+  if(state.forecast) {
+    const f=state.forecast, r=f.typical;
+    const shift=f.input.jobs.reduce((sum,job)=>sum+Math.max(0,job.request-(state.baseline.input.jobs.find(base=>base.id===job.id)?.request??job.request)),0);
+    html+=summary(`Proposal · ${f.input.capacity} workers${stale?" · stale":""}`,r);
+    const changedSet=f.input.jobs.map(job=>job.id).join()!==state.baseline.input.jobs.map(job=>job.id).join();
+    html+=`<p class="note">${changedSet?"Request set changed; totals do not compare the same work. ":""}Total requested-time deferral: <strong>${shift} min</strong>. A smaller queue can mean later requests, with the same completion time.</p>`;
+    html+=`<p class="note"><strong>Illustrative uncertainty:</strong> if all remaining durations take ${f.input.stretch}× as long, total wait is ${f.slow.wait} min and all workers release at ${time(f.slow.end)}. This is a sensitivity scenario, not a confidence interval.</p>`;
+    if(f.input.capacity<f.input.running.length)html+=`<p class="state stale">${f.input.running.length} workers are already occupied, above the proposed limit of ${f.input.capacity}. Running work continues; admissions wait until occupancy falls below the limit.</p>`;
+    html+=chart(r);
+    html+=`<div class="table-wrap" style="margin-top:18px"><table><caption class="small muted" style="text-align:left;padding:8px 0">Proposal admission order${stale?" — old assumptions":""}. Ties use permanent request insertion order.</caption><thead><tr><th>Future request</th><th>Requested</th><th>Admitted</th><th>Finish</th><th>Queue wait</th></tr></thead><tbody>${r.rows.map(row=>`<tr><td>${row.name}</td><td>${time(row.request)}</td><td>${time(row.admit)}</td><td>${time(row.finish)}</td><td>${row.wait} min</td></tr>`).join("")}</tbody></table></div>`;
+    html+=`<details><summary>Captured forecast assumptions</summary><p class="small muted">Revision ${f.revision}. Capacity ${f.input.capacity}; slow multiplier ${f.input.stretch}. Occupied worker estimates: ${f.input.running.map(job=>`${job.name} ${job.remaining} min`).join(", ")}. Future durations: ${f.input.jobs.map(job=>`${job.name} ${job.duration} min`).join(", ")}. Each request holds one worker until its estimated finish.</p></details>`;
+  } else html+='<p class="muted" style="padding:20px 0">Run a forecast to show the proposal timeline and each request’s admission time.</p>';
+  $("results").innerHTML=html;
+  $("frozen").innerHTML=state.frozen?`<div class="frozen"><h3>Frozen proposal · revision ${state.frozen.revision}</h3><p>${state.frozen.revision===state.revision?"Matches current assumptions.":"Stale against current assumptions; this snapshot has stayed unchanged."} ${state.frozen.input.capacity} workers · ${state.frozen.typical.wait} min total wait · release at ${time(state.frozen.typical.end)}.</p><details><summary>Frozen request times</summary><p class="small">${state.frozen.input.jobs.map(job=>`${job.name} ${time(job.request)} (${job.duration} min)`).join("; ")}</p><p class="small">Occupied: ${state.frozen.input.running.map(job=>`${job.name} ${job.remaining} min remaining`).join("; ")}. Slow estimate multiplier: ${state.frozen.input.stretch}.</p></details><p class="small muted">In-memory review snapshot only. Refreshing the page clears it.</p></div>`:"";
+}
+function renderGuide() {
+  $("cases").innerHTML=cases.map((item,index)=>`<button type="button" data-case="${index}" aria-pressed="${index===state.caseIndex}">${item.title}</button>`).join("");
+  const current=cases[state.caseIndex];$("case-description").textContent=current.description;
+  $("next-step").textContent=current.steps[state.step]?.label??"Case complete";$("next-step").disabled=state.step>=current.steps.length;
+  $("step-position").textContent=`${Math.min(state.step,current.steps.length)} of ${current.steps.length} steps completed`;
+}
+function render(){renderControls();renderGuide();renderResults();}
+$("cases").addEventListener("click",event=>{const button=event.target.closest("[data-case]");if(button)reset(Number(button.dataset.case));});
+$("reset").addEventListener("click",()=>reset());
+$("forecast").addEventListener("click",runForecast);
+$("freeze").addEventListener("click",freeze);
+$("stagger").addEventListener("click",stagger);
+$("baseline").addEventListener("click",()=>{if(state.forecast?.revision===state.revision){state.baseline=structuredClone(state.forecast);state.message="Baseline replaced with the current forecast for the next comparison.";renderResults();}});
+$("capacity").addEventListener("input",event=>{state.input.capacity=event.target.valueAsNumber;dirty("Capacity assumption edited. Run a forecast to refresh the comparison.");});
+$("stretch").addEventListener("input",event=>{state.input.stretch=event.target.valueAsNumber;dirty("Duration uncertainty edited. Run a forecast to refresh the comparison.");});
+$("running").addEventListener("input",event=>{const job=state.input.running.find(item=>item.id===event.target.dataset.running);if(job){job.remaining=event.target.valueAsNumber;dirty("Remaining time edited. Running work keeps its position; the old forecast is stale.");}});
+$("jobs").addEventListener("input",event=>{const job=state.input.jobs.find(item=>item.id===event.target.dataset.job);if(job){job[event.target.dataset.field]=event.target.valueAsNumber;dirty("Future request edited. Run a forecast to refresh the comparison.");}});
+$("jobs").addEventListener("click",event=>{const button=event.target.closest("[data-remove]");if(button){state.input.jobs=state.input.jobs.filter(job=>job.id!==button.dataset.remove);dirty("Future request removed from the proposal. Baseline and frozen snapshot are unchanged.");renderControls();}});
+$("add-job").addEventListener("click",()=>{if(state.input.jobs.length>=8)return;const id=state.nextId++;state.input.jobs.push({id:`future${id}`,name:`Future request ${id}`,sequence:id,request:10,duration:15});dirty("Future request added. Adjust its time and duration, then reforecast.");renderControls();});
+$("next-step").addEventListener("click",()=>{
+  const action=cases[state.caseIndex].steps[state.step]?.action;let ok=true;
+  if(action==="forecast")ok=runForecast();
+  if(action==="stagger")ok=stagger();
+  if(action==="freeze")ok=freeze();
+  if(action==="capacity3"||action==="capacity1"){state.input.capacity=action==="capacity3"?3:1;dirty("Capacity assumption changed. The old forecast is now stale; reforecast next.");renderControls();}
+  if(ok)state.step++;renderGuide();
+});
+reset();
+</script>
+</body></html>
