@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Review evidence packet · Leitwerk prototype</title>
+<style>
+:root{font-family:ui-sans-serif,system-ui,sans-serif;color:#18212b;background:#fff;font-size:15px;line-height:1.5}*{box-sizing:border-box}body{margin:0}header{border-bottom:1px solid #d9dee5;background:#f7f8fa;padding:22px max(24px,calc((100vw - 1240px)/2))}.brand{color:#4c5968;margin:0 0 12px}h1{font-size:29px;line-height:1.2;margin:0 0 12px}h2{font-size:20px;margin:0 0 10px}h3{font-size:16px;margin:0 0 8px}p{margin:0 0 12px}.intro{max-width:850px}.muted,small{color:#4c5968}small{font-size:13px;display:block}main{max-width:1288px;padding:24px;margin:auto}.state{display:flex;gap:24px;flex-wrap:wrap;padding:18px;background:#f2f4f7;border-radius:8px;margin-bottom:24px}.state b{display:block}.layout{display:grid;grid-template-columns:1.08fr 1fr;gap:32px}.panel{min-width:0}.rows{border-top:1px solid #d9dee5}.row{border-bottom:1px solid #d9dee5;padding:15px 0;display:grid;grid-template-columns:24px 1fr;gap:10px}.row label{display:block;font-weight:600;cursor:pointer}.row input{width:18px;height:18px;margin:3px 0;accent-color:#2f61b7}.row p{margin:4px 0 7px}.source{font-size:12px;overflow-wrap:anywhere}.badge{font-size:12px;padding:2px 7px;display:inline-block;border-radius:5px;background:#f2f4f7;font-weight:600;margin-left:6px}.pass{color:#126340;background:#e9f5ef}.failed{color:#7d2d27;background:#f9eae8}.stale,.missing,.unknown{color:#805015;background:#faf0df}.actions{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0}button{font:inherit;cursor:pointer;border:1px solid #aeb7c2;border-radius:20px;background:white;color:#18212b;padding:9px 15px;min-height:44px}button:hover{border-color:#2f61b7;background:#f2f6fc}button:focus-visible,input:focus-visible,textarea:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid #2f61b7;outline-offset:3px}button.primary{background:#2f61b7;color:white;border-color:#2f61b7}button:disabled{opacity:.55;cursor:default}a{color:#2f61b7}#notice{background:#eaf0f9;padding:12px 15px;border-radius:6px;min-height:48px;margin:0 0 22px}#coverage{border:1px solid #d9dee5;border-radius:8px;padding:17px;margin-bottom:18px}.ledger{margin:12px 0 0;padding:0;list-style:none}.ledger li{padding:7px 0;display:flex;justify-content:space-between;gap:12px;border-top:1px solid #e3e7ed}.ledger .badge{white-space:nowrap;align-self:start}#packet-status{font-weight:600}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f7f8fa;padding:18px;border:1px solid #d9dee5;border-radius:8px;max-height:680px;overflow:auto;font-size:12px;line-height:1.65;margin:12px 0}details{margin-top:18px}summary{cursor:pointer;color:#2f61b7;min-height:36px}.scenarios{border-top:1px solid #d9dee5;margin-top:32px;padding-top:24px}.tabs{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.tabs button[aria-pressed="true"]{background:#e6ecf6;border-color:#2f61b7}.walkthrough{background:#f7f8fa;padding:18px;border-radius:8px}.walkthrough p{max-width:840px}#steps{display:flex;flex-wrap:wrap;gap:8px}.freeplay{margin:24px 0 8px;padding-top:20px;border-top:1px solid #d9dee5}textarea{width:100%;font:inherit;min-height:76px;border:1px solid #aeb7c2;border-radius:7px;padding:10px;resize:vertical}footer{color:#4c5968;font-size:13px;margin-top:22px}@media(max-width:720px){header{padding:20px}main{padding:20px}.layout{grid-template-columns:1fr;gap:26px}h1{font-size:25px}.state{gap:14px 22px}.state>div{flex:1 1 130px}pre{max-height:440px}.ledger li{align-items:start}.tabs button{width:100%;text-align:left}#steps button{width:100%;text-align:left}}
+</style>
+</head>
+<body>
+<header><p class="brand">Leitwerk / Process inspection / Prototype • synthetic data</p><h1>Review evidence packet</h1><p class="intro">Can an operator assemble a useful review handoff without losing failures, evidence gaps, or the exact revision that was checked?</p><p class="muted">Future proposal. Select recorded details, freeze a packet, then download local Markdown. All source records are simulated; nothing is posted.</p></header>
+<main>
+<div class="state" id="state"></div>
+<p id="notice" role="status" aria-live="polite"></p>
+<div class="layout">
+<section class="panel" aria-labelledby="evidence-title"><h2 id="evidence-title">1. Choose evidence details</h2><p class="muted">The check ledger and known limitations always travel with the packet. These selections control supporting detail only.</p><div class="rows" id="evidence"></div>
+<details><summary>Add an operator limitation</summary><label for="limitation">What should the reviewer know?</label><textarea id="limitation" placeholder="For example: database migration not exercised with production data."></textarea><button type="button" id="add-limit">Record limitation</button></details>
+</section>
+<section class="panel" aria-labelledby="packet-title"><h2 id="packet-title">2. Freeze the handoff</h2><div id="coverage"></div><div class="actions"><button type="button" class="primary" id="generate">Generate packet</button><button type="button" id="download" disabled>Download Markdown</button></div><p id="packet-status">No packet generated.</p><small id="packet-detail">Generate captures source revisions and the current selection.</small><pre id="preview" aria-label="Exported Markdown preview">Your generated packet will appear here.</pre></section>
+</div>
+<section class="freeplay" aria-labelledby="freeplay-title"><h2 id="freeplay-title">Change the evidence</h2><p class="muted">Simulate records arriving after a packet is frozen. Rerunning checks updates their receipts; existing packets keep their captured evidence.</p><div class="actions"><button type="button" id="advance">Advance repository revision</button><button type="button" id="fail">Record failed test</button><button type="button" id="remove">Remove browser receipt</button><button type="button" id="unknown">Mark browser result unknown</button><button type="button" id="rerun">Record passing checks at current revision</button><button type="button" id="clear">Deselect all detail</button><button type="button" id="reset">Reset</button></div></section>
+<section class="scenarios" aria-labelledby="scenario-title"><h2 id="scenario-title">Guided cases</h2><div class="tabs" aria-label="Choose a guided case"><button type="button" data-case="handoff" aria-pressed="true">Complete handoff</button><button type="button" data-case="stale" aria-pressed="false">Stale and missing evidence</button><button type="button" data-case="failure" aria-pressed="false">A failure cannot be hidden</button></div><div class="walkthrough"><h3 id="case-title"></h3><p id="case-description"></p><div id="steps"></div><p id="case-outcome" class="muted"></p></div></section>
+<footer>Prototype 12 · State lives in memory. Reload or Reset restores the fixture. Evidence coverage is a receipt count, not a merge recommendation.</footer>
+</main>
+<script>
+// Pure model. Evidence identities and revisions are synthetic, never reconstructed from prose.
+const PacketModel = (() => {
+ const source = (kind, id) => `fixture://process/review-42/${kind}/${id}`;
+ function initial() {
+  return {head:7, revision:1, selected:['result','change','lint','tests','browser','limit'], packet:null, serial:0,
+   evidence:[
+    {id:'result',kind:'output',title:'Implementation result',version:1,head:7,source:source('turn','turn-17'),body:'Added a retry hint to the recovery panel. Assistant summary: “All tests passed.” This text alone is not validation evidence.'},
+    {id:'change',kind:'change',title:'Repository change receipt',version:1,head:7,source:source('project','ui/change-7'),body:'Recorded change in recovery-panel.svelte; feature branch fixture/retry-hint. Receipt says revision r7 was prepared; it does not prove a test passed.'},
+    {id:'lint',kind:'check',title:'Formatting and lint',version:1,head:7,status:'passed',source:source('receipt','check-lint-7'),body:'Synthetic command receipt: biome check; exit 0.'},
+    {id:'tests',kind:'check',title:'Recovery integration tests',version:1,head:7,status:'passed',source:source('receipt','check-tests-7'),body:'Synthetic command receipt: recovery tests; exit 0. Scope: retry hint and keyboard focus.'},
+    {id:'browser',kind:'check',title:'Browser interaction check',version:1,head:7,status:'passed',source:source('receipt','check-browser-7'),body:'Synthetic browser receipt: desktop click and 390px layout inspected. Scope excludes real backend recovery.'},
+    {id:'limit',kind:'limitation',title:'Known limitation',version:1,head:7,source:source('turn','turn-17/limitation'),body:'No production backend, real retry, or accessibility audit was exercised.'}
+   ]};
+ }
+ function checkState(e, head) {
+  if (e.status === 'missing') return 'missing';
+  if (e.status === 'unknown') return 'unknown';
+  if (e.head !== head) return e.status === 'failed' ? 'failed · stale' : 'stale';
+  return e.status;
+ }
+ function coverage(s) {
+  const checks=s.evidence.filter(e=>e.kind==='check');
+  return {checks, passed:checks.filter(e=>checkState(e,s.head)==='passed').length,total:checks.length,
+   failures:checks.filter(e=>e.status==='failed').length,
+   gaps:checks.filter(e=>['missing','unknown','stale'].includes(checkState(e,s.head))).length};
+ }
+ function reduce(s,a) {
+  if(a.type==='reset') return initial();
+  if(a.type==='toggle') return {...s,selected:s.selected.includes(a.id)?s.selected.filter(id=>id!==a.id):[...s.selected,a.id]};
+  if(a.type==='clear') return {...s,selected:[]};
+  if(a.type==='generate') return {...s,serial:s.serial+1,packet:{number:s.serial+1,head:s.head,revision:s.revision,selected:[...s.selected],evidence:s.evidence.map(e=>({...e}))}};
+  if(a.type==='advance') return {...s,head:s.head+1,revision:s.revision+1,evidence:s.evidence.map(e=>e.kind==='change'?{...e,head:s.head+1,version:e.version+1,source:source('project',`ui/change-${s.head+1}`),body:`New repository change receipt at r${s.head+1}; earlier outputs and check receipts still describe r${s.head}.`}:e)};
+  if(a.type==='limit' && a.text.trim()) return {...s,revision:s.revision+1,evidence:[...s.evidence,{id:`limit-${s.revision+1}`,kind:'limitation',title:'Operator limitation',version:1,head:s.head,source:source('operator',`note-${s.revision+1}`),body:a.text.trim()}]};
+  if(['fail','remove','unknown','rerun'].includes(a.type)) {
+   return {...s,revision:s.revision+1,evidence:s.evidence.map(e=>{
+    const target=(a.type==='fail' && e.id==='tests') || (['remove','unknown'].includes(a.type) && e.id==='browser') || (a.type==='rerun' && e.kind==='check');
+    if(!target)return e;
+    const status={fail:'failed',remove:'missing',unknown:'unknown',rerun:'passed'}[a.type];
+    return {...e,status,head:s.head,version:e.version+1,source:source('receipt',`${e.id}-r${s.head}-v${e.version+1}`),body:{fail:'Synthetic command receipt: recovery tests; exit 1. Keyboard focus did not return to the retry control.',remove:'No retained browser receipt. No outcome can be asserted.',unknown:'A browser receipt exists, but the final result was not recorded.',rerun:'New synthetic receipt at the current revision: check passed. Scope remains limited to this fixture.'}[a.type]};
+   })};
+  }
+  return s;
+ }
+ function stale(s) {return Boolean(s.packet && s.packet.revision!==s.revision);}
+ function selectionChanged(s) {return Boolean(s.packet && [...s.selected].sort().join('|')!==[...s.packet.selected].sort().join('|'));}
+ function markdown(s) {
+  const p=s.packet;if(!p)return '';
+  const c=coverage(p);const lines=['# Review evidence packet', '', '**Prototype — synthetic data. No real validation or repository change is claimed.**', '',`Packet: ${p.number} · Process: review-42 · Selected turn: review · Lifecycle: active`, `Captured repository: r${p.head} · Evidence revision: ${p.revision}`,`Freshness at export: ${stale(s)?`STALE — live evidence is revision ${s.revision}, repository r${s.head}. Regenerate before relying on this handoff.`:'Current against the live fixture at export.'}`, `Selection: ${selectionChanged(s)?'Changed since capture; frozen content retained.':'Matches capture.'}`, '', '## Validation ledger (always included)', '', `Recorded passes at captured revision: ${c.passed}/${c.total}. This measures receipt coverage only.`, `Known failed checks: ${c.failures}.`, 'Assistant prose is not a validation verdict.', ''];
+  for(const e of c.checks) lines.push(`- ${e.title}: ${checkState(e,p.head).toUpperCase()} · checked r${e.head} · evidence v${e.version}`,`  Source: ${e.source}`,`  ${e.body}`);
+  lines.push('', '## Known limitations (always included)', '');
+  for(const e of p.evidence.filter(e=>e.kind==='limitation')) lines.push(`- ${e.body}`,`  Source: ${e.source} · evidence v${e.version}`);
+  lines.push('', '## Selected evidence detail', '');
+  if(p.selected.length===0) lines.push('No supporting detail selected. The mandatory ledger and limitations remain above.');
+  for(const e of p.evidence.filter(e=>p.selected.includes(e.id))) lines.push(`### ${e.title}`,`Source: ${e.source} · evidence v${e.version} · repository r${e.head}${e.head!==p.head?' (older than captured repository)':''}`,'',e.body,'');
+  lines.push('## Evidence manifest', '', ...p.evidence.map(e=>`- ${e.id} · v${e.version} · r${e.head} · ${e.kind} · ${e.source}`),'','All source references are synthetic fixture identifiers, not live inspector URLs.','This packet is a local read-only export, not approval to merge.');
+  return `${lines.join('\n')}\n`;
+ }
+ return {initial,reduce,coverage,checkState,stale,selectionChanged,markdown};
+})();
+// Imperative shell: rendering, clicks and a real local Blob download.
+const $=id=>document.getElementById(id);
+const escapeHtml=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let state=PacketModel.initial();
+let notice='Choose the details a reviewer needs. All check outcomes and known limitations remain visible in every export.';
+let scenario='handoff';let step=0;
+const cases={
+ handoff:{title:'Complete handoff',description:'Start with three recorded passing checks at r7. Freeze evidence, then download a review packet containing source references and an explicit scope limit.',steps:[['Generate the handoff','generate'],['Download the captured packet','download']],outcome:'The local Markdown contains a 3/3 receipt ledger, the selected result and change receipt, source revisions, and known limitations.'},
+ stale:{title:'Stale and missing evidence',description:'Freeze a packet before the repository advances. Remove a browser receipt, inspect the frozen capture, then regenerate. A prose claim cannot repair missing or outdated check evidence.',steps:[['Freeze revision r7','generate'],['Advance repository to r8','advance'],['Remove browser receipt','remove'],['Regenerate with evidence gaps','generate'],['Download the incomplete handoff','download']],outcome:'The regenerated packet has 0/3 current passes: two stale receipts and one missing receipt. The old capture never silently changed.'},
+ failure:{title:'A failure cannot be hidden',description:'Record a failing check, remove every optional detail, and generate. The failed check and known limitations must survive in the packet.',steps:[['Record a failed test','fail'],['Deselect all detail','clear'],['Generate with failure disclosed','generate'],['Download the failure evidence','download']],outcome:'The export still identifies the failed test, exit 1, its source, and the scope limit. Selection cannot turn a failed receipt into success.'}
+};
+const messages={generate:'Packet frozen. Its evidence values will stay captured when the live fixture changes.',advance:'Repository advanced. Earlier check receipts do not validate the new revision.',fail:'A failed test receipt was recorded. The mandatory ledger will disclose it even when details are deselected.',remove:'The browser receipt is missing. The assistant summary cannot supply its outcome.',unknown:'The browser receipt has no final result. Unknown remains distinct from failed and missing.',rerun:'New passing receipts recorded at the current repository revision. Regenerate to include them.',clear:'Optional detail deselected. The check ledger and known limitations remain mandatory.',reset:'Fixture reset to recorded evidence at revision r7.',limit:'Operator limitation recorded. Existing packets are now stale.',toggle:'Supporting detail selection changed. Generate a new packet to capture it.'};
+function render(){
+ const c=PacketModel.coverage(state);
+ $('state').innerHTML=`<div><small>Process</small><b>Retry recovery hint</b></div><div><small>Selected turn / lifecycle</small><b>Review / active</b></div><div><small>Repository / evidence</small><b>r${state.head} / revision ${state.revision}</b></div><div><small>Supporting detail</small><b>${state.selected.length} of ${state.evidence.length} selected</b></div>`;
+ $('notice').textContent=notice;
+ $('evidence').innerHTML=state.evidence.map(e=>`<div class="row" id="source-${e.id}"><input type="checkbox" id="pick-${e.id}" data-evidence="${e.id}" ${state.selected.includes(e.id)?'checked':''}><div><label for="pick-${e.id}">${escapeHtml(e.title)} ${e.kind==='check'?`<span class="badge ${PacketModel.checkState(e,state.head)==='passed'?'pass':PacketModel.checkState(e,state.head).split(' ')[0]}">${escapeHtml(PacketModel.checkState(e,state.head))}</span>`:''}</label><p>${escapeHtml(e.body)}</p><small>Repository r${e.head} · evidence v${e.version}${e.head!==state.head?' · older revision':''}</small><small class="source">${escapeHtml(e.source)}</small></div></div>`).join('');
+ $('coverage').innerHTML=`<h3>Live validation coverage: ${c.passed}/${c.total}</h3><p>${c.failures?`${c.failures} known failed check. Failure detail cannot be hidden.`:c.gaps?'Current evidence has gaps. Passing older receipts do not cover the current revision.':'All expected check receipts passed at this revision.'}</p><small>Coverage counts recorded checks, not tested code or merge readiness.</small><ul class="ledger">${c.checks.map(e=>`<li><span>${escapeHtml(e.title)}<small>r${e.head} · evidence v${e.version}</small></span><span class="badge">${escapeHtml(PacketModel.checkState(e,state.head))}</span></li>`).join('')}</ul>`;
+ $('download').disabled=!state.packet;
+ $('packet-status').textContent=state.packet?`Packet ${state.packet.number} · ${PacketModel.stale(state)?'Stale evidence':PacketModel.selectionChanged(state)?'Selection changed':'Current capture'}`:'No packet generated.';
+ $('packet-detail').textContent=state.packet?`Captured r${state.packet.head} / evidence revision ${state.packet.revision}. ${PacketModel.stale(state)?'Download retains the capture and adds an explicit stale warning. Regenerate to capture new evidence.':'The export includes source references, check outcomes and known limitations.'}`:'Generate captures source revisions and the current selection.';
+ $('preview').textContent=PacketModel.markdown(state)||'Your generated packet will appear here.';
+ $('case-title').textContent=cases[scenario].title;
+ $('case-description').textContent=cases[scenario].description;
+ $('steps').innerHTML=cases[scenario].steps.map(([label],i)=>`<button type="button" data-step="${i}" ${i!==step?'disabled':''}>${i<step?'✓ ':`${i+1}. `}${label}</button>`).join('');
+ $('case-outcome').textContent=step===cases[scenario].steps.length?cases[scenario].outcome:`Step ${step+1} of ${cases[scenario].steps.length}. Selecting a guided case resets the fixture.`;
+ document.querySelectorAll('[data-case]').forEach(button=>{button.setAttribute('aria-pressed',String(button.dataset.case===scenario));});
+}
+function download(){
+ if(!state.packet)return;
+ const blob=new Blob([PacketModel.markdown(state)],{type:'text/markdown;charset=utf-8'});
+ const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download=`review-packet-${state.packet.number}-r${state.packet.head}${PacketModel.stale(state)?'-stale':''}.md`;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+ notice=`Downloaded packet ${state.packet.number}${PacketModel.stale(state)?' with a stale-evidence warning':''}. The Markdown preview shows the exported content.`;
+}
+function act(type,extra={}){if(type==='download')download();else{state=PacketModel.reduce(state,{type,...extra});notice=messages[type]||notice;}render();}
+for(const type of ['generate','download','advance','fail','remove','unknown','rerun','clear','reset'])$(type).addEventListener('click',()=>{if(type==='reset')step=0;act(type);});
+$('evidence').addEventListener('change',event=>{if(event.target.dataset.evidence)act('toggle',{id:event.target.dataset.evidence});});
+$('add-limit').addEventListener('click',()=>{const text=$('limitation').value;if(text.trim()){act('limit',{text});$('limitation').value='';}});
+document.querySelectorAll('[data-case]').forEach(button=>{button.addEventListener('click',()=>{scenario=button.dataset.case;step=0;state=PacketModel.initial();notice=`Guided case ready: ${cases[scenario].title}.`;render();});});
+$('steps').addEventListener('click',event=>{if(event.target.dataset.step===String(step)){const action=cases[scenario].steps[step][1];step+=1;act(action);}});
+render();
+</script>
+</body>
+</html>
