@@ -65,3 +65,5 @@ Screenshots show a summarized future draft next to the original captured evidenc
 This is synthetic in-memory behavior, not a production integration. Capturing creates no worker, durable record, turn attempt, or actual model call. Summaries are fixed fixture text. No tokenizer, provider limit discovery, redaction, concurrent editing, or persistence is implemented. Application full validation is outside this standalone experiment's scope.
 
 The experiment supports separating future composition from recorded evidence: a fresh conversation can still have explicit product inputs, and a product publication needs explicit adoption to avoid silently changing a draft. Required-content overflow needs a larger window or an authored contract change; summarization cannot erase required inputs. A remaining design question is how authors should review semantic loss before accepting an actual generated summary.
+
+The standalone HTML also passes the repository Biome check.
