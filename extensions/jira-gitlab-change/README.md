@@ -40,6 +40,13 @@ including manual tickets. Subtasks instead join their direct parent's wiki, incl
 when that parent belongs to an epic. Generated tickets verify their retained Epic Link
 or subtask parent before admission. Existing running processes keep their captured membership.
 
+Older split publication receipts may omit SSH profile and clone URL. Admission fills
+those fields from the exact component mapping and current GitLab project, then pins
+them in the change snapshot. Retained repository paths, profile selections, and base
+branches must still match. Receipt and wiki history are preserved. A retained wiki
+topic may use a publisher-specific namespace; its installation URL and immutable
+source issue ID must match before it can be reused.
+
 ## Workflow
 
 [Generated process graph](process.mmd). Dashed edges are external triggers; terminal

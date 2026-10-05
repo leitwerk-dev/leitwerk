@@ -242,6 +242,9 @@ export function createJiraGitLabLauncher() {
 		});
 		const mappings: JiraGitLabParams["mappings"] = [];
 		const selected = new Map<string, RepositoryMapping>();
+		const publication = wiki?.publicationByExternalId(
+			jiraIssueExternalId(client.baseUrl, issue.id),
+		);
 		for (const component of issue.fields.components) {
 			const subject = settings.discover({
 				scopeType: "jira.component",
@@ -260,6 +263,12 @@ export function createJiraGitLabLauncher() {
 			});
 			for (const value of resolved.value) {
 				const entry = parseMapping(value);
+				if (
+					publication &&
+					(entry.origin !== publication.binding.origin ||
+						entry.projectId !== publication.binding.projectId)
+				)
+					continue;
 				const key = repositorySettingsIdentity(entry.origin, entry.projectId);
 				const prior = selected.get(key);
 				if (
@@ -272,9 +281,6 @@ export function createJiraGitLabLauncher() {
 				selected.set(key, entry);
 			}
 		}
-		const publication = wiki?.publicationByExternalId(
-			jiraIssueExternalId(client.baseUrl, issue.id),
-		);
 		if (publication) {
 			const binding = publication.binding;
 			const exact = [...selected.entries()].find(
@@ -282,7 +288,7 @@ export function createJiraGitLabLauncher() {
 					entry.origin === binding.origin &&
 					entry.projectId === binding.projectId &&
 					entry.gitlabProfile === binding.gitlabProfile &&
-					entry.sshProfile === binding.sshProfile,
+					(binding.sshProfile === undefined || entry.sshProfile === binding.sshProfile),
 			);
 			if (!exact)
 				throw new Error(
@@ -304,13 +310,17 @@ export function createJiraGitLabLauncher() {
 					`Unavailable mapping for GitLab project ${entry.projectId}; update its profiles in Settings`,
 				);
 			const repo = await provider.getProject(entry.projectId);
+			if (repo.id !== entry.projectId) throw new Error("GitLab repository identity changed");
 			if (repo.archived || !repo.default_branch || !repo.ssh_url_to_repo)
 				throw new Error(
 					`GitLab project ${entry.projectId} must be active and provide an SSH clone URL`,
 				);
 			if (
 				publication &&
-				(repo.ssh_url_to_repo !== publication.binding.repoLocator ||
+				((publication.binding.repoLocator !== undefined &&
+					repo.ssh_url_to_repo !== publication.binding.repoLocator) ||
+					(publication.binding.repository !== undefined &&
+						repo.path_with_namespace !== publication.binding.repository) ||
 					repo.default_branch !== publication.binding.baseBranch)
 			)
 				throw new Error("Generated ticket's repository checkout binding changed");
@@ -322,6 +332,11 @@ export function createJiraGitLabLauncher() {
 				`leitwerk/jira-${createHash("sha256").update(client.baseUrl).digest("hex").slice(0, 10)}-${issue.id}`,
 				key,
 			);
+			if (
+				publication?.binding.workBranch !== undefined &&
+				publication.binding.workBranch !== binding.workBranch
+			)
+				throw new Error("Generated ticket's repository work branch binding changed");
 			repositories.push({ ...binding, key, origin: "jira", sshProfile: entry.sshProfile });
 			projects.push({
 				...project,
@@ -344,6 +359,7 @@ export function createJiraGitLabLauncher() {
 				throw new Error("Generated ticket's source issue binding changed");
 			sourceIssue = await client.getIssue(sourceIssueId);
 			if (
+				sourceIssue.id !== sourceIssueId ||
 				sourceIssue.fields.project.id !== issue.fields.project.id ||
 				sourceIssue.fields.issuetype?.subtask === true ||
 				jiraIsEpic(sourceIssue) !== (relationship === "epic")
@@ -355,7 +371,8 @@ export function createJiraGitLabLauncher() {
 		} else if (wiki && client.getEpic) {
 			sourceIssue = await client.getEpic(issue);
 		}
-		const topic = wiki && sourceIssue ? ensureIssueWiki(wiki, client, sourceIssue) : null;
+		const topic =
+			wiki && sourceIssue ? ensureIssueWiki(wiki, client, sourceIssue, publication?.topicId) : null;
 		if (publication && topic?.id !== publication.topicId)
 			throw new Error("Generated ticket's source issue wiki binding changed");
 		const params: JiraGitLabParams = {
@@ -406,6 +423,7 @@ export function createJiraGitLabLauncher() {
 				const { gitlab, ssh } = requireServices();
 				const fresh = await gitlab.client(repo.gitlabProfile).getProject(repo.projectId);
 				if (
+					fresh.id !== repo.projectId ||
 					fresh.archived ||
 					fresh.ssh_url_to_repo !== repo.repoLocator ||
 					fresh.default_branch !== repo.baseBranch

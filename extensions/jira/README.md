@@ -80,3 +80,8 @@ Ambiguous Epic Link discovery requires an explicit override.
 Topic-bound `wiki_index`, `wiki_read`, and `wiki_share` tools provide evidence-backed
 sharing; each call refreshes the source issue and derives provenance from its accepted
 process turn, not model-supplied identities. See [topic wikis](../../docs/topic-wiki.md).
+
+A durable publication receipt or process binding can retain a wiki topic created by
+another publisher. The topic key must identify the same Jira installation, including
+its context path, and immutable source issue ID. The existing topic and page history
+remain in place; a missing or mismatched topic fails without creating a replacement.

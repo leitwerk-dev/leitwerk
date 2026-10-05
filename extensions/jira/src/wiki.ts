@@ -26,9 +26,41 @@ export function jiraEpicRevision(epic: JiraIssue): string {
 }
 
 /** @internal */
-export function ensureIssueWiki(store: TopicWikiStore, client: JiraClientLike, issue: JiraIssue) {
+export function ensureIssueWiki(
+	store: TopicWikiStore,
+	client: JiraClientLike,
+	issue: JiraIssue,
+	retainedTopicId?: string,
+) {
+	let key = JSON.stringify([
+		jiraIsEpic(issue) ? "jira.epic" : "jira.issue",
+		client.baseUrl,
+		issue.id,
+	]);
+	if (retainedTopicId !== undefined) {
+		// Only callers with a durable publication receipt or process binding may supply an ID.
+		// Older publishers used their own namespace for the same installation / issue identity.
+		const topic = store.getTopic(retainedTopicId);
+		let identity: unknown;
+		try {
+			identity = topic && JSON.parse(topic.key);
+		} catch {
+			identity = null;
+		}
+		if (
+			!topic ||
+			!Array.isArray(identity) ||
+			identity.length !== 3 ||
+			typeof identity[0] !== "string" ||
+			!identity[0] ||
+			identity[1] !== client.baseUrl ||
+			identity[2] !== issue.id
+		)
+			throw new Error("Source issue wiki binding mismatch");
+		key = topic.key;
+	}
 	return store.ensureTopic({
-		key: JSON.stringify([jiraIsEpic(issue) ? "jira.epic" : "jira.issue", client.baseUrl, issue.id]),
+		key,
 		title: `${issue.key}: ${issue.fields.summary}`,
 		url: `${client.baseUrl}/browse/${encodeURIComponent(issue.key)}`,
 		sourceRevision: jiraEpicRevision(issue),
@@ -86,7 +118,9 @@ export function registerJiraWikiTools(api: ServerExtensionAPI, integration: Jira
 					throw new Error("This process has no source issue wiki binding");
 				const client = integration.client(binding.profile);
 				if (client.baseUrl !== binding.baseUrl) throw new Error("Jira wiki installation changed");
-				const topic = ensureIssueWiki(store, client, await client.getIssue(issueId));
+				const issue = await client.getIssue(issueId);
+				if (issue.id !== issueId) throw new Error("Source issue wiki binding mismatch");
+				const topic = ensureIssueWiki(store, client, issue, binding.topicId);
 				if (topic.id !== binding.topicId) throw new Error("Source issue wiki binding mismatch");
 				if (name === "wiki_index") {
 					const query = typeof args.query === "string" ? args.query.toLowerCase() : "";

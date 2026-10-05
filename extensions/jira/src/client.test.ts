@@ -280,3 +280,18 @@ describe("Jira Data Center boundary", () => {
 		);
 	});
 });
+
+it("rejects a later failed discovery page instead of returning a partial issue list", async () => {
+	let page = 0;
+	const client = new JiraClient(
+		{ baseUrl: "https://jira.test/context", token: "secret" },
+		async () => {
+			page++;
+			return page === 1
+				? Response.json({ startAt: 0, total: 2, issues: [{ id: "501" }] })
+				: new Response(null, { status: 503 });
+		},
+	);
+	await expect(client.searchIssues(["10100"])).rejects.toThrow("503");
+	expect(page).toBe(2);
+});

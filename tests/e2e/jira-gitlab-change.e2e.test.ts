@@ -2,6 +2,38 @@ import { describe, expect, it } from "vitest";
 import { jiraFixture } from "./jira-gitlab-fixture.js";
 
 describe("Jira coordinated GitLab change", () => {
+	it("retries failed admission and deduplicates a renamed, relabeled issue after restart", async ({
+		onTestFinished,
+	}) => {
+		const f = await jiraFixture(onTestFinished);
+		expect([...f.flow.process.turns.keys()]).toEqual([
+			"generate_plan",
+			"plan_decision",
+			"implement",
+			"simplify_implementation",
+			"apply_simplification",
+			"generate_commit_message",
+			"deliver_change",
+			"revise_from_merge_request_feedback",
+			"repair_gitlab_pipeline",
+			"ci_operator_action",
+		]);
+		f.setUnavailable(true);
+		expect((await f.pollDiscovery()).errors.join(" ")).toContain("admission failed");
+		expect(f.harness.ctx.deps.processes.listAll()).toHaveLength(0);
+		f.setUnavailable(false);
+		const id = await f.discover();
+		await f.wait(id, "plan_decision");
+		const retained = f.params(id);
+		f.issue.fields.labels = [];
+		await f.pollDiscovery();
+		f.issue.fields.labels = ["use-leitwerk"];
+		f.issue.key = "RENAMED-500";
+		await f.restart();
+		expect((await f.pollDiscovery()).errors).toEqual([]);
+		expect(f.harness.ctx.deps.processes.listAll().map((process) => process.id)).toEqual([id]);
+		expect(f.params(id)).toEqual(retained);
+	}, 45000);
 	it("deduplicates component repositories, hands findings to application once, and completes mixed outcomes after restart", async ({
 		onTestFinished,
 	}) => {
@@ -189,3 +221,52 @@ describe("Jira coordinated GitLab change", () => {
 		await expect(check?.run({} as never)).rejects.toThrow("changed before admission");
 	}, 45000);
 });
+
+it("settles feedback independently and escalates only the repository that exhausts three CI repairs", async ({
+	onTestFinished,
+}) => {
+	const f = await jiraFixture(onTestFinished);
+	const id = await f.launch();
+	const second = f.gitlab.state.mrs[1];
+	const before = f.remote(id, "repo_2").headSha;
+	f.gitlab.state.feedback = {
+		[`${second.project_id}:${second.iid}`]: [
+			{
+				id: 101,
+				discussionId: "discussion-101",
+				body: "Improve the client documentation",
+				author: "developer",
+				createdAt: new Date(0).toISOString(),
+			},
+		],
+	};
+	f.gitlab.save();
+	await f.poll();
+	// The first repository observation can supersede the batch's subscription generation.
+	await f.poll();
+	await f.waitForProcess(id, () => f.remote(id, "repo_2").headSha !== before, "feedback published");
+	await f.wait(id, "deliver_change");
+	const secondHead = f.remote(id, "repo_2").headSha;
+	for (let cycle = 1; cycle <= 3; cycle++) {
+		f.gitlab.pipeline(f.gitlab.state.mrs[0], "failed");
+		await f.poll();
+		await f.waitForProcess(
+			id,
+			() => f.remote(id, "repo_1").ciRecoveryCycles === cycle,
+			"CI repair counted",
+		);
+		await f.wait(id, "deliver_change");
+	}
+	f.gitlab.pipeline(f.gitlab.state.mrs[0], "failed");
+	await f.poll();
+	await f.wait(id, "ci_operator_action");
+	expect(f.remote(id, "repo_1").ciRecoveryCycles).toBe(3);
+	expect(f.remote(id, "repo_2").ciRecoveryCycles).toBe(0);
+	expect(f.remote(id, "repo_2").headSha).toBe(secondHead);
+	await f.restart();
+	await f.wait(id, "ci_operator_action");
+	await f.action(id, "resume_waiting");
+	await f.wait(id, "deliver_change");
+	await f.poll();
+	expect(f.harness.ctx.deps.processes.getById(id)?.selectedTurnId).toBe("deliver_change");
+}, 90000);

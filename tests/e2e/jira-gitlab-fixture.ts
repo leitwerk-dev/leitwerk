@@ -396,6 +396,10 @@ export async function jiraFixture(
 		setUnavailable(value: boolean) {
 			issueUnavailable = value;
 		},
+		async pollDiscovery() {
+			clock += 30000;
+			return polls[0]();
+		},
 		loseComment() {
 			loseComment = true;
 		},
