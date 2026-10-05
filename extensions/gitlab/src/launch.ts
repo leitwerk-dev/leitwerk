@@ -1,3 +1,4 @@
+import { repositoryHttpsUrl } from "@leitwerk-dev/process-sdk";
 import type { GitLabClientLike, GitLabProject } from "./client.js";
 
 /** Resolve the shared checkout, provider binding and pinned Git identity. @internal */
@@ -7,8 +8,14 @@ export async function resolveGitLabLaunchProject(
 	repository: GitLabProject,
 	workBranch: string,
 	key = "repo",
+	transport: "ssh" | "https" = "ssh",
 ) {
-	if (!repository.ssh_url_to_repo) throw new Error("GitLab repository has no SSH clone URL");
+	const repoLocator =
+		transport === "ssh" ? repository.ssh_url_to_repo : repository.http_url_to_repo;
+	if (!repoLocator)
+		throw new Error(`GitLab repository has no ${transport.toUpperCase()} clone URL`);
+	if (transport === "https" && repositoryHttpsUrl(repoLocator).origin !== client.baseUrl)
+		throw new Error("GitLab repository origin does not match its profile");
 	const split = repository.path_with_namespace.lastIndexOf("/");
 	if (split < 1) throw new Error("Invalid GitLab project path");
 	const params = {
@@ -17,7 +24,7 @@ export async function resolveGitLabLaunchProject(
 		/** @internal */ projectId: repository.id,
 		/** @internal */ owner: repository.path_with_namespace.slice(0, split),
 		/** @internal */ repo: repository.path_with_namespace.slice(split + 1),
-		/** @internal */ repoLocator: repository.ssh_url_to_repo,
+		/** @internal */ repoLocator,
 		/** @internal */ baseBranch: repository.default_branch,
 		/** @internal */ workBranch,
 	};
@@ -32,7 +39,10 @@ export async function resolveGitLabLaunchProject(
 			/** @internal */ settingsRepository: {
 				/** @internal */ origin: client.baseUrl,
 				/** @internal */ repositoryId: repository.id,
-				/** @internal */ aliases: [repository.http_url_to_repo, repository.ssh_url_to_repo],
+				/** @internal */ aliases: [
+					repository.http_url_to_repo,
+					...(repository.ssh_url_to_repo ? [repository.ssh_url_to_repo] : []),
+				],
 			},
 			/** @internal */ metadata: {
 				/** @internal */ gitlab: {

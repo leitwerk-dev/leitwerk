@@ -40,7 +40,7 @@ export interface RepositoryMapping {
 	gitlabProfile: string;
 
 	/** @internal */
-	sshProfile: string;
+	sshProfile?: string;
 }
 
 /** @public */
@@ -55,7 +55,7 @@ export interface RepositoryBinding extends GitLabPublicationParams {
 	gitlabOrigin: string;
 
 	/** @internal */
-	sshProfile: string;
+	sshProfile?: string;
 
 	/** @internal */
 	repoLocator: string;
@@ -101,8 +101,7 @@ export interface JiraGitLabParams extends GitLabPublicationParams {
 	}[];
 }
 function parseMapping(value: unknown): RepositoryMapping {
-	if (typeof value !== "string")
-		throw new Error("Select a repository and its GitLab / SSH profiles");
+	if (typeof value !== "string") throw new Error("Select a repository and its GitLab profile");
 	let r: Record<string, unknown> | null;
 	try {
 		r = asUnknownRecord(JSON.parse(value));
@@ -122,8 +121,7 @@ function validateMapping(r: Record<string, unknown> | null): RepositoryMapping {
 		r.projectId <= 0 ||
 		typeof r.gitlabProfile !== "string" ||
 		!r.gitlabProfile ||
-		typeof r.sshProfile !== "string" ||
-		!r.sshProfile
+		(r.sshProfile !== undefined && (typeof r.sshProfile !== "string" || !r.sshProfile))
 	)
 		throw new Error("Invalid repository mapping; reselect it in Settings");
 	return r as unknown as RepositoryMapping;
@@ -170,7 +168,7 @@ export function createJiraGitLabLauncher() {
 		gitlab: GitLabIntegration;
 
 		/** @internal */
-		ssh: GitSshIntegration;
+		ssh?: GitSshIntegration;
 
 		/** @internal */
 		settings: ScopedSettingsResolver;
@@ -191,8 +189,7 @@ export function createJiraGitLabLauncher() {
 			label: "GitLab repositories",
 			group: "Repository mapping",
 			control: "multiselect",
-			description:
-				"Changes for this component use these repositories and their GitLab and SSH profiles.",
+			description: "Use the GitLab profile's token over HTTPS, or select a configured SSH profile.",
 		},
 		schema: {
 			parse(value) {
@@ -207,8 +204,14 @@ export function createJiraGitLabLauncher() {
 			for (const gitlabProfile of gitlab.profiles()) {
 				const client = gitlab.client(gitlabProfile);
 				for (const repo of await client.listProjects()) {
-					if (repo.archived || !repo.default_branch || !repo.ssh_url_to_repo) continue;
-					for (const sshProfile of ssh.profiles())
+					if (repo.archived || !repo.default_branch) continue;
+					if (repo.http_url_to_repo)
+						choices.push({
+							value: JSON.stringify({ origin: client.baseUrl, projectId: repo.id, gitlabProfile }),
+							label: `${repo.path_with_namespace} · ${gitlabProfile} / HTTPS`,
+						});
+					if (!repo.ssh_url_to_repo) continue;
+					for (const sshProfile of ssh?.profiles() ?? [])
 						choices.push({
 							value: JSON.stringify({
 								origin: client.baseUrl,
@@ -305,20 +308,24 @@ export function createJiraGitLabLauncher() {
 		const projects: import("@leitwerk-dev/process-sdk").ProcessLaunchProjectConfig[] = [];
 		for (const entry of selected.values()) {
 			const provider = gitlab.client(entry.gitlabProfile);
-			if (provider.baseUrl !== entry.origin || !ssh.profiles().includes(entry.sshProfile))
+			if (
+				provider.baseUrl !== entry.origin ||
+				(entry.sshProfile !== undefined && !ssh?.profiles().includes(entry.sshProfile))
+			)
 				throw new Error(
 					`Unavailable mapping for GitLab project ${entry.projectId}; update its profiles in Settings`,
 				);
 			const repo = await provider.getProject(entry.projectId);
 			if (repo.id !== entry.projectId) throw new Error("GitLab repository identity changed");
-			if (repo.archived || !repo.default_branch || !repo.ssh_url_to_repo)
+			const repoLocator = entry.sshProfile ? repo.ssh_url_to_repo : repo.http_url_to_repo;
+			if (repo.archived || !repo.default_branch || !repoLocator)
 				throw new Error(
-					`GitLab project ${entry.projectId} must be active and provide an SSH clone URL`,
+					`GitLab project ${entry.projectId} must be active and provide the selected clone URL`,
 				);
 			if (
 				publication &&
 				((publication.binding.repoLocator !== undefined &&
-					repo.ssh_url_to_repo !== publication.binding.repoLocator) ||
+					repoLocator !== publication.binding.repoLocator) ||
 					(publication.binding.repository !== undefined &&
 						repo.path_with_namespace !== publication.binding.repository) ||
 					repo.default_branch !== publication.binding.baseBranch)
@@ -331,6 +338,7 @@ export function createJiraGitLabLauncher() {
 				{ ...repo, id: entry.projectId },
 				`leitwerk/jira-${createHash("sha256").update(client.baseUrl).digest("hex").slice(0, 10)}-${issue.id}`,
 				key,
+				entry.sshProfile ? "ssh" : "https",
 			);
 			if (
 				publication?.binding.workBranch !== undefined &&
@@ -417,21 +425,33 @@ export function createJiraGitLabLauncher() {
 		launch: ProcessLaunchConfig<JiraGitLabParams>,
 	): readonly LaunchPreparationCheck<JiraGitLabParams>[] => [
 		...launch.params.repositories.map<LaunchPreparationCheck<JiraGitLabParams>>((repo) => ({
-			id: `ssh_${repo.key}`,
-			label: `Verify ${repo.owner}/${repo.repo} SSH read/write access`,
+			id: `${repo.sshProfile ? "ssh" : "https"}_${repo.key}`,
+			label: `Verify ${repo.owner}/${repo.repo} ${repo.sshProfile ? "SSH" : "HTTPS"} read/write access`,
 			async run(ctx) {
 				const { gitlab, ssh } = requireServices();
-				const fresh = await gitlab.client(repo.gitlabProfile).getProject(repo.projectId);
+				const client = gitlab.client(repo.gitlabProfile);
+				const fresh = await client.getProject(repo.projectId, ctx.signal);
 				if (
+					client.baseUrl !== repo.gitlabOrigin ||
 					fresh.id !== repo.projectId ||
 					fresh.archived ||
-					fresh.ssh_url_to_repo !== repo.repoLocator ||
+					(repo.sshProfile ? fresh.ssh_url_to_repo : fresh.http_url_to_repo) !== repo.repoLocator ||
 					fresh.default_branch !== repo.baseBranch
 				)
 					throw new SafeLaunchPreparationError(
 						"Repository changed",
 						"Refresh the component mapping and retry launch.",
 					);
+				if (!repo.sshProfile) {
+					await client.preflightRepository(
+						repo.projectId,
+						repo.baseBranch,
+						repo.workBranch,
+						ctx.signal,
+					);
+					return;
+				}
+				if (!ssh) throw new Error("Git SSH profile is unavailable");
 				await createGitSshPreparationCheck(
 					"write",
 					{ ...repo, sshCredentialRef: repo.sshProfile },

@@ -1,8 +1,9 @@
 # Jira GitLab change
 
 `@leitwerk-dev/jira-gitlab-change` launches one process for a Jira issue across its
-component-mapped GitLab repositories. Load `jira`, `gitlab`, `git-ssh`, `coding`, and
-this extension. It is opt-in; no deployment or automatic merge is implied.
+component-mapped GitLab repositories. Load `jira`, `gitlab`, `coding`, and this
+extension. Load `git-ssh` only when using SSH mappings. It is opt-in; no deployment
+or automatic merge is implied.
 
 ```yaml
 process_configs:
@@ -16,13 +17,17 @@ process_configs:
 ```
 
 In Settings, refresh sources, select a Jira component, and override **GitLab
-repositories**. Search and select one or more repository / GitLab profile / SSH
-profile combinations. Repository identity uses the GitLab installation and stable
-project ID. The component union removes duplicate repositories and ignores unmapped
+repositories**. Select repositories with their GitLab profile and **HTTPS** to use
+the profile's access token for clone and push. No SSH key or known-host configuration
+is needed. The token needs API access and repository write permission (`api` and
+`write_repository` scopes). If `git-ssh` is loaded, mappings may instead select an SSH
+profile with pinned host keys. Repository identity uses the GitLab installation and
+stable project ID. The component union removes duplicate repositories and ignores unmapped
 components. An empty union, unavailable repository/profile, or conflicting profile
-selection blocks admission with a diagnostic. Every repository must pass SSH read
-and dry-run write preflight. Jira and GitLab API tokens remain server-side; only the
-selected Git SSH credentials reach the worker.
+selection blocks admission with a diagnostic. Every repository must pass read and
+dry-run write preflight through its selected transport. Jira credentials remain on
+the server. GitLab HTTPS tokens or SSH credentials reach the selected worker through
+authenticated credential delivery, never through snapshots or repository URLs.
 
 Admission rechecks the issue and mappings, then retains issue content, mapping
 revisions, repository identities, profile references, and branches. Subsequent
@@ -40,10 +45,12 @@ including manual tickets. Subtasks instead join their direct parent's wiki, incl
 when that parent belongs to an epic. Generated tickets verify their retained Epic Link
 or subtask parent before admission. Existing running processes keep their captured membership.
 
-Older split publication receipts may omit SSH profile and clone URL. Admission fills
-those fields from the exact component mapping and current GitLab project, then pins
-them in the change snapshot. Retained repository paths, profile selections, and base
-branches must still match. Receipt and wiki history are preserved. A retained wiki
+Older split publication receipts may omit checkout credentials and clone URL.
+Admission resolves them from the exact component mapping and current GitLab project,
+then pins their references in the change snapshot. Mappings without an SSH profile
+use HTTPS; existing SSH mappings and running snapshots retain SSH. Retained SSH
+selections and clone URLs cannot silently switch transport. Repository paths, profile
+selections, and base branches must still match. Receipt and wiki history are preserved. A retained wiki
 topic may use a publisher-specific namespace; its installation URL and immutable
 source issue ID must match before it can be reused.
 

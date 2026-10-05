@@ -75,11 +75,11 @@ the process branches, reconciles its remote marker through the durable write log
 and pins `iid` through server project persistence. Existing MR-bound metadata and
 tool calls remain supported. MR-only tools reject missing bindings.
 
-The GitLab and [Jira GitLab change](../jira-gitlab-change/README.md) processes use
-SSH clone URLs and `git-ssh` profiles. Their workers receive SSH credentials, never
-GitLab or Jira API tokens. Other callers may still use the repository-scoped HTTPS
-credential capability described above. Supplying `origin` in the GitLab binding
-pins the installation: tool calls fail if its profile is repointed.
+The GitLab repository change process uses SSH clone URLs and `git-ssh` profiles.
+The [Jira GitLab change](../jira-gitlab-change/README.md) process supports HTTPS with
+the GitLab profile's token, or explicitly selected SSH profiles. HTTPS mappings need
+no separate SSH credentials. Jira API tokens stay on the server. Supplying `origin`
+in the GitLab binding pins the installation: tool calls fail if its profile is repointed.
 
 Source-issue tools require the launch-pinned `issueIid`. Issue updates, comments,
 labels, MR creation, and feedback acknowledgements reconcile uncertain writes.

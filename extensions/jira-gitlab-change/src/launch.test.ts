@@ -14,9 +14,10 @@ import { createTestDeps } from "@leitwerk-dev/server/testing";
 import { createToolCollector } from "@leitwerk-dev/test-support";
 import { LocalGit } from "@leitwerk-dev/test-support/local-git";
 import { expect, it, onTestFinished } from "vitest";
-import { createJiraGitLabLauncher } from "./launch.js";
+import { createJiraGitLabChange } from "./index.js";
+import { createJiraGitLabLauncher, jiraGitLabParamsCodec } from "./launch.js";
 
-function fixture(bindingPatch: Record<string, unknown> = {}) {
+function fixture(bindingPatch: Record<string, unknown> = {}, https = false) {
 	const root = mkdtempSync(join(tmpdir(), "jira-retained-"));
 	const sqlitePath = join(root, "state.sqlite");
 	let db = createTestDeps({ sqlitePath });
@@ -88,20 +89,40 @@ function fixture(bindingPatch: Record<string, unknown> = {}) {
 			origin: gitlab.baseUrl,
 			projectId,
 			gitlabProfile: "team",
-			sshProfile: "write",
+			...(https ? {} : { sshProfile: "write" }),
 		}),
 	);
 	const preflights: unknown[] = [];
+	const localClient = gitlab.client();
+	const projectMetadata = (project: Awaited<ReturnType<typeof localClient.getProject>>) =>
+		https
+			? {
+					...project,
+					http_url_to_repo: `${gitlab.baseUrl}/${project.path_with_namespace}.git`,
+					ssh_url_to_repo: undefined,
+				}
+			: project;
+	const client = {
+		...localClient,
+		getProject: async (id: number | string) => projectMetadata(await localClient.getProject(id)),
+		listProjects: async () => (await localClient.listProjects()).map(projectMetadata),
+		preflightRepository: async (projectId: number, baseBranch: string, workBranch: string) => {
+			preflights.push({ projectId, baseBranch, workBranch });
+			await localClient.preflightRepository(projectId, baseBranch, workBranch);
+		},
+	};
 	const services = {
 		jira: { profiles: () => ["team"], client: () => jira },
-		gitlab: { profiles: () => ["team"], client: () => gitlab.client() },
-		ssh: {
-			profiles: () => ["write"],
-			preflight: async (input: unknown) => {
-				preflights.push(input);
-				return { ok: true as const };
-			},
-		},
+		gitlab: { profiles: () => ["team"], client: () => client },
+		ssh: https
+			? undefined
+			: {
+					profiles: () => ["write"],
+					preflight: async (input: unknown) => {
+						preflights.push(input);
+						return { ok: true as const };
+					},
+				},
 		settings: {
 			discover: (input: { identity: string }) => ({ ...input, id: input.identity }),
 			resolve: () => ({ value: [...mappings], sources: [] }),
@@ -243,4 +264,67 @@ it("ordinary tickets use a deduplicated component union and reject empty or conf
 	await expect(f.resolve()).rejects.toThrow("Conflicting profiles");
 	f.child.fields.components = [];
 	await expect(f.resolve()).rejects.toThrow("No repositories mapped");
+});
+
+it("admits a retained split over HTTPS without an SSH provider and pins only credential references", async () => {
+	const f = fixture({}, true);
+	const choices = await f.launcher.mapping.choices?.({});
+	expect(choices).toHaveLength(2);
+	expect(choices?.every((choice) => choice.label.endsWith("/ HTTPS"))).toBe(true);
+	expect(choices?.map((choice) => choice.value)).toEqual(f.mappings);
+	const launch = await f.resolve();
+	const repo = launch.params.repositories[0];
+	expect(repo).toMatchObject({ projectId: 1, repoLocator: "https://gitlab.test/team/monitor.git" });
+	expect(repo.sshProfile).toBeUndefined();
+	expect(jiraGitLabParamsCodec.parse(JSON.parse(JSON.stringify(launch.params)))).toEqual(
+		JSON.parse(JSON.stringify(launch.params)),
+	);
+	for (const check of f.launcher.checks(f.event, launch))
+		await check.run({ signal: new AbortController().signal } as never);
+	expect(f.preflights).toEqual([{ projectId: 1, baseBranch: "main", workBranch: repo.workBranch }]);
+	const { process } = createJiraGitLabChange({ docker: false });
+	expect(process.repositoryCredentials?.({ params: launch.params, projects: [] })).toEqual([
+		{ projectKey: "repo_1", kind: "git_https", credentialRef: "gitlab:team" },
+	]);
+	const legacy = await fixture().resolve();
+	expect(process.repositoryCredentials?.({ params: legacy.params, projects: [] })).toEqual([
+		{ projectKey: "repo_1", kind: "git_ssh", credentialRef: "write" },
+	]);
+	expect(f.receipt()?.binding).not.toHaveProperty("repoLocator");
+	f.restart();
+	expect((await f.resolve()).params).toEqual(launch.params);
+});
+
+it("retries HTTPS admission failure and rejects clone drift or changing a retained SSH selection", async () => {
+	const f = fixture({}, true);
+	const launch = await f.resolve();
+	const client = f.services.gitlab.client();
+	const preflight = client.preflightRepository;
+	client.preflightRepository = async () => {
+		throw new Error("Write access denied");
+	};
+	const check = f.launcher.checks(f.event, launch)[0];
+	const context = { signal: new AbortController().signal } as never;
+	await expect(check.run(context)).rejects.toThrow("Write access denied");
+	client.preflightRepository = preflight;
+	await check.run(context);
+	const getProject = client.getProject;
+	client.getProject = async (id) => ({
+		...(await getProject(id)),
+		http_url_to_repo: "https://gitlab.test/team/moved.git",
+	});
+	await expect(check.run(context)).rejects.toThrow("Repository changed");
+	await expect(fixture({ sshProfile: "write" }, true).resolve()).rejects.toThrow(/binding/);
+});
+
+it.each([
+	"https://other.test/team/monitor.git",
+	"https://oauth2:secret@gitlab.test/team/monitor.git",
+	"http://gitlab.test/team/monitor.git",
+])("rejects an unsafe HTTPS checkout URL %s", async (url) => {
+	const f = fixture({}, true);
+	const client = f.services.gitlab.client();
+	const getProject = client.getProject;
+	client.getProject = async (id) => ({ ...(await getProject(id)), http_url_to_repo: url });
+	await expect(f.resolve()).rejects.toThrow(/origin|HTTPS/);
 });

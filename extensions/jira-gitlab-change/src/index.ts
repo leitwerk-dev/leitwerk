@@ -13,6 +13,7 @@ import {
 	gitlabIntegration,
 	gitlabPublicationEvidenceForRequest,
 	gitlabPublicationSource,
+	gitlabRepositoryCredentials,
 } from "@leitwerk-dev/gitlab";
 import {
 	type JiraIssue,
@@ -183,11 +184,11 @@ export function createJiraGitLabChange(options: {
 			})),
 		},
 		repositoryCredentials: ({ params }) =>
-			params.repositories.map((repo) => ({
-				projectKey: repo.key,
-				kind: "git_ssh",
-				credentialRef: repo.sshProfile,
-			})),
+			params.repositories.flatMap((repo) =>
+				repo.sshProfile
+					? [{ projectKey: repo.key, kind: "git_ssh" as const, credentialRef: repo.sshProfile }]
+					: gitlabRepositoryCredentials(repo.gitlabProfile, [repo]),
+			),
 	});
 	process.runtime = { ...process.runtime, docker: options.docker };
 	for (const binding of process.turns.values()) {
@@ -206,7 +207,7 @@ export function createJiraGitLabChange(options: {
 		manifest: {
 			id: "jira-gitlab-change",
 			version: "0.3.0",
-			requires: ["jira", "gitlab", "git-ssh", "coding"],
+			requires: ["jira", "gitlab", "coding"],
 		},
 		scopedSettings: { settings: [launcher.mapping] },
 		setupCatalog(api) {
@@ -215,20 +216,18 @@ export function createJiraGitLabChange(options: {
 		setupServer(api) {
 			const jira = api.require(jiraIntegration),
 				gitlab = api.require(gitlabIntegration),
-				ssh = api.require(gitSshIntegration),
 				settings = api.require(scopedSettingsCapability);
-			if (
-				Array.isArray(jira) ||
-				Array.isArray(gitlab) ||
-				Array.isArray(ssh) ||
-				Array.isArray(settings)
-			)
+			if (Array.isArray(jira) || Array.isArray(gitlab) || Array.isArray(settings))
 				throw new Error("Integration capabilities must be singular");
 			const wiki = api.get(topicWikiCapability);
 			launcher.configure({
 				jira,
 				gitlab,
-				ssh,
+				get ssh() {
+					const ssh = api.get(gitSshIntegration);
+					if (Array.isArray(ssh)) throw new Error("Integration capabilities must be singular");
+					return ssh;
+				},
 				settings,
 				...(wiki && !Array.isArray(wiki) ? { wiki } : {}),
 			});
