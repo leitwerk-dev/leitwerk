@@ -64,3 +64,5 @@ The browser checks support the state model: displaying the reservation separatel
 ![Mobile recovery comparison](screenshots/mobile.png)
 
 </details>
+
+The standalone HTML also passes the repository Biome check.

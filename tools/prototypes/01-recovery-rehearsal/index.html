@@ -11,7 +11,7 @@
 <body>
 <div class="shell">
 <header class="topbar"><div class="brand">leitwerk <span style="font-weight:400;color:#687483">/ experiments</span></div><div class="prototype">Prototype · synthetic data<br>Runs only in this browser</div></header>
-<div class="title-row"><h1>Recovery rehearsal</h1><button id="reset">Reset rehearsal</button></div>
+<div class="title-row"><h1>Recovery rehearsal</h1><button type="button" id="reset">Reset rehearsal</button></div>
 <p class="intro"><strong>Can you choose a recovery path confidently before touching a live process?</strong><br>Inject a failure, compare retry with abort, and watch which worker results still have authority.</p>
 <div class="layout">
 <main class="main">
@@ -27,13 +27,13 @@
 <aside class="sidebar" aria-label="Rehearsal controls">
 <h2>Free play</h2><p class="subtle">Try any action. Rejected actions explain the guard and preserve process state.</p>
 <div class="actions">
-<div class="action-row"><button id="fail" data-action="fail">Inject provider failure</button><small>Fail the current accepted turn</small></div>
-<div class="action-row"><button id="retry" data-action="retry">Reserve retry</button><small>Prepare a start; keep the count</small></div>
-<div class="action-row"><button id="ack" data-action="ack">Acknowledge start</button><small>Create an attempt exactly once</small></div>
-<div class="action-row"><button id="abort" class="danger" data-action="abort">Abort process</button><small>End this simulated process</small></div>
+<div class="action-row"><button type="button" id="fail" data-action="fail">Inject provider failure</button><small>Fail the current accepted turn</small></div>
+<div class="action-row"><button type="button" id="retry" data-action="retry">Reserve retry</button><small>Prepare a start; keep the count</small></div>
+<div class="action-row"><button type="button" id="ack" data-action="ack">Acknowledge start</button><small>Create an attempt exactly once</small></div>
+<div class="action-row"><button type="button" id="abort" class="danger" data-action="abort">Abort process</button><small>End this simulated process</small></div>
 </div>
-<div class="action-group"><label for="incoming">Successful worker result from</label><select id="incoming"></select><button id="send">Deliver selected outcome</button><div id="guard" class="guard"></div></div>
-<section class="guide" aria-labelledby="guide-heading"><h2 id="guide-heading">Guided cases</h2><div class="tabs" role="tablist" aria-label="Recovery scenarios"><button role="tab" id="tab-provider" aria-controls="guide-content" data-scenario="provider">Provider failure</button><button role="tab" id="tab-stale" aria-controls="guide-content" data-scenario="stale">Late result</button><button role="tab" id="tab-abort" aria-controls="guide-content" data-scenario="abort">Abort</button></div><div id="guide-content" role="tabpanel"><p id="guide-description"></p><ol id="steps" class="steps"></ol><p id="guide-footer" class="guide-footer"></p></div></section>
+<div class="action-group"><label for="incoming">Successful worker result from</label><select id="incoming"></select><button type="button" id="send">Deliver selected outcome</button><div id="guard" class="guard"></div></div>
+<section class="guide" aria-labelledby="guide-heading"><h2 id="guide-heading">Guided cases</h2><div class="tabs" role="tablist" aria-label="Recovery scenarios"><button type="button" role="tab" id="tab-provider" aria-controls="guide-content" data-scenario="provider">Provider failure</button><button type="button" role="tab" id="tab-stale" aria-controls="guide-content" data-scenario="stale">Late result</button><button type="button" role="tab" id="tab-abort" aria-controls="guide-content" data-scenario="abort">Abort</button></div><div id="guide-content" role="tabpanel"><p id="guide-description"></p><ol id="steps" class="steps"></ol><p id="guide-footer" class="guide-footer"></p></div></section>
 </aside>
 </div>
 <footer>Design experiment: a future rehearsal surface. All process records, failures, and decisions are simulated in memory. Reloading discards them. No server, credentials, or live worker connections.</footer>
@@ -169,10 +169,10 @@ function render() {
   document.querySelectorAll('[data-scenario]').forEach(tab => {tab.setAttribute('aria-selected', String(tab.dataset.scenario === scenario)); tab.tabIndex = tab.dataset.scenario === scenario ? 0 : -1;});
   $('guide-content').setAttribute('aria-labelledby', `tab-${scenario}`);
   $('guide-description').textContent = scenarios[scenario].description;
-  $('steps').innerHTML = scenarios[scenario].steps.map(([label], index) => `<li><button data-step="${index}" ${index !== step || !guided ? 'disabled' : ''} class="${index < step ? 'done' : index === step && guided ? 'primary' : ''}"><span class="num">${index < step ? '✓' : index+1}</span>${label}</button></li>`).join('');
+  $('steps').innerHTML = scenarios[scenario].steps.map(([label], index) => `<li><button type="button" data-step="${index}" ${index !== step || !guided ? 'disabled' : ''} class="${index < step ? 'done' : index === step && guided ? 'primary' : ''}"><span class="num">${index < step ? '✓' : index+1}</span>${label}</button></li>`).join('');
   $('guide-footer').textContent = !guided ? 'Free play is active. Select a case tab to restart its guided steps.' : step === scenarios[scenario].steps.length ? scenarios[scenario].learning : 'Selecting a case resets to the same running fixture.';
 }
-document.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', () => perform({type:button.dataset.action})));
+document.querySelectorAll('[data-action]').forEach(button => { button.addEventListener('click', () => perform({type:button.dataset.action})); });
 document.querySelectorAll('[data-scenario]').forEach(button => {
   button.addEventListener('click', () => reset(button.dataset.scenario));
   button.addEventListener('keydown', event => {
