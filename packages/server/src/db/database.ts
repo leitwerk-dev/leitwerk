@@ -661,6 +661,21 @@ const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
 		},
 	},
 	{
+		id: "20261006_add_extension_skill_provenance",
+		tableNames: ["skills", "skill_revisions"],
+		matches: (sqlite) =>
+			!tableHasColumn(sqlite, "skills", "owner_extension_id") ||
+			!tableHasColumn(sqlite, "skill_revisions", "provenance_json"),
+		apply(sqlite) {
+			if (!tableHasColumn(sqlite, "skills", "owner_extension_id")) {
+				sqlite.exec("ALTER TABLE skills ADD COLUMN owner_extension_id text");
+			}
+			if (!tableHasColumn(sqlite, "skill_revisions", "provenance_json")) {
+				sqlite.exec("ALTER TABLE skill_revisions ADD COLUMN provenance_json text");
+			}
+		},
+	},
+	{
 		id: "20260729_add_skill_revision_dependencies",
 		tableNames: ["skill_revision_dependencies"],
 		matches: (sqlite) => existingTableSql(sqlite, "skill_revision_dependencies") === null,

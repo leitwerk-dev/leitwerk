@@ -97,6 +97,7 @@ nav:
   - Build:
       - Write your first process: first-process.md
       - Process SDK: process-sdk.md
+      - Skill packs: skill-packs.md
       - Agent tools: agent-tools.md
       - Watchers: watchers.md
       - Extension UI renderers: extension-ui.md

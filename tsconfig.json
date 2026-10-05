@@ -107,6 +107,9 @@
 		},
 		{
 			"path": "extensions/example-processes"
+		},
+		{
+			"path": "extensions/mattpocock-skills"
 		}
 	],
 	"files": []

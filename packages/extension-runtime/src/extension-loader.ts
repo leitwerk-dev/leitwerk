@@ -26,10 +26,12 @@ import { type LeitwerkRuntimeLane, resolveRuntimeLane } from "./runtime-lane.js"
 
 interface PackageJsonRecord {
 	name?: unknown;
+	version?: unknown;
 	workspaces?: unknown;
 	leitwerk?: {
 		extension?: unknown;
 		pi?: unknown;
+		skills?: unknown;
 	};
 }
 
@@ -43,11 +45,15 @@ export interface DiscoveredExtensionEntry {
 	/** @internal */
 	packageName: string;
 	/** @internal */
+	packageVersion?: string;
+	/** @internal */
 	packageDir: string;
 	/** @internal */
 	entryPath: string;
 	/** @internal */
 	pi?: DiscoveredPiContribution;
+	/** Package-contained generated skill-pack manifest. @internal */
+	skillPackPath?: string;
 }
 
 /** @internal */
@@ -70,11 +76,15 @@ export interface LoadedExtensionModule {
 	/** @internal */
 	packageName: string;
 	/** @internal */
+	packageVersion?: string;
+	/** @internal */
 	packageDir: string;
 	/** @internal */
 	entryPath: string;
 	/** @internal */
 	pi?: DiscoveredPiContribution;
+	/** Package-contained generated skill-pack manifest. @internal */
+	skillPackPath?: string;
 	/** @public */
 	module: LeitwerkExtensionModule;
 }
@@ -135,8 +145,10 @@ const jiti = createJiti(import.meta.url);
 const optionalStringArraySchema = v.optional(v.array(v.string()));
 const resolvedExtensionEntrySchema = v.object({
 	packageName: v.string(),
+	packageVersion: v.optional(v.string()),
 	packageDir: v.string(),
 	entryPath: v.string(),
+	skillPackPath: v.optional(v.string()),
 	pi: v.optional(
 		v.object({
 			workerEntryPath: v.optional(v.string()),
@@ -394,6 +406,13 @@ function resolvePackageDirFromSpecifier(startDir: string, source: string): strin
 	);
 }
 
+function resolveSkillPackPath(packageDir: string, value: unknown): string {
+	if (typeof value !== "string" || !value.trim()) {
+		throw new Error("leitwerk.skills must name a generated skill-pack manifest");
+	}
+	return assertPackageContainedPath(packageDir, value, "leitwerk.skills");
+}
+
 async function readExtensionEntryFromPackageJson(
 	packageJsonPath: string,
 	lane: LeitwerkRuntimeLane = resolveRuntimeLane(),
@@ -407,9 +426,14 @@ async function readExtensionEntryFromPackageJson(
 	}
 	return {
 		packageName: packageName.output,
+		...(typeof parsed.version === "string" ? { packageVersion: parsed.version } : {}),
 		packageDir,
 		entryPath: resolveExtensionEntryPath(packageDir, packageName.output, extensionPath, lane),
 		pi: resolvePiContribution(packageDir, packageName.output, parsed.leitwerk?.pi, lane),
+		skillPackPath:
+			parsed.leitwerk?.skills === undefined
+				? undefined
+				: resolveSkillPackPath(packageDir, parsed.leitwerk.skills),
 	};
 }
 
@@ -516,9 +540,11 @@ export async function importExtensionModules(
 		}
 		loaded.push({
 			packageName: entry.packageName,
+			packageVersion: entry.packageVersion,
 			packageDir: entry.packageDir,
 			entryPath: entry.entryPath,
 			pi: entry.pi,
+			skillPackPath: entry.skillPackPath,
 			module: candidate,
 		});
 	}

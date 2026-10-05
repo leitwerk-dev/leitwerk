@@ -275,6 +275,58 @@ describe("SQL-backed skill migration", () => {
 	});
 });
 
+describe("extension skill provenance migration", () => {
+	it("backs up and preserves installed revisions, dependencies, and process pins", () => {
+		const tempRoot = createTempRoot(path.join(tmpdir(), "leitwerk-extension-skill-migration-"));
+		const sqlitePath = path.join(tempRoot, "leitwerk.sqlite");
+		const seed = openOwnedSqlite(sqlitePath);
+		initializeSchema(seed, { sqlitePath });
+		seed.exec(`
+			ALTER TABLE skills DROP COLUMN owner_extension_id;
+			ALTER TABLE skill_revisions DROP COLUMN provenance_json;
+			INSERT INTO process_instances (id, process_id, created_at, updated_at)
+			VALUES ('preserved', 'test_process', '2026-07-25', '2026-07-25');
+			INSERT INTO skills (id, label, registration_kind, created_at, updated_at)
+			VALUES ('review', 'Review', 'catalog', '2026-07-25', '2026-07-25');
+			INSERT INTO skill_revisions (id, skill_id, bundle_digest, bundle_bytes, source_revision, imported_at)
+			VALUES ('rev1', 'review', 'digest', X'010203', 'source-commit', '2026-07-25');
+			UPDATE skills SET active_revision_id = 'rev1' WHERE id = 'review';
+			INSERT INTO skill_revision_dependencies VALUES ('rev1', 'design', 0);
+			INSERT INTO process_skills VALUES ('preserved', 'review', 'rev1', 0);
+		`);
+		seed.close();
+		const db = createDatabase({ sqlitePath, enableWAL: false });
+		const sqlite = (db as unknown as { $client: DatabaseSync }).$client;
+		expect(
+			sqlite.prepare("SELECT active_revision_id, owner_extension_id FROM skills").get(),
+		).toEqual({ active_revision_id: "rev1", owner_extension_id: null });
+		expect(
+			sqlite
+				.prepare("SELECT hex(bundle_bytes) AS bytes, provenance_json FROM skill_revisions")
+				.get(),
+		).toEqual({ bytes: "010203", provenance_json: null });
+		expect(sqlite.prepare("SELECT skill_revision_id FROM process_skills").get()).toEqual({
+			skill_revision_id: "rev1",
+		});
+		expect(
+			sqlite.prepare("SELECT dependency_skill_id FROM skill_revision_dependencies").get(),
+		).toEqual({ dependency_skill_id: "design" });
+		const backupName = readdirSync(path.join(tempRoot, "backups")).find((name) =>
+			name.endsWith(".bak"),
+		);
+		expect(backupName).toBeDefined();
+		const backup = openOwnedSqlite(path.join(tempRoot, "backups", String(backupName)), {
+			readOnly: true,
+		});
+		expect(columnNames(backup, "skills")).not.toContain("owner_extension_id");
+		expect(backup.prepare("SELECT hex(bundle_bytes) AS bytes FROM skill_revisions").get()).toEqual({
+			bytes: "010203",
+		});
+		backup.close();
+		closeDatabase(db);
+	});
+});
+
 describe("process launch intent migration", () => {
 	it("backs up a file-backed database and preserves existing processes", () => {
 		const tempRoot = createTempRoot(path.join(tmpdir(), "leitwerk-launch-intent-migration-"));

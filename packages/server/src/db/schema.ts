@@ -3,6 +3,7 @@ import {
 	type MappedRunStatus,
 	SERIALIZED_SYSTEM_ACTOR,
 } from "@leitwerk-dev/domain";
+import type { SkillRevisionProvenance } from "@leitwerk-dev/protocol";
 import type { SessionTransferPhase } from "@leitwerk-dev/session-transfer";
 import { sql } from "drizzle-orm";
 import {
@@ -161,7 +162,8 @@ export const skills = sqliteTable("skills", {
 	activeRevisionId: text("active_revision_id"),
 	createdAt: text("created_at").notNull(),
 	updatedAt: text("updated_at").notNull(),
-	registrationKind: text("registration_kind", { enum: ["configuration", "catalog"] })
+	ownerExtensionId: text("owner_extension_id"),
+	registrationKind: text("registration_kind", { enum: ["configuration", "catalog", "extension"] })
 		.notNull()
 		.default("configuration"),
 });
@@ -175,6 +177,7 @@ export const skillRevisions = sqliteTable(
 			.references(() => skills.id),
 		bundleDigest: text("bundle_digest").notNull(),
 		bundleBytes: blob("bundle_bytes", { mode: "buffer" }).notNull(),
+		provenance: text("provenance_json", { mode: "json" }).$type<SkillRevisionProvenance>(),
 		sourceRevision: text("source_revision"),
 		importedAt: text("imported_at").notNull(),
 	},

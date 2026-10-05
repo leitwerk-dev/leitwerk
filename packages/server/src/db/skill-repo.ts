@@ -10,6 +10,7 @@ import type {
 } from "@leitwerk-dev/protocol";
 import { verifyCanonicalPiResourceBundle } from "@leitwerk-dev/worker-protocol";
 import { and, asc, count, desc, eq, isNotNull, max, notExists, notInArray, sql } from "drizzle-orm";
+import type { ImportedExtensionSkill } from "../skills/extension-importer.js";
 import { explicitSkillReferenceIds, referencedSkillIds } from "../skills/skill-dependencies.js";
 import { isSkillModelInvocable } from "../skills/skill-frontmatter.js";
 import type { ImportedRepositorySkill, ImportedSkill } from "../skills/source-importer.js";
@@ -45,6 +46,7 @@ function revisionForBundle(db: LeitwerkDb, item: ImportedSkill, timestamp: strin
 			bundleDigest: item.bundle.digest,
 			bundleBytes: Buffer.from(item.bundle.bytes),
 			sourceRevision: item.sourceRevision,
+			provenance: item.provenance ?? null,
 			importedAt: timestamp,
 		})
 		.run();
@@ -156,11 +158,16 @@ function pruneNeverInstalledCatalogEntries(db: LeitwerkDb): void {
 		.run();
 }
 
-function recordRevisionDependencies(db: LeitwerkDb, revisionId: string, markdown: string): void {
+function recordRevisionDependencies(
+	db: LeitwerkDb,
+	revisionId: string,
+	markdown: string,
+	dependencyIds = explicitSkillReferenceIds(markdown),
+): void {
 	db.delete(skillRevisionDependencies)
 		.where(eq(skillRevisionDependencies.skillRevisionId, revisionId))
 		.run();
-	for (const [position, dependencySkillId] of explicitSkillReferenceIds(markdown).entries()) {
+	for (const [position, dependencySkillId] of dependencyIds.entries()) {
 		db.insert(skillRevisionDependencies)
 			.values({ skillRevisionId: revisionId, dependencySkillId, position })
 			.run();
@@ -170,7 +177,7 @@ function recordRevisionDependencies(db: LeitwerkDb, revisionId: string, markdown
 function activateSkill(
 	db: LeitwerkDb,
 	item: ImportedSkill,
-	registrationKind: "configuration" | "catalog",
+	registrationKind: "configuration" | "catalog" | "extension",
 	timestamp: string,
 	markdown = skillMarkdown(item.skillId, item.bundle.bytes, item.bundle.digest),
 ): string {
@@ -187,13 +194,14 @@ function activateSkill(
 		.onConflictDoNothing()
 		.run();
 	const revisionId = revisionForBundle(db, item, timestamp);
-	recordRevisionDependencies(db, revisionId, markdown);
+	recordRevisionDependencies(db, revisionId, markdown, item.provenance?.dependencies);
 	db.update(skills)
 		.set({
 			label: item.label,
 			description: item.description,
 			activeRevisionId: revisionId,
 			registrationKind,
+			ownerExtensionId: item.provenance?.extensionId ?? null,
 			updatedAt: timestamp,
 		})
 		.where(eq(skills.id, item.skillId))
@@ -219,12 +227,22 @@ function catalogView(db: LeitwerkDb): {
 			activeDigest: skillRevisions.bundleDigest,
 			activeBundleBytes: skillRevisions.bundleBytes,
 			registrationKind: skills.registrationKind,
+			ownerExtensionId: skills.ownerExtensionId,
+			provenance: skillRevisions.provenance,
 		})
 		.from(skills)
 		.innerJoin(skillRevisions, eq(skills.activeRevisionId, skillRevisions.id))
 		.orderBy(asc(skills.label), asc(skills.id))
 		.all();
 	const installedById = new Map(installedRows.map((row) => [row.id, row]));
+	const extensionIds = new Set(
+		db
+			.select({ id: skills.id })
+			.from(skills)
+			.where(eq(skills.registrationKind, "extension"))
+			.all()
+			.map((skill) => skill.id),
+	);
 	const availableSkills = candidates.map((candidate) => {
 		const active = installedById.get(candidate.skillId);
 		const registered = Boolean(
@@ -241,7 +259,9 @@ function catalogView(db: LeitwerkDb): {
 			updateAvailable: Boolean(
 				candidate.available && active?.registrationKind === "catalog" && !registered,
 			),
-			conflict: candidate.available && active?.registrationKind === "configuration",
+			conflict:
+				candidate.available &&
+				(active?.registrationKind === "configuration" || extensionIds.has(candidate.skillId)),
 			stale: !candidate.available,
 			modelInvocable: isSkillModelInvocable(
 				skillMarkdown(candidate.skillId, candidate.bundleBytes, candidate.bundleDigest),
@@ -262,12 +282,17 @@ function catalogView(db: LeitwerkDb): {
 			activeRevisionId: skill.activeRevisionId,
 			activeSourceRevision: skill.activeSourceRevision,
 			registrationKind: skill.registrationKind,
+			...(skill.ownerExtensionId
+				? { ownerExtensionId: skill.ownerExtensionId, provenance: skill.provenance }
+				: {}),
 			sourceRepositoryId:
-				matching.length === 1
-					? (matching[0]?.repositoryId ?? null)
-					: activeSource.length === 1
-						? (activeSource[0]?.repositoryId ?? null)
-						: null,
+				skill.registrationKind === "extension"
+					? null
+					: matching.length === 1
+						? (matching[0]?.repositoryId ?? null)
+						: activeSource.length === 1
+							? (activeSource[0]?.repositoryId ?? null)
+							: null,
 			updateAvailable:
 				skill.registrationKind === "catalog" &&
 				available.length === 1 &&
@@ -296,7 +321,11 @@ export function createSkillRepo(db: LeitwerkDb) {
 		/** @internal */
 		resolveActive(ids: readonly string[]): SkillSelection[] {
 			const activeSkills = db
-				.select({ id: skills.id, revisionId: skillRevisions.id })
+				.select({
+					id: skills.id,
+					revisionId: skillRevisions.id,
+					registrationKind: skills.registrationKind,
+				})
 				.from(skills)
 				.innerJoin(skillRevisions, eq(skills.activeRevisionId, skillRevisions.id))
 				.all();
@@ -315,6 +344,8 @@ export function createSkillRepo(db: LeitwerkDb) {
 				if (!skill) throw new Error(`Unknown or unavailable skill '${id}'`);
 				visiting.add(id);
 				for (const dependencyId of dependencies.get(skill.revisionId) ?? []) {
+					if (skill.registrationKind === "extension" && !byId.has(dependencyId))
+						throw new Error(`Missing dependency '${dependencyId}' for skill '${id}'`);
 					if (dependencyId !== id && byId.has(dependencyId)) add(dependencyId);
 				}
 				visiting.delete(id);
@@ -340,6 +371,36 @@ export function createSkillRepo(db: LeitwerkDb) {
 				.run();
 			for (const item of imported) activateSkill(db, item, "configuration", timestamp);
 		},
+		/** Reconcile all loaded extension packs in the caller's startup transaction. @internal */
+		reconcileExtensions(imported: readonly ImportedExtensionSkill[]): void {
+			const byId = new Map(imported.map((item) => [item.skillId, item]));
+			if (byId.size !== imported.length) throw new Error("Duplicate extension skill ID");
+			for (const item of imported) {
+				const current = db.select().from(skills).where(eq(skills.id, item.skillId)).get();
+				if (
+					current &&
+					(current.registrationKind !== "extension" ||
+						current.ownerExtensionId !== item.provenance.extensionId)
+				) {
+					throw new Error(
+						`Skill '${item.skillId}' is already owned by '${current.ownerExtensionId ?? current.registrationKind}'`,
+					);
+				}
+				for (const dependency of item.provenance.dependencies) {
+					if (byId.get(dependency)?.provenance.extensionId !== item.provenance.extensionId) {
+						throw new Error(`Missing pack dependency '${dependency}' for skill '${item.skillId}'`);
+					}
+				}
+			}
+			const timestamp = now();
+			db.update(skills)
+				.set({ activeRevisionId: null, updatedAt: timestamp })
+				.where(
+					and(eq(skills.registrationKind, "extension"), notInArray(skills.id, [...byId.keys()])),
+				)
+				.run();
+			for (const item of imported) activateSkill(db, item, "extension", timestamp);
+		},
 		/** @internal */
 		backfillDependencies(): void {
 			for (const revision of db.select().from(skillRevisions).all()) {
@@ -347,6 +408,7 @@ export function createSkillRepo(db: LeitwerkDb) {
 					db,
 					revision.id,
 					skillMarkdown(revision.skillId, revision.bundleBytes, revision.bundleDigest),
+					revision.provenance?.dependencies,
 				);
 			}
 		},
@@ -423,8 +485,13 @@ export function createSkillRepo(db: LeitwerkDb) {
 					);
 				}
 				const current = db.select().from(skills).where(eq(skills.id, id)).get();
-				if (current?.activeRevisionId && current.registrationKind === "configuration") {
-					throw new Error(`Skill '${id}' is managed by configuration`);
+				if (
+					current?.registrationKind === "extension" ||
+					(current?.activeRevisionId && current.registrationKind === "configuration")
+				) {
+					throw new Error(
+						`Skill '${id}' is managed by ${current.ownerExtensionId ?? "configuration"}`,
+					);
 				}
 				visiting.add(id);
 				const markdown = skillMarkdown(id, candidate.bundleBytes, candidate.bundleDigest);
@@ -510,6 +577,7 @@ export function createSkillRepo(db: LeitwerkDb) {
 					id: skillRevisions.id,
 					sourceRevision: skillRevisions.sourceRevision,
 					importedAt: skillRevisions.importedAt,
+					provenance: skillRevisions.provenance,
 				})
 				.from(skillRevisions)
 				.where(eq(skillRevisions.skillId, skillId))

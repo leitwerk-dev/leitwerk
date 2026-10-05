@@ -63,6 +63,7 @@ async function createExtensionPackage(
 		discover?: boolean;
 		extensionMetadata?: unknown;
 		piMetadata?: unknown;
+		skillsMetadata?: unknown;
 	},
 ) {
 	const pkgDir = path.join(root, "extensions", "example");
@@ -78,6 +79,7 @@ async function createExtensionPackage(
 				},
 				...(opts.discover === false ? { discover: false } : {}),
 				...(opts.piMetadata === undefined ? {} : { pi: opts.piMetadata }),
+				...(opts.skillsMetadata === undefined ? {} : { skills: opts.skillsMetadata }),
 			},
 		}),
 	);
@@ -96,6 +98,31 @@ async function createExtensionPackage(
 }
 
 describe("resolveExtensionEntries", () => {
+	it.each([
+		"source",
+		"dist",
+	])("discovers the same generated skill pack in the %s lane", async (lane) => {
+		process.env[LEITWERK_RUNTIME_LANE_ENV] = lane;
+		const root = await createWorkspace();
+		const pkgDir = await createExtensionPackage(root, {
+			withDist: true,
+			skillsMetadata: "./dist/skills/manifest.json",
+		});
+		const entries = await resolveExtensionEntries({ startDir: root, sources: [pkgDir] });
+		expect(entries[0].skillPackPath).toBe(path.join(pkgDir, "dist/skills/manifest.json"));
+		const loaded = await importExtensionModules(entries);
+		expect(loaded[0].skillPackPath).toBe(entries[0].skillPackPath);
+	});
+
+	it("rejects skill-pack metadata outside the package", async () => {
+		const root = await createWorkspace();
+		const pkgDir = await createExtensionPackage(root, {
+			withDist: true,
+			skillsMetadata: "../outside.json",
+		});
+		await expect(resolveExtensionEntries({ startDir: root, sources: [pkgDir] })).rejects.toThrow();
+	});
+
 	it("returns an empty entry list when no extension sources are configured", async () => {
 		process.env[LEITWERK_RUNTIME_LANE_ENV] = "source";
 		const root = await createWorkspace();

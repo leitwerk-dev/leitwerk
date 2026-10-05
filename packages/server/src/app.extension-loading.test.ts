@@ -11,6 +11,7 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 import { createAppContext } from "./app.js";
 import { getDefaultConfig } from "./config/config-loader.js";
+import { createAllRepos } from "./db/repositories.js";
 
 const tempDirs: string[] = [];
 const originalCwd = process.cwd();
@@ -60,6 +61,56 @@ async function createExtensionWorkspace(): Promise<string> {
 }
 
 describe("createAppContext extension loading", () => {
+	it("installs declared skill packs before accepting launches and exposes extension ownership", async () => {
+		const root = await createExtensionWorkspace();
+		const extension = path.join(root, "extensions/example");
+		const packagePath = path.join(extension, "package.json");
+		const pkg = JSON.parse(await readFile(packagePath, "utf8"));
+		pkg.leitwerk.skills = "./dist/skills/manifest.json";
+		await writeFile(packagePath, JSON.stringify(pkg));
+		await mkdir(path.join(extension, "dist/skills/review"), { recursive: true });
+		await writeFile(
+			path.join(extension, "dist/skills/review/SKILL.md"),
+			"---\nname: review\ndescription: Review code\n---\nRead the code.\n",
+		);
+		await writeFile(
+			path.join(extension, "dist/skills/manifest.json"),
+			JSON.stringify({
+				formatVersion: 1,
+				upstream: { url: "https://example.test/skills", commit: "a".repeat(40) },
+				patchDigest: "b".repeat(64),
+				skills: [
+					{
+						id: "review",
+						directory: "review",
+						label: "Review",
+						description: "Review code",
+						sourcePath: "skills/review",
+						dependencies: [],
+					},
+				],
+			}),
+		);
+		const config = getDefaultConfig();
+		config.storage.sqlite_path = ":memory:";
+		config.extension_loading.sources = [extension];
+		const ctx = await createAppContext({ config, logger: false });
+		try {
+			expect(
+				createAllRepos(ctx.db)
+					.skills.listAvailable()
+					.map((skill) => skill.id),
+			).toContain("review");
+			expect(createAllRepos(ctx.db).skills.getInstalledDetail("review")).toMatchObject({
+				registrationKind: "extension",
+				ownerExtensionId: "example",
+			});
+			expect(createAllRepos(ctx.db).skills.resolveActive(["review"])).toHaveLength(1);
+		} finally {
+			await ctx.close();
+		}
+	});
+
 	it.each([
 		false,
 		true,

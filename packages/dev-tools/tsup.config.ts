@@ -3,6 +3,7 @@ export default workspaceBuild({
 	entry: [
 		"src/index.ts",
 		"src/cli.ts",
+		"src/skill-pack.ts",
 		"src/benchmark.ts",
 		"src/server.ts",
 		"src/composition.ts",

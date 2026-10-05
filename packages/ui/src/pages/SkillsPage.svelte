@@ -330,7 +330,7 @@ $effect(() => {
 	{@const href = available ? buildAvailableSkillPath(item.value.repositoryId, skill.id) : buildInstalledSkillPath(skill.id)}
 	{@const selected = selectedKey === `${item.kind}/${available ? `${item.value.repositoryId}/` : ""}${skill.id}`}
 	{@const status = skillStatus(skill)}
-	{@const repoLabel = registrationKind === "configuration" ? "Configuration" : repositoryLabels.get(repositoryId ?? "") ?? repositoryId ?? "Repository"}
+	{@const repoLabel = registrationKind === "extension" && item.kind === "installed" ? item.value.ownerExtensionId ?? "Extension" : registrationKind === "configuration" ? "Configuration" : repositoryLabels.get(repositoryId ?? "") ?? repositoryId ?? "Repository"}
 	<tr
 		class:selected
 		onclick={(event) => {
@@ -477,12 +477,13 @@ $effect(() => {
 				{#if detail.kind === "available"}
 					<div class="detail-actions"><button class="ui-button primary-action" data-variant="primary" type="button" disabled={actionPending || detail.value.stale || detail.value.conflict || (detail.value.registered && !detail.value.updateAvailable)} onclick={() => void activateSkill()}>{actionPending ? "Working…" : detail.value.updateAvailable ? "Update skill" : detail.value.registered ? "Already installed" : "Install skill"}</button></div>
 					{#if detail.value.stale}<p class="action-note warning">This revision was not found during the latest successful repository refresh. It remains visible for history but cannot be installed or updated.</p>{/if}
-					{#if detail.value.conflict}<p class="action-note warning">This skill ID conflicts with another repository or a configuration-managed skill. Resolve the conflict before installing it.</p>{/if}
+					{#if detail.value.conflict}<p class="action-note warning">This skill ID conflicts with another repository, extension, or configuration-managed skill. Resolve the conflict before installing it.</p>{/if}
 				{:else}
 					<div class="detail-actions">
 						{#if detail.value.updateAvailable && detail.value.sourceRepositoryId}<button class="ui-button primary-action" data-variant="primary" type="button" disabled={actionPending} onclick={() => void activateSkill(detail.value.sourceRepositoryId)}>{actionPending ? "Updating…" : "Update skill"}</button>{/if}
 						{#if detail.value.registrationKind === "catalog"}<button bind:this={removeButtonEl} class="ui-button secondary-action danger" type="button" disabled={actionPending} onclick={() => void requestRemove()}>Remove</button>{/if}
 					</div>
+					{#if detail.value.registrationKind === "extension"}<p class="action-note">This skill is managed by the <code>{detail.value.ownerExtensionId}</code> extension. Update or remove that extension to change availability for future runs.</p>{/if}
 					{#if detail.value.registrationKind === "configuration"}<p class="action-note">This skill is managed by <code>leitwerk.yaml</code>. Change configuration to remove or update it.</p>{/if}
 					{#if confirmRemove}<div class="remove-confirmation" role="group" aria-label={`Remove ${detail.value.label}`}><strong>Remove {detail.value.label} from future runs?</strong><p>Existing processes and schedules keep their pinned revision.</p><div><button bind:this={confirmRemoveButtonEl} class="ui-button danger-action" data-variant="danger" type="button" disabled={actionPending} onclick={() => void deactivateSkill()}>{actionPending ? "Removing…" : "Confirm removal"}</button><button class="ui-button secondary-action" type="button" disabled={actionPending} onclick={() => void cancelRemove()}>Cancel</button></div></div>{/if}
 				{/if}
@@ -497,7 +498,10 @@ $effect(() => {
 						{#if detail.kind === "available"}
 							{@render sourceMetadata(detail.value)}
 						{:else}
-							<dl class="detail-meta"><div><dt>Managed by</dt><dd>{detail.value.registrationKind === "configuration" ? "Configuration" : repositoryLabels.get(detail.value.sourceRepositoryId ?? "") ?? detail.value.sourceRepositoryId ?? "Repository"}</dd></div><div><dt>Active revision</dt><dd><code>{detail.value.activeSourceRevision ?? detail.value.activeRevisionId}</code></dd></div><div><dt>Usage</dt><dd>{detail.value.usage.attachedAllTime} attached · {detail.value.usage.invokedAllTime} invoked</dd></div></dl>
+							<dl class="detail-meta"><div><dt>Managed by</dt><dd>{detail.value.registrationKind === "extension" ? detail.value.ownerExtensionId ?? "Extension" : detail.value.registrationKind === "configuration" ? "Configuration" : repositoryLabels.get(detail.value.sourceRepositoryId ?? "") ?? detail.value.sourceRepositoryId ?? "Repository"}</dd></div><div><dt>Active revision</dt><dd><code>{detail.value.activeSourceRevision ?? detail.value.activeRevisionId}</code></dd></div><div><dt>Usage</dt><dd>{detail.value.usage.attachedAllTime} attached · {detail.value.usage.invokedAllTime} invoked</dd></div></dl>
+							{#if detail.value.provenance}
+								<dl class="detail-meta"><div><dt>Package</dt><dd><code>{detail.value.provenance.packageName}@{detail.value.provenance.packageVersion}</code></dd></div><div><dt>Upstream</dt><dd>{detail.value.provenance.upstream.url}</dd></div><div><dt>Source path</dt><dd><code>{detail.value.provenance.sourcePath}</code></dd></div><div><dt>Adaptation digest</dt><dd><code>{detail.value.provenance.patchDigest}</code></dd></div></dl>
+							{/if}
 							<section class="revision-section"><h3>Revision history</h3><div class="revision-list">{#each detail.value.revisions as revision (revision.id)}<div><span><code>{revision.sourceRevision ?? revision.id}</code><small>Imported {formatLocalDateTime(revision.importedAt)}</small></span>{#if revision.active}<span class="status-chip registered">Active</span>{/if}</div>{/each}</div></section>
 						{/if}
 						{@render processUsage(detail.value.processes)}

@@ -142,6 +142,11 @@ export {
 } from "./protocol.js";
 export type { ReadonlyEntryTree } from "./session-entry-tree.js";
 export { createReadonlyEntryTree } from "./session-entry-tree.js";
+export {
+	parseSkillPackManifest,
+	type SkillPackManifest,
+	type SkillRevisionProvenance,
+} from "./skill-pack.js";
 export { isStreamableEvent } from "./streamable-events.js";
 export { truncateTextPreview } from "./text-preview.js";
 export type {

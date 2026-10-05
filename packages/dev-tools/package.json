@@ -20,6 +20,11 @@
 			"source": "./src/composition.ts",
 			"import": "./dist/composition.js",
 			"types": "./dist/composition.d.ts"
+		},
+		"./skill-pack": {
+			"source": "./src/skill-pack.ts",
+			"import": "./dist/skill-pack.js",
+			"types": "./dist/skill-pack.d.ts"
 		}
 	},
 	"scripts": {

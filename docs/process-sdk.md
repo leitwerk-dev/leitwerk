@@ -44,6 +44,10 @@ to `extension_loading.sources`; relative paths resolve from the configuration
 file's directory. See [Development compositions](development-composition.md) for
 independent workspaces and released-package development.
 
+Extensions can also declare `leitwerk.skills` to install an adapted, selectable
+[skill pack](skill-packs.md). Its generated resources are imported by the server;
+launches pin selected revisions and their dependencies.
+
 ## Registering the extension (`src/index.ts`)
 
 Export a `LeitwerkExtensionModule`. Register definitions in `setupCatalog` and
