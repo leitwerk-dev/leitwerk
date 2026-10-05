@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Resource snapshot diff · Leitwerk prototype</title>
+<style>
+:root{font-family:ui-sans-serif,system-ui,sans-serif;color:#18212b;background:#f7f8fa;font-size:15px;line-height:1.5}*{box-sizing:border-box}body{margin:0}main{max-width:1220px;margin:0 auto;padding:32px}h1{font-size:30px;line-height:1.2;margin:8px 0 12px}h2{font-size:19px;margin:0 0 12px}h3{font-size:16px;margin:0 0 10px}p{margin:8px 0 14px}.muted{color:#4c5968}.intro{max-width:850px}.topline,.row,.actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.topline{justify-content:space-between}.brand{font-weight:650}.badge{font-size:13px;padding:3px 9px;border-radius:16px;background:#e6ecf6;color:#234b90}.panel{background:#fff;border:1px solid #d9dee5;border-radius:12px;padding:20px;margin-top:20px}.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px}.workers{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin:20px 0}.worker{border-top:2px solid #d9dee5;padding-top:14px}.worker strong{display:block}code{font-family:ui-monospace,monospace;font-size:13px;overflow-wrap:anywhere}.digest{display:block;color:#4c5968;margin:6px 0;font-size:12px}.status{padding:12px 15px;border:1px solid #bdcce5;background:#f1f5fc;border-radius:8px;margin:18px 0 0}.status.error{color:#7d2d27;background:#fff4f3;border-color:#d9aaa5}.status.ok{color:#146642;background:#f2faf5;border-color:#b5d9c5}button,select,textarea{font:inherit}button,select{border:1px solid #aeb7c2;background:white;border-radius:7px;padding:9px 12px;min-height:42px;color:inherit}button{cursor:pointer}button:hover{border-color:#2f61b7;background:#f3f6fb}button:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #2f61b7;outline-offset:3px}button.primary{background:#2f61b7;color:white;border-color:#2f61b7}button[disabled]{cursor:default;opacity:.5}.sectionhead{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px}.sectionhead h2{margin:0}.files{list-style:none;margin:0;padding:0}.files li{border-top:1px solid #e0e4e9}.file{width:100%;text-align:left;border:0;border-radius:0;padding:14px 10px;display:flex;justify-content:space-between;gap:12px}.file[aria-pressed=true]{background:#edf2fa}.file code{font-size:13px}.change{font-size:13px;white-space:nowrap;color:#4c5968}.change.changed{color:#8a500d}.change.added{color:#157a52}.change.removed{color:#a83a32}.counts{font-size:13px;color:#4c5968;margin:12px 0}.inspector{min-width:0;border-left:1px solid #d9dee5;padding-left:24px}.diff{display:grid;grid-template-columns:1fr 1fr;gap:10px}.diff section{min-width:0}.diff pre{white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0;background:#f2f4f7;padding:12px;min-height:110px;font:13px/1.6 ui-monospace,monospace}.meta{font-size:13px;overflow-wrap:anywhere}.meta b{font-weight:600}.edit{border-top:1px solid #d9dee5;margin-top:15px;padding-top:15px}textarea{width:100%;min-height:110px;border:1px solid #aeb7c2;border-radius:6px;padding:10px;margin:6px 0 8px;font-family:ui-monospace,monospace;font-size:13px;resize:vertical}label{display:block;font-weight:600;font-size:14px}select{max-width:100%}.scenario-tabs{display:flex;gap:8px;flex-wrap:wrap;margin:12px 0}.scenario-tabs button[aria-pressed=true]{background:#e6ecf6;border-color:#2f61b7}.step{display:flex;gap:12px;align-items:center;padding:10px 0;border-top:1px solid #e0e4e9}.step span{min-width:0;flex:1}.step button{flex-shrink:0}.notes{font-size:13px;margin:18px 0;color:#4c5968}.verification{font-size:13px;margin-top:10px}.log{padding-left:20px;font-size:13px;max-height:140px;overflow:auto}.foot{font-size:13px;margin-top:20px;color:#4c5968}@media(max-width:750px){main{padding:20px 16px}.grid,.workers{grid-template-columns:1fr;gap:16px}.inspector{border-left:0;border-top:1px solid #d9dee5;padding:20px 0 0}.panel{padding:16px}.diff{grid-template-columns:1fr}.sectionhead{align-items:flex-start;flex-direction:column}h1{font-size:27px}.step{align-items:flex-start}.step button{max-width:45%}.file{flex-wrap:wrap}.workers{margin-bottom:0}}
+</style>
+</head>
+<body><main>
+<div class="topline"><span class="brand">Leitwerk / Resource laboratory</span><span class="badge">Prototype · synthetic data</span></div>
+<h1>Know what the next worker will load.</h1>
+<p class="intro muted">Can an operator compare immutable Pi resources, stage a revision, and verify a replacement while the running worker stays pinned? Explore a proposed review surface using extension-owned fixture files.</p>
+<div class="panel">
+<div class="sectionhead"><h2>Snapshot handoff</h2><button type="button" id="reset">Reset experiment</button></div>
+<div class="workers"><div class="worker"><strong>Running worker · worker-41</strong><span>Active turn · original snapshot pinned</span><code id="pinned" class="digest"></code><span class="muted">Its loaded files stay unchanged throughout this experiment.</span></div><div class="worker"><strong id="replacement">Replacement preview · not materialized</strong><span id="candidate-label"></span><code id="candidate-digest" class="digest"></code><span id="draft-state" class="muted"></span></div></div>
+<div id="status" class="status" role="status" aria-live="polite"></div>
+<p class="notes">Credential layer: separate, mode 0600 in production. This demo stores and displays no credential values. Ambient ~/.pi/agent and repository resources are excluded.</p>
+</div>
+<div class="panel grid">
+<section><div class="sectionhead"><h2>Compare manifests</h2><div><label for="filter">Show changes</label><select id="filter"><option value="all">All files</option><option value="changed">Changed</option><option value="added">Added</option><option value="removed">Removed</option><option value="unchanged">Unchanged</option></select></div></div><p class="muted">Pinned snapshot → sealed candidate</p><div id="counts" class="counts"></div><ul id="files" class="files"></ul><p id="empty" class="muted" hidden>No files match this filter.</p><div id="verification" class="verification"></div></section>
+<section class="inspector"><h2>Inspect a resource</h2><div id="details"></div><div class="edit"><label for="edit-file">Stage an extension-owned file</label><select id="edit-file"><option value="skills/review/SKILL.md">skills/review/SKILL.md</option><option value="prompts/summary.md">prompts/summary.md</option><option value="prompts/verify.md">prompts/verify.md</option></select><label for="editor" style="margin-top:10px">Draft content · synthetic fixture</label><textarea id="editor" spellcheck="false"></textarea><div class="actions"><button type="button" id="stage">Stage content</button><button type="button" id="remove">Remove from draft</button></div><p class="notes">Staging changes the next candidate only. Seal a new snapshot to review its manifest.</p></div></section>
+</div>
+<div class="panel"><h2>Try the handoff</h2><div class="actions"><button type="button" id="revise">Stage skill revision</button><button type="button" id="remove-prompt">Stage prompt removal</button><button type="button" id="add-prompt">Stage new prompt</button><button type="button" id="seal" class="primary">Seal candidate</button><button type="button" id="verify">Verify delivery</button><button type="button" id="materialize">Materialize replacement</button><button type="button" id="tamper">Tamper with delivery</button><button type="button" id="restore">Restore delivery</button></div><p class="notes">“Materialize” simulates preparing a future worker directory. It never starts a second turn or transfers a live lease. Digests use real SHA-256 over this demo’s canonical JSON payload; production hashes a canonical tar archive.</p></div>
+<div class="panel"><h2>Guided experiments</h2><div class="scenario-tabs" id="scenarios"></div><p id="scenario-description" class="muted"></p><div id="steps"></div></div>
+<div class="panel"><h2>Experiment history</h2><ol id="history" class="log"></ol></div>
+<p class="foot">All state is in memory. Proposed operator UX; no server connection, filesystem writes, imports, or worker execution.</p>
+</main>
+<script>
+// Portable model: deterministic file transforms, manifest diff and verified handoff.
+const encoder = new TextEncoder();
+const SKILL = 'skills/review/SKILL.md';
+const SUMMARY = 'prompts/summary.md';
+const VERIFY = 'prompts/verify.md';
+const revision = '# Review\n\nInspect the diff and record concrete evidence.\nCheck the proposed migration preserves durable data.\n';
+const fixtureFiles = [
+ {path:SKILL, kind:'skill', content:'# Review\n\nInspect the diff and record concrete evidence.\n'},
+ {path:SUMMARY, kind:'prompt', content:'Summarize the change and list checks performed.\n'},
+ {path:'settings.json', kind:'generated', content:'{"defaultProjectTrust":"never","packages":[]}\n'},
+ {path:'models.json', kind:'generated', content:'{"providers":{}}\n'}
+];
+async function digest(text) {
+ const bytes = await crypto.subtle.digest('SHA-256', encoder.encode(text));
+ return Array.from(new Uint8Array(bytes), byte => byte.toString(16).padStart(2,'0')).join('');
+}
+const ordered = files => [...files].sort((a,b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
+const canonicalPayload = (manifest, files) => JSON.stringify({manifest,files:ordered(files)});
+async function createSnapshot(files) {
+ const safeFiles = ordered(files.map(file => ({...file})));
+ const provenance = await Promise.all(safeFiles.map(async file => ({kind:file.kind,ownerExtensionId:file.kind === 'generated' ? null : 'review-fixture',packageName:file.kind === 'generated' ? null : '@prototype/review-fixture',snapshotPath:file.path,sha256:await digest(file.content),size:encoder.encode(file.content).length})));
+ const manifest = {schemaVersion:1,model:{profileId:'fixture',providerId:'fixture',modelId:'synthetic',thinkingLevel:'medium'},providerOptions:{},providerWorkerConfig:null,declaredCredentialPaths:['auth.json'],compatibility:{workerApiVersion:'fixture-1',piVersion:'fixture-1'},provenance};
+ return {manifest,files:safeFiles,digest:await digest(canonicalPayload(manifest,safeFiles))};
+}
+function diffSnapshots(before,after) {
+ const old = new Map(before.manifest.provenance.map(file=>[file.snapshotPath,file]));
+ const next = new Map(after.manifest.provenance.map(file=>[file.snapshotPath,file]));
+ return [...new Set([...old.keys(),...next.keys()])].sort().map(path=>({path,before:old.get(path),after:next.get(path),status:!old.has(path)?'added':!next.has(path)?'removed':JSON.stringify(old.get(path))===JSON.stringify(next.get(path))?'unchanged':'changed'}));
+}
+function stageFile(files,path,content) {
+ const permitted = [SKILL,SUMMARY,VERIFY];
+ if(!permitted.includes(path)) throw new Error('Only the curated extension fixture paths may be staged.');
+ return ordered([...files.filter(file=>file.path!==path),...(content===null?[]:[{path,kind:path===SKILL?'skill':'prompt',content}])]);
+}
+async function verifySnapshot(snapshot,delivery) {
+ const errors=[];
+ for(const file of snapshot.manifest.provenance){
+  const received=delivery.find(item=>item.path===file.snapshotPath);
+  if(!received) errors.push(`${file.snapshotPath}: missing file`);
+  else if(await digest(received.content)!==file.sha256 || encoder.encode(received.content).length!==file.size) errors.push(`${file.snapshotPath}: SHA-256 or size mismatch`);
+ }
+ if(await digest(canonicalPayload(snapshot.manifest,delivery))!==snapshot.digest) errors.push('Candidate payload digest mismatch');
+ return {ok:errors.length===0,errors,checked:snapshot.manifest.provenance.length};
+}
+function record(state,message,tone='info') {return {...state,message,tone,history:[...state.history,message]};}
+async function transition(state,action) {
+ let next=state;
+ if(action.type==='stage') return record({...state,draft:stageFile(state.draft,action.path,action.content)},`${action.content===null?'Removal':'Content'} staged for ${action.path}. Seal to update the candidate.`);
+ if(action.type==='seal'){
+  const candidate=await createSnapshot(state.draft);
+  return record({...state,candidate,delivery:candidate.files.map(file=>({...file})),verification:null,replacement:null},`Candidate sealed: ${candidate.files.length} resources. Running worker stays pinned.`);
+ }
+ if(action.type==='tamper'){
+  const delivery=state.delivery.map((file,index)=>index===0?{...file,content:`${file.content}\nTampered bytes`}:file);
+  return record({...state,delivery,verification:null,replacement:null},'Delivered bytes changed while the sealed manifest stayed immutable. Verify to detect the mismatch.');
+ }
+ if(action.type==='restore') return record({...state,delivery:state.candidate.files.map(file=>({...file})),verification:null,replacement:null},'Original candidate delivery restored. Verification is required again.');
+ if(action.type==='verify'||action.type==='materialize'){
+  const verification=await verifySnapshot(state.candidate,state.delivery);
+  next={...state,verification};
+  if(!verification.ok) return record({...next,replacement:null},`Rejected: ${verification.errors.join('; ')}. No replacement materialized.`,'error');
+  if(action.type==='materialize') return record({...next,replacement:{digest:state.candidate.digest,files:state.delivery.map(file=>({...file}))}},`Replacement preview ready with ${state.delivery.length} verified resources. Running worker remains on its original snapshot.`,'ok');
+  return record(next,`Verified: ${verification.checked} file checks and candidate SHA-256 match. Ready to materialize.`,'ok');
+ }
+ return next;
+}
+const scenarios=[
+ {title:'Skill revision',description:'Revise a skill, seal and verify the new candidate, then prepare its replacement. Inspect the running digest after every step.',steps:[['Stage the revised skill','revise'],['Seal the staged resources','seal'],['Verify the delivered bytes','verify'],['Materialize the future worker','materialize']]},
+ {title:'Prompt replacement',description:'Remove a prompt and add its successor. A removed file must disappear from the future worker while it remains available to the running worker.',steps:[['Stage removal of summary.md','remove-prompt'],['Stage the new verify.md','add-prompt'],['Seal and compare added / removed','seal'],['Verify the delivered bytes','verify'],['Materialize the future worker','materialize']]},
+ {title:'Checksum rejection',description:'Corrupt delivered bytes after sealing. Verification must reject the candidate and prevent materialization. Restore the original delivery to recover.',steps:[['Stage the revised skill','revise'],['Seal the staged resources','seal'],['Tamper with delivered bytes','tamper'],['Attempt materialization · expect rejection','materialize'],['Restore the original delivery','restore'],['Verify the restored bytes','verify'],['Materialize the future worker','materialize']]}
+];
+// DOM shell: model state is replaced only through transition().
+let state, selectedPath=SKILL, selectedScenario=0, step=0, busy=false;
+const byId=id=>document.getElementById(id);
+const escapeHtml=value=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+async function reset(seed=false){
+ const pinned=await createSnapshot(fixtureFiles);
+ const draft=seed?stageFile(fixtureFiles,SKILL,revision):fixtureFiles.map(file=>({...file}));
+ const candidate=await createSnapshot(draft);
+ state={pinned,draft,candidate,delivery:candidate.files.map(file=>({...file})),verification:null,replacement:null,history:[],tone:'info',message:seed?'A skill revision is sealed for review. Compare its content, then verify the delivery.':'Reset to the original resources. Stage changes to explore a future snapshot.'};
+ step=0;selectedPath=SKILL;byId('filter').value='all';loadEditor();render();
+}
+function loadEditor(){byId('editor').value=state.draft.find(file=>file.path===byId('edit-file').value)?.content??'';}
+function actionFor(id){
+ const actions={revise:{type:'stage',path:SKILL,content:revision},'remove-prompt':{type:'stage',path:SUMMARY,content:null},'add-prompt':{type:'stage',path:VERIFY,content:'Verify checks and report evidence before proceeding.\n'},stage:{type:'stage',path:byId('edit-file').value,content:byId('editor').value},remove:{type:'stage',path:byId('edit-file').value,content:null}};
+ return actions[id]??{type:id};
+}
+async function dispatch(id,guided=false){
+ if(busy)return;busy=true;document.querySelectorAll('button').forEach(button=>{button.disabled=true;});
+ try{state=await transition(state,actionFor(id));if(guided)step++;loadEditor();}
+ catch(error){state=record(state,error.message,'error');}
+ finally{busy=false;render();}
+}
+function render(){
+ byId('pinned').textContent=`SHA-256 ${state.pinned.digest}`;
+ byId('candidate-digest').textContent=`SHA-256 ${state.candidate.digest}`;
+ byId('candidate-label').textContent=`Sealed candidate · ${state.candidate.files.length} resources`;
+ byId('replacement').textContent=state.replacement?'Replacement preview · verified and materialized':'Replacement preview · not materialized';
+ const draftChanges=JSON.stringify(ordered(state.draft))!==JSON.stringify(state.candidate.files);
+ byId('draft-state').textContent=draftChanges?'Unsealed edits in draft. Existing candidate is unchanged.':'Draft matches sealed candidate.';
+ byId('status').className=`status ${state.tone==='info'?'':state.tone}`;byId('status').textContent=state.message;
+ const changes=diffSnapshots(state.pinned,state.candidate);
+ byId('counts').textContent=['changed','added','removed','unchanged'].map(status=>`${changes.filter(file=>file.status===status).length} ${status}`).join(' · ');
+ const visible=changes.filter(file=>byId('filter').value==='all'||file.status===byId('filter').value);
+ byId('empty').hidden=visible.length>0;
+ byId('files').innerHTML=visible.map(file=>`<li><button type="button" class="file" data-path="${escapeHtml(file.path)}" aria-pressed="${selectedPath===file.path}"><code>${escapeHtml(file.path)}</code><span class="change ${file.status}">${file.status}</span></button></li>`).join('');
+ const selected=changes.find(file=>file.path===selectedPath);
+ if(selected){
+ const metadata=selected.after??selected.before;
+ const content=snapshot=>snapshot.files.find(file=>file.path===selectedPath)?.content??'Absent from this snapshot';
+ byId('details').innerHTML=`<h3><code>${escapeHtml(selectedPath)}</code></h3><p class="meta"><b>Provenance</b> · ${escapeHtml(metadata.kind)} · ${escapeHtml(metadata.ownerExtensionId??'server-generated')}<br>Package: ${escapeHtml(metadata.packageName??'none')}<br>Bytes: ${selected.before?.size??0} → ${selected.after?.size??0}</p><div class="diff"><section><b>Pinned content</b><pre>${escapeHtml(content(state.pinned))}</pre></section><section><b>Candidate content</b><pre>${escapeHtml(content(state.candidate))}</pre></section></div><p class="meta"><b>Candidate file SHA-256</b><code class="digest">${escapeHtml(selected.after?.sha256??'Removed — no candidate digest')}</code></p>`;
+ }else byId('details').textContent='Select a file to inspect its content and provenance.';
+ byId('verification').textContent=state.verification?(state.verification.ok?`Verification passed · ${state.verification.checked} file checks + payload digest`:`Verification rejected · ${state.verification.errors.join('; ')}`):'Delivery verification pending';
+ byId('history').innerHTML=state.history.map(message=>`<li>${escapeHtml(message)}</li>`).join('')||'<li>No actions yet.</li>';
+ byId('scenarios').innerHTML=scenarios.map((scenario,index)=>`<button type="button" data-scenario="${index}" aria-pressed="${index===selectedScenario}">${scenario.title}</button>`).join('');
+ const scenario=scenarios[selectedScenario];byId('scenario-description').textContent=scenario.description;
+ byId('steps').innerHTML=scenario.steps.map(([label,id],index)=>`<div class="step"><span>${index+1}. ${escapeHtml(label)}</span><button type="button" data-step="${id}" ${index!==step?'disabled':''}>${index<step?'Done':index===step?'Run step':'Next'}</button></div>`).join('');
+ document.querySelectorAll('.actions button, #reset').forEach(button=>{button.disabled=false;});
+}
+byId('files').addEventListener('click',event=>{const target=event.target.closest('[data-path]');if(target){selectedPath=target.dataset.path;render();}});
+byId('scenarios').addEventListener('click',async event=>{const target=event.target.closest('[data-scenario]');if(target&&!busy){selectedScenario=Number(target.dataset.scenario);await reset();}});
+byId('steps').addEventListener('click',event=>{const target=event.target.closest('[data-step]');if(target)dispatch(target.dataset.step,true);});
+for(const id of ['revise','remove-prompt','add-prompt','seal','verify','materialize','tamper','restore','stage','remove'])byId(id).addEventListener('click',()=>dispatch(id));
+byId('filter').addEventListener('change',render);
+byId('edit-file').addEventListener('change',loadEditor);
+byId('reset').addEventListener('click',()=>reset());
+reset(true).catch(error=>{byId('status').textContent=`Cannot initialize SHA-256: ${error.message}. Open in a modern browser using file:// or localhost.`;});
+</script>
+</body></html>
