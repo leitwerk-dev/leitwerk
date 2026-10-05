@@ -1,0 +1,898 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width,initial-scale=1">
+		<title>Model routing wind tunnel · Leitwerk prototype</title>
+		<style>
+		:root {
+			font-family: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+			color: #18212b;
+			background: #f5f6f8;
+			font-size: 15px;
+			line-height: 1.5;
+			accent-color: #2f61b7;
+			font-variant-numeric: tabular-nums;
+		}
+		* {
+			box-sizing: border-box;
+		}
+		body {
+			margin: 0;
+		}
+		main {
+			max-width: 1240px;
+			margin: auto;
+			padding: 32px;
+		}
+		h1 {
+			font-size: 30px;
+			line-height: 1.2;
+			letter-spacing: -0.025em;
+			margin: 0 0 12px;
+		}
+		h2 {
+			font-size: 19px;
+			margin: 0 0 16px;
+		}
+		h3 {
+			font-size: 15px;
+			margin: 0 0 8px;
+		}
+		p {
+			margin: 0 0 12px;
+		}
+		header {
+			margin-bottom: 24px;
+		}
+		header p {
+			max-width: 84ch;
+		}
+		.muted,
+		small {
+			color: #536170;
+		}
+		small {
+			font-size: 13px;
+		}
+		.tag {
+			font-size: 13px;
+			padding: 3px 7px;
+			background: #e8eef8;
+			color: #244d90;
+			display: inline-block;
+			border-radius: 4px;
+			margin: 0 0 12px;
+		}
+		.grid {
+			display: grid;
+			grid-template-columns: 290px minmax(0, 1fr);
+			gap: 24px;
+		}
+		.panel {
+			padding: 22px;
+			background: white;
+			border: 1px solid #d4dbe3;
+			border-radius: 8px;
+			min-width: 0;
+		}
+		.workload {
+			align-self: start;
+		}
+		label {
+			display: block;
+			font-weight: 550;
+			margin-bottom: 13px;
+		}
+		input[type="number"],
+		select {
+			width: 100%;
+			margin-top: 5px;
+			padding: 9px 10px;
+			min-height: 42px;
+			border: 1px solid #a9b4c2;
+			border-radius: 4px;
+			font: inherit;
+			background: #fff;
+			color: inherit;
+		}
+		input[type="checkbox"] {
+			width: 17px;
+			height: 17px;
+			vertical-align: -3px;
+			margin: 0 7px 0 0;
+		}
+		.check {
+			font-size: 14px;
+			font-weight: 400;
+			margin-bottom: 10px;
+		}
+		button {
+			font: inherit;
+			font-weight: 550;
+			border: 1px solid #abb7c5;
+			background: #fff;
+			color: #233348;
+			padding: 9px 12px;
+			border-radius: 5px;
+			min-height: 42px;
+			cursor: pointer;
+		}
+		button:hover {
+			background: #f0f4fb;
+			border-color: #2f61b7;
+		}
+		button:focus-visible,
+		input:focus-visible,
+		select:focus-visible {
+			outline: 3px solid #6e97df;
+			outline-offset: 2px;
+		}
+		button.primary {
+			background: #2f61b7;
+			border-color: #2f61b7;
+			color: #fff;
+		}
+		button:disabled {
+			opacity: 0.5;
+			cursor: default;
+		}
+		::selection {
+			background: #cbdcf8;
+		}
+		.actions {
+			display: flex;
+			gap: 8px;
+			flex-wrap: wrap;
+		}
+		.call-state {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			gap: 20px;
+			padding-bottom: 20px;
+			margin-bottom: 20px;
+			border-bottom: 1px solid #d4dbe3;
+		}
+		.value {
+			font-weight: 650;
+			font-size: 18px;
+			margin-bottom: 3px;
+		}
+		.selection {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) auto;
+			gap: 12px;
+			align-items: end;
+		}
+		.selection label {
+			margin: 0;
+		}
+		.selection button {
+			margin-bottom: 1px;
+		}
+		.notice {
+			background: #eef4fe;
+			border: 1px solid #b7cbe9;
+			padding: 12px;
+			margin: 18px 0;
+			border-radius: 4px;
+			font-size: 14px;
+		}
+		.notice.error {
+			background: #fff5ef;
+			border-color: #dfbda7;
+			color: #743d20;
+		}
+		.table-wrap {
+			overflow-x: auto;
+		}
+		.scroll-hint {
+			display: none;
+		}
+		table {
+			border-collapse: collapse;
+			width: 100%;
+			font-size: 14px;
+		}
+		th {
+			text-align: left;
+			color: #536170;
+			font-size: 12px;
+			font-weight: 550;
+			padding: 10px 8px;
+			border-bottom: 1px solid #bbc7d4;
+		}
+		td {
+			padding: 14px 8px;
+			border-bottom: 1px solid #e0e5eb;
+			vertical-align: top;
+		}
+		td:first-child {
+			min-width: 135px;
+		}
+		td strong {
+			display: block;
+		}
+		.row-selected {
+			background: #f0f5ff;
+		}
+		.badge {
+			display: inline-block;
+			font-size: 12px;
+			padding: 2px 6px;
+			border: 1px solid #b4c7e3;
+			color: #244d90;
+			border-radius: 3px;
+			margin-top: 5px;
+		}
+		.reason {
+			font-size: 12px;
+			color: #86471f;
+			max-width: 180px;
+			margin-top: 5px;
+		}
+		.status {
+			font-size: 13px;
+			color: #536170;
+		}
+		.availability {
+			margin-top: 24px;
+		}
+		.availability-row {
+			display: grid;
+			grid-template-columns: 1fr auto auto;
+			gap: 16px;
+			align-items: center;
+			padding: 10px 0;
+			border-top: 1px solid #e0e5eb;
+		}
+		.availability-row label {
+			margin: 0;
+			white-space: nowrap;
+		}
+		.availability-row strong {
+			font-size: 14px;
+		}
+		.scenario {
+			margin-top: 24px;
+		}
+		.tabs {
+			display: flex;
+			gap: 6px;
+			flex-wrap: wrap;
+			margin-bottom: 16px;
+		}
+		.tabs button[aria-pressed="true"] {
+			background: #e8eef8;
+			border-color: #2f61b7;
+			color: #244d90;
+		}
+		.scenario-copy {
+			max-width: 78ch;
+		}
+		.step {
+			display: flex;
+			align-items: center;
+			gap: 12px;
+			flex-wrap: wrap;
+		}
+		.step span {
+			font-size: 13px;
+			color: #536170;
+		}
+		details {
+			margin-top: 20px;
+			padding-top: 16px;
+			border-top: 1px solid #d4dbe3;
+		}
+		summary {
+			cursor: pointer;
+			font-weight: 550;
+		}
+		details p {
+			font-size: 13px;
+			margin-top: 12px;
+		}
+		footer {
+			font-size: 13px;
+			color: #536170;
+			margin-top: 18px;
+		}
+		.record {
+			margin-top: 12px;
+			font-size: 13px;
+		}
+		.record strong {
+			display: block;
+		}
+		.compare {
+			margin: 14px 0 0;
+			font-size: 14px;
+			min-height: 42px;
+		}
+		fieldset {
+			border: 0;
+			padding: 0;
+			margin: 18px 0 0;
+		}
+		legend {
+			font-weight: 550;
+			margin-bottom: 10px;
+		}
+		.head-row {
+			display: flex;
+			align-items: start;
+			justify-content: space-between;
+			gap: 16px;
+		}
+		@media (max-width: 760px) {
+			main {
+				padding: 20px 16px;
+			}
+			.grid {
+				grid-template-columns: 1fr;
+			}
+			.workload {
+				display: grid;
+				grid-template-columns: 1fr 1fr;
+				gap: 0 14px;
+			}
+			.workload h2,
+			.workload fieldset,
+			.workload .muted {
+				grid-column: 1 / -1;
+			}
+			.panel {
+				padding: 16px;
+			}
+			.call-state {
+				gap: 14px;
+			}
+			.selection {
+				grid-template-columns: 1fr;
+			}
+			.selection button {
+				justify-self: start;
+			}
+			h1 {
+				font-size: 26px;
+			}
+			.availability-row {
+				gap: 8px;
+			}
+			.availability-row strong {
+				font-size: 13px;
+			}
+			.availability-row label {
+				font-size: 12px;
+			}
+			.tabs button {
+				flex: 1;
+			}
+			.head-row {
+				align-items: center;
+			}
+			th,
+			td {
+				padding: 10px 6px;
+			}
+			table {
+				min-width: 580px;
+			}
+			.scroll-hint {
+				display: block;
+				margin: 8px 0;
+				font-size: 13px;
+				color: #536170;
+			}
+		}
+		</style>
+	</head>
+	<body>
+		<!-- Direction: an operational experiment, extending Leitwerk's white/gray surfaces,
+blue action color and flat rows. Workload controls feed a comparison table. Current
+and future selection stay visible together. No quality scores or automatic router. -->
+		<main>
+			<header>
+				<div class="head-row">
+					<h1>Model routing wind tunnel</h1>
+					<button type="button" id="reset">Reset</button>
+				</div>
+				<span class="tag">Prototype · synthetic data</span>
+				<p>
+					Can an operator make a better future-call choice by seeing cost, latency and compatibility
+					together?
+				</p>
+				<p class="muted">
+					Explore three fictional profiles. All prices, limits and timing rates are illustrative;
+					the comparison makes no claims about model quality.
+				</p>
+			</header>
+			<div class="grid">
+				<section class="panel workload" aria-labelledby="workload-heading">
+					<h2 id="workload-heading">Workload assumptions</h2>
+					<label
+						>Total input tokens<input
+							id="input"
+							type="number"
+							min="0"
+							max="1000000"
+							step="100"
+							value="12000"
+						></label
+					>
+					<label
+						>Cached input tokens<input
+							id="cache"
+							type="number"
+							min="0"
+							max="1000000"
+							step="100"
+							value="6000"
+						></label
+					>
+					<label
+						>Expected output tokens<input
+							id="output"
+							type="number"
+							min="0"
+							max="1000000"
+							step="100"
+							value="1500"
+						></label
+					>
+					<label
+						>Calls to compare<input
+							id="calls"
+							type="number"
+							min="1"
+							max="10000"
+							step="1"
+							value="100"
+						></label
+					>
+					<fieldset>
+						<legend>Required capabilities</legend>
+						<label class="check"><input type="checkbox" id="vision">Image input</label
+						><label class="check"><input type="checkbox" id="reasoning">Reasoning</label>
+					</fieldset>
+					<p class="muted">
+						<small
+							>Cached tokens are a subset of total input. Context checks reserve space for the
+							expected output.</small
+						>
+					</p>
+				</section>
+				<section class="panel" aria-labelledby="comparison-heading">
+					<div class="call-state">
+						<div>
+							<h3>Captured current call</h3>
+							<div class="value">Relay</div>
+							<div class="status">Call 41 · running · 12,000 input</div>
+							<small>Its prepared profile stays unchanged.</small>
+						</div>
+						<div>
+							<h3>Future selection</h3>
+							<div class="value" id="future-name">Inherited: Relay</div>
+							<div class="status" id="future-status">No explicit choice saved</div>
+							<small id="future-readiness">Ready for this workload</small>
+						</div>
+					</div>
+					<h2 id="comparison-heading">Compare before choosing</h2>
+					<div class="selection">
+						<label
+							>Profile to compare<select id="selected">
+								<option value="relay">Relay</option>
+								<option value="sprout">Sprout</option>
+								<option value="atlas">Atlas</option>
+								<option value="removed">Retired profile (missing)</option>
+							</select></label
+						><button type="button" id="freeze" class="primary">Freeze for future calls</button>
+					</div>
+					<p class="compare" id="comparison"></p>
+					<div id="notice" class="notice" role="status" aria-live="polite"></div>
+					<p class="scroll-hint">Scroll the comparison sideways for limits and eligibility.</p>
+					<div
+						class="table-wrap"
+						tabindex="0"
+						role="region"
+						aria-label="Profile comparison; scroll horizontally on narrow screens"
+					>
+						<table>
+							<thead>
+								<tr>
+									<th>Fictional profile</th>
+									<th>Cost / call<br>Cost / batch</th>
+									<th>Time / call</th>
+									<th>Context / output</th>
+									<th>Eligibility</th>
+								</tr>
+							</thead>
+							<tbody id="profiles"></tbody>
+						</table>
+					</div>
+					<p class="muted" style="margin-top:12px">
+						<small
+							>Pareto set: eligible profiles with no alternative that is both cheaper and faster (or
+							equal in one). This is a tradeoff, not a quality ranking.</small
+						>
+					</p>
+					<div class="availability">
+						<h3>Simulate process policy and availability</h3>
+						<div id="availability"></div>
+					</div>
+					<div class="actions" style="margin-top:18px">
+						<button type="button" id="prepare">Prepare a future call</button
+						><button type="button" id="clear">Clear future override</button>
+					</div>
+					<div id="record" class="record"></div>
+					<details>
+						<summary>Calculation assumptions</summary>
+						<p>
+							Cost = (uncached input × input rate + cached input × cache-read rate + output × output
+							rate) / 1,000,000. Batch cost multiplies by calls. Time = fixed overhead + total input
+							/ input speed + output / output speed. Cache changes cost only in this experiment;
+							times are estimates for one sequential call.
+						</p>
+						<div class="table-wrap">
+							<table>
+								<thead>
+									<tr>
+										<th>Profile</th>
+										<th>Input / cache / output<br>USD per million tokens</th>
+										<th>Overhead</th>
+										<th>Input / output tokens per second</th>
+									</tr>
+								</thead>
+								<tbody id="rates"></tbody>
+							</table>
+						</div>
+					</details>
+				</section>
+			</div>
+			<section class="panel scenario" aria-labelledby="scenario-heading">
+				<h2 id="scenario-heading">Guided experiments</h2>
+				<div class="tabs" role="group" aria-label="Choose guided experiment">
+					<button type="button" data-case="economical" aria-pressed="true">Economical fit</button
+					><button type="button" data-case="mismatch" aria-pressed="false">
+						Capability & context mismatch
+					</button><button type="button" data-case="unavailable" aria-pressed="false">
+						Unavailable explicit choice
+					</button>
+				</div>
+				<p id="scenario-description" class="scenario-copy"></p>
+				<div class="step">
+					<button type="button" id="step" class="primary"></button><span id="step-progress"></span>
+				</div>
+			</section>
+			<footer>
+				Future proposal · in-memory only. No provider calls, credentials, model configuration or
+				running processes are changed. Reload or Reset discards the experiment.
+			</footer>
+		</main>
+		<script>
+		// Pure experiment model. DOM wiring starts below.
+		const catalog = [
+			{
+				id: "sprout",
+				name: "Sprout",
+				input: 0.4,
+				cache: 0.08,
+				output: 1.2,
+				context: 32000,
+				maxOutput: 8000,
+				vision: false,
+				reasoning: false,
+				overhead: 0.6,
+				prefill: 16000,
+				speed: 45,
+			},
+			{
+				id: "relay",
+				name: "Relay",
+				input: 1.5,
+				cache: 0.3,
+				output: 5,
+				context: 128000,
+				maxOutput: 16000,
+				vision: true,
+				reasoning: false,
+				overhead: 0.3,
+				prefill: 30000,
+				speed: 110,
+			},
+			{
+				id: "atlas",
+				name: "Atlas",
+				input: 3,
+				cache: 0.6,
+				output: 12,
+				context: 256000,
+				maxOutput: 32000,
+				vision: true,
+				reasoning: true,
+				overhead: 1.8,
+				prefill: 10000,
+				speed: 30,
+			},
+		];
+		const base = () => ({
+			work: {
+				input: 12000,
+				cache: 6000,
+				output: 1500,
+				calls: 100,
+				vision: false,
+				reasoning: false,
+			},
+			selected: "relay",
+			access: Object.fromEntries(catalog.map((p) => [p.id, { allowed: true, credential: true }])),
+			future: null,
+			prepared: [],
+			message:
+				"Change the assumptions or compare a profile. Comparing alone does not save a selection.",
+			error: false,
+			scenario: "economical",
+			step: 0,
+		});
+		function inputErrors(w) {
+			const errors = [];
+			for (const key of ["input", "cache", "output"])
+				if (!Number.isInteger(w[key]) || w[key] < 0 || w[key] > 1000000)
+					errors.push(`${key} tokens must be an integer between 0 and 1,000,000`);
+			if (!Number.isInteger(w.calls) || w.calls < 1 || w.calls > 10000)
+				errors.push("calls must be an integer between 1 and 10,000");
+			if (w.cache > w.input) errors.push("cached input exceeds total input");
+			return errors;
+		}
+		function estimate(state, id) {
+			const p = catalog.find((x) => x.id === id);
+			if (!p)
+				return {
+					id,
+					name: "Retired profile",
+					reasons: ["profile is missing from the catalog"],
+					cost: null,
+					time: null,
+				};
+			const w = state.work;
+			const reasons = inputErrors(w);
+			if (!state.access[id].allowed) reasons.push("excluded by process allowlist");
+			if (!state.access[id].credential) reasons.push("credential unavailable");
+			if (w.input + w.output > p.context) reasons.push("input + output exceeds context");
+			if (w.output > p.maxOutput) reasons.push("output exceeds limit");
+			if (w.vision && !p.vision) reasons.push("image input unsupported");
+			if (w.reasoning && !p.reasoning) reasons.push("reasoning unsupported");
+			return {
+				...p,
+				cost: inputErrors(w).length
+					? null
+					: ((w.input - w.cache) * p.input + w.cache * p.cache + w.output * p.output) / 1000000,
+				time: inputErrors(w).length ? null : p.overhead + w.input / p.prefill + w.output / p.speed,
+				reasons,
+			};
+		}
+		function compare(state) {
+			const rows = catalog.map((p) => estimate(state, p.id));
+			return rows.map((row) => ({
+				...row,
+				pareto:
+					!row.reasons.length &&
+					!rows.some(
+						(other) =>
+							!other.reasons.length &&
+							other.cost <= row.cost &&
+							other.time <= row.time &&
+							(other.cost < row.cost || other.time < row.time),
+					),
+			}));
+		}
+		function reduce(state, action) {
+			const next = structuredClone(state);
+			next.error = false;
+			if (action.type === "work") {
+				next.work[action.key] = action.value;
+				next.message = "Estimates recalculated. The captured current call keeps Relay.";
+			}
+			if (action.type === "select") {
+				next.selected = action.id;
+				next.message = "Comparison changed. Future selection has not been saved.";
+			}
+			if (action.type === "access") {
+				next.access[action.id][action.key] = action.value;
+				next.message =
+					"Availability changed. Saved explicit choices remain explicit and are checked again before preparation.";
+			}
+			if (action.type === "clear") {
+				next.future = null;
+				next.message =
+					"Future override cleared. This fixture inherits Relay; its availability is still required.";
+			}
+			if (action.type === "freeze" || action.type === "prepare") {
+				const id = action.type === "freeze" ? next.selected : (next.future?.id ?? "relay");
+				const result = estimate(next, id);
+				if (result.reasons.length) {
+					next.error = true;
+					next.message = `${action.type === "freeze" ? "Selection not saved" : "Future call blocked"}: ${result.reasons.join("; ")}. Choose a compatible profile or repair availability. No replacement was selected.`;
+				} else if (action.type === "freeze") {
+					next.future = { id, work: structuredClone(next.work), cost: result.cost };
+					next.message = `${result.name} saved explicitly for future calls. Current call 41 remains on Relay. Availability will be rechecked before preparation.`;
+				} else {
+					next.prepared.push({
+						number: 42 + next.prepared.length,
+						id,
+						name: result.name,
+						work: structuredClone(next.work),
+						cost: result.cost,
+					});
+					next.message = `Future call ${next.prepared.at(-1).number} prepared with ${result.name}. This captured selection survives later edits; current call 41 still uses Relay.`;
+				}
+			}
+			return next;
+		}
+		const cases = {
+			economical: {
+				description:
+					"A text-only workload fits all profiles. Compare the cost saving against the slower response, then save Sprout and prepare a future call.",
+				steps: [
+					["Compare Sprout", { type: "select", id: "sprout" }],
+					["Freeze Sprout", { type: "freeze" }],
+					["Prepare with Sprout", { type: "prepare" }],
+				],
+			},
+			mismatch: {
+				description:
+					"A large image-and-reasoning workload exceeds Sprout’s context and capabilities. Observe the block, choose Atlas, then save an eligible selection.",
+				steps: [
+					["Try freezing Sprout", { type: "freeze" }],
+					["Compare Atlas", { type: "select", id: "atlas" }],
+					["Freeze Atlas", { type: "freeze" }],
+				],
+			},
+			unavailable: {
+				description:
+					"An explicit choice with a missing credential must block. A retired profile must also block. Restore Relay deliberately to recover.",
+				steps: [
+					["Try freezing unavailable Relay", { type: "freeze" }],
+					["Compare missing profile", { type: "select", id: "removed" }],
+					["Try freezing missing profile", { type: "freeze" }],
+					[
+						"Restore Relay credential",
+						{ type: "access", id: "relay", key: "credential", value: true },
+					],
+					["Compare Relay", { type: "select", id: "relay" }],
+					["Freeze restored Relay", { type: "freeze" }],
+				],
+			},
+		};
+		function startCase(name) {
+			const state = base();
+			state.scenario = name;
+			if (name === "mismatch") {
+				state.work = {
+					input: 120000,
+					cache: 60000,
+					output: 6000,
+					calls: 20,
+					vision: true,
+					reasoning: true,
+				};
+				state.selected = "sprout";
+			}
+			if (name === "unavailable") state.access.relay.credential = false;
+			return state;
+		}
+		// Thin UI shell; all state changes go through the reducer.
+		let state = base();
+		const $ = (id) => document.getElementById(id);
+		const money = (x) => (x === null ? "—" : `$${x.toFixed(4)}`);
+		const count = (x) => x.toLocaleString("en-US");
+		function render() {
+			const rows = compare(state),
+				selected = estimate(state, state.selected),
+				future = estimate(state, state.future?.id ?? "relay");
+			for (const key of ["input", "cache", "output", "calls"])
+				$(key).value = Number.isNaN(state.work[key]) ? "" : state.work[key];
+			for (const key of ["vision", "reasoning"]) $(key).checked = state.work[key];
+			$("selected").value = state.selected;
+			$("future-name").textContent = state.future ? future.name : "Inherited: Relay";
+			$("future-status").textContent = state.future
+				? `Explicit choice · saved at ${money(state.future.cost)} / call`
+				: "No explicit choice saved";
+			$("future-readiness").textContent = future.reasons.length
+				? `Blocked now: ${future.reasons.join("; ")}`
+				: "Ready for this workload";
+			$("notice").textContent = state.message;
+			$("notice").className = `notice${state.error ? " error" : ""}`;
+			const relay = estimate(state, "relay");
+			$("comparison").textContent =
+				selected.cost === null
+					? "No valid estimate for this selection."
+					: selected.id === "relay"
+						? `Relay is the comparison baseline: ${money(relay.cost)} and ${relay.time.toFixed(1)} s per call.`
+						: `Compared with Relay: ${money(Math.abs(selected.cost - relay.cost))} ${selected.cost <= relay.cost ? "less" : "more"} per call; ${Math.abs(selected.time - relay.time).toFixed(1)} s ${selected.time <= relay.time ? "faster" : "slower"}. ${selected.reasons.length ? "This selection is ineligible." : "Both dimensions remain your choice."}`;
+			$("profiles").innerHTML = rows
+				.map(
+					(p) =>
+						`<tr class="${state.selected === p.id ? "row-selected" : ""}"><td><strong>${p.name}</strong><span class="status">${p.vision ? "Text + image" : "Text only"}${p.reasoning ? " · reasoning" : ""}</span>${p.pareto ? '<br><span class="badge">Pareto set</span>' : ""}</td><td>${money(p.cost)}<br><span class="status">${money(p.cost === null ? null : p.cost * state.work.calls)}</span></td><td>${p.time === null ? "—" : `${p.time.toFixed(1)} s`}</td><td>${count(p.context)}<br><span class="status">${count(p.maxOutput)} output</span></td><td>${p.reasons.length ? "Blocked" : "Eligible"}${p.reasons.map((r) => `<div class="reason">${r}</div>`).join("")}</td></tr>`,
+				)
+				.join("");
+			$("availability").innerHTML = catalog
+				.map(
+					(p) =>
+						`<div class="availability-row"><strong>${p.name}</strong><label class="check"><input type="checkbox" data-profile="${p.id}" data-access="allowed" ${state.access[p.id].allowed ? "checked" : ""} aria-label="${p.name} allowed">Allowed</label><label class="check"><input type="checkbox" data-profile="${p.id}" data-access="credential" ${state.access[p.id].credential ? "checked" : ""} aria-label="${p.name} credential available">Credential</label></div>`,
+				)
+				.join("");
+			$("rates").innerHTML = catalog
+				.map(
+					(p) =>
+						`<tr><td>${p.name}</td><td>$${p.input} / $${p.cache} / $${p.output}</td><td>${p.overhead} s</td><td>${count(p.prefill)} / ${p.speed}</td></tr>`,
+				)
+				.join("");
+			$("record").replaceChildren();
+			for (const record of state.prepared) {
+				const p = document.createElement("p");
+				p.textContent = `Captured future call ${record.number}: ${record.name} · ${count(record.work.input)} input · ${count(record.work.output)} output · ${money(record.cost)} estimated. Subsequent edits leave this record unchanged.`;
+				$("record").append(p);
+			}
+			const scenario = cases[state.scenario];
+			$("scenario-description").textContent = scenario.description;
+			document.querySelectorAll("[data-case]").forEach((b) => {
+				b.setAttribute("aria-pressed", String(b.dataset.case === state.scenario));
+			});
+			$("step").textContent = scenario.steps[state.step]?.[0] ?? "Experiment complete";
+			$("step").disabled = state.step >= scenario.steps.length;
+			$("step-progress").textContent =
+				`${Math.min(state.step, scenario.steps.length)} of ${scenario.steps.length} actions completed · choosing a case resets all state`;
+		}
+		function dispatch(action) {
+			state = reduce(state, action);
+			render();
+		}
+		for (const key of ["input", "cache", "output", "calls"])
+			$(key).addEventListener("change", (e) =>
+				dispatch({
+					type: "work",
+					key,
+					value: e.target.value === "" ? NaN : Number(e.target.value),
+				}),
+			);
+		for (const key of ["vision", "reasoning"])
+			$(key).addEventListener("change", (e) =>
+				dispatch({ type: "work", key, value: e.target.checked }),
+			);
+		$("selected").addEventListener("change", (e) =>
+			dispatch({ type: "select", id: e.target.value }),
+		);
+		for (const type of ["freeze", "prepare", "clear"]) $(type).onclick = () => dispatch({ type });
+		$("reset").onclick = () => {
+			state = base();
+			render();
+		};
+		$("availability").addEventListener("change", (e) => {
+			if (e.target.dataset.profile)
+				dispatch({
+					type: "access",
+					id: e.target.dataset.profile,
+					key: e.target.dataset.access,
+					value: e.target.checked,
+				});
+		});
+		document.querySelectorAll("[data-case]").forEach((b) => {
+			b.onclick = () => {
+				state = startCase(b.dataset.case);
+				render();
+			};
+		});
+		$("step").onclick = () => {
+			const action = cases[state.scenario].steps[state.step]?.[1];
+			if (action) {
+				state = reduce(state, action);
+				state.step++;
+				render();
+			}
+		};
+		render();
+		</script>
+	</body>
+</html>
