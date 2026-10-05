@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recovery rehearsal · Leitwerk prototype</title>
+<style>
+:root{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#18212b;background:#fff;font-size:15px;line-height:1.5;--blue:#2f61b7;--border:#d9dee5;--muted:#4c5968}*{box-sizing:border-box}body{margin:0}button,select{font:inherit;color:inherit}button{border:1px solid #aeb7c2;border-radius:8px;background:#fff;min-height:44px;padding:9px 15px;cursor:pointer;font-weight:550}button:hover{border-color:var(--blue);background:#f4f7fc}button:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid var(--blue);outline-offset:3px}button:disabled{color:#687483;background:#f2f4f7;cursor:default;border-color:var(--border)}button.primary{background:var(--blue);color:#fff;border-color:var(--blue)}button.danger{color:#7d2d27;border-color:#b68580}.shell{max-width:1360px;margin:auto;padding:24px 40px 48px}.topbar{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:16px;margin-bottom:30px;gap:16px}.brand{font-weight:700;letter-spacing:-.3px}.prototype{color:var(--muted);font-size:14px}.title-row{display:flex;justify-content:space-between;align-items:flex-start;gap:20px}h1{font-size:34px;line-height:1.15;letter-spacing:-.7px;margin:0 0 12px}h2{font-size:19px;line-height:1.3;margin:0 0 14px}h3{font-size:16px;margin:0 0 8px}p{margin:0 0 12px}.intro{color:var(--muted);max-width:780px;margin-bottom:26px}.intro strong{color:#18212b;font-weight:500}.layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:32px}.main,.sidebar{min-width:0}.state-panel{border:1px solid var(--border);border-radius:12px;overflow:hidden}.state-header{display:flex;justify-content:space-between;align-items:center;padding:20px 22px;background:#f7f8fa;border-bottom:1px solid var(--border);gap:12px}.state-header h2{margin:0}.fixture{font-size:13px;color:var(--muted);margin-top:3px}.status{display:inline-block;padding:4px 11px;border-radius:99px;font-size:14px;background:#e6ecf6;color:#204c97;white-space:nowrap}.status.error{background:#f8ecea;color:#7d2d27}.status.aborted,.status.waiting{color:#4c5968;background:#e9edf1}.state-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 24px;padding:4px 22px 14px;margin:0}.state-grid>div{padding:12px 0;border-bottom:1px solid #edf0f3;min-width:0}.state-grid dt{color:var(--muted);font-size:13px}.state-grid dd{font-weight:600;margin:3px 0 0;overflow-wrap:anywhere}.state-grid dd small{font-weight:400;color:var(--muted);display:block;font-size:12px}.state-note{padding:0 22px 19px;font-size:14px;color:var(--muted);margin:0}.notice{padding:15px 18px;margin-top:16px;border-radius:8px;background:#edf2fa;color:#21477f;min-height:78px}.notice.rejected{background:#f9efec;color:#7d2d27}.notice strong{display:block;margin-bottom:3px}.notice p{font-size:14px;margin:0}.section{margin-top:28px}.section-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px}.subtle{color:var(--muted);font-size:13px}.comparison{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--border);border-radius:9px;overflow:hidden}.choice{padding:18px}.choice+ .choice{border-left:1px solid var(--border)}.choice dl{margin:12px 0;font-size:13px}.choice dl div{display:flex;justify-content:space-between;gap:12px;padding:4px 0}.choice dd{margin:0;font-weight:600}.choice p{font-size:13px;color:var(--muted);margin:0}.comparison-empty{border:1px dashed #aeb7c2;padding:18px;border-radius:9px;color:var(--muted);font-size:14px}.record-list{list-style:none;padding:0;margin:0}.record{display:grid;grid-template-columns:30px 1fr auto;gap:12px;padding:14px 0;border-top:1px solid var(--border);align-items:start}.record-index{width:28px;height:28px;display:grid;place-items:center;background:#f2f4f7;border-radius:50%;font-size:13px}.record strong{font-size:14px}.record small{display:block;color:var(--muted);font-size:13px}.record-tag{font-size:13px;color:var(--muted)}.record-tag.failed{color:#7d2d27}.record-tag.succeeded{color:#157a52}.actions{display:grid;gap:8px}.action-row{display:flex;align-items:center;gap:12px}.action-row button{flex:1;text-align:left}.action-row small{max-width:120px;flex:1;font-size:12px;color:var(--muted)}.action-group{margin-top:18px;padding-top:16px;border-top:1px solid var(--border)}.action-group label{display:block;font-size:13px;margin-bottom:7px;color:var(--muted)}select{width:100%;min-height:44px;border:1px solid #aeb7c2;border-radius:7px;padding:8px;background:#fff}#send{width:100%;margin-top:8px}.guard{background:#f7f8fa;border:1px solid var(--border);border-radius:8px;padding:14px;margin-top:13px;font-size:13px}.guard div{display:flex;justify-content:space-between;gap:12px;margin-bottom:5px}.guard code{overflow-wrap:anywhere}.guard p{border-top:1px solid var(--border);padding-top:9px;margin:9px 0 0}.guide{padding:20px;background:#f7f8fa;border:1px solid var(--border);border-radius:10px;margin-top:24px}.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:17px}.tabs button{font-size:13px;min-height:40px;padding:7px 10px;background:transparent;border-color:transparent}.tabs button[aria-selected=true]{background:#fff;border-color:#8aa4ce;color:#204c97}.guide p{font-size:14px;color:var(--muted)}.steps{list-style:none;padding:0;margin:18px 0 0;display:grid;gap:7px}.steps button{width:100%;text-align:left;font-size:14px;display:flex;align-items:center;gap:10px}.steps .num{min-width:23px;font-size:12px;text-align:center}.steps button.done{background:#edf2fa;border-color:#d8e2f1;color:#21477f}.guide-footer{margin:14px 0 0!important;font-size:13px!important}details{margin-top:24px;border-top:1px solid var(--border);padding-top:15px}summary{cursor:pointer;font-weight:600}#log{list-style:none;padding:0;max-height:310px;overflow:auto;font-size:13px}#log li{border-top:1px solid #edf0f3;padding:10px 0}#log span{display:block;color:var(--muted);margin-top:3px}footer{font-size:13px;color:var(--muted);border-top:1px solid var(--border);padding-top:18px;margin-top:32px}.code{font-family:ui-monospace,SFMono-Regular,monospace;font-size:13px}@media(max-width:1000px){.layout{grid-template-columns:minmax(0,1fr) 300px;gap:24px}.shell{padding:20px 24px 36px}.action-row{display:block}.action-row button{width:100%}.action-row small{display:block;max-width:none;margin:3px 0 4px}.state-grid{gap:0 16px}}@media(max-width:720px){.shell{padding:16px 18px 30px}.topbar{margin-bottom:22px;align-items:flex-start}.prototype{font-size:12px;text-align:right;max-width:155px}.title-row{gap:10px}h1{font-size:29px}.title-row button{font-size:13px;padding:8px 11px}.layout{display:flex;flex-direction:column;gap:26px}.state-header{padding:17px}.state-grid{padding:4px 17px 12px}.state-note{padding:0 17px 17px}.state-grid dd{font-size:14px}.state-header h2{font-size:17px}.choice{padding:14px}.choice dl div{display:block}.choice dl dd{margin-top:2px}.section-head{display:block}.section-head .subtle{display:block;margin:-7px 0 12px}.notice{min-height:0}.sidebar .actions{grid-template-columns:1fr 1fr}.sidebar .actions button{font-size:13px}.guide{padding:16px}.record{gap:8px;grid-template-columns:28px 1fr auto}.tabs{gap:2px}.tabs button{padding:7px;font-size:12px}}
+</style>
+</head>
+<body>
+<div class="shell">
+<header class="topbar"><div class="brand">leitwerk <span style="font-weight:400;color:#687483">/ experiments</span></div><div class="prototype">Prototype · synthetic data<br>Runs only in this browser</div></header>
+<div class="title-row"><h1>Recovery rehearsal</h1><button id="reset">Reset rehearsal</button></div>
+<p class="intro"><strong>Can you choose a recovery path confidently before touching a live process?</strong><br>Inject a failure, compare retry with abort, and watch which worker results still have authority.</p>
+<div class="layout">
+<main class="main">
+<section class="state-panel" aria-labelledby="state-heading">
+<div class="state-header"><div><h2 id="state-heading">Update checkout validation</h2><div class="fixture">Example process · rehearsal-01</div></div><span id="lifecycle" class="status"></span></div>
+<dl id="state" class="state-grid"></dl><p id="state-note" class="state-note"></p>
+</section>
+<div id="notice" class="notice" role="status" aria-live="polite" aria-atomic="true"></div>
+<section class="section" aria-labelledby="comparison-heading"><div class="section-head"><h2 id="comparison-heading">Compare the next move</h2><span class="subtle">Computed from this rehearsal</span></div><div id="comparison"></div></section>
+<section class="section" aria-labelledby="records-heading"><div class="section-head"><h2 id="records-heading">Attempt history</h2><span class="subtle">Created only after acceptance</span></div><ol id="records" class="record-list"></ol></section>
+<details open><summary>Decision evidence <span id="event-count" class="subtle"></span></summary><ol id="log"></ol></details>
+</main>
+<aside class="sidebar" aria-label="Rehearsal controls">
+<h2>Free play</h2><p class="subtle">Try any action. Rejected actions explain the guard and preserve process state.</p>
+<div class="actions">
+<div class="action-row"><button id="fail" data-action="fail">Inject provider failure</button><small>Fail the current accepted turn</small></div>
+<div class="action-row"><button id="retry" data-action="retry">Reserve retry</button><small>Prepare a start; keep the count</small></div>
+<div class="action-row"><button id="ack" data-action="ack">Acknowledge start</button><small>Create an attempt exactly once</small></div>
+<div class="action-row"><button id="abort" class="danger" data-action="abort">Abort process</button><small>End this simulated process</small></div>
+</div>
+<div class="action-group"><label for="incoming">Successful worker result from</label><select id="incoming"></select><button id="send">Deliver selected outcome</button><div id="guard" class="guard"></div></div>
+<section class="guide" aria-labelledby="guide-heading"><h2 id="guide-heading">Guided cases</h2><div class="tabs" role="tablist" aria-label="Recovery scenarios"><button role="tab" id="tab-provider" aria-controls="guide-content" data-scenario="provider">Provider failure</button><button role="tab" id="tab-stale" aria-controls="guide-content" data-scenario="stale">Late result</button><button role="tab" id="tab-abort" aria-controls="guide-content" data-scenario="abort">Abort</button></div><div id="guide-content" role="tabpanel"><p id="guide-description"></p><ol id="steps" class="steps"></ol><p id="guide-footer" class="guide-footer"></p></div></section>
+</aside>
+</div>
+<footer>Design experiment: a future rehearsal surface. All process records, failures, and decisions are simulated in memory. Reloading discards them. No server, credentials, or live worker connections.</footer>
+</div>
+<script>
+// Pure model: only input data enters; all next state and decision evidence return as data.
+const RecoveryModel = (() => {
+  const initial = () => ({
+    selectedTurnId: 'draft-change', lifecycleStatus: 'active',
+    start: {id: 'start-001', proposedId: 'turn-001', state: 'accepted', parentId: null},
+    records: [{id: 'turn-001', attempt: 1, status: 'running', parentId: null, error: null}],
+    nextId: 2, incomingId: null, verdict: null,
+    notice: {title: 'A worker is drafting the change.', message: 'Attempt 1 was acknowledged. Inject a provider failure to rehearse a recovery decision.', rejected: false},
+    events: [{title: 'Initial fixture: start accepted', message: 'turn-001 is running on draft-change. Acknowledged attempts: 1.'}]
+  });
+  const expected = state => state.start?.state === 'accepted' ? state.start.proposedId : null;
+  const activeRecord = state => state.records.find(record => record.id === expected(state));
+  const failedRecord = state => [...state.records].reverse().find(record => record.status === 'failed');
+  function reduce(state, action) {
+    const s = structuredClone(state);
+    const report = (title, message, rejected = false) => {
+      s.notice = {title, message, rejected};
+      s.events.push({title, message});
+      return s;
+    };
+    if (action.type === 'outcome') {
+      s.incomingId = action.id;
+      const target = expected(s);
+      if (target !== action.id || !target) {
+        s.verdict = 'Rejected · stale turn record';
+        return report('Late result rejected.', `Received ${action.id}; expected ${target ?? 'no accepted record'}. This result cannot advance the selected turn or overwrite history.`, true);
+      }
+      if (s.lifecycleStatus !== 'active' || activeRecord(s)?.status !== 'running') {
+        s.verdict = 'Rejected · turn already ended';
+        return report('Turn has already ended.', 'This rehearsal accepts success only for a running record. The recorded failure remains available for generic retry.', true);
+      }
+      activeRecord(s).status = 'succeeded';
+      s.selectedTurnId = 'review'; s.lifecycleStatus = 'waiting'; s.start = null;
+      s.verdict = 'Accepted · matching current record';
+      return report('Change ready for review.', `${action.id} matched the current accepted record. The synthetic process graph advanced to review; no new attempt was created.`);
+    }
+    if (action.type === 'fail') {
+      if (s.lifecycleStatus !== 'active' || activeRecord(s)?.status !== 'running') return report('No running attempt to fail.', 'Provider failure applies to an accepted, running turn. Reserve and acknowledge a retry to start another.', true);
+      const record = activeRecord(s);
+      record.status = 'failed'; record.error = 'Provider unavailable · simulated HTTP 503';
+      s.lifecycleStatus = 'error';
+      return report('Provider failure recorded. Your place is preserved.', `${record.id} failed. draft-change stays selected; lifecycle is error. The failed record and its lineage remain available.`);
+    }
+    if (action.type === 'retry') {
+      const record = activeRecord(s);
+      if (s.lifecycleStatus !== 'error' || record?.status !== 'failed') return report('Retry requires a current failed turn.', `The process is ${s.lifecycleStatus}. Generic recovery cannot reserve another retry in this state.`, true);
+      const serial = String(s.nextId++).padStart(3, '0');
+      s.start = {id: `start-${serial}`, proposedId: `turn-${serial}`, state: 'starting', parentId: record.id};
+      s.lifecycleStatus = 'active';
+      return report('Retry reserved. No attempt added yet.', `${s.start.proposedId} is reserved by ${s.start.id}. The worker must acknowledge this start before the attempt count can increase.`);
+    }
+    if (action.type === 'ack') {
+      if (s.lifecycleStatus !== 'active' || !s.start) return report('Start acknowledgement rejected.', 'No active start is awaiting acceptance. An aborted process cannot be restarted by a late worker acknowledgement.', true);
+      if (s.start.state === 'accepted') return report('Repeated acknowledgement is idempotent.', `${s.start.proposedId} was already accepted. The existing record is returned; no duplicate attempt is created.`);
+      s.start.state = 'accepted';
+      s.records.push({id: s.start.proposedId, attempt: s.records.length + 1, status: 'running', parentId: s.start.parentId, error: null});
+      return report('Worker start accepted.', `${s.start.proposedId} is now attempt ${s.records.length}, linked to ${s.start.parentId}. Only this accepted record can advance the process.`);
+    }
+    if (action.type === 'abort') {
+      if (s.lifecycleStatus === 'aborted') return report('Process is already aborted.', 'Abort is terminal in this rehearsal. Reset to start a new simulation.', true);
+      const record = activeRecord(s);
+      if (record?.status === 'running') record.status = 'superseded';
+      s.selectedTurnId = null; s.lifecycleStatus = 'aborted'; s.start = null;
+      return report('Process aborted. History remains inspectable.', 'The selected turn and current execution are cleared. Late outcomes and start acknowledgements cannot resume this process.');
+    }
+    return s;
+  }
+  function compare(state) {
+    if (state.lifecycleStatus !== 'error') return null;
+    return {retry: reduce(state, {type: 'retry'}), abort: reduce(state, {type: 'abort'})};
+  }
+  return {initial, reduce, expected, activeRecord, failedRecord, compare};
+})();
+
+// Throwaway presentation shell.
+const scenarios = {
+  provider: {description: 'A provider goes away mid-turn. Retry the same business step, then acknowledge the new worker before accepting its result.', steps: [
+    ['Inject the provider failure', {type:'fail'}], ['Reserve a retry', {type:'retry'}], ['Acknowledge the new start', {type:'ack'}], ['Deliver the retry result', {type:'currentOutcome'}]
+  ], learning: 'Recovered to review. The failed record remains in history; the reserved start counted only after acknowledgement.'},
+  stale: {description: 'A delayed success arrives around a retry. Try the reserved record before acceptance, then the old record after the new worker starts.', steps: [
+    ['Fail the original turn', {type:'fail'}], ['Reserve a retry', {type:'retry'}], ['Send result before acceptance', {type:'currentOutcome'}], ['Acknowledge the new start', {type:'ack'}], ['Deliver the old worker result', {type:'outcome', id:'turn-001'}], ['Deliver the current result', {type:'currentOutcome'}]
+  ], learning: 'Both premature and stale results were rejected. Only the current acknowledged attempt moved the process to review.'},
+  abort: {description: 'The work is no longer needed. Compare the recovery choices, abort, and then try to restart it with old evidence.', steps: [
+    ['Fail and compare the choices', {type:'fail'}], ['Abort this process', {type:'abort'}], ['Try retry after abort', {type:'retry'}], ['Deliver the late worker result', {type:'outcome', id:'turn-001'}]
+  ], learning: 'Abort was terminal. The failed record survived, but neither retry nor an old outcome could resume the process.'}
+};
+let state = RecoveryModel.initial();
+let scenario = 'provider';
+let step = 0;
+let guided = true;
+const $ = id => document.getElementById(id);
+const escapeHtml = text => String(text).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const selectedLabel = s => s.selectedTurnId === 'draft-change' ? 'Draft change' : s.selectedTurnId === 'review' ? 'Review' : 'None';
+function perform(action, fromGuide = false) {
+  if (action.type === 'currentOutcome') action = {type:'outcome', id:state.start?.proposedId ?? 'turn-001'};
+  state = RecoveryModel.reduce(state, action);
+  if (fromGuide) step += 1; else guided = false;
+  render();
+}
+function reset(key = scenario) {state = RecoveryModel.initial(); scenario = key; step = 0; guided = true; render();}
+function render() {
+  const previousChoice = $('incoming').value;
+  const expected = RecoveryModel.expected(state);
+  const failed = RecoveryModel.failedRecord(state);
+  $('lifecycle').textContent = state.lifecycleStatus;
+  $('lifecycle').className = `status ${state.lifecycleStatus}`;
+  const fields = [
+    ['Selected turn', `${selectedLabel(state)}<small class="code">${state.selectedTurnId ?? 'null'}</small>`],
+    ['Acknowledged attempts', `${state.records.length}<small>${state.start?.state === 'starting' ? 'Reservation has not increased this count' : 'One record per accepted start'}</small>`],
+    ['Expected worker record', `<span class="code">${expected ?? 'None'}</span><small>${expected ? 'Only this identity can correlate' : 'No accepted result has authority'}</small>`],
+    ['Latest failed record', `<span class="code">${failed?.id ?? 'None'}</span><small>${failed ? 'Preserved as recovery evidence' : 'No failure recorded'}</small>`],
+    ['Current start', `<span class="code">${state.start?.id ?? 'None'}</span><small>${state.start?.state ?? 'No current execution'}</small>`],
+    ['Reserved record', `<span class="code">${state.start?.proposedId ?? 'None'}</span><small>${state.start?.parentId ? `Retry parent: ${state.start.parentId}` : 'Original start has no retry parent'}</small>`]
+  ];
+  $('state').innerHTML = fields.map(([label,value]) => `<div><dt>${label}</dt><dd>${value}</dd></div>`).join('');
+  $('state-note').textContent = state.lifecycleStatus === 'error' ? 'Error describes execution health. The business position is still Draft change.' : state.lifecycleStatus === 'aborted' ? 'Terminal lifecycle. No selected turn; all acknowledged attempt records are retained.' : state.lifecycleStatus === 'waiting' ? 'Review is an action turn in this synthetic process. It waits for an operator decision.' : state.start?.state === 'starting' ? 'Preparing a retry is not an execution attempt. Start acceptance is still required.' : 'The server-owned model is authoritative. Workers submit correlated facts.';
+  $('notice').className = `notice${state.notice.rejected ? ' rejected' : ''}`;
+  $('notice').innerHTML = `<strong>${escapeHtml(state.notice.title)}</strong><p>${escapeHtml(state.notice.message)}</p>`;
+  const comparison = RecoveryModel.compare(state);
+  $('comparison').innerHTML = comparison ? `<div class="comparison">${[['retry','Reserve retry'],['abort','Abort process']].map(([key,title]) => {const s = comparison[key]; return `<div class="choice"><h3>${title}</h3><dl><div><dt>Selected turn</dt><dd>${selectedLabel(s)}</dd></div><div><dt>Lifecycle</dt><dd>${s.lifecycleStatus}</dd></div><div><dt>Attempts</dt><dd>${s.records.length} · unchanged</dd></div></dl><p>${key === 'retry' ? 'A new start is reserved. Another acknowledgement is needed before work can run.' : 'The process ends. Failed evidence remains available to inspect.'}</p></div>`;}).join('')}</div>` : `<div class="comparison-empty">${state.lifecycleStatus === 'aborted' ? 'Abort has ended the process. Reset the rehearsal to compare another recovery decision.' : state.lifecycleStatus === 'waiting' ? 'The matching result advanced to review. Reset to rehearse another recovery path.' : state.start?.state === 'starting' ? 'Retry is reserved. Acknowledge its start next, or abort before another attempt exists.' : 'Inject a provider failure to compare both choices from exactly the same state.'}</div>`;
+  $('records').innerHTML = state.records.map(record => `<li class="record"><span class="record-index">${record.attempt}</span><div><strong class="code">${record.id}</strong><small>${record.parentId ? `Retry of ${record.parentId}` : 'Original attempt'}${record.error ? `<br>${record.error}` : ''}</small></div><span class="record-tag ${record.status}">${record.status}</span></li>`).join('');
+  $('event-count').textContent = `· ${state.events.length} events`;
+  $('log').innerHTML = [...state.events].reverse().map((event, index) => `<li><strong>${state.events.length-index}. ${escapeHtml(event.title)}</strong><span>${escapeHtml(event.message)}</span></li>`).join('');
+  const ids = [...new Set([...state.records.map(r=>r.id), ...(state.start ? [state.start.proposedId] : [])])];
+  $('incoming').innerHTML = ids.map(id => `<option value="${id}">${id}${id === expected ? ' · expected' : id === state.start?.proposedId ? ' · reserved, unaccepted' : ' · historical'}</option>`).join('');
+  if(ids.includes(previousChoice)) $('incoming').value = previousChoice;
+  $('guard').innerHTML = `<div><span>Last received</span><code>${state.incomingId ?? 'None yet'}</code></div><div><span>Expected now</span><code>${expected ?? 'None'}</code></div><p>${state.verdict ?? 'Choose a record and deliver its result to inspect the correlation decision.'}</p>`;
+  document.querySelectorAll('[data-scenario]').forEach(tab => {tab.setAttribute('aria-selected', String(tab.dataset.scenario === scenario)); tab.tabIndex = tab.dataset.scenario === scenario ? 0 : -1;});
+  $('guide-content').setAttribute('aria-labelledby', `tab-${scenario}`);
+  $('guide-description').textContent = scenarios[scenario].description;
+  $('steps').innerHTML = scenarios[scenario].steps.map(([label], index) => `<li><button data-step="${index}" ${index !== step || !guided ? 'disabled' : ''} class="${index < step ? 'done' : index === step && guided ? 'primary' : ''}"><span class="num">${index < step ? '✓' : index+1}</span>${label}</button></li>`).join('');
+  $('guide-footer').textContent = !guided ? 'Free play is active. Select a case tab to restart its guided steps.' : step === scenarios[scenario].steps.length ? scenarios[scenario].learning : 'Selecting a case resets to the same running fixture.';
+}
+document.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', () => perform({type:button.dataset.action})));
+document.querySelectorAll('[data-scenario]').forEach(button => {
+  button.addEventListener('click', () => reset(button.dataset.scenario));
+  button.addEventListener('keydown', event => {
+    if (!['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+    event.preventDefault();
+    const keys = Object.keys(scenarios); const index = keys.indexOf(scenario);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? keys.length-1 : (index+(event.key === 'ArrowRight' ? 1 : -1)+keys.length)%keys.length;
+    reset(keys[next]); $(`tab-${keys[next]}`).focus();
+  });
+});
+$('steps').addEventListener('click', event => {const button = event.target.closest('button[data-step]'); if (button && !button.disabled) {perform(scenarios[scenario].steps[step][1], true); const next = $('steps').querySelector('button:not(:disabled)'); if(next) next.focus(); else $('guide-footer').scrollIntoView({block:'nearest'});}});
+$('send').addEventListener('click', () => perform({type:'outcome', id:$('incoming').value}));
+$('reset').addEventListener('click', () => reset());
+render();
+</script>
+</body>
+</html>
