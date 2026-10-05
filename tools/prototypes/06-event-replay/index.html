@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Event replay debugger · Leitwerk prototype</title>
+<style>
+:root{font:15px/1.5 ui-sans-serif,system-ui,sans-serif;color:#18212b;background:#fff}*{box-sizing:border-box}body{margin:0}button,select,input{font:inherit;color:inherit}button,select{border:1px solid #aeb7c2;background:white;border-radius:6px;padding:8px 12px;min-height:42px}button{cursor:pointer}button:hover{background:#f2f4f7}button:disabled{opacity:.55;cursor:default}button.primary{background:#2f61b7;color:white;border-color:#2f61b7}button[aria-pressed=true]{background:#e6ecf6;border-color:#2f61b7;color:#204b92}:focus-visible{outline:3px solid #2f61b7;outline-offset:3px}header{padding:22px max(24px,calc((100vw - 1190px)/2));background:#f7f8fa;border-bottom:1px solid #d9dee5}.brand{display:flex;gap:12px;align-items:center;font-weight:650}.badge{font-size:13px;border:1px solid #d9dee5;padding:2px 7px;border-radius:5px;background:#f2f4f7}h1{font-size:29px;margin:18px 0 8px;line-height:1.2}h2{font-size:20px;margin:0 0 6px}h3{font-size:16px;margin:0}p{margin:6px 0 12px}.muted,.hint{color:#4c5968}.hint{font-size:13px}.intro{max-width:950px}main{max-width:1238px;margin:auto;padding:24px}.scenario-buttons{display:flex;gap:8px;flex-wrap:wrap}.scenario-description{margin:12px 0 18px;max-width:850px}.toolbar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;padding:16px;background:#f7f8fa;border:1px solid #d9dee5;border-radius:8px}.scrub{display:flex;align-items:center;gap:12px;flex:1;min-width:200px}.scrub input{width:100%;accent-color:#2f61b7}.scrub output{white-space:nowrap;font-variant-numeric:tabular-nums}.layout{display:grid;grid-template-columns:minmax(0,1.08fr) minmax(0,1fr);gap:28px;margin-top:24px}.panel{border:1px solid #d9dee5;border-radius:9px;overflow:hidden}.panel-head{padding:17px 20px;background:#f7f8fa;border-bottom:1px solid #d9dee5}.panel-body{padding:18px 20px}.event-list{padding:0;margin:0;list-style:none}.event-list li{border-bottom:1px solid #d9dee5}.event-list li:last-child{border:0}.event-button{display:flex;gap:12px;width:100%;text-align:left;border:0;border-radius:0;padding:13px 16px;background:#fff;align-items:start}.event-button.current{background:#eaf0fa;box-shadow:inset 3px 0 #2f61b7}.event-number{min-width:22px;color:#4c5968;font-variant-numeric:tabular-nums}.event-title{display:block;font-weight:600}.event-detail{display:block;font-size:13px;color:#4c5968}.event-result{display:block;font-size:13px;margin-top:5px;color:#204b92}.event-result.ignored{color:#805017}.result-label{font-weight:650}.controls{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.controls select{width:100%}.notice{margin:20px 0 0;padding:13px 16px;border-left:3px solid #2f61b7;background:#eaf0fa;min-height:49px}.stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 20px;margin:0}.stats div{border-bottom:1px solid #d9dee5;padding-bottom:10px}.stats dt{font-size:13px;color:#4c5968}.stats dd{margin:3px 0 0;font-weight:600;overflow-wrap:anywhere}.trace{margin-top:20px}.trace-item{padding:11px 0;border-bottom:1px solid #d9dee5}.trace-item:last-child{border-bottom:0}.trace-item p{margin:3px 0}.seq{font:12px ui-monospace,SFMono-Regular,monospace;color:#4c5968}.buffer{background:#f7f8fa;padding:12px 14px;margin-top:16px}.buffer p{margin:2px 0}.ledger{margin-top:24px}.ledger ol{padding-left:22px;margin:12px 0 0}.ledger li{margin:8px 0;font-size:13px}.state-notes{margin-top:18px;padding-top:16px;border-top:1px solid #d9dee5}.legend{display:flex;gap:15px;flex-wrap:wrap;margin-top:14px;font-size:13px;color:#4c5968}.instructions{margin:18px 0 0;font-size:13px;color:#4c5968}.empty{padding:12px 0;color:#4c5968}.footer{margin-top:28px;padding-top:17px;border-top:1px solid #d9dee5}.counter{font-variant-numeric:tabular-nums}.verdict{border-top:1px solid #d9dee5;margin-top:14px;padding-top:12px;font-size:13px}.reason-title{display:flex;justify-content:space-between;gap:12px}details{margin-top:12px}summary{color:#2f61b7;cursor:pointer}pre{font:13px/1.5 ui-monospace,SFMono-Regular,monospace;white-space:pre-wrap;overflow-wrap:anywhere;max-height:240px;overflow:auto;background:#f7f8fa;border:1px solid #d9dee5;padding:12px}@media(max-width:850px){.layout{grid-template-columns:1fr}}@media(max-width:480px){header{padding:18px}main{padding:20px 16px}h1{font-size:25px}.brand{flex-wrap:wrap}.scenario-buttons button{width:100%;text-align:left}.toolbar{padding:12px}.toolbar button{flex:1}.scrub{flex-basis:100%}.panel-head,.panel-body{padding:15px}.event-button{padding:12px}.stats{gap:12px}.layout{gap:20px}.controls button{flex:1}.reason-title{flex-wrap:wrap}}
+</style></head>
+<body>
+<header><div class="brand">Leitwerk <span class="muted">/</span> Replay lab <span class="badge">Prototype • synthetic data</span></div><h1>Deterministic event replay</h1><p class="intro">Can a developer explain every visible update by replaying the HTTP snapshot boundary and the frames that arrived around it?</p><p class="hint">A proposed debugging tool. No live connection or durable writes. Reordering the fixture changes delivery order; sequence numbers stay attached to their events.</p></header>
+<main>
+<section aria-labelledby="scenarios-title"><h2 id="scenarios-title">Choose a guided case</h2><div id="scenarios" class="scenario-buttons"></div><p id="description" class="scenario-description muted"></p></section>
+<div class="toolbar" aria-label="Replay controls"><button id="previous">Previous</button><button id="next" class="primary">Step forward</button><button id="finish">Replay all</button><button id="reset">Reset case</button><label class="scrub"><span class="hint">Position</span><input id="scrubber" type="range" min="0" value="0" aria-label="Replay position"><output id="position"></output></label></div>
+<div id="notice" role="status" aria-live="polite" class="notice"></div>
+<div class="layout">
+<section aria-labelledby="delivery-title"><div class="panel"><div class="panel-head"><h2 id="delivery-title">Delivery sequence</h2><p class="hint">Click a row to replay through it. Every scrub rebuilds the projection from the same initial snapshot.</p></div><ol id="events" class="event-list"></ol><div class="panel-body"><h3>Reorder the experiment</h3><p class="hint">Move a delivery or duplicate it, then step again. Changing the sequence resets replay to the initial snapshot.</p><div class="controls"><select id="selected-event" aria-label="Delivery to reorder"></select><button id="earlier">Move earlier</button><button id="later">Move later</button><button id="duplicate">Duplicate delivery</button></div><details><summary>Inspect selected fixture envelope</summary><pre id="envelope"></pre></details></div></div></section>
+<section aria-labelledby="projection-title"><div class="panel"><div class="panel-head"><h2 id="projection-title">Browser projection</h2><p class="hint">HTTP owns durable state. Live frames only update the selected execution’s trace.</p></div><div class="panel-body"><dl id="stats" class="stats"></dl><div id="buffer" class="buffer"></div><div class="trace"><div class="reason-title"><h3 id="trace-title"></h3><span id="trace-count" class="hint"></span></div><div id="trace"></div></div><div class="state-notes hint">Displayed content stays visible while recovery runs. An HTTP response is accepted only for the pending request and selected execution.</div><div id="verdict" class="verdict"></div></div></div><div class="ledger"><h2>Decision ledger</h2><p class="hint">Reasons for the current step, including each buffered frame reconsidered after an HTTP snapshot.</p><ol id="ledger"></ol></div></section>
+</div>
+<p class="footer hint">Experiment scope: an open Trace, ordered live delivery, and a combined synthetic HTTP response representing the relevant UI snapshot and Trace reads. Real clients fetch separate endpoints; this fixture omits compact summaries, authentication, and network timing. Equal timestamps never determine event order.</p>
+</main>
+<script>
+// Pure model: deterministic fold of deliveries; no DOM or network access.
+const ReplayModel = (() => {
+  const frame = (seq,text,turn='tr-42') => ({kind:'frame',type:'pi.stream.delta',eventSequence:seq,instanceId:'process-17',turnRecordId:turn,text,sentAt:'2026-10-06T08:00:00Z'});
+  const entry = (seq,text) => ({seq,text,source:'HTTP snapshot'});
+  const snapshot = (requestId=1,through=101,options={}) => ({kind:'snapshot',type:'HTTP response',requestId,instanceId:'process-17',turnRecordId:'tr-42',throughEventSequence:through,revision:7,lifecycle:'active',items:[entry(100,'Checking rollout prerequisites.'),entry(101,'Worker lease confirmed.')],...options});
+  const initial = () => ({connection:'Connected',selectedTurn:'tr-42',visibleTurn:'tr-42',durable:{selectedTurnId:'implement',lifecycle:'active',revision:7},snapshotBoundary:100,highWatermark:100,requestCount:0,pending:null,buffer:[],items:[entry(100,'Checking rollout prerequisites.')],decisions:[],outcomes:[],last:'Initial HTTP snapshot loaded through sequence 100.',fetchError:false});
+  const request = (state,reason) => {state.requestCount++;state.pending={id:state.requestCount,turn:state.selectedTurn,reason};state.buffer=[];state.fetchError=false;};
+  const fixtures = [
+    {name:'1. Reconnect + duplicates',description:'Reconnect starts an HTTP fetch. Frames arrive in reverse order, including a duplicate, a frame covered by the snapshot, and a frame from another execution. Watch the boundary filter and ordered replay.',expected:'The final trace contains sequences 100, 101, 102, 103 exactly once.',events:[
+      {kind:'reconnect',type:'Reconnect'},frame(103,'Ready for review.'),frame(102,'Validation passed.'),frame(103,'Ready for review.'),frame(101,'Worker lease confirmed.'),frame(104,'A different execution wrote this.','tr-99'),snapshot()
+    ]},
+    {name:'2. Durable invalidation',description:'A process.updated notification requests authoritative state. The process stays active until HTTP reports completion. A buffered live frame already included in that response must not be appended twice.',expected:'The lifecycle changes only at the HTTP response; completed state comes from revision 8.',events:[
+      {kind:'invalidate',type:'process.updated',durability:'durable',instanceId:'process-17'},frame(101,'Worker lease confirmed.'),snapshot(1,101,{revision:8,lifecycle:'completed'}),frame(101,'Worker lease confirmed.')
+    ]},
+    {name:'3. Switch, fail, recover',description:'Select another execution while a response is in flight. Reject the old response and frames, retain the labeled old trace on failure, then retry and accept the new execution’s snapshot.',expected:'Only the successful tr-99 response replaces the retained tr-42 content; durable process state remains unchanged.',events:[
+      {kind:'reconnect',type:'Reconnect'},{kind:'select',type:'Select execution',turn:'tr-99'},snapshot(),frame(105,'Late old-turn text.'),{kind:'fail',type:'HTTP failure',requestId:2},{kind:'retry',type:'Retry fetch'},snapshot(3,204,{turnRecordId:'tr-99',items:[entry(203,'Review opened.'),entry(204,'Plan accepted for inspection.')]})
+    ]}
+  ];
+  const applyFrame = (state,event,decisions) => {
+    if(event.eventSequence <= state.highWatermark){decisions.push(`Ignored #${event.eventSequence}: already covered by the applied sequence boundary ${state.highWatermark}.`);return false;}
+    state.items.push({seq:event.eventSequence,text:event.text,source:'Live frame'});state.highWatermark=event.eventSequence;
+    decisions.push(`Accepted #${event.eventSequence}: appended to ${state.selectedTurn} trace.`);return true;
+  };
+  const reduce = (previous,event) => {
+    const state = structuredClone(previous), decisions=[];
+    let status='accepted',summary='';
+    if(event.kind==='reconnect') {state.connection='Connected';request(state,'Reconnect recovery');status='request';summary=`HTTP request ${state.pending.id} started. Existing trace retained.`;}
+    if(event.kind==='select') {state.selectedTurn=event.turn;request(state,'Execution selected');status='request';summary=`Selected ${event.turn}; request ${state.pending.id} supersedes older requests. Showing retained ${state.visibleTurn} content.`;}
+    if(event.kind==='invalidate') {
+      if(event.instanceId!=='process-17'){status='ignored';summary='Invalidation belongs to another process.';}
+      else{request(state,'Durable invalidation');status='request';summary=`Durable invalidation → HTTP request ${state.pending.id}. Lifecycle remains ${state.durable.lifecycle}; the notification carries no replacement state.`;}
+    }
+    if(event.kind==='retry') {request(state,'Retry recovery');status='request';summary=`Retry started HTTP request ${state.pending.id}. Visible content retained.`;}
+    if(event.kind==='fail') {
+      if(state.pending?.id!==event.requestId){status='ignored';summary=`Failure for inactive request ${event.requestId} ignored.`;}
+      else{state.pending=null;state.buffer=[];state.fetchError=true;status='failed';summary='HTTP fetch failed. Visible trace retained; Retry fetch is available in the sequence.';}
+    }
+    if(event.kind==='frame') {
+      if(event.instanceId!=='process-17'||event.turnRecordId!==state.selectedTurn){status='ignored';summary=`Frame #${event.eventSequence} belongs to ${event.turnRecordId}; selected execution is ${state.selectedTurn}.`;}
+      else if(state.pending){
+        if(state.buffer.some(f=>f.eventSequence===event.eventSequence)){status='ignored';summary=`Duplicate #${event.eventSequence} already buffered; retain one copy.`;}
+        else{state.buffer.push(event);status='buffered';summary=`Buffered #${event.eventSequence} while request ${state.pending.id} is pending. Visible trace retained.`;}
+      }else if(state.visibleTurn!==state.selectedTurn){status='ignored';summary='Selected execution has no accepted snapshot yet; recover it before applying live detail.';}
+      else {const accepted=applyFrame(state,event,decisions);status=accepted?'accepted':'ignored';summary=decisions[0];}
+    }
+    if(event.kind==='snapshot') {
+      if(!state.pending||state.pending.id!==event.requestId||event.instanceId!=='process-17'||event.turnRecordId!==state.selectedTurn){status='ignored';summary=`Stale HTTP response for request ${event.requestId} / ${event.turnRecordId}; it does not match the pending request and execution.`;}
+      else{
+        state.items=event.items.map(x=>({...x}));state.visibleTurn=event.turnRecordId;
+        state.durable={selectedTurnId:state.durable.selectedTurnId,lifecycle:event.lifecycle,revision:event.revision};
+        state.snapshotBoundary=event.throughEventSequence;state.highWatermark=event.throughEventSequence;state.pending=null;state.fetchError=false;
+        decisions.push(`Accepted HTTP snapshot through #${event.throughEventSequence}; durable revision ${event.revision}.`);
+        for(const buffered of state.buffer.toSorted((a,b)=>a.eventSequence-b.eventSequence)){
+          if(buffered.eventSequence<=event.throughEventSequence)decisions.push(`Ignored buffered #${buffered.eventSequence}: already included through HTTP boundary ${event.throughEventSequence}.`);
+          else applyFrame(state,buffered,decisions);
+        }
+        const count=state.buffer.length;state.buffer=[];
+        summary=`HTTP snapshot accepted; ${count} unique buffered ${count===1?'frame reconsidered':'frames reconsidered'} in sequence order.`;
+      }
+    }
+    if(!decisions.length)decisions.push(summary);
+    state.decisions=decisions;state.last=summary;state.outcomes.push({status,summary});return state;
+  };
+  const replay = (events,position) => events.slice(0,position).reduce(reduce,initial());
+  return {fixtures,initial,replay};
+})();
+let caseIndex=0,position=0,selected=0,edited=false;
+let deliveries=structuredClone(ReplayModel.fixtures[0].events);
+const $=id=>document.getElementById(id);
+const esc=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function describe(event){if(event.kind==='frame')return `#${event.eventSequence} · ${event.turnRecordId} · “${event.text}”`;if(event.kind==='snapshot')return `request ${event.requestId} · ${event.turnRecordId} · through #${event.throughEventSequence} · revision ${event.revision}`;if(event.kind==='select')return `Inspect ${event.turn}`;if(event.kind==='fail')return `request ${event.requestId} · synthetic network failure`;if(event.kind==='invalidate')return 'Durable notification · refetch HTTP';return event.kind==='retry'?'Start a new recovery request':'Retain visible content; start recovery';}
+function render(){
+  const state=ReplayModel.replay(deliveries,position),fixture=ReplayModel.fixtures[caseIndex];
+  $('scenarios').innerHTML=ReplayModel.fixtures.map((item,i)=>`<button data-case="${i}" aria-pressed="${i===caseIndex}">${item.name}</button>`).join('');
+  $('description').textContent=fixture.description;
+  $('position').textContent=`${position} / ${deliveries.length}`;$('scrubber').max=deliveries.length;$('scrubber').value=position;
+  $('previous').disabled=position===0;$('next').disabled=position===deliveries.length;$('finish').disabled=position===deliveries.length;
+  $('notice').textContent=position===0?(edited?'Delivery sequence changed. Step forward to inspect the consequences.':state.last):state.last;
+  $('events').innerHTML=deliveries.map((event,i)=>`<li><button class="event-button ${position===i+1?'current':''}" data-position="${i+1}" aria-label="Replay through delivery ${i+1}: ${esc(event.type)}" ${position===i+1?'aria-current="step"':''}><span class="event-number">${i+1}</span><span><span class="event-title">${esc(event.type)}</span><span class="event-detail">${esc(describe(event))}</span>${state.outcomes[i]?`<span class="event-result ${state.outcomes[i].status}"><span class="result-label">${state.outcomes[i].status.charAt(0).toUpperCase()+state.outcomes[i].status.slice(1)}:</span> ${esc(state.outcomes[i].summary)}</span>`:''}</span></button></li>`).join('');
+  $('selected-event').innerHTML=deliveries.map((event,i)=>`<option value="${i}" ${selected===i?'selected':''}>${i+1}. ${esc(event.type)}${event.eventSequence?' #'+event.eventSequence:''}</option>`).join('');
+  $('earlier').disabled=selected===0;$('later').disabled=selected===deliveries.length-1;
+  $('envelope').textContent=JSON.stringify(deliveries[selected],null,2);
+  const fields=[['Connection',state.connection],['Selected trace',state.selectedTurn],['HTTP fetch',state.pending?`Request ${state.pending.id} pending`:state.fetchError?'Failed · retry available':'Idle'],['Durable lifecycle',state.durable.lifecycle],['Durable revision',state.durable.revision],['Selected process turn',state.durable.selectedTurnId],['HTTP boundary',`through #${state.snapshotBoundary}`],['Applied high watermark',`#${state.highWatermark}`]];
+  $('stats').innerHTML=fields.map(([label,value])=>`<div><dt>${label}</dt><dd>${esc(value)}</dd></div>`).join('');
+  $('buffer').innerHTML=`<strong>Recovery buffer · ${state.buffer.length} unique frames</strong><p class="hint">${state.buffer.length?`Arrival order: ${state.buffer.map(f=>'#'+f.eventSequence).join(' → ')}. Replay waits for HTTP.`:'No frames waiting for a snapshot.'}</p>`;
+  $('trace-title').textContent=`Visible trace · ${state.visibleTurn}${state.visibleTurn!==state.selectedTurn?' (retained)':''}`;
+  $('trace-count').textContent=`${state.items.length} items`;
+  $('trace').innerHTML=state.items.map(item=>`<div class="trace-item"><span class="seq">#${item.seq} · ${item.source}</span><p>${esc(item.text)}</p></div>`).join('');
+  $('ledger').innerHTML=(state.decisions.length?state.decisions:['Initial snapshot establishes the durable projection and trace through #100.']).map(reason=>`<li>${esc(reason)}</li>`).join('');
+  $('verdict').innerHTML=`<strong>${edited?'Custom delivery order':'Expected outcome'}</strong><p>${edited?'The original outcome may no longer hold. Read the decision ledger to identify which dependency moved.':fixture.expected}</p>`;
+}
+function reset(index=caseIndex){caseIndex=index;position=0;selected=0;edited=false;deliveries=structuredClone(ReplayModel.fixtures[index].events);render();}
+$('scenarios').onclick=event=>{const button=event.target.closest('[data-case]');if(button)reset(Number(button.dataset.case));};
+$('events').onclick=event=>{const button=event.target.closest('[data-position]');if(button){position=Number(button.dataset.position);render();}};
+$('previous').onclick=()=>{position--;render();};$('next').onclick=()=>{position++;render();};$('finish').onclick=()=>{position=deliveries.length;render();};$('reset').onclick=()=>reset();
+$('scrubber').oninput=event=>{position=Number(event.target.value);render();};
+$('selected-event').onchange=event=>{selected=Number(event.target.value);render();};
+function move(offset){const target=selected+offset;[deliveries[selected],deliveries[target]]=[deliveries[target],deliveries[selected]];selected=target;position=0;edited=true;render();}
+$('earlier').onclick=()=>move(-1);$('later').onclick=()=>move(1);
+$('duplicate').onclick=()=>{deliveries.splice(selected+1,0,structuredClone(deliveries[selected]));selected++;position=0;edited=true;render();};
+render();
+</script>
+</body></html>
