@@ -364,7 +364,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 					<div class="refresh-banner">{error} — showing the last process state we loaded.</div>
 				{/if}
 
-				{#if projection.timelineItems.length === 0 && startup.attempts.length === 0 && !startupRecovery}
+				{#if projection.timelineItems.length === 0 && startup.attempts.length === 0 && !startupRecovery && !processError && !selectedTurn?.readiness}
 					<div class="empty-state" data-section="chronicle-empty-state">
 						<p>
 							This process has not recorded activity yet. As the worker plans, acts, and saves results, the timeline will fill in here.

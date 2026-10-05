@@ -740,6 +740,7 @@ describe("ProcessActionRegistry", () => {
 								id: "commit_and_merge",
 								description: "Commit and merge",
 								kind: "automatic",
+								waitFor: () => false,
 								outcomes: {
 									finalized: { description: "done", parameters: {} },
 								},

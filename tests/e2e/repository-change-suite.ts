@@ -272,8 +272,26 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 	});
 	await start(false);
 	const driver = createProcessDriver(() => harness.ctx);
+	// Admission also waits at this turn; remote edits must follow its delivery effects.
+	const deliverySettled = (id: string) => {
+		const current = state(id);
+		return (
+			current.delivery.stage === "awaiting" &&
+			!current.delivery.adjustment &&
+			!current.delivery.terminalPullRequest &&
+			!current.pendingEvidence &&
+			current.feedbackIds.length === 0
+		);
+	};
 	const armed = async (id: string) => {
-		await driver.wait(id, "deliver_change");
+		await driver.waitForProcess(
+			id,
+			(p) =>
+				p.selectedTurnId === "deliver_change" &&
+				p.lifecycleStatus === "waiting" &&
+				deliverySettled(id),
+			"delivery settled before observing external events",
+		);
 		await waitForValue(
 			() =>
 				(harness.ctx.deps.externalSourceService as CoreServerSetupDeps["externalSources"])
@@ -293,7 +311,10 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 			harness.ctx.deps.processes.listAll().map(async ({ id }) => {
 				const process = await driver.waitForProcess(
 					id,
-					(p) => p.lifecycleStatus !== "active" && p.lifecycleStatus !== "discovered",
+					(p) =>
+						p.lifecycleStatus !== "active" &&
+						p.lifecycleStatus !== "discovered" &&
+						(p.selectedTurnId !== "deliver_change" || deliverySettled(id)),
 					"settled provider observation",
 				);
 				if (process.selectedTurnId === "deliver_change" && process.lifecycleStatus === "waiting")

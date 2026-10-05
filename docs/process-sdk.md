@@ -306,6 +306,54 @@ returned process stays authoritative even if a follow-up reaction fails; report
 that process rather than creating a replacement. See
 [launch progress](server-worker-lifecycle.md#7-launch-progress).
 
+### Readiness before a worker starts
+
+Keep readiness beside the turn that does the work:
+
+```ts
+flow.llm("repair")
+  .description("Repair failed CI")
+  .waitFor(async process => {
+    const assessment = await repository.assess(process);
+    if (assessment.closed) return process.complete();
+    return assessment.eligible && assessment.ciFailed;
+  })
+  .prompt("Repair this change's failed CI.")
+  .end("done").complete();
+```
+
+`repository.assess` is an extension-owned read adapter using the process's existing
+project binding. A predicate receives the process snapshot, projects, decoded
+params and state, an abort signal, and `require(token)` for server adapters.
+It needs no input codec or separate assessment turn. Ordinary turns can use just
+`.prompt("Write a short poem.")` without a readiness predicate.
+
+Both LLM and automatic turns support `.waitFor(predicate)`. The server checks it
+before persisting a worker start, allocating a lease, or accepting a turn attempt:
+
+- `false` keeps the selected turn waiting without a worker.
+- `true` admits one execution. Checks stop after admission.
+- `return process.complete()` completes the process without a worker.
+
+Remote operations in the predicate must be read-only. Use
+`process.setState(nextState)` only to stage local observations; the server validates
+and commits them if the check is still current. Worker preparation and external
+writes belong in the executing turn or an idempotent server delivery service.
+Never log credentials in predicate errors.
+
+The server bounds concurrent checks, checks again after 30 seconds, and times out
+each read after 30 seconds. `RetryableWaitError` keeps the process waiting with a
+persisted diagnostic and exponential backoff capped at five minutes. Other errors
+park the process in error until an explicit retry. Retry checks readiness again.
+Restart retains the pending check and due time. Late results cannot override Stop,
+a different selected turn, changed params/state, or changed project bindings.
+
+External edges to worker turns must target a turn declaring `.waitFor(...)`.
+Definition validation rejects ungated targets. Readiness notifications create no
+turn records; published external input keeps its product record. Subscriptions can
+wake a check, but cannot bypass it or defeat polling backoff. Mapped turns check
+once before freezing their item list; explicit item retries check again.
+
 ### Watchers
 
 Watchers start processes from external events. The source extension owns parsing,
@@ -329,8 +377,11 @@ const review = flow
 ```
 
 An automatic outcome can `.wait()` without introducing a synthetic wait turn.
-External actions arm only after that waiting outcome is durable, not while the
-handler runs. They may restart the turn, route to another turn, complete, or abort.
+External actions arm while the selected turn is durably waiting, including in a
+readiness check. They are inactive while the handler runs. They may wake readiness
+for the same or another worker turn, select a human turn, complete, or abort.
+Use `.when(...)` to require any published facts needed by the source resolver;
+readiness can wait before the first execution has produced those facts.
 
 Use `.when(({ params, state, process, projects }) => boolean)` for process-owned
 routing conditions. False excludes the action from both provider subscriptions and

@@ -127,11 +127,21 @@ import {
 	type WorkerWebSocketIpcManager,
 } from "./supervisor/worker-websocket-ipc.js";
 import { createToolApprovalGate } from "./tool-approval-gate.js";
+import { createTurnWaitService } from "./turn-wait-service.js";
 import { defaultWorkerRuntimeProfile } from "./worker-runtime-profile-selection.js";
 import { type Broadcaster, createBroadcaster } from "./ws/broadcast.js";
 
 /** @public */
 export interface AppOptions {
+	/** Clock and cadence seam for readiness integration tests. @internal */
+	turnWait?: {
+		/** @internal */
+		now?: () => number;
+		/** @internal */
+		pollIntervalMs?: number;
+		/** @internal */
+		timeoutMs?: number;
+	};
 	/** @public */
 	config?: LeitwerkConfig;
 	/** @internal */
@@ -1244,6 +1254,28 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		});
 
 		hostCapabilities.provide(scopedSettingsCapability, scopedSettings);
+		const turnWaitService = createTurnWaitService({
+			processes: baseDeps.processes,
+			projects: baseDeps.projects,
+			processGraphs,
+			registry: processActionRegistry,
+			commands: processEngine,
+			require: hostCapabilities.require.bind(hostCapabilities),
+			...opts.turnWait,
+		});
+		polling.create({
+			id: "turn-readiness",
+			pollOnce: turnWaitService.poll,
+			isEnabled: () => true,
+			pollInterval: () => "1s",
+			defaultIntervalMs: 1000,
+		});
+		afterSuccessHooks.add((instanceId) => {
+			// Resolving readiness invokes this hook again; never await our own check.
+			void turnWaitService.check(instanceId).catch((error: unknown) => {
+				app.log.error({ err: error, instanceId }, "Turn readiness check failed");
+			});
+		});
 		await setupServerExtensions(
 			extensionCatalog,
 			{
@@ -1264,7 +1296,10 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		);
 		integrationTools.validateTicketProcesses(extensionCatalog.processes);
 		startHooks.push(() => polling.start());
-		stopHooks.push(() => polling.stop());
+		stopHooks.push(async () => {
+			await turnWaitService.stop();
+			await polling.stop();
+		});
 		for (const process of extensionCatalog.processes.values()) {
 			for (const [turnId, binding] of process.turns) {
 				const definition = binding.definition;

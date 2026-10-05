@@ -1,6 +1,6 @@
 import { waitForValue } from "@leitwerk-dev/test-support/integration";
 import { expect } from "vitest";
-import { control, repo, revised, test } from "../../../sandbox/testing/forgejo-fixture.js";
+import { control, remote, repo, revised, test } from "../../../sandbox/testing/forgejo-fixture.js";
 
 test("publication reconciles a lost PR response and concurrent control replays remain idempotent", async ({
 	f,
@@ -13,14 +13,23 @@ test("publication reconciles a lost PR response and concurrent control replays r
 		() => f.context.deps.processes.getById(id),
 		(p) =>
 			p?.lifecycleStatus === "error" ||
-			(p?.selectedTurnId === "deliver_change" && p.lifecycleStatus === "waiting"),
+			(p?.selectedTurnId === "deliver_change" &&
+				p.lifecycleStatus === "waiting" &&
+				remote(f, id)?.delivery?.stage === "awaiting"),
 		12000,
 	);
 	if (f.context.deps.processes.getById(id)?.lifecycleStatus === "error") {
 		await f.restart();
 		await f.post(`/api/processes/${id}/retry`);
 	}
-	await f.wait(id, "deliver_change");
+	await f.waitForProcess(
+		id,
+		(p) =>
+			p.selectedTurnId === "deliver_change" &&
+			p.lifecycleStatus === "waiting" &&
+			remote(f, id)?.delivery?.stage === "awaiting",
+		"published delivery",
+	);
 	expect(repo(f).pulls).toHaveLength(1);
 	const head = repo(f).pulls[0].head.sha;
 	const input = { requestId: "concurrent-feedback-control", kind: "conversation" };

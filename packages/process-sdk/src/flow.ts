@@ -55,6 +55,7 @@ import type {
 	MappedTurnItemContext,
 	MappedTurnServerContext,
 } from "./mapped-turn.js";
+import type { TurnWaitPredicate } from "./turn-wait.js";
 import type { OutcomeToolParameterSpec, PiBuiltInToolName, ProcessPiConfig } from "./types.js";
 
 /** @public */
@@ -1157,6 +1158,13 @@ export class LlmFlowBuilder<
 	extends DescribedTurnBuilder
 	implements FlowLlmTurn<TParams, TState, string>
 {
+	private waitPredicate: TurnWaitPredicate<TParams, TState> | undefined;
+	/** Wait on the server before this turn may allocate a worker. @public */
+	waitFor(predicate: TurnWaitPredicate<TParams, TState>): this {
+		if (this.waitPredicate) throw new Error(`Turn '${this.turnId}' already declares .waitFor(...)`);
+		this.waitPredicate = predicate;
+		return this;
+	}
 	private executionPurposeValue: string | undefined;
 	private modelPurposeValue: LlmModelPurpose | undefined;
 	private availableTools: readonly PiBuiltInToolName[] = [];
@@ -1502,8 +1510,10 @@ export class LlmFlowBuilder<
 	}
 
 	/** @public */
-	prompt(prompt: (ctx: ProcessRuntimeTurnContext<TParams, TState>) => MaybePromise<string>): this {
-		this.promptBuilder = prompt;
+	prompt(
+		prompt: string | ((ctx: ProcessRuntimeTurnContext<TParams, TState>) => MaybePromise<string>),
+	): this {
+		this.promptBuilder = typeof prompt === "string" ? () => prompt : prompt;
 		return this;
 	}
 
@@ -1545,6 +1555,7 @@ export class LlmFlowBuilder<
 		return {
 			kind: "llm" as const,
 			description: this.turnDescription,
+			...(this.waitPredicate ? { waitFor: this.waitPredicate } : {}),
 			...(this.modelPurposeValue ? { modelPurpose: this.modelPurposeValue } : {}),
 			...(this.executionPurposeValue ? { executionPurpose: this.executionPurposeValue } : {}),
 			availableTools: this.availableTools,
@@ -2045,6 +2056,13 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 		| null = null;
 	private outcomeBuilders = new Map<string, AutomaticOutcomeBuilder<TParams, TState>>();
 	private availableIntegrationTools: readonly string[] = [];
+	private waitPredicate: TurnWaitPredicate<TParams, TState> | undefined;
+	/** Wait on the server before this turn may allocate a worker. @public */
+	waitFor(predicate: TurnWaitPredicate<TParams, TState>): this {
+		if (this.waitPredicate) throw new Error(`Turn '${this.turnId}' already declares .waitFor(...)`);
+		this.waitPredicate = predicate;
+		return this;
+	}
 
 	/** @internal */
 	get definition(): AutomaticTurnDefinition<string, TParams, TState> {
@@ -2105,6 +2123,7 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 		return {
 			kind: "automatic",
 			description: this.turnDescription,
+			...(this.waitPredicate ? { waitFor: this.waitPredicate } : {}),
 			...(this.availableIntegrationTools.length > 0
 				? { integrationTools: this.availableIntegrationTools }
 				: {}),

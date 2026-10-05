@@ -37,6 +37,28 @@ const pipeline = (id: number, status: string, sha = "head"): GitLabPipeline => (
 	web_url: `https://forge.test/pipelines/${id}`,
 });
 describe("GitLab boundary", () => {
+	it("paginates MR label history and updates only the requested label deltas", async () => {
+		const requests: { url: URL; init?: RequestInit }[] = [];
+		const client = new GitLabClient(profile, {
+			fetch: async (url, init) => {
+				const parsed = new URL(String(url));
+				requests.push({ url: parsed, init });
+				if (init?.method === "PUT") return Response.json(mr);
+				expect(parsed.pathname).toBe("/api/v4/projects/7/merge_requests/1/resource_label_events");
+				return Response.json([{ id: requests.length }], {
+					headers: { "x-next-page": requests.length === 1 ? "2" : "" },
+				});
+			},
+		});
+		expect(await client.listMergeRequestLabelEvents(7, 1)).toEqual([{ id: 1 }, { id: 2 }]);
+		expect(requests[1].url.searchParams.get("page")).toBe("2");
+		await client.updateMergeRequestLabels(7, 1, { add_labels: "active", remove_labels: "done" });
+		expect(requests[2].url.pathname).toBe("/api/v4/projects/7/merge_requests/1");
+		expect(JSON.parse(String(requests[2].init?.body))).toEqual({
+			add_labels: "active",
+			remove_labels: "done",
+		});
+	});
 	it("creates issues with the v4 payload and can reconcile closed issues without changing watcher discovery", async () => {
 		const requests: { url: URL; init?: RequestInit }[] = [];
 		const client = new GitLabClient(profile, {

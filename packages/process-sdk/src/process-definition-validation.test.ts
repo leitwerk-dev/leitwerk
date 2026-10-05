@@ -53,7 +53,7 @@ describe.each([
 		},
 	},
 ])("$name process definitions", ({ define }) => {
-	it("collects independent declaration, routing, and product errors with context", () => {
+	it("collects independent declaration, routing, readiness, and product errors with context", () => {
 		const input = declaration({
 			invalid_parameter: llmTurn({
 				description: "Invalid parameter",
@@ -83,6 +83,7 @@ describe.each([
 				externalActions: {
 					first: { id: "first", source: { kind: "first" }, to: "missing_external_first" },
 					second: { id: "second", source: { kind: "second" }, to: "missing_external_second" },
+					ungated: { id: "ungated", source: { kind: "ungated" }, to: "consumer" },
 				},
 			}),
 			consumer: llmTurn({
@@ -102,6 +103,7 @@ describe.each([
 			/Process 'validated_process'.*turn 'invalid_route'.*unknown turn 'missing_second'/,
 			/Process 'validated_process'.*turn 'invalid_external_routes'.*unknown turn 'missing_external_first'/,
 			/Process 'validated_process'.*turn 'invalid_external_routes'.*unknown turn 'missing_external_second'/,
+			/Process 'validated_process'.*turn 'invalid_external_routes'.*worker turn 'consumer'.*requires .waitFor/,
 			/Process 'validated_process'.*Turn 'consumer'.*'missing-product'.*never published/,
 		])
 			expect(message).toMatch(reason);
@@ -165,6 +167,7 @@ describe.each([
 				branchType: "primary",
 				context: "fresh",
 				prompt: unexpected,
+				waitFor: unexpected,
 				prepare: unexpected,
 				resolveIntegrationTools: unexpected,
 				outcomes: { done: { description: "Done", parameters: {} } },

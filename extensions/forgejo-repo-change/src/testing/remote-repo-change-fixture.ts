@@ -705,8 +705,15 @@ export async function createRemoteRepoChangeFixture(
 				await test.process(id).waitFor((snapshot) => {
 					if (snapshot.process.lifecycleStatus === "error" && status !== "error")
 						throw new Error(snapshot.turns.at(-1)?.errorSummary ?? "Start failed");
+					const delivery = remoteState(snapshot.process).delivery as
+						| { stage?: string; adjustment?: unknown }
+						| undefined;
 					return (
-						snapshot.process.selectedTurnId === turn && snapshot.process.lifecycleStatus === status
+						snapshot.process.selectedTurnId === turn &&
+						snapshot.process.lifecycleStatus === status &&
+						(turn !== "deliver_change" ||
+							status !== "waiting" ||
+							(delivery?.stage === "awaiting" && !delivery.adjustment))
 					);
 				})
 			).process;

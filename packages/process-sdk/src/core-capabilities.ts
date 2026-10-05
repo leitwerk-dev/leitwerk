@@ -75,6 +75,8 @@ export interface ProcessRepoLike {
 		input: {
 			/** @public */
 			selectedTurnId?: TurnId | null;
+			/** Lifecycle accompanying a startup compatibility migration. @public */
+			lifecycleStatus?: ProcessLifecycleStatus;
 			/** Encoded params rewritten by a startup compatibility migration. @public */
 			paramsJson?: string | null;
 			/** @public */

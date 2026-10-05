@@ -143,6 +143,11 @@ technical details and retry-model settings collapsed by default. Retry explains
 that it starts another attempt. Continue is offered only when retained progress
 supports it.
 
+Readiness checks appear as a waiting status, including temporary failures and the
+next check time, even before the first execution. A failed condition offers
+**Retry condition**, which rechecks readiness before starting work. These checks
+do not add timeline turns or worker starts.
+
 Collapsing a card, retry settings, or an action form must preserve entered instructions
 and settings. Navigating back reveals the controls. Historical failures remain
 visible after recovery; repeated business turns are not retry attempts.

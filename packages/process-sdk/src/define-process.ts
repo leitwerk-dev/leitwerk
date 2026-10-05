@@ -37,6 +37,7 @@ import {
 } from "./process-graph.js";
 import type { ServerExtensionEventMap } from "./server-events.js";
 import { validateHumanTurnMetadata, validateTurnDefinition } from "./turn-semantics.js";
+import type { TurnWaitPredicate } from "./turn-wait.js";
 import type {
 	HumanTurnActionView,
 	HumanTurnExternalActionView,
@@ -419,6 +420,8 @@ export interface LlmTurnDefinition<
 	kind: "llm";
 	/** @public */
 	description: string;
+	/** Server-side entry condition, evaluated before worker allocation. @public */
+	waitFor?: TurnWaitPredicate<TParams, TState>;
 	/** Code-defined model policy purpose. Purpose selections cannot be overridden per launch/action. @internal */
 	modelPurpose?: LlmModelPurpose;
 	/** Extension-defined scoped settings consumed by this turn. @public */
@@ -479,6 +482,8 @@ export interface AutomaticTurnDefinition<
 	kind: "automatic";
 	/** @public */
 	description: string;
+	/** Server-side entry condition, evaluated before worker allocation. @public */
+	waitFor?: TurnWaitPredicate<TParams, TState>;
 	/** Server-owned integration tools callable by this deterministic worker turn. @internal */
 	integrationTools?: readonly string[];
 	/** External events armed while this automatic turn is selected and waiting. @public */
@@ -1699,6 +1704,22 @@ function compileProcessDefinition<TParams, TState>(
 			continue;
 		}
 		try {
+			const external =
+				turnSpec.kind === "external"
+					? turnSpec.transitions
+					: turnSpec.kind === "human" || turnSpec.kind === "automatic"
+						? Object.values(turnSpec.externalActions ?? {})
+						: [];
+			for (const route of external) {
+				const target = route.to ? input.turns[route.to] : undefined;
+				if ((target?.kind === "llm" || target?.kind === "automatic") && !target.waitFor) {
+					validTurns = false;
+					diagnostics.add(
+						`External transition from '${turnId}' to worker turn '${route.to}' requires .waitFor(...) on the target`,
+						turnId,
+					);
+				}
+			}
 			if (turnSpec.kind === "llm" && turnSpec.forEach) {
 				turns.set(
 					turnId,

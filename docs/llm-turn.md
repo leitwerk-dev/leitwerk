@@ -1,5 +1,11 @@
 # LLM turn flow
 
+An LLM turn may declare `.waitFor(async process => boolean | process.complete())`.
+Its single readiness predicate runs on the server before worker startup; its prompt
+and preparation remain on the same turn definition. False checks, read failures,
+and completion during a check create no turn attempts. See
+[readiness](process-sdk.md#readiness-before-a-worker-starts).
+
 An active LLM turn uses two server paths:
 
 - lifecycle messages mutate durable process state through ProcessEngine;

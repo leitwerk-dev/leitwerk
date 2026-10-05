@@ -30,6 +30,7 @@ import type {
 	ProcessExternalSourceSummary,
 	ProcessSelectedTurnSummary,
 } from "@leitwerk-dev/protocol/http-contracts";
+import { pendingTurnWait } from "./process-engine/turn-wait-state.js";
 
 /** @internal */
 export interface ProcessContextData {
@@ -314,6 +315,7 @@ function buildSelectedTurnSummaryForProcess(
 		return null;
 	}
 	const { params, state } = resolveProcessContextData(processDef, process);
+	const wait = pendingTurnWait(process);
 	return {
 		turnId: currentTurn.turnId,
 		kind: currentTurn.turnDef.kind,
@@ -327,6 +329,14 @@ function buildSelectedTurnSummaryForProcess(
 			params,
 			state,
 		}),
+		...(wait?.status === "waiting" && process.lifecycleStatus === "waiting"
+			? {
+					readiness: {
+						message: wait.message,
+						nextCheckAt: wait.nextCheckAt > 0 ? new Date(wait.nextCheckAt).toISOString() : null,
+					},
+				}
+			: {}),
 	};
 }
 

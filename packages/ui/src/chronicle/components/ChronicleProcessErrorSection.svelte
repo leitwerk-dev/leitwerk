@@ -9,6 +9,9 @@ interface Props {
 	summary: string;
 	guidance?: string;
 	technicalDetail?: string | null;
+	onRetry?: () => Promise<void> | void;
+	busy?: boolean;
+	error?: string | null;
 }
 
 let {
@@ -18,6 +21,9 @@ let {
 	summary,
 	guidance = "This process stopped before it produced a recoverable failed turn. Inspect the latest state, then retry or restart it when you are ready.",
 	technicalDetail = null,
+	onRetry,
+	busy = false,
+	error = null,
 }: Props = $props();
 </script>
 
@@ -25,10 +31,18 @@ let {
  <ChronicleEntryHeader {title} kind="system" failed />
  <ChronicleFailureMessage {summary} {technicalDetail} />
  <p class="process-error-guidance">{guidance}</p>
+ {#if onRetry}
+  <button type="button" class="secondary-button" data-action="retry-waiting-condition" disabled={busy} onclick={() => onRetry?.()}>
+   {busy ? "Retrying…" : "Retry condition"}
+  </button>
+ {/if}
+ {#if error}<p class="process-error-retry" role="alert">{error}</p>{/if}
 </section>
 
 <style>
  .process-error-section { display: flex; flex-direction: column; gap: 12px; min-width: 0; padding: 14px; border: 1px solid color-mix(in srgb, var(--chronicle-danger) 50%, var(--chronicle-border)); border-radius: 10px; background: color-mix(in srgb, var(--chronicle-danger) 2%, var(--chronicle-card-surface)); scroll-margin-top: 28px; }
  .process-error-guidance { margin: 0; color: var(--chronicle-text-muted); font-size: var(--type-body-sm); line-height: 1.55; }
+ button { align-self: flex-start; }
+ .process-error-retry { margin: 0; color: var(--chronicle-danger); }
  @media (max-width: 540px) { .process-error-section { padding: 10px; } }
 </style>

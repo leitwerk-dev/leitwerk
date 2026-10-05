@@ -96,6 +96,10 @@ arbitrary replacement of the application shell.
 
 ### Turn
 
+A declared `.waitFor` predicate first checks readiness on the server. False or
+transient failures retain a durable wait with no start, lease, or turn attempt.
+External observations wake this check; external worker targets require a predicate.
+
 1. A `TurnStartRecord` reserves one turn-record identity without counting an attempt.
 2. Worker acceptance creates the turn record and increments its attempt exactly once.
 3. The worker executes the authorized automatic or LLM turn. Optional LLM preparation

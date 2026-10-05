@@ -20,6 +20,18 @@ const params = {
 	triggerLabel: "use-leitwerk",
 };
 
+it("waits for publication before resolving PR subscriptions and still permits source cancellation", () => {
+	const ctx = {
+		params: forgejoRepoChangeParamsCodec.parse({ ...params, origin: "issue" }),
+		state: routingState({}),
+	};
+	const armed = Object.entries(deliveryTurn().externalActions ?? {}).filter(
+		([, action]) => !action.when || action.when(ctx as never),
+	);
+	expect(armed.map(([id]) => id)).toEqual(["source_cancelled"]);
+	expect(armed[0]?.[1].source.resolve(ctx as never)).toMatchObject({ issueNumber: 42 });
+});
+
 it.each([
 	["ui", 0, "woodpecker_failure_repair"],
 	["issue", 2, "woodpecker_failure_repair"],
