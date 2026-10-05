@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>External wait radar · Leitwerk prototype</title>
+<style>
+:root{font-family:"Public Sans",ui-sans-serif,system-ui,sans-serif;color:#18212b;background:#f7f8fa;font-size:15px;line-height:1.5;--line:#d9dee5;--muted:#4c5968;--blue:#2f61b7}*{box-sizing:border-box}body{margin:0}button,input,select{font:inherit}button{min-height:44px;padding:9px 16px;border:1px solid var(--line);border-radius:999px;background:white;color:#18212b;cursor:pointer;font-weight:600}button:hover{border-color:var(--blue);background:#f2f5fa}button:disabled{opacity:.55;cursor:default}button.primary{background:var(--blue);border-color:var(--blue);color:white}button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid var(--blue);outline-offset:3px}::selection{background:#dce8fc}input,select{min-height:44px;border:1px solid var(--line);border-radius:10px;background:white;color:#18212b;padding:9px 12px;max-width:100%;caret-color:var(--blue)}a{color:var(--blue);text-underline-offset:3px}h1,h2,h3,p{margin:0}h1{font-size:28px;line-height:1.2;font-weight:720}h2{font-size:20px;line-height:1.3}h3{font-size:16px}p{max-width:75ch}small,.small{font-size:13px}.muted{color:var(--muted)}.topbar{padding:16px 32px;border-bottom:1px solid var(--line);background:white;display:flex;justify-content:space-between;gap:16px;align-items:center}.brand{font-weight:700}.prototype{color:var(--muted);font-size:13px}main{max-width:1320px;margin:auto;padding:32px}.intro{display:flex;justify-content:space-between;gap:24px;align-items:start;margin-bottom:26px}.intro p{margin-top:12px;color:var(--muted)}.clock{white-space:nowrap;display:grid;gap:4px;text-align:right}.clock strong{font-size:22px;font-variant-numeric:tabular-nums}.toolbar{display:flex;justify-content:space-between;gap:16px;align-items:end;margin-bottom:20px}.filters{display:flex;align-items:end;gap:12px;flex:1}.field{display:grid;gap:6px}.field.search{flex:1;max-width:310px}.field label{font-weight:600;font-size:13px}.actions{display:flex;gap:8px;flex-wrap:wrap}.overview{padding:14px 18px;background:white;border:1px solid var(--line);border-radius:10px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;gap:16px}.overview span{color:var(--muted)}.layout{display:grid;grid-template-columns:minmax(0,1.06fr) minmax(0,1fr);gap:24px;align-items:start}.list,.detail{background:white;border:1px solid var(--line);border-radius:14px;overflow:hidden;min-width:0}.list-heading{padding:18px 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)}.process{width:100%;display:block;text-align:left;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:18px 20px;font-weight:400;min-height:130px}.process:last-child{border-bottom:0}.process[aria-pressed="true"]{background:#eaf0fa;box-shadow:inset 0 0 0 1px #2f61b7}.process-top{display:flex;justify-content:space-between;gap:12px;align-items:start;margin-bottom:6px}.process strong{font-size:16px;line-height:1.35}.status{font-size:13px;font-weight:600;white-space:nowrap}.error{color:#a83a32}.stale,.never{color:#89500f}.healthy{color:#157a52}.process-meta{display:flex;justify-content:space-between;gap:12px;margin-top:12px;color:var(--muted);font-size:13px;font-variant-numeric:tabular-nums}.detail{padding:22px}.detail-head{display:flex;justify-content:space-between;gap:16px;margin-bottom:18px}.detail-head p{margin-top:4px}.advice{background:#f2f4f7;border-radius:8px;padding:14px;margin-bottom:18px}.advice p{margin-top:4px;color:var(--muted)}dl{margin:0}dl>div{padding:11px 0;border-bottom:1px solid var(--line);display:grid;grid-template-columns:145px minmax(0,1fr);gap:14px}dt{color:var(--muted);font-size:13px}dd{margin:0;overflow-wrap:anywhere}dd strong{font-weight:600}dd .muted{display:block;font-size:13px;margin-top:3px}.detail h3{margin:22px 0 10px}.detail .actions{margin-top:10px}.note{margin-top:10px;font-size:13px;color:var(--muted)}.outcome{margin-top:24px;background:#eaf0fa;border:1px solid #becfea;padding:16px 20px;border-radius:10px}.outcome strong{display:block;margin-bottom:3px}.guide{margin-top:28px;border-top:1px solid var(--line);padding-top:24px}.guide-title{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:14px}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.tabs button[aria-pressed="true"]{background:#e6ecf6;border-color:var(--blue)}.walkthrough{background:white;border:1px solid var(--line);border-radius:12px;padding:20px}.steps{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}.steps button{border-radius:10px;text-align:left;flex:1;min-width:160px}.steps button.done{background:#eff7f3;color:#176141}.empty{padding:30px 20px;color:var(--muted)}.history{margin-top:22px}.history summary{cursor:pointer;font-weight:600}.history ol{padding-left:22px;color:var(--muted);font-size:13px}.history li{margin:8px 0}.footer{margin-top:24px;color:var(--muted);font-size:13px}.waiting{color:var(--muted);font-size:13px;font-weight:600}@media(max-width:960px){main{padding:24px}.layout{gap:16px;grid-template-columns:1fr 1fr}.toolbar{align-items:start;flex-direction:column}.process-top{flex-direction:column;gap:4px}.process-meta{flex-direction:column;gap:3px}.detail{padding:18px}dl>div{grid-template-columns:1fr;gap:4px}}@media(max-width:680px){.topbar{padding:14px 18px;align-items:start;flex-direction:column;gap:2px}main{padding:24px 18px}.intro{display:block}.clock{margin-top:18px;text-align:left;display:flex;align-items:center;gap:12px}.clock strong{font-size:18px}h1{font-size:25px}.filters{width:100%;flex-wrap:wrap;align-items:stretch}.field.search{max-width:none;flex-basis:100%}.field:not(.search){flex:1}.toolbar{gap:14px}.toolbar .actions{width:100%}.toolbar .actions button{flex:1}.overview{display:block;padding:14px}.overview span{display:block;margin-top:4px}.layout{grid-template-columns:1fr}.process-top{flex-direction:column;gap:4px}.process-top .status{text-align:left}.process-meta{flex-direction:row;gap:8px}.detail{padding:18px}.detail-head{flex-wrap:wrap;gap:6px}dl>div{grid-template-columns:130px minmax(0,1fr);gap:12px}.guide-title{align-items:start;flex-direction:column;gap:4px}.tabs button{flex:1;min-width:135px;border-radius:10px}.steps{flex-direction:column}.steps button{width:100%}.walkthrough{padding:16px}.actions button{flex:1}.detail .actions{display:grid;grid-template-columns:1fr 1fr}.detail .actions button{border-radius:10px}.outcome{padding:16px}.status{white-space:normal;text-align:right}.footer{padding-bottom:18px}}
+</style>
+</head>
+<body>
+<header class="topbar"><span class="brand">Leitwerk / Processes</span><span class="prototype">Prototype · synthetic data · in memory</span></header>
+<main>
+<section class="intro"><div><h1>External wait radar</h1><p>Which waiting processes need attention? Explore whether evidence freshness and poll health make that decision clearer, even when a wait lasts for hours.</p></div><div class="clock"><span class="small muted">Simulated clock</span><strong id="clock"></strong></div></section>
+<div class="toolbar"><div class="filters"><div class="field search"><label for="search">Find a process or source</label><input id="search" type="search" placeholder="Search waiting processes"></div><div class="field"><label for="filter">Show</label><select id="filter"><option value="all">All waits</option><option value="attention">Needs attention</option><option value="healthy">Healthy evidence</option><option value="never">Never observed</option></select></div></div><div class="actions"><button id="advance5">Advance 5 min</button><button id="advance60">Advance 1 hour</button><button id="reset">Reset all</button></div></div>
+<div class="overview" id="overview"></div>
+<div class="layout"><section class="list" aria-labelledby="fleet-title"><div class="list-heading"><h2 id="fleet-title">Waiting processes</h2><span class="small muted" id="shown"></span></div><div id="rows"></div></section><section class="detail" id="detail" aria-labelledby="detail-title"></section></div>
+<div class="outcome" role="status" aria-live="polite" aria-atomic="true"><strong>Latest outcome</strong><span id="outcome"></span></div>
+<section class="guide" aria-labelledby="guide-title"><div class="guide-title"><h2 id="guide-title">Guided scenarios</h2><span class="muted small">Each scenario resets the fleet. Free play stays available above.</span></div><div class="tabs" id="tabs" aria-label="Choose a guided scenario"></div><div class="walkthrough" id="walkthrough"></div></section>
+<p class="footer">Future UI proposal. The 10-minute freshness window is an illustrative triage rule, not a runtime timeout. All sources, observations, errors, and time changes are simulated.</p>
+</main>
+<script>
+// Pure model: all timestamps are minutes on a synthetic clock. Observations never advance a process.
+const Radar = (() => {
+  const freshnessWindow = 10;
+  function initial() {
+    const records = [
+      {id:'delivery-41',title:'Release payment adapter',source:'Forgejo · merge request #184',summary:'Review is open; one approval outstanding.',waitSince:600,generation:3,observedAt:778,pollAt:778,pollError:null},
+      {id:'delivery-52',title:'Upgrade build images',source:'CI checks · pipeline #672',summary:'Integration checks are running.',waitSince:737,generation:5,observedAt:758,pollAt:779,pollError:'Provider request timed out.'},
+      {id:'delivery-63',title:'Schema migration sign-off',source:'Forgejo · merge request #201',summary:null,waitSince:776,generation:1,observedAt:null,pollAt:null,pollError:null},
+      {id:'delivery-74',title:'Refresh service manifests',source:'CI checks · pipeline #689',summary:'Deployment checks are queued.',waitSince:760,generation:7,observedAt:777,pollAt:777,pollError:null}
+    ].map(p => ({...p,selectedTurnId:'await_external',lifecycleStatus:'waiting',pending:null,rejected:0,history:[]}));
+    return {now:780,records,selected:'delivery-52',filter:'all',query:'',outcome:'Upgrade build images needs attention: its last successful observation is 22 minutes old and its latest poll failed.'};
+  }
+  function classification(p,now) {
+    if (p.pollError) return {key:'error',label:'Poll failed',priority:0,advice:'Check the source, then poll again',detail:p.observedAt === null ? 'This subscription has never been observed successfully. A failed poll cannot tell us the external state.' : 'The last successful observation remains visible. The poll error says nothing new about the external state.'};
+    if (p.observedAt === null) return {key:'never',label:'Never observed',priority:2,advice:'Get the first observation',detail:'No successful observation exists for the current subscription. Its external state is unknown.'};
+    if (now-p.observedAt > freshnessWindow) return {key:'stale',label:'Evidence is stale',priority:1,advice:'Refresh the evidence',detail:'The last observation is older than the illustrative 10-minute window. The process is still waiting; this is not a failed turn.'};
+    return {key:'healthy',label:'Healthy evidence',priority:3,advice:'Keep waiting for the expected event',detail:'The source was observed recently. Time spent waiting alone does not make a process unhealthy.'};
+  }
+  function visible(s) {
+    return s.records.filter(p => {
+      const c=classification(p,s.now);
+      return (s.filter==='all'||(s.filter==='attention'&&c.key!=='healthy')||(s.filter==='healthy'&&c.key==='healthy')||(s.filter==='never'&&p.observedAt===null)) && `${p.title} ${p.id} ${p.source}`.toLowerCase().includes(s.query.toLowerCase());
+    }).sort((a,b)=>classification(a,s.now).priority-classification(b,s.now).priority || a.waitSince-b.waitSince);
+  }
+  function reduce(state,action) {
+    if(action.type==='reset')return initial();
+    const s=structuredClone(state);
+    if(action.type==='select'){s.selected=action.id;return s;}
+    if(action.type==='filter'||action.type==='query'){s[action.type]=action.value;return s;}
+    if(action.type==='advance') {s.now+=action.minutes;s.outcome=`Clock advanced by ${action.minutes} minutes. Evidence freshness was recalculated; every process retains its selected turn and waiting lifecycle.`;return s;}
+    const p=s.records.find(p=>p.id===(action.id||s.selected));
+    if(!p)return s;
+    let message='';
+    if(action.type==='begin'){
+      if(p.pending){s.outcome='A poll is already in flight. Finish it before starting another.';return s;}
+      p.pending={generation:p.generation,startedAt:s.now};
+      message=`Poll started for subscription ${p.generation}. The result will be checked against the current subscription before it is accepted.`;
+    } else if(action.type==='replace') {
+      p.generation+=1;p.observedAt=null;p.pollAt=null;p.pollError=null;p.summary=null;
+      message=`Subscription ${p.generation} is now current and has never been observed. ${p.pending?`The in-flight poll still belongs to subscription ${p.pending.generation}.`:'Start a poll for the new subscription.'}`;
+    } else if(action.type==='success'||action.type==='failure') {
+      if(!p.pending){s.outcome='Start a poll first to capture the current subscription.';return s;}
+      const captured=p.pending.generation;p.pending=null;
+      if(captured!==p.generation){
+        p.rejected+=1;message=`Rejected result for superseded subscription ${captured}; current subscription is ${p.generation}. No observation or poll status was changed.`;
+      }else{
+        p.pollAt=s.now;
+        if(action.type==='failure') {p.pollError='Provider request timed out.';message=`Poll failed for ${p.title}. ${p.observedAt===null?'There is still no successful observation.':'The previous successful observation is retained.'} Process remains waiting.`;}
+        else {p.observedAt=s.now;p.pollError=null;p.summary='Source is reachable; the expected event has not happened.';message=`Observation accepted for ${p.title}. Evidence is fresh and the poll error is cleared. Process remains on await_external with lifecycle waiting.`;}
+      }
+    }
+    if(message){p.history.unshift({at:s.now,message});s.outcome=message;}
+    return s;
+  }
+  return {initial,classification,visible,reduce,freshnessWindow};
+})();
+const scenarios=[
+ {title:'Healthy long wait',id:'delivery-41',description:'A release has waited three hours for review. Advance time, then observe it again. Fresh evidence should restore a healthy signal without advancing the process.',steps:[['Advance an hour',{type:'advance',minutes:60}],['Start a fresh poll',{type:'begin'}],['Receive waiting state',{type:'success'}]],finish:'The wait is now four hours old and still healthy. A successful observation refreshed evidence without creating a turn or declaring a failure.'},
+ {title:'Failed poll, retained evidence',id:'delivery-52',description:'A pipeline has an old successful observation and a more recent failed poll. Let another poll fail, then recover. Notice that these are two different pieces of evidence.',steps:[['Start another poll',{type:'begin'}],['Return a timeout',{type:'failure'}],['Start a recovery poll',{type:'begin'}],['Receive current state',{type:'success'}]],finish:'The failed refresh preserved the prior observation. The recovery cleared the poll error and refreshed evidence; the selected turn stayed unchanged.'},
+ {title:'Superseded subscription',id:'delivery-74',description:'A poll starts, then the process changes its subscription while the request is in flight. A late response must not become current evidence.',steps:[['Start the old poll',{type:'begin'}],['Replace subscription',{type:'replace'}],['Deliver the old result',{type:'success'}],['Poll the new subscription',{type:'begin'}],['Accept the new result',{type:'success'}]],finish:'The old result was rejected. Only a result from the current subscription restored evidence, without changing process position.'}
+];
+let state=Radar.initial(), scenarioIndex=0, stepIndex=0, guideStarted=false;
+const $=id=>document.getElementById(id);
+const esc=v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function duration(minutes){return minutes>=60?`${Math.floor(minutes/60)}h ${minutes%60}m`:`${minutes}m`;}
+function clock(minutes){return `${String(Math.floor(minutes/60)%24).padStart(2,'0')}:${String(minutes%60).padStart(2,'0')}${minutes>=1440?` (+${Math.floor(minutes/1440)}d)`:''}`;}
+function age(at){return at===null?'Never observed':`${duration(state.now-at)} ago · ${clock(at)}`;}
+function dispatch(action,fromGuide=false){state=Radar.reduce(state,action);if(!fromGuide&&!['select','filter','query'].includes(action.type)){guideStarted=false;stepIndex=0;}render();}
+function render(){
+  const active=document.activeElement;
+  const focusKey=active?.dataset.process ? `[data-process="${active.dataset.process}"]` : active?.dataset.scenario!==undefined ? `[data-scenario="${active.dataset.scenario}"]` : active?.dataset.step!==undefined ? `[data-step="${stepIndex}"]` : active?.id ? `#${active.id}` : null;
+  $('clock').textContent=clock(state.now);
+  const healthy=state.records.filter(p=>Radar.classification(p,state.now).key==='healthy').length;
+  $('overview').innerHTML=`<strong>${state.records.length-healthy} of ${state.records.length} waits need a closer look</strong><span>${healthy} have healthy evidence · sorted by attention, then wait age</span>`;
+  const rows=Radar.visible(state);$('shown').textContent=`${rows.length} shown`;
+  $('rows').innerHTML=rows.length?rows.map(p=>{const c=Radar.classification(p,state.now);return `<button class="process" data-process="${p.id}" aria-pressed="${p.id===state.selected}"><span class="process-top"><strong>${esc(p.title)}</strong><span class="status ${c.key}">${c.label}</span></span><span class="muted small">${esc(p.source)}</span><span class="process-meta"><span>Waiting ${duration(state.now-p.waitSince)}</span><span>${p.observedAt===null?'No observation':`Observed ${duration(state.now-p.observedAt)} ago`}</span></span></button>`;}).join(''):'<p class="empty">No waits match this view. Choose All waits or clear your search.</p>';
+  const p=state.records.find(p=>p.id===state.selected),c=Radar.classification(p,state.now);
+  const isHidden=!rows.some(row=>row.id===p.id);
+  $('detail').innerHTML=`<div class="detail-head"><div><h2 id="detail-title">${esc(p.title)}</h2><p class="muted small">${p.id} · ${esc(p.source)}</p></div><span class="waiting">Waiting for an event</span></div>${isHidden?'<p class="note">Selected process is outside the current filter.</p>':''}<div class="advice"><strong class="${c.key}">${c.advice}</strong><p class="small">${c.detail}</p></div><dl><div><dt>Last successful observation</dt><dd><strong>${age(p.observedAt)}</strong><span class="muted">${esc(p.summary||'No evidence for this subscription yet.')}</span></dd></div><div><dt>Latest completed poll</dt><dd><strong class="${p.pollError?'error':''}">${p.pollAt===null?'No completed poll':`${p.pollError?'Failed':'Successful'} · ${clock(p.pollAt)}`}</strong><span class="muted">${esc(p.pollError|| (p.pollAt===null?'Awaiting first result.':'Source read completed.'))}</span></dd></div><div><dt>Current subscription</dt><dd>Generation ${p.generation}<span class="muted">${p.pending?`Poll in flight: generation ${p.pending.generation}, started ${clock(p.pending.startedAt)}`:'No poll in flight'} · ${p.rejected} rejected late results</span></dd></div><div><dt>Process position</dt><dd>${p.selectedTurnId}<span class="muted">Lifecycle: ${p.lifecycleStatus} · waiting ${duration(state.now-p.waitSince)}</span></dd></div></dl><h3>Simulate the selected source</h3><div class="actions"><button id="begin" class="primary" ${p.pending?'disabled':''}>Start poll</button><button id="success" ${!p.pending?'disabled':''}>Return observation</button><button id="failure" ${!p.pending?'disabled':''}>Return poll error</button><button id="replace">Replace subscription</button></div><p class="note">Results use the subscription captured when the poll started. Observations only refresh evidence.</p><details class="history"><summary>Selected source history (${p.history.length} events)</summary>${p.history.length?`<ol>${p.history.map(h=>`<li><strong>${clock(h.at)}</strong> — ${esc(h.message)}</li>`).join('')}</ol>`:'<p class="note">Simulation actions will appear here.</p>'}</details>`;
+  $('outcome').textContent=state.outcome;
+  $('tabs').innerHTML=scenarios.map((s,i)=>`<button data-scenario="${i}" aria-pressed="${i===scenarioIndex}">${s.title}</button>`).join('');
+  const scenario=scenarios[scenarioIndex];
+  $('walkthrough').innerHTML=`<p>${scenario.description}</p>${!guideStarted?'<div class="steps"><button id="start-guide" class="primary">Start this scenario</button></div>':`<div class="steps">${scenario.steps.map(([label],i)=>`<button data-step="${i}" class="${i<stepIndex?'done':i===stepIndex?'primary':''}" ${i!==stepIndex?'disabled':''}>${i+1}. ${label}${i<stepIndex?' · Done':''}</button>`).join('')}</div>${stepIndex===scenario.steps.length?`<p class="note">${scenario.finish}</p><div class="actions"><button id="start-guide">Run again</button></div>`:''}`}`;
+  if(focusKey){let next=document.querySelector(focusKey);if(next?.disabled && active?.id==='begin')next=$('success');if(next && !next.disabled)next.focus({preventScroll:true});}
+}
+function startGuide(index){scenarioIndex=index;stepIndex=0;guideStarted=true;state=Radar.initial();state.selected=scenarios[index].id;state.outcome='Scenario ready. Follow the steps below, or explore the source controls.';$('search').value='';$('filter').value='all';render();}
+document.addEventListener('click',event=>{
+ const b=event.target.closest('button');if(!b||b.disabled)return;
+ if(b.dataset.process){dispatch({type:'select',id:b.dataset.process});return;}
+ if(b.dataset.scenario!==undefined){startGuide(Number(b.dataset.scenario));return;}
+ if(b.dataset.step!==undefined){const i=Number(b.dataset.step);if(i!==stepIndex)return;state.selected=scenarios[scenarioIndex].id;stepIndex++;dispatch(scenarios[scenarioIndex].steps[i][1],true);return;}
+ if(b.id==='start-guide'){startGuide(scenarioIndex);return;}
+ if(['begin','success','failure','replace'].includes(b.id)){dispatch({type:b.id});return;}
+ if(b.id==='reset'){$('search').value='';$('filter').value='all';dispatch({type:'reset'});return;}
+ if(b.id==='advance5'||b.id==='advance60')dispatch({type:'advance',minutes:b.id==='advance5'?5:60});
+});
+$('search').addEventListener('input',event=>dispatch({type:'query',value:event.target.value}));
+$('filter').addEventListener('change',event=>dispatch({type:'filter',value:event.target.value}));
+render();
+</script>
+</body>
+</html>
