@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workspace readiness doctor · Leitwerk prototype</title>
+<style>
+:root{font-family:ui-sans-serif,system-ui,sans-serif;color:#18212b;background:#f7f8fa;font-size:15px;line-height:1.5;--border:#d9dee5;--blue:#2f61b7;--muted:#4c5968}*{box-sizing:border-box}body{margin:0}button,input{font:inherit}button{border:1px solid #aeb7c2;border-radius:7px;background:white;color:#18212b;padding:9px 13px;cursor:pointer;min-height:42px}button:hover{background:#f2f4f7}button:focus-visible,input:focus-visible{outline:3px solid #2f61b7;outline-offset:3px}button:disabled{opacity:.55;cursor:default}.primary{background:var(--blue);color:white;border-color:var(--blue)}.primary:hover{background:#254e95}.shell{max-width:1230px;margin:auto;padding:28px}.brand{color:var(--muted);margin:0 0 22px}.brand strong{color:var(--blue)}h1{font-size:30px;letter-spacing:-.7px;line-height:1.2;margin:0 0 12px}h2{font-size:19px;margin:0 0 14px}h3{font-size:16px;margin:0 0 9px}p{margin:0 0 12px}.intro{max-width:860px;color:var(--muted)}.label{display:inline-block;font-size:13px;border:1px solid var(--border);border-radius:5px;padding:3px 8px;margin-bottom:15px;background:white}.layout{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(300px,1fr);gap:22px;margin-top:22px}.panel{border:1px solid var(--border);background:white;border-radius:10px;padding:22px;margin-bottom:20px}.summary{padding:20px;border-left:4px solid var(--blue);background:#eef3fb;margin:22px 0 18px}.summary p:last-child{margin-bottom:0}.summary strong{font-size:18px}.facts{display:flex;flex-wrap:wrap;gap:8px 28px;padding:14px 0;border-bottom:1px solid var(--border);margin-bottom:16px}.facts span{display:block;font-size:13px;color:var(--muted)}.facts b{font-size:16px;font-weight:600}.actions{display:flex;flex-wrap:wrap;gap:8px}.hint{font-size:13px;color:var(--muted)}.stage{display:grid;grid-template-columns:28px 1fr auto;gap:10px;align-items:center;text-align:left;border:0;border-bottom:1px solid #e7eaf0;border-radius:0;width:100%;padding:12px 4px;background:white}.stage:last-child{border-bottom:0}.stage.active{background:#eef3fb;box-shadow:inset 3px 0 var(--blue);padding-left:9px}.stage .number{color:#687483;font-size:13px}.stage strong{display:block;font-size:14px;font-weight:600}.stage small{display:block;color:var(--muted);font-size:12px}.status{font-size:12px;border-radius:4px;padding:3px 7px;background:#f2f4f7;white-space:nowrap}.passed{color:#116344;background:#eaf5ef}.failed{color:#892f29;background:#fcefed}.blocked{color:#74531e;background:#faf4e7}.available{color:#244d91;background:#eaf0fa}.inspector{border-top:3px solid var(--blue)}.evidence{overflow-wrap:anywhere;background:#f7f8fa;padding:14px;border:1px solid var(--border);border-radius:6px;font-size:14px}.source{font:12px/1.6 ui-monospace,monospace;overflow-wrap:anywhere;color:var(--muted)}.controls label{display:flex;gap:9px;align-items:flex-start;padding:8px 0}.controls input{margin-top:5px;width:17px;height:17px;accent-color:var(--blue);flex-shrink:0}.controls label span{font-size:14px}.controls label small{display:block;font-size:12px;color:var(--muted)}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}.tabs button[aria-pressed=true]{color:var(--blue);background:#eef3fb;border-color:var(--blue)}.steps{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.log{padding-left:21px;margin:0}.log li{padding:5px 0;color:var(--muted);font-size:13px}.footer{color:var(--muted);font-size:13px;margin:10px 0 25px}.retained{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:16px 0 0}.retained div{background:#f7f8fa;padding:12px;border-radius:6px;font-size:13px}.retained strong{display:block}.divider{border-top:1px solid var(--border);margin:15px 0}.live{min-height:42px;margin-top:12px;font-size:14px}.flex-title{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:12px}.flex-title h2{margin:0}@media(max-width:760px){.shell{padding:19px 16px}.layout{grid-template-columns:1fr;gap:0}.panel{padding:16px}.brand{margin-bottom:18px}h1{font-size:27px}.stage{grid-template-columns:22px minmax(0,1fr) auto;gap:6px}.stage small{font-size:11px}.status{font-size:11px;padding:3px 5px}.facts{gap:12px 22px}.summary{margin-top:20px}.retained{gap:8px}.steps{flex-direction:column}.steps button{text-align:left}.layout>section,.layout>aside{display:contents}.map-panel{order:1}.inspector{order:2}.controls{order:3}.free-panel{order:4}.events-panel{order:5}}
+</style>
+</head>
+<body>
+<main class="shell">
+<p class="brand"><strong>Leitwerk</strong> / Developer experiments / 18</p>
+<span class="label">Prototype • synthetic data</span>
+<h1>Workspace readiness doctor</h1>
+<p class="intro">Can a dependency map make the first repair obvious, while preserving completed component clones? Explore an eager, two-repository workspace before its worker can accept a turn.</p>
+<div id="summary" class="summary" aria-live="polite"></div>
+<div class="panel">
+<div class="flex-title"><h2>Guided recovery</h2><button type="button" id="reset">Reset case</button></div>
+<div class="tabs" id="cases" aria-label="Guided cases"></div>
+<p id="case-description"></p><div class="steps" id="steps"></div>
+</div>
+<div class="layout">
+<section>
+<div class="panel map-panel">
+<h2>Readiness dependency map</h2>
+<p class="hint">One process · two full clones · click a stage to inspect its evidence. A blocked stage has no independent failure.</p>
+<div class="facts" id="facts"></div>
+<div id="stages"></div>
+<div class="retained" id="retained"></div>
+</div>
+<div class="panel free-panel">
+<h2>Free play</h2>
+<div class="actions"><button type="button" class="primary" id="recheck">Start / recheck</button><button type="button" id="next">Run next stage</button><button type="button" id="run">Run remaining stages</button><button type="button" id="wait">Advance 60 seconds</button></div>
+<p class="live" id="message" role="status"></p>
+<p class="hint">Time is simulated. Each successful or failed check takes 2 seconds; the fixture startup deadline is 30 seconds. Recheck starts a replacement worker and revalidates preparation while retaining clone data.</p>
+</div>
+<div class="panel events-panel"><h2>Preparation events</h2><ol id="log" class="log"></ol></div>
+</section>
+<aside>
+<div class="panel inspector" id="inspector"></div>
+<div class="panel controls">
+<h2>Change fixture conditions</h2><p class="hint">Changes take effect on the next check. All controls affect this page only.</p>
+<label><input type="checkbox" id="capacity"><span>Worker slot available<small>Turn off to explore capacity admission.</small></span></label>
+<label><input type="checkbox" id="auth"><span>API repository authorized<small>Needed only to create a missing clone.</small></span></label>
+<label><input type="checkbox" id="branch"><span>API base branch exists<small>Expected: release/2026.10. Missing base blocks checkout.</small></span></label>
+<label><input type="checkbox" id="mise"><span>Prepare development tools with mise<small>Optional runtime capability in this fixture.</small></span></label>
+<label><input type="checkbox" id="config"><span>API mise configuration valid<small>A parse failure prevents installation.</small></span></label>
+<label><input type="checkbox" id="install"><span>API tool installation succeeds<small>Simulate an unavailable tool download.</small></span></label>
+<label><input type="checkbox" id="instructions"><span>Aggregated instructions writable<small>Both repository checkouts must be ready first.</small></span></label>
+</div>
+</aside>
+</div>
+<p class="footer">Future diagnostic UI proposal. No Git, mise, credentials, files, network requests, or worker processes are used. Managed resources are represented by a verified synthetic snapshot. Worker readiness does not create a turn attempt.</p>
+</main>
+<script>
+// Pure model: fixtures, dependency resolution and event transitions have no DOM access.
+const STAGES = [
+	{
+		id: "clone_api",
+		name: "API · full clone",
+		deps: [],
+		source: "workspace/node-run-root-git-ops.ts",
+	},
+	{
+		id: "checkout_api",
+		name: "API · base and work branch",
+		deps: ["clone_api"],
+		source: "workspace/run-root.ts",
+	},
+	{
+		id: "clone_web",
+		name: "Web · full clone",
+		deps: [],
+		source: "workspace/node-run-root-git-ops.ts",
+	},
+	{
+		id: "checkout_web",
+		name: "Web · base and work branch",
+		deps: ["clone_web"],
+		source: "workspace/run-root.ts",
+	},
+	{
+		id: "aggregate",
+		name: "Component manifest + instructions",
+		deps: ["checkout_api", "checkout_web"],
+		source: "workspace/resource-aggregator.ts",
+	},
+	{
+		id: "managed",
+		name: "Managed Pi resource snapshot",
+		deps: ["aggregate"],
+		source: "managed-pi-bootstrap.ts",
+	},
+	{
+		id: "mise_api",
+		name: "API · mise install + verify",
+		deps: ["managed"],
+		source: "development-tool-environment.ts",
+	},
+	{
+		id: "mise_web",
+		name: "Web · mise install + verify",
+		deps: ["mise_api"],
+		source: "development-tool-environment.ts",
+	},
+	{ id: "ready", name: "Report worker ready", deps: ["mise_web"], source: "runtime/bootstrap.ts" },
+];
+const CASES = {
+	auth: {
+		name: "Clone authorization",
+		description:
+			"The API clone cannot authenticate. Web can still finish its checkout. Repair access and see the existing Web clone reused.",
+		changes: { auth: false },
+		steps: [
+			{ label: "1. Diagnose startup", event: "diagnose" },
+			{ label: "2. Authorize API repository", event: "repair", field: "auth" },
+			{ label: "3. Recheck retained workspace", event: "diagnose" },
+		],
+	},
+	mise: {
+		name: "Tool installation",
+		description:
+			"Both clones and instructions are ready, but an API tool download fails. Repair the installer condition; no repository is cloned again.",
+		changes: { install: false },
+		steps: [
+			{ label: "1. Diagnose startup", event: "diagnose" },
+			{ label: "2. Restore tool download", event: "repair", field: "install" },
+			{ label: "3. Recheck retained workspace", event: "diagnose" },
+		],
+	},
+	branch: {
+		name: "Missing base branch",
+		description:
+			"The API clone exists but release/2026.10 is absent. Restore the expected branch and repair checkout while keeping that clone and its simulated local notes.",
+		changes: { branch: false },
+		steps: [
+			{ label: "1. Diagnose startup", event: "diagnose" },
+			{ label: "2. Restore expected base branch", event: "repair", field: "branch" },
+			{ label: "3. Recheck retained workspace", event: "diagnose" },
+		],
+	},
+};
+function initial(caseId = "auth") {
+	return {
+		caseId,
+		step: 0,
+		phase: "idle",
+		conditions: {
+			capacity: true,
+			auth: true,
+			branch: true,
+			mise: true,
+			config: true,
+			install: true,
+			instructions: true,
+			...CASES[caseId].changes,
+		},
+		results: {},
+		clones: { api: null, web: null },
+		elapsed: 0,
+		queueTime: 0,
+		round: 0,
+		selected: "clone_api",
+		events: [],
+		message: "Start a diagnosis or change the synthetic conditions.",
+	};
+}
+function resolve(state) {
+	const resolved = {};
+	for (const stage of STAGES) {
+		const dependencies = stage.deps.map((id) => resolved[id]);
+		const causes = [...new Set(dependencies.flatMap((dep) => dep.causes))];
+		if (causes.length) {
+			resolved[stage.id] = {
+				status: "blocked",
+				causes,
+				evidence: `Waiting for repair: ${causes.map((id) => STAGES.find((n) => n.id === id).name).join(", ")}. This stage has not failed.`,
+			};
+			continue;
+		}
+		if (dependencies.some((dep) => !["passed", "skipped"].includes(dep.status))) {
+			resolved[stage.id] = {
+				status: "pending",
+				causes: [],
+				evidence: "Waiting for its prerequisite checks.",
+			};
+			continue;
+		}
+		if (state.results[stage.id]) {
+			const result = state.results[stage.id];
+			resolved[stage.id] = { ...result, causes: result.status === "failed" ? [stage.id] : [] };
+			continue;
+		}
+		resolved[stage.id] = {
+			status: state.phase === "preparing" ? "available" : "pending",
+			causes: [],
+			evidence:
+				state.phase === "queued"
+					? "No worker allocated. Waiting for capacity admission."
+					: "This check has not run in the current preparation.",
+		};
+	}
+	return resolved;
+}
+function addEvent(state, message) {
+	state.message = message;
+	state.events = [...state.events, message].slice(-12);
+	return state;
+}
+function outcome(state, id) {
+	const c = state.conditions;
+	if (id.startsWith("clone_")) {
+		const component = id.slice(6);
+		if (state.clones[component])
+			return {
+				status: "passed",
+				evidence: `Reused full ${component} clone ${state.clones[component].id}; local notes retained. No clone command needed.`,
+			};
+		if (component === "api" && !c.auth)
+			return {
+				status: "failed",
+				evidence:
+					"Synthetic Git response: repository authorization denied. No API clone was created. Repair the scoped repository credential before recheck.",
+			};
+		return {
+			status: "passed",
+			evidence: `Created full ${component} clone. Repository data retained across worker replacement.`,
+		};
+	}
+	if (id === "checkout_api" && !c.branch)
+		return {
+			status: "failed",
+			evidence:
+				"Synthetic checkout response: base branch release/2026.10 does not exist. The API clone remains intact. Restore the expected base branch; no clone deletion is needed.",
+		};
+	if (id.startsWith("checkout_"))
+		return {
+			status: "passed",
+			evidence: `Base branch verified; checked out work/checkout-flow. ${id === "checkout_api" ? "API HEAD a18c0de" : "Web HEAD b18c0de"} (synthetic).`,
+		};
+	if (id === "aggregate")
+		return c.instructions
+			? {
+					status: "passed",
+					evidence:
+						"Wrote components.json and root AGENTS.md with api/AGENTS.md and web/AGENTS.md source provenance.",
+				}
+			: {
+					status: "failed",
+					evidence:
+						"Synthetic permission error writing root AGENTS.md. Both clone directories remain intact. Restore write access to the process workspace.",
+				};
+	if (id === "managed")
+		return {
+			status: "passed",
+			evidence:
+				"Verified synthetic managed snapshot; managed instructions and capabilities available. No ambient Pi resources are loaded.",
+		};
+	if (id.startsWith("mise_")) {
+		if (!c.mise)
+			return {
+				status: "skipped",
+				evidence:
+					"Development-tool preparation is disabled in this fixture. No tool requirement blocks readiness.",
+			};
+		if (id === "mise_api" && !c.config)
+			return {
+				status: "failed",
+				evidence:
+					"Synthetic mise install: invalid mise.toml. Correct the API repository configuration before recheck. No package dependency installation is attempted.",
+			};
+		if (id === "mise_api" && !c.install)
+			return {
+				status: "failed",
+				evidence:
+					"Synthetic mise install: tool download unavailable. Restore the download source before recheck. Completed clones and instructions remain available.",
+			};
+		return {
+			status: "passed",
+			evidence: `mise install and mise ls --current --json completed at ${id === "mise_api" ? "api" : "web"}/. Synthetic current-tool evidence: Node 24. Mise runs in repository-key order.`,
+		};
+	}
+	return {
+		status: "passed",
+		evidence:
+			"All required preparation checks passed. Worker can report readiness; a turn attempt still requires acknowledged worker.turn_started acceptance.",
+	};
+}
+function transition(current, action) {
+	const state = structuredClone(current);
+	if (action.type === "reset") return initial(action.caseId || state.caseId);
+	if (action.type === "select") {
+		state.selected = action.id;
+		return state;
+	}
+	if (action.type === "condition") {
+		state.conditions[action.field] = action.value;
+		if (state.phase === "preparing") {
+			state.phase = "paused";
+			addEvent(
+				state,
+				"Fixture changed during preparation. Recheck to apply a consistent condition snapshot; retained clones are safe.",
+			);
+		} else
+			addEvent(
+				state,
+				"Fixture condition changed. Recheck to evaluate it; previous evidence remains visible.",
+			);
+		return state;
+	}
+	if (action.type === "start") {
+		state.results = {};
+		state.elapsed = 0;
+		if (!state.conditions.capacity) {
+			state.phase = "queued";
+			return addEvent(
+				state,
+				"Waiting for worker capacity. No worker lease or startup timer exists yet.",
+			);
+		}
+		state.phase = "preparing";
+		state.round += 1;
+		return addEvent(
+			state,
+			`Preparation ${state.round} admitted. Startup timer begins now; retained clones will be revalidated.`,
+		);
+	}
+	if (action.type === "time") {
+		if (state.phase === "queued") {
+			state.queueTime += 60;
+			return addEvent(
+				state,
+				`Capacity wait is ${state.queueTime}s. Startup timer remains 0s; no turn attempt exists.`,
+			);
+		}
+		if (state.phase === "preparing") {
+			state.elapsed += 60;
+			state.phase = "timeout";
+			return addEvent(
+				state,
+				"Worker startup deadline exceeded after admission. Recheck replaces the worker and retains completed clone data.",
+			);
+		}
+		return addEvent(state, "No active startup timer. Time advance has no effect.");
+	}
+	if (action.type !== "next") return state;
+	if (state.phase !== "preparing")
+		return addEvent(state, "Start / recheck first to admit a worker, then run preparation checks.");
+	const resolved = resolve(state);
+	const stage = STAGES.find((node) => resolved[node.id].status === "available");
+	if (!stage) {
+		state.phase = "error";
+		return addEvent(
+			state,
+			"Preparation stopped. Repair the primary failures; blocked stages need no separate repair.",
+		);
+	}
+	const result = outcome(state, stage.id);
+	state.results[stage.id] = result;
+	state.elapsed += 2;
+	state.selected = stage.id;
+	if (stage.id.startsWith("clone_") && result.status === "passed") {
+		const component = stage.id.slice(6);
+		if (!state.clones[component])
+			state.clones[component] = {
+				id: `${component}-clone-${state.round}`,
+				note: "local-notes.md retained",
+			};
+	}
+	if (stage.id === "ready") state.phase = "ready";
+	const updated = resolve(state);
+	if (
+		state.phase === "preparing" &&
+		!STAGES.some((node) => updated[node.id].status === "available")
+	) {
+		state.phase = "error";
+		state.selected = STAGES.find((node) => updated[node.id].status === "failed")?.id || stage.id;
+	}
+	return addEvent(
+		state,
+		`${stage.name}: ${result.status}. ${state.phase === "ready" ? "Worker ready; turn attempts: 0." : state.phase === "error" ? "Preparation stopped; inspect the primary failure above." : ""}`,
+	);
+}
+function runAll(state) {
+	let next = state;
+	for (let n = 0; n < STAGES.length && next.phase === "preparing"; n++)
+		next = transition(next, { type: "next" });
+	return next;
+}
+function guided(state, index) {
+	const step = CASES[state.caseId].steps[index];
+	if (index !== state.step) return state;
+	const next =
+		step.event === "repair"
+			? transition(state, { type: "condition", field: step.field, value: true })
+			: runAll(transition(state, { type: "start" }));
+	next.step = index + 1;
+	return next;
+}
+// Thin DOM shell below.
+let state = initial();
+const $ = (id) => document.getElementById(id);
+const statusLabel = {
+	passed: "Passed",
+	failed: "Primary failure",
+	blocked: "Blocked",
+	pending: "Pending",
+	available: "Next check",
+	skipped: "Skipped",
+};
+function render() {
+	const resolved = resolve(state);
+	const failed = Object.values(resolved).filter((node) => node.status === "failed").length;
+	const blocked = Object.values(resolved).filter((node) => node.status === "blocked").length;
+	const completed = Object.values(resolved).filter((node) =>
+		["passed", "skipped"].includes(node.status),
+	).length;
+	const heading = {
+		idle: "Ready to diagnose the workspace",
+		preparing: "Worker admitted · preparation in progress",
+		paused: "Conditions changed · recheck required",
+		queued: "Waiting for worker capacity",
+		error: `${failed} primary failure${failed === 1 ? "" : "s"} · ${blocked} dependent stages blocked`,
+		timeout: "Startup timeout · retained workspace is safe",
+		ready: "Workspace ready · worker can accept a turn",
+	}[state.phase];
+	const detail = {
+		idle: "Start with a guided case or change the fixture conditions below.",
+		preparing: "Run the next check to inspect each dependency, or run all remaining stages.",
+		paused: "A new recheck applies the changed fixture conditions together.",
+		queued:
+			"No worker lease, no turn attempt, and no startup timeout while queued. Make a slot available and recheck to simulate admission.",
+		error: "Repair the stage marked Primary failure, then recheck. Successful clone data survives.",
+		timeout:
+			"This worker exceeded the 30s fixture startup deadline after admission. Recheck starts a replacement worker.",
+		ready: "All required checks passed. Worker readiness alone has created zero turn attempts.",
+	}[state.phase];
+	$("summary").innerHTML = `<p><strong>${heading}</strong></p><p>${detail}</p>`;
+	$("cases").innerHTML = Object.entries(CASES)
+		.map(
+			([id, c]) =>
+				`<button type="button" data-case="${id}" aria-pressed="${state.caseId === id}">${c.name}</button>`,
+		)
+		.join("");
+	$("case-description").textContent = CASES[state.caseId].description;
+	$("steps").innerHTML = CASES[state.caseId].steps
+		.map(
+			(s, i) =>
+				`<button type="button" data-step="${i}" ${i !== state.step ? "disabled" : ""}>${i < state.step ? "✓ " : ""}${s.label}</button>`,
+		)
+		.join("");
+	$("facts").innerHTML =
+		`<div><span>Checks complete</span><b>${completed} / ${STAGES.length}</b></div><div><span>Startup clock</span><b>${state.elapsed}s / 30s</b></div><div><span>Capacity wait</span><b>${state.queueTime}s</b></div><div><span>Turn attempts</span><b>0</b></div>`;
+	$("stages").innerHTML = STAGES.map(
+		(node, i) =>
+			`<button type="button" class="stage ${state.selected === node.id ? "active" : ""}" data-stage="${node.id}" aria-pressed="${state.selected === node.id}"><span class="number">${String(i + 1).padStart(2, "0")}</span><span><strong>${node.name}</strong><small>${node.deps.length ? `After ${node.deps.map((id) => STAGES.findIndex((n) => n.id === id) + 1).join(" + ")}` : "Independent repository check"}</small></span><span class="status ${resolved[node.id].status}">${statusLabel[resolved[node.id].status]}</span></button>`,
+	).join("");
+	$("retained").innerHTML = Object.entries(state.clones)
+		.map(
+			([name, clone]) =>
+				`<div><strong>${name.toUpperCase()} clone</strong>${clone ? `${clone.id}<br>${clone.note}` : "Not created yet"}</div>`,
+		)
+		.join("");
+	const node = STAGES.find((n) => n.id === state.selected);
+	const inspection = resolved[node.id];
+	$("inspector").innerHTML =
+		`<h2>Stage evidence</h2><h3>${node.name}</h3><p><span class="status ${inspection.status}">${statusLabel[inspection.status]}</span></p><p class="evidence">${inspection.evidence}</p><p class="hint">${inspection.causes.length ? `Repair ${inspection.causes.map((id) => STAGES.find((n) => n.id === id).name).join(", ")} before continuing.` : node.deps.length ? `Requires: ${node.deps.map((id) => STAGES.find((n) => n.id === id).name).join("; ")}.` : "No upstream repository dependency."}</p><div class="divider"></div><p class="hint">Source integration seam</p><p class="source">packages/worker/src/${node.source}</p><p class="hint">Evidence is synthetic. This proposed view would consume server-owned preparation evidence.</p>`;
+	for (const [key, value] of Object.entries(state.conditions)) $(key).checked = value;
+	$("message").textContent = state.message;
+	$("log").innerHTML = state.events.length
+		? state.events.map((event) => `<li>${event}</li>`).join("")
+		: "<li>No preparation events yet.</li>";
+	$("next").disabled = state.phase !== "preparing";
+	$("run").disabled = state.phase !== "preparing";
+}
+function dispatch(action) {
+	state = transition(state, action);
+	render();
+}
+$("cases").addEventListener("click", (event) => {
+	const button = event.target.closest("[data-case]");
+	if (button) dispatch({ type: "reset", caseId: button.dataset.case });
+});
+$("steps").addEventListener("click", (event) => {
+	const button = event.target.closest("[data-step]");
+	if (button) {
+		state = guided(state, Number(button.dataset.step));
+		render();
+	}
+});
+$("stages").addEventListener("click", (event) => {
+	const button = event.target.closest("[data-stage]");
+	if (button) dispatch({ type: "select", id: button.dataset.stage });
+});
+for (const field of Object.keys(state.conditions))
+	$(field).addEventListener("change", (event) =>
+		dispatch({ type: "condition", field, value: event.target.checked }),
+	);
+$("reset").addEventListener("click", () => dispatch({ type: "reset" }));
+$("recheck").addEventListener("click", () => dispatch({ type: "start" }));
+$("next").addEventListener("click", () => dispatch({ type: "next" }));
+$("run").addEventListener("click", () => {
+	state = runAll(state);
+	render();
+});
+$("wait").addEventListener("click", () => dispatch({ type: "time" }));
+render();
+</script>
+</body>
+</html>
