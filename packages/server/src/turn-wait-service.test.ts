@@ -131,15 +131,14 @@ describe("server-owned turn readiness", () => {
 			.initialState(() => ({}))
 			.turn(
 				flow
-					.llm<Record<string, never>, Record<string, never>>("work")
-					.description("Map")
-					.waitFor(predicate)
-					.forEach<number, number>({
+					.mappedLlm<Record<string, never>, Record<string, never>, number, number>("work", {
 						items,
 						itemCodec: numberCodec,
 						resultCodec: numberCodec,
 						key: ({ item }) => String(item),
 					})
+					.description("Map")
+					.waitFor(predicate)
 					.buildPrompt(() => "Review the item")
 					.outcomeTool("done", (o) => o.description("Done").yield(({ ctx }) => ctx.item))
 					.collect(({ state }) => state)
