@@ -63,3 +63,5 @@ All envelopes and identifiers are synthetic. This experiment represents an open 
 Ordered live delivery is assumed outside recovery. An event at or below the applied high watermark is ignored; the prototype does not invent missing history from timestamps. Recovery needs an authoritative snapshot. Reordering exposes this dependency rather than promising arbitrary delivery order works everywhere.
 
 The experiment supports showing two boundaries separately: the HTTP snapshot’s captured sequence and the highest subsequently applied sequence. A visible decision ledger makes duplicate suppression, wrong-turn rejection, and durable refetch behavior explainable. A useful next experiment would replay sanitized production captures through the production projection instead of the fixture model.
+
+The standalone HTML also passes the repository Biome check.
