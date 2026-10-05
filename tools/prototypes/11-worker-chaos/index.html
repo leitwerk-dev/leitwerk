@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Worker lease chaos lab · Leitwerk prototype</title>
+<style>
+:root { font-family: ui-sans-serif, system-ui, sans-serif; color: #18212b; background: #f7f8fa; font-size: 15px; line-height: 1.5; }
+* { box-sizing: border-box; } body { margin: 0; } main { max-width: 1200px; margin: auto; padding: 34px 30px 60px; } h1 { font-size: 30px; line-height: 1.2; margin: 8px 0 12px; } h2 { font-size: 19px; margin: 0 0 12px; } h3 { font-size: 16px; margin: 0 0 10px; } p { margin: 0 0 12px; } .intro { max-width: 830px; color: #4c5968; } .prototype { color: #4c5968; } button, input { font: inherit; } button { min-height: 44px; padding: 9px 14px; border: 1px solid #aeb7c2; border-radius: 9px; background: white; color: #18212b; cursor: pointer; } button:hover { border-color: #2f61b7; background: #f2f5fa; } button:focus-visible, input:focus-visible { outline: 3px solid #2f61b7; outline-offset: 3px; } button:disabled { color: #687483; background: #f2f4f7; cursor: default; } .primary { background: #2f61b7; color: white; border-color: #2f61b7; } .primary:hover { background: #254c90; color: white; } .header { display: flex; align-items: start; justify-content: space-between; gap: 20px; } .panel { padding: 22px; background: white; border: 1px solid #d9dee5; border-radius: 10px; margin-top: 20px; } .clock { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 22px 0; } .clock strong { font-size: 25px; font-variant-numeric: tabular-nums; margin-right: 10px; } .clock label { display: flex; align-items: center; gap: 8px; } input { width: 75px; min-height: 44px; border: 1px solid #aeb7c2; border-radius: 8px; padding: 7px 10px; } .muted { color: #4c5968; } .small { font-size: 13px; } .states { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); border-top: 1px solid #d9dee5; border-bottom: 1px solid #d9dee5; } .state { padding: 20px 18px; min-width: 0; } .state + .state { border-left: 1px solid #d9dee5; } .state:first-child { padding-left: 0; } .state:last-child { padding-right: 0; } .badge { display: inline-block; border-radius: 6px; background: #e6ecf6; color: #254c90; padding: 3px 9px; margin-bottom: 13px; font-weight: 600; } .badge.warning { background: #fcf0df; color: #7a470d; } dl { margin: 0; } .field { display: flex; justify-content: space-between; gap: 12px; margin: 7px 0; font-size: 14px; } dt { color: #4c5968; } dd { margin: 0; text-align: right; overflow-wrap: anywhere; } .gates { margin-top: 18px; display: grid; gap: 10px; } .gate { display: grid; grid-template-columns: 155px 1fr; gap: 15px; } .outcome { padding: 13px 16px; background: #e6ecf6; color: #254c90; margin-top: 18px; border-radius: 7px; } .outcome.rejected { background: #fcf0df; color: #7a470d; } .layout { display: grid; grid-template-columns: minmax(0,1.05fr) minmax(0,1fr); gap: 20px; } .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; } .actions:last-child { margin-bottom: 0; } .tabs { display: flex; flex-wrap: wrap; gap: 8px; } .tabs button[aria-pressed="true"] { background: #e6ecf6; color: #254c90; border-color: #2f61b7; } .scenario { margin-top: 16px; } .scenario ol { padding-left: 22px; color: #4c5968; margin-bottom: 18px; } .scenario li { padding: 3px 0; } .scenario li.current { color: #18212b; font-weight: 650; } .scenario li.done { color: #157a52; } .event { display: grid; grid-template-columns: 65px 1fr; gap: 12px; border-top: 1px solid #d9dee5; padding: 12px 0; } .event time { color: #4c5968; font-variant-numeric: tabular-nums; } .event p { margin: 0; } .reason { color: #4c5968; font-size: 14px; } details { margin-top: 18px; } summary { cursor: pointer; min-height: 36px; } footer { color: #4c5968; margin-top: 24px; font-size: 13px; }
+@media(max-width: 760px) { main { padding: 22px 16px 40px; } h1 { font-size: 26px; } .layout { grid-template-columns: 1fr; gap: 0; } .panel { padding: 17px; } .states { grid-template-columns: 1fr; } .state, .state:first-child, .state:last-child { padding: 16px 0; } .state + .state { border-left: 0; border-top: 1px solid #d9dee5; } .gate { grid-template-columns: 1fr; gap: 2px; } .header { flex-wrap: wrap; gap: 8px; } .header button { margin-left: auto; } .clock { gap: 9px; } .clock strong { width: 100%; } .event { grid-template-columns: 49px 1fr; } }
+</style>
+</head>
+<body>
+<main>
+<header class="header"><div><p class="prototype">Leitwerk / Developer experiments · Prototype • synthetic data</p><h1>Worker lease chaos lab</h1></div><button type="button" id="reset">Reset lab</button></header>
+<p class="intro">Can an operator explain why a replacement is blocked, a turn attempt exists, or a late worker message is rejected? Advance a simulated clock and break a single worker to inspect each boundary.</p>
+<section class="panel" aria-labelledby="state-heading">
+<h2 id="state-heading">One process. Three independent facts.</h2>
+<div class="clock"><strong id="clock">t + 0s</strong><label for="seconds">Advance by <input id="seconds" type="number" min="1" max="600" value="10" /> seconds</label><button type="button" id="advance">Advance clock + watchdog</button><span class="muted small">Clock moves only when you advance it.</span></div>
+<div class="states" id="states"></div>
+<div class="gates" id="gates"></div>
+<div id="outcome" class="outcome" role="status" aria-live="polite"></div>
+</section>
+<div class="layout">
+<section class="panel" aria-labelledby="free-heading"><h2 id="free-heading">Free play</h2><p class="muted">Try any action. Invalid actions explain their guard without changing runtime state.</p><h3>Worker and connection</h3><div class="actions" id="worker-actions"></div><h3>Faults and recovery</h3><div class="actions" id="fault-actions"></div><h3>Message delivery</h3><div class="actions" id="message-actions"></div><details><summary>Simulation boundaries</summary><p class="small muted">This fixture uses a 120s startup deadline and 30s heartbeat timeout; these are illustrative settings. A watchdog runs after each clock advance. Removal callbacks are manual so you can inspect a blocked handoff. One synthetic turn, “implement”, completes the process. No real worker, transport, database or timer is running.</p></details></section>
+<section class="panel" aria-labelledby="guide-heading"><h2 id="guide-heading">Guided fault cases</h2><p class="muted">Choose a case to reset. Each step performs a real transition in the same model.</p><div class="tabs" id="tabs" aria-label="Guided cases"></div><div class="scenario" id="scenario"></div></section>
+</div>
+<section class="panel" aria-labelledby="log-heading"><h2 id="log-heading">Server decision trail</h2><p class="muted small">Newest first. Every timestamp comes from the simulated clock.</p><div id="log"></div></section>
+<footer>Throwaway behavior experiment. Server-owned state follows the documented lifecycle; this page proposes an inspection and training tool, not a new runtime policy.</footer>
+</main>
+<script>
+// Pure model: all time, identities and decisions are explicit inputs and returned state.
+const STARTUP = 120;
+const HEARTBEAT = 30;
+function initialState() {
+  return { now: 0, sequence: 1, lease: { worker: "worker-1", state: "bootstrapping", start: 0, heartbeat: null }, physical: { unit: "pod-1", state: "present", failures: 0 }, process: { lifecycle: "active", selected: "implement", attempts: 0, record: "turn-1", recordState: "reserved" }, connected: true, dropping: false, retired: [], events: [{ at: 0, title: "Prepared turn-1 and allocated worker-1.", reason: "A reservation exists. No accepted attempt exists yet.", rejected: false }] };
+}
+function live(s) { return ["bootstrapping", "idle", "busy"].includes(s.lease.state); }
+function replacementReason(s) {
+  if (s.physical.state !== "removed") return `Blocked: ${s.physical.unit} is ${s.physical.state}. Physical removal must finish first.`;
+  if (s.process.lifecycle !== "error") return "Blocked: retry requires a current infrastructure error.";
+  return "Allowed: prior unit is removed and the process has a recoverable error.";
+}
+function transition(previous, action) {
+  const s = structuredClone(previous);
+  const note = (title, reason, rejected = false) => { s.events.unshift({ at: s.now, title, reason, rejected }); return s; };
+  const reject = (reason) => note("Action rejected.", reason, true);
+  const fail = (reason) => {
+    s.lease.state = "failed";
+    s.physical.state = "removal pending";
+    s.connected = false;
+    if (s.process.lifecycle === "active") { s.process.lifecycle = "error"; s.process.recordState = s.process.recordState === "reserved" ? "startup failed" : "failed"; }
+    return note(reason, "Lease failed; unit removal is pending. Selected turn stays implement. Replacement remains blocked.");
+  };
+  switch (action.type) {
+    case "advance": {
+      if (!Number.isFinite(action.seconds) || action.seconds < 1 || action.seconds > 600) return reject("Choose a finite duration from 1 to 600 seconds.");
+      s.now += action.seconds;
+      if (s.lease.state === "bootstrapping" && s.now - s.lease.start >= STARTUP) return fail("Startup deadline reached before worker.ready.");
+      if (["idle", "busy"].includes(s.lease.state) && s.lease.heartbeat !== null && s.now - s.lease.heartbeat >= HEARTBEAT) return fail("Heartbeat deadline reached. Server declares infrastructure failure.");
+      return note(`Clock advanced by ${action.seconds}s.`, s.lease.heartbeat === null ? "Heartbeat watchdog has no baseline before worker.ready. The separate startup deadline still applies." : "No active deadline was reached. Clock advance does not deliver heartbeats automatically.");
+    }
+    case "ready":
+      if (!s.connected || s.lease.state !== "bootstrapping") return reject("worker.ready requires a connected, bootstrapping current worker.");
+      s.lease.state = "idle"; s.lease.heartbeat = s.now;
+      return note("worker.ready recorded.", `First heartbeat baseline is t + ${s.now}s. Bootstrap duration is excluded. Attempt count is still ${s.process.attempts}.`);
+    case "accept":
+      if (!s.connected || !["idle", "busy"].includes(s.lease.state) || s.process.lifecycle !== "active") return reject("Start acceptance requires a ready current worker and active process.");
+      if (s.process.recordState === "running") return note("Accepted start replay acknowledged.", `Identity ${s.process.record} already exists. Attempt remains ${s.process.attempts}.`);
+      if (s.process.recordState !== "reserved") return reject("Only the current reserved start can be accepted.");
+      s.process.attempts++; s.process.recordState = "running"; s.lease.state = "busy";
+      return note("worker.turn_started accepted; worker reports busy.", `${s.process.record} becomes a durable running record. Attempt ${s.process.attempts} begins only now.`);
+    case "heartbeat":
+      if (!s.connected || !["idle", "busy"].includes(s.lease.state)) return reject("Heartbeat requires a connected, ready live worker.");
+      if (s.dropping) return note("Heartbeat dropped by fault injector.", "Server baseline did not move; the existing deadline still applies.");
+      s.lease.heartbeat = s.now;
+      return note("Heartbeat received.", `Server baseline moves to t + ${s.now}s; next expiry is t + ${s.now + HEARTBEAT}s.`);
+    case "drop":
+      s.dropping = !s.dropping;
+      return note(s.dropping ? "Heartbeat dropping enabled." : "Heartbeat delivery restored.", "This affects future heartbeat delivery only; it does not change durable state.");
+    case "disconnect":
+      if (!live(s) || !s.connected) return reject("Only a connected live worker can lose its transport.");
+      s.connected = false;
+      return note("Worker transport disconnected.", "A disconnect alone does not fail the process. The existing deadline continues.");
+    case "reconnect":
+      if (!live(s)) return reject("A failed or exited lease cannot reconnect as the live worker.");
+      if (s.connected) return reject("Current worker is already connected.");
+      s.connected = true;
+      return note("Current worker reconnected.", "Identity is unchanged. Reconnect alone does not refresh the heartbeat; deliver one explicitly.");
+    case "cleanupFail":
+      if (!["removal pending", "removal failed"].includes(s.physical.state)) return reject("There is no terminal unit awaiting removal.");
+      s.physical.state = "removal failed"; s.physical.failures++;
+      return note("Physical unit removal failed.", "Unit remains in the cleanup backlog. The server can keep serving; this process cannot receive a replacement.");
+    case "cleanupOk":
+      if (!["removal pending", "removal failed"].includes(s.physical.state)) return reject("There is no terminal unit awaiting removal.");
+      s.physical.state = "removed"; s.lease.state = "exited";
+      return note("Physical removal confirmed; exit finalized.", "Replacement handoff is now clear. Retry must still prepare a new start.");
+    case "retry":
+      if (s.physical.state !== "removed" || s.process.lifecycle !== "error") return reject(replacementReason(s));
+      s.retired.push({ worker: s.lease.worker, record: s.process.record, unit: s.physical.unit });
+      s.sequence++; s.lease = { worker: `worker-${s.sequence}`, state: "bootstrapping", start: s.now, heartbeat: null };
+      s.physical = { unit: `pod-${s.sequence}`, state: "present", failures: 0 };
+      s.process.lifecycle = "active"; s.process.record = `turn-${s.sequence}`; s.process.recordState = "reserved";
+      s.connected = true; s.dropping = false;
+      return note(`Retry prepared ${s.process.record}; replacement allocated.`, `New lease ${s.lease.worker} has no heartbeat baseline. Accepted attempt count stays ${s.process.attempts}.`);
+    case "oldOutcome": {
+      const old = s.retired.at(-1);
+      if (!old) return reject("No retired worker exists yet. Fail, remove, and replace this worker first.");
+      return note(`Late outcome from ${old.worker} / ${old.record} rejected.`, `Current live identity is ${s.lease.worker} / ${s.process.record}. The old lease cannot mutate this process.`, true);
+    }
+    case "wrongOutcome":
+      return reject(`Outcome turn-stale does not match expected ${s.process.record}. Current process and attempt are preserved.`);
+    case "outcome":
+      if (!s.connected || s.lease.state !== "busy" || s.process.recordState !== "running" || s.process.lifecycle !== "active") return reject("A successful outcome requires the live worker and current running accepted turn record.");
+      s.process.recordState = "completed"; s.process.lifecycle = "completed"; s.lease.state = "idle";
+      return note(`Outcome from ${s.lease.worker} / ${s.process.record} recorded.`, "The fixture's only turn completes the process. Its idle physical worker remains a separate fact.");
+    default: return reject("Unknown action.");
+  }
+}
+const actions = {
+  ready: "Report ready", accept: "Accept / replay turn start", heartbeat: "Deliver heartbeat", disconnect: "Disconnect", reconnect: "Reconnect", drop: "Toggle heartbeat loss", cleanupFail: "Fail removal", cleanupOk: "Confirm removal", retry: "Retry with replacement", oldOutcome: "Deliver old-worker outcome", wrongOutcome: "Deliver wrong-turn outcome", outcome: "Deliver current outcome"
+};
+const step = (label, type, seconds) => ({ label, action: { type, seconds } });
+const cases = [
+  { title: "Slow bootstrap", description: "Spend longer in bootstrap than the heartbeat timeout. Readiness creates the baseline; acceptance creates the attempt.", steps: [step("Advance 90s during bootstrap", "advance", 90), step("Report ready at t + 90s", "ready"), step("Accept the reserved start", "accept"), step("Replay acceptance without another attempt", "accept"), step("Advance 20s", "advance", 20), step("Receive a heartbeat before expiry", "heartbeat"), step("Record the current outcome", "outcome")] },
+  { title: "Blocked replacement", description: "Lose heartbeats, then fail physical cleanup. A terminal lease cannot authorize a second writable worker.", steps: [step("Report ready", "ready"), step("Accept start", "accept"), step("Drop heartbeat delivery", "drop"), step("Try to deliver a heartbeat", "heartbeat"), step("Advance 30s to expiry", "advance", 30), step("Fail physical unit removal", "cleanupFail"), step("Try replacement while cleanup is blocked", "retry"), step("Confirm physical removal", "cleanupOk"), step("Retry with a replacement", "retry"), step("Report replacement ready", "ready"), step("Accept replacement start", "accept")] },
+  { title: "Late old worker", description: "Recover through a new lease, then deliver an old result. Both worker and turn-record identities protect the current execution.", steps: [step("Report ready", "ready"), step("Accept start", "accept"), step("Advance 30s to failure", "advance", 30), step("Confirm physical removal", "cleanupOk"), step("Retry with worker-2", "retry"), step("Report replacement ready", "ready"), step("Accept replacement start", "accept"), step("Deliver worker-1's late outcome", "oldOutcome"), step("Deliver wrong-turn outcome", "wrongOutcome"), step("Deliver current correlated outcome", "outcome")] }
+];
+// Thin browser shell; model functions above do not read or mutate the DOM.
+let state = initialState();
+let selectedCase = 0;
+let guideStep = 0;
+let guideDetached = false;
+const byId = (id) => document.getElementById(id);
+const fields = (items) => `<dl>${items.map(([label, value]) => `<div class="field"><dt>${label}</dt><dd>${value}</dd></div>`).join("")}</dl>`;
+function render() {
+  const { lease, physical, process } = state;
+  byId("clock").textContent = `t + ${state.now}s`;
+  byId("states").innerHTML = `<section class="state"><h3>Server-owned lease</h3><span class="badge ${["failed", "exited"].includes(lease.state) ? "warning" : ""}">${lease.state}</span>${fields([["Worker", lease.worker], ["Connection", state.connected ? "connected" : "disconnected"], ["Allocated at", `t + ${lease.start}s`], ["Heartbeat baseline", lease.heartbeat === null ? "not established" : `t + ${lease.heartbeat}s`]])}</section><section class="state"><h3>Durable process</h3><span class="badge ${process.lifecycle === "error" ? "warning" : ""}">${process.lifecycle}</span>${fields([["Selected turn", process.selected], ["Accepted attempts", process.attempts], ["Current record", process.record], ["Record state", process.recordState]])}</section><section class="state"><h3>Physical runtime unit</h3><span class="badge ${physical.state.includes("fail") || physical.state.includes("pending") ? "warning" : ""}">${physical.state}</span>${fields([["Unit", physical.unit], ["Removal failures", physical.failures], ["Unreclaimed units", ["removal pending", "removal failed"].includes(physical.state) ? "1 unit" : "0 units"], ["Heartbeat loss", state.dropping ? "enabled" : "disabled"]])}</section>`;
+  const deadline = lease.state === "bootstrapping" ? `Startup: t + ${lease.start + STARTUP}s (${Math.max(0, lease.start + STARTUP - state.now)}s left). Heartbeat timeout has not started.` : ["idle", "busy"].includes(lease.state) ? `Heartbeat: t + ${lease.heartbeat + HEARTBEAT}s (${Math.max(0, lease.heartbeat + HEARTBEAT - state.now)}s left). Ready/heartbeat receipts set this baseline.` : "No active watchdog deadline. This lease is terminal.";
+  byId("gates").innerHTML = `<div class="gate"><strong>Deadline</strong><span>${deadline}</span></div><div class="gate"><strong>Replacement gate</strong><span>${replacementReason(state)}</span></div><div class="gate"><strong>Outcome admission</strong><span>${process.recordState === "running" && live(state) ? `Requires ${lease.worker} + ${process.record}, with a current live lease.` : "No current running accepted turn can receive a successful outcome."}</span></div>`;
+  const latest = state.events[0];
+  byId("outcome").className = `outcome${latest.rejected ? " rejected" : ""}`;
+  byId("outcome").textContent = `${latest.title} ${latest.reason}`;
+  byId("tabs").innerHTML = cases.map((item, index) => `<button type="button" data-case="${index}" aria-pressed="${index === selectedCase}">${item.title}</button>`).join("");
+  const current = cases[selectedCase];
+  byId("scenario").innerHTML = `<p>${current.description}</p><ol>${current.steps.map((item, index) => `<li class="${index < guideStep ? "done" : index === guideStep ? "current" : ""}">${index < guideStep ? "✓ " : ""}${item.label}</li>`).join("")}</ol>${guideDetached ? '<p class="muted">Free play changed this case. Restart it to resume the ordered walkthrough.</p><button type="button" id="restart-case">Restart selected case</button>' : guideStep < current.steps.length ? `<button type="button" class="primary" id="next-step">Step ${guideStep + 1}: ${current.steps[guideStep].label}</button>` : '<p><strong>Case complete.</strong> Explore free play or choose another case.</p>'}`;
+  byId("log").innerHTML = state.events.map((event) => `<div class="event"><time>+${event.at}s</time><div><p><strong>${event.title}</strong></p><p class="reason">${event.reason}</p></div></div>`).join("");
+}
+function resetCase(index) { selectedCase = index; guideStep = 0; guideDetached = false; state = initialState(); render(); }
+function dispatch(action) { state = transition(state, action); guideDetached = true; render(); }
+for (const [target, names] of [["worker-actions", ["ready", "accept", "heartbeat", "disconnect", "reconnect"]], ["fault-actions", ["drop", "cleanupFail", "cleanupOk", "retry"]], ["message-actions", ["oldOutcome", "wrongOutcome", "outcome"]]]) {
+  byId(target).innerHTML = names.map((name) => `<button type="button" data-action="${name}">${actions[name]}</button>`).join("");
+}
+byId("reset").addEventListener("click", () => resetCase(0));
+byId("advance").addEventListener("click", () => dispatch({ type: "advance", seconds: Number(byId("seconds").value) }));
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("button");
+  if (!button) return;
+  if (button.dataset.action) dispatch({ type: button.dataset.action });
+  if (button.dataset.case !== undefined) resetCase(Number(button.dataset.case));
+  if (button.id === "restart-case") resetCase(selectedCase);
+  if (button.id === "next-step") { state = transition(state, cases[selectedCase].steps[guideStep].action); guideStep++; render(); byId("next-step")?.focus({ preventScroll: true }); }
+});
+render();
+</script>
+</body>
+</html>
