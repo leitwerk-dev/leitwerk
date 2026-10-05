@@ -8,7 +8,6 @@ import type {
 import type {
 	LaunchTicketCreationRequestBody,
 	LaunchTicketCreationResponseBody,
-	PrimaryPathSnapshot,
 	ResolveToolApprovalRequestBody,
 	TicketCreationToolSummary,
 } from "@leitwerk-dev/protocol";
@@ -32,7 +31,6 @@ import type {
 	LaunchersResponseBody,
 	LaunchRunResponseBody,
 	ModelProviderOptionsResponseBody,
-	PrimaryPathSnapshotResponseBody,
 	ProcessActionModelPreview,
 	ProcessActionModelPreviewResponseBody,
 	ProcessBrowseResponseBody,
@@ -544,14 +542,6 @@ export async function fetchProcessDiagnostics(instanceId: string): Promise<Proce
 		`/api/processes/${encodeURIComponent(instanceId)}/diagnostics`,
 		"Couldn't load this process",
 		"Malformed process diagnostics response",
-	);
-}
-
-export async function fetchPrimaryPathSnapshot(instanceId: string): Promise<PrimaryPathSnapshot> {
-	return requestStatusJson<PrimaryPathSnapshotResponseBody>(
-		`/api/processes/${encodeURIComponent(instanceId)}/primary-path`,
-		"Couldn't load this process",
-		"Malformed primary path snapshot response",
 	);
 }
 

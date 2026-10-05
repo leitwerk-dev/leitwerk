@@ -4,6 +4,7 @@ export { FakeLlmProvider } from "./fakes/fake-llm.js";
 export { postImmediateLaunch, postImmediateLaunchRequest } from "./http-launch.js";
 export {
 	type FixtureModelProviderSet,
+	fixtureModelProfiles,
 	fixtureModelProviders,
 } from "./model-provider-fixtures.js";
 export {

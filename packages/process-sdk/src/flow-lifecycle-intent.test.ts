@@ -11,8 +11,8 @@ interface TestState {
 	cleared: boolean;
 }
 
-describe("flow lifecycle intents", () => {
-	it("expands plan intent into state, process patch, broadcast, and event effects", async () => {
+describe("flow plan results", () => {
+	it("merges configured effects with plan state, revision, broadcasts, and events", async () => {
 		const generatePlan = flow
 			.llm<unknown, TestState>("generate_plan")
 			.description("Draft plan")
@@ -22,7 +22,12 @@ describe("flow lifecycle intents", () => {
 					.summary()
 					.acceptanceCriteria()
 					.review("plan_decision")
-					.state(({ ctx }) => ({ ...ctx.state, cleared: true })),
+					.effect(({ ctx }) => ({
+						state: { ...ctx.state, cleared: true },
+						processPatch: { title: "Candidate plan", planRevision: 99 },
+						broadcasts: [{ type: "custom", payload: {} }],
+						emit: [{ type: "plan_saved", data: { custom: true } }],
+					})),
 			);
 		const process = defineProcess<unknown, TestState>({
 			id: "test_process",
@@ -79,8 +84,9 @@ describe("flow lifecycle intents", () => {
 		expect(transitions).toEqual([{ state: { cleared: true } }]);
 		expect(lifecycleEffects).toEqual([
 			expect.objectContaining({
-				processPatch: { planRevision: 5 },
+				processPatch: { title: "Candidate plan", planRevision: 5 },
 				broadcasts: [
+					{ type: "custom", payload: {} },
 					expect.objectContaining({
 						type: "plan.updated",
 						payload: expect.objectContaining({ planRevision: 5, summary: "Do it" }),
@@ -89,6 +95,7 @@ describe("flow lifecycle intents", () => {
 			}),
 		]);
 		expect(emitted).toEqual([
+			{ type: "plan_saved", payload: { custom: true } },
 			{
 				type: "plan_saved",
 				payload: {

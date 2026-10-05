@@ -170,11 +170,9 @@ failure evidence.
 
 ## Acceptance and recovery {#5-start-acceptance-recovery-invariants}
 
-Before reservation, a declared `.waitFor` predicate runs on the server. While it
-is false or retrying a transient read, the process is waiting with no worker start,
-lease, or turn attempt. Every start path, including retry and continuation, passes
-this gate. A permanent predicate error is recoverable through `retryProcess()`
-without manufacturing a failed turn. Readiness checks and due times survive restart.
+Worker reservation requires [server-side readiness](process-sdk.md#readiness-before-a-worker-starts).
+A permanent predicate error is recoverable through `retryProcess()` without creating
+a failed turn.
 
 1. **`TurnStartRecord` Reservation:** A worker start prepares a `TurnStartRecord` in SQLite before worker execution begins. This reserves the turn-record ID but is **not** an attempt.
 2. **`worker.turn_started` Acceptance:** The worker prepares the workspace, resolves the Pi resource bundle from delivered bytes or the process volume, verifies and persists it, and sends `worker.turn_started`. By default, every declared repository must be ready. Processes opting into `repositoryCheckout: "on_demand"` prepare only retained checkouts; other declared repositories are materialized through `checkout_repository`. A clone, checkout, branch, manifest, or workspace aggregate failure in the required set fails bootstrap; the worker does not report readiness or request turn acceptance with a partially prepared set. The worker MUST NOT execute LLM prompts or automatic handlers until receiving `worker.turn_start_accepted`.

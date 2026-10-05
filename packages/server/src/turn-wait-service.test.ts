@@ -3,6 +3,7 @@ import {
 	emptyParamsCodec,
 	flow,
 	RetryableWaitError,
+	type TurnWaitContext,
 	type TurnWaitPredicate,
 } from "@leitwerk-dev/process-sdk";
 import { describe, expect, it, vi } from "vitest";
@@ -20,6 +21,7 @@ import {
 	createFixtureProcess,
 	createProcessGraphRegistry,
 } from "./test-helpers/process-fixtures.js";
+import { createModelAvailabilitySnapshot } from "./test-helpers/process-model-fixtures.js";
 import { prepareSuccessfulLlmTurnStarts } from "./test-helpers/turn-start-preflight-fixtures.js";
 import { createTurnWaitService } from "./turn-wait-service.js";
 
@@ -55,21 +57,10 @@ function setup(
 			processGraphs,
 			processActionRegistry: registry,
 		}),
-		getModelAvailabilitySnapshot: () => ({
-			revision: 1,
-			capturedAt: new Date().toISOString(),
-			availabilityTransitions: [],
-			profiles: [
-				{
-					profileId: "fixture-profile",
-					providerId: "fixture-provider",
-					modelId: "fixture-model",
-					availability: "available",
-					checkedAt: new Date().toISOString(),
-					expiresAt: new Date(Date.now() + 60_000).toISOString(),
-				},
-			],
-		}),
+		getModelAvailabilitySnapshot: () =>
+			createModelAvailabilitySnapshot([
+				{ profileId: "fixture-profile", providerId: "fixture-provider", modelId: "fixture-model" },
+			]),
 		processGraphs,
 		processOperations: createProcessOperationCoordinator(),
 		getSupervisor: () => supervisor,
@@ -109,6 +100,7 @@ function setup(
 	];
 	return {
 		deps,
+		definition,
 		process,
 		engine,
 		supervisor,
@@ -184,8 +176,13 @@ describe("server-owned turn readiness", () => {
 		"automatic",
 		"llm",
 	] as const)("keeps repeated false checks out of %s starts, leases and attempts", async (kind) => {
-		const predicate = vi.fn(() => false);
+		const predicate = vi.fn((ctx: TurnWaitContext) => {
+			ctx.setState({});
+			return false;
+		});
 		const s = setup(predicate, kind);
+		const serialize = vi.fn(() => ({ observed: true }));
+		s.definition.stateCodec = { ...emptyParamsCodec, serialize };
 		expect(await s.start()).toMatchObject({
 			ok: true,
 			process: { lifecycleStatus: "waiting", currentExecution: null },
@@ -196,6 +193,8 @@ describe("server-owned turn readiness", () => {
 			s.advance();
 		}
 		expect(predicate).toHaveBeenCalledTimes(10);
+		expect(serialize).toHaveBeenCalledTimes(10);
+		expect(JSON.parse(s.read().stateJson ?? "null")).toEqual({ observed: true });
 		expect(s.counts()).toEqual([0, 0, 0, 0]);
 	});
 

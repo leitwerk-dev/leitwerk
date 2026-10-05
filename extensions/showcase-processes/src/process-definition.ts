@@ -3,6 +3,7 @@ import {
 	createEmptyStructuralProcessState,
 	type FormDefinition,
 	flow,
+	type ProcessLeafOutcomeDefinition,
 	parseStructuralProcessState,
 	type StructuralProcessState,
 } from "@leitwerk-dev/process-sdk";
@@ -107,15 +108,7 @@ function buildPoemLeafReview(state: PoemCreatorState) {
 function createPoemLeafOutcome(rendererId: string) {
 	return {
 		rendererId,
-		capture(ctx: {
-			params: PromptProcessParams;
-			state: PoemCreatorState;
-			leaf: { entryId: string; turnRecordId: string | null };
-			turnRecord: { turnResultMarkdown: string | null } | null;
-			readTreeEntry(entryId: string): { message?: { content?: unknown } } | null;
-			readLeafEntry(): { message?: { content?: unknown } } | null;
-			readTurnRecord(turnRecordId: string): { turnResultMarkdown: string | null } | null;
-		}) {
+		capture(ctx) {
 			const reviewLeafEntryId = ctx.state.semanticEntryRefs.review?.entryId ?? null;
 			const review = buildPoemLeafReview(ctx.state);
 			const isReviewLeaf = reviewLeafEntryId !== null && ctx.leaf.entryId === reviewLeafEntryId;
@@ -153,7 +146,7 @@ function createPoemLeafOutcome(rendererId: string) {
 				fallbackMarkdown: fallbackMarkdown || null,
 			};
 		},
-	};
+	} satisfies ProcessLeafOutcomeDefinition<PromptProcessParams, PoemCreatorState>;
 }
 
 const poemTurnIds = {

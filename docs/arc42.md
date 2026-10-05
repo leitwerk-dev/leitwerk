@@ -96,9 +96,8 @@ arbitrary replacement of the application shell.
 
 ### Turn
 
-A declared `.waitFor` predicate first checks readiness on the server. False or
-transient failures retain a durable wait with no start, lease, or turn attempt.
-External observations wake this check; external worker targets require a predicate.
+Worker starts first pass the server's [readiness gate](process-sdk.md#readiness-before-a-worker-starts).
+External observations wake the check; external worker targets require a predicate.
 
 1. A `TurnStartRecord` reserves one turn-record identity without counting an attempt.
 2. Worker acceptance creates the turn record and increments its attempt exactly once.

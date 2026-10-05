@@ -322,14 +322,13 @@ flow.llm("repair")
   .end("done").complete();
 ```
 
-`repository.assess` is an extension-owned read adapter using the process's existing
-project binding. A predicate receives the process snapshot, projects, decoded
-params and state, an abort signal, and `require(token)` for server adapters.
-It needs no input codec or separate assessment turn. Ordinary turns can use just
-`.prompt("Write a short poem.")` without a readiness predicate.
+Predicates receive the process snapshot, projects, decoded params/state, an abort
+signal, and `require(token)` for extension-owned server read adapters. Readiness is
+optional; ordinary turns can use `.prompt("Write a short poem.")` alone.
 
 Both LLM and automatic turns support `.waitFor(predicate)`. The server checks it
-before persisting a worker start, allocating a lease, or accepting a turn attempt:
+before persisting any worker start (including retry and continuation), allocating
+a lease, or accepting a turn attempt:
 
 - `false` keeps the selected turn waiting without a worker.
 - `true` admits one execution. Checks stop after admission.

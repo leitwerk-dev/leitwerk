@@ -10,6 +10,16 @@ import type { EngineErrorCode } from "./types.js";
 export type Reaction = PostCommitEffect;
 
 /** @internal */
+export function modelOverrideMetadata(input: DecisionMetadata = {}): DecisionMetadata | undefined {
+	const { nextTurnModelProfileId, providerOptions } = input;
+	if (nextTurnModelProfileId === undefined && providerOptions === undefined) return undefined;
+	return {
+		...(nextTurnModelProfileId !== undefined ? { nextTurnModelProfileId } : {}),
+		...(providerOptions !== undefined ? { providerOptions } : {}),
+	};
+}
+
+/** @internal */
 export interface Decision<TData = void> {
 	/** @internal */
 	ok: true;

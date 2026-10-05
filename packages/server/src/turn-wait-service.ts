@@ -71,6 +71,7 @@ export function createTurnWaitService(deps: TurnWaitServiceDeps) {
 		const controller = new AbortController();
 		controllers.add(controller);
 		let state: unknown;
+		let nextStateJson: string | undefined;
 		let result: "ready" | "waiting" | "complete" | "retry" | "error";
 		let message: string | undefined;
 		let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -107,7 +108,7 @@ export function createTurnWaitService(deps: TurnWaitServiceDeps) {
 			if (state !== undefined) {
 				const codec = deps.processGraphs.get(process.processId)?.stateCodec;
 				if (!codec) throw new Error("Process state codec is unavailable");
-				state = structuredClone(codec.serialize(codec.parse(state)));
+				nextStateJson = JSON.stringify(codec.serialize(codec.parse(state)));
 			}
 		} catch (error) {
 			result = error instanceof RetryableWaitError ? "retry" : "error";
@@ -125,7 +126,7 @@ export function createTurnWaitService(deps: TurnWaitServiceDeps) {
 			paramsJson: process.paramsJson,
 			stateJson: process.stateJson,
 			projectsJson: JSON.stringify(projects),
-			state,
+			nextStateJson,
 			result,
 			message,
 			now: now(),
@@ -156,18 +157,12 @@ export function createTurnWaitService(deps: TurnWaitServiceDeps) {
 						["waiting", "active"].includes(process.lifecycleStatus) &&
 						turnWaitPredicate(deps.processGraphs, process),
 				);
-			// Bound remote concurrency across processes without serializing their lifecycle locks.
-			let next = 0;
 			await Promise.all(
-				Array.from({ length: Math.min(4, candidates.length) }, async () => {
-					while (next < candidates.length && !stopped) {
-						const process = candidates[next++];
-						if (!process) continue;
-						try {
-							await check(process.id);
-						} catch {
-							errors.push(`${process.id}:waiting_check_failed`);
-						}
+				candidates.map(async (process) => {
+					try {
+						await check(process.id);
+					} catch {
+						errors.push(`${process.id}:waiting_check_failed`);
 					}
 				}),
 			);

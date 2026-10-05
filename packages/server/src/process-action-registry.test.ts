@@ -1,201 +1,57 @@
 import type { ProcessInstance, ProcessProject } from "@leitwerk-dev/domain";
-import { createTestProcessInstance } from "@leitwerk-dev/extension-runtime/testing";
-import { flow, type ProcessGraphView } from "@leitwerk-dev/process-sdk";
+import {
+	createTestProcessInstance,
+	createTestProcessProject,
+	createTestServerProcessContext,
+} from "@leitwerk-dev/extension-runtime/testing";
+import {
+	type DefinedProcessInput,
+	defineProcess,
+	emptyParamsCodec,
+	flow,
+	type HumanTurnDefinition,
+	humanTurn,
+} from "@leitwerk-dev/process-sdk";
 import { describe, expect, it } from "vitest";
-import type { createServerProcessBuilder, TurnDefinition } from "../../process-sdk/src/index.js";
 import { buildProcessActionRegistry } from "./process-action-registry.js";
 import { collectProcessActionPlan } from "./process-engine/writes/build-process-action-writes.js";
-import { getProcessGraph } from "./process-graph.js";
-import { defineGraphFixtureProcess } from "./test-helpers/process-binding-fixtures.js";
-import { createDefaultTestProcessGraphRegistry } from "./test-helpers/process-fixtures.js";
+import {
+	createDefaultTestProcessGraphRegistry,
+	createFixtureAutomaticTurn,
+	createFixtureLlmTurn,
+} from "./test-helpers/process-fixtures.js";
 
 const processGraphs = createDefaultTestProcessGraphRegistry();
-const ticketProcessGraph = getProcessGraph(processGraphs, "ticket_issue_process");
 
-type ServerProcessHook = (api: ReturnType<typeof createServerProcessBuilder>) => void;
+type TestProcessInput = DefinedProcessInput<Record<string, never>, Record<string, never>>;
 
-function createDefaultTurnDefinitions(): ReadonlyMap<string, TurnDefinition> {
-	return new Map<string, TurnDefinition>([
-		[
-			"generate_plan",
-			{
-				id: "generate_plan",
-				description: "Generate plan",
-				kind: "llm",
-				availableTools: [],
-				completionMode: "turn_end",
-				branchType: "primary",
-				context: "fresh",
-				prompt: async () => "Generate plan",
-				outcomes: { plan_saved: { description: "saved", parameters: {} } },
-			},
-		],
-		[
-			"plan_review",
-			createPlanReviewTurn({
-				actions: {
-					approve_plan: { label: "Approve plan", acceptanceState: "accepted" },
-					request_revision: { label: "Request revision", acceptanceState: "requires_changes" },
-				},
-			}),
-		],
-		[
-			"implement",
-			{
-				id: "implement",
-				description: "Implement",
-				kind: "llm",
-				availableTools: [],
-				completionMode: "turn_end",
-				branchType: "primary",
-				context: "full",
-				prompt: async () => "Implement",
-				outcomes: { done: { description: "done", parameters: {} } },
-			},
-		],
-		[
-			"handoff_review",
-			{
-				id: "handoff_review",
-				description: "Handoff review",
-				kind: "automatic",
-				outcomes: { created: { description: "created", parameters: {} } },
-				run: async () => ({ outcome: "created", params: {} }),
-			},
-		],
-		[
-			"run_llm_review",
-			{
-				id: "run_llm_review",
-				description: "Run review",
-				kind: "llm",
-				availableTools: [],
-				completionMode: "turn_end",
-				branchType: "leaf_branch",
-				context: "full",
-				prompt: async () => "Review",
-				outcomes: {
-					issues_found: { description: "issues", parameters: {} },
-					no_issues: { description: "clean", parameters: {} },
-				},
-			},
-		],
-		[
-			"address_review",
-			{
-				id: "address_review",
-				description: "Address review",
-				kind: "llm",
-				availableTools: [],
-				completionMode: "turn_end",
-				branchType: "primary",
-				context: "full",
-				prompt: async () => "Address review",
-				outcomes: { comments_addressed: { description: "done", parameters: {} } },
-			},
-		],
-		[
-			"verify_build",
-			{
-				id: "verify_build",
-				description: "Verify build",
-				kind: "llm",
-				availableTools: [],
-				completionMode: "turn_end",
-				branchType: "primary",
-				context: "full",
-				prompt: async () => "Verify build",
-				outcomes: {
-					build_failing: { description: "failing", parameters: {} },
-					build_passing: { description: "passing", parameters: {} },
-				},
-			},
-		],
-		[
-			"fix_build",
-			{
-				id: "fix_build",
-				description: "Fix build",
-				kind: "llm",
-				availableTools: [],
-				completionMode: "turn_end",
-				branchType: "primary",
-				context: "full",
-				prompt: async () => "Fix build",
-				outcomes: { build_fixed: { description: "fixed", parameters: {} } },
-			},
-		],
-		[
-			"commit_and_complete",
-			{
-				id: "commit_and_complete",
-				description: "Commit and complete",
-				kind: "llm",
-				availableTools: [],
-				completionMode: "turn_end",
-				branchType: "primary",
-				context: "full",
-				prompt: async () => "Commit",
-				outcomes: { committed: { description: "committed", parameters: {} } },
-			},
-		],
-		[
-			"implementation_review",
-			{
-				id: "implementation_review",
-				description: "Review the implementation",
-				kind: "human",
-				reviewSemanticRef: "review",
-				actions: {
-					accept_change: { label: "accept_change", acceptanceState: "accepted" },
-					apply_review: { label: "apply_review", acceptanceState: "requires_changes" },
-				},
-			},
-		],
-	]);
-}
-
-function withTurnDefinitionOverrides(
-	overrides: ReadonlyMap<string, TurnDefinition>,
-): ReadonlyMap<string, TurnDefinition> {
-	const turnDefinitions = createDefaultTurnDefinitions();
-	for (const [turnId, turnDefinition] of overrides) {
-		turnDefinitions.set(turnId, turnDefinition);
-	}
-	return turnDefinitions;
-}
-
-function makeProcess(
-	overrides: Partial<{
-		id: string;
-		displayName: string;
-		graph: ProcessGraphView;
-		server: ServerProcessHook;
-		turnDefinitions: ReadonlyMap<string, TurnDefinition>;
-	}> = {},
-) {
-	const graph = overrides.graph ?? ticketProcessGraph;
-	const turnDefinitions = overrides.turnDefinitions ?? createDefaultTurnDefinitions();
-	return defineGraphFixtureProcess({
-		id: overrides.id ?? "ticket_issue_process",
-		displayName: overrides.displayName ?? "Implement Ticket Issue",
-		graph,
-		turnDefinitions,
-		paramsCodec: { parse: () => ({}), serialize: (value: unknown) => value },
+function makeProcess(input: Partial<TestProcessInput> = {}) {
+	const process = defineProcess({
+		id: "ticket_issue_process",
+		displayName: "Test process",
+		entry: "plan_review",
+		paramsCodec: emptyParamsCodec,
 		stateCodec: {
-			parse: (value: unknown) => (value ?? {}) as Record<string, unknown>,
-			serialize: (value: unknown) => value,
+			parse: (value: unknown) => (value ?? {}) as Record<string, never>,
+			serialize: (value: Record<string, never>) => value,
 		},
 		initialState: () => ({}),
-		...(overrides.server ? { server: overrides.server } : {}),
+		...input,
+		turns: {
+			plan_review: createPlanReviewTurn(),
+			implement: createFixtureLlmTurn("Implement"),
+			generate_plan: createFixtureLlmTurn("Generate plan"),
+			...input.turns,
+		},
 	});
+	// Exercise server registrations independently of compiled human action handlers.
+	if (input.server) process.server = input.server;
+	return process;
 }
 
-function buildRegistry(options: { processes?: Array<ReturnType<typeof makeProcess>> } = {}) {
+function buildRegistry(processes = [makeProcess()]) {
 	return buildProcessActionRegistry({
-		processes: new Map(
-			(options.processes ?? [makeProcess()]).map((process) => [process.id, process]),
-		),
+		processes: new Map(processes.map((process) => [process.id, process])),
 	});
 }
 
@@ -207,33 +63,12 @@ function makeFakeAgent(overrides: Partial<ProcessInstance> = {}): ProcessInstanc
 	});
 }
 
-function createPlanReviewProcess() {
-	return makeFakeAgent({ selectedTurnId: "plan_review", lifecycleStatus: "waiting" });
-}
-
 function createImplementationReviewProcess() {
 	return makeFakeAgent({
 		selectedTurnId: "implementation_review",
 		lifecycleStatus: "waiting",
 		stateJson: JSON.stringify({}),
 	});
-}
-
-function makeFakeProject(instanceId: string): ProcessProject {
-	return {
-		id: "prj_1",
-		instanceId,
-		key: "backend",
-		repoLocator: "https://codehost.example.com/team/backend.git",
-		baseBranch: "main",
-		workBranch: "feature/test",
-		externalId: null,
-		externalUrl: null,
-		pipelineStatus: null,
-		metadata: null,
-		createdAt: new Date().toISOString(),
-		updatedAt: new Date().toISOString(),
-	};
 }
 
 function getActionOrThrow(
@@ -254,59 +89,25 @@ function createVisibilityCtx(
 	state: Record<string, unknown> = {},
 	projects: ProcessProject[] = [],
 ) {
-	return {
-		process,
-		projects,
-		params: {},
-		state,
-		async transition() {},
-		emitEvent() {},
-		readSemanticTurnResultMarkdown() {
-			return null;
-		},
-		readProductTurnResultMarkdown() {
-			return null;
-		},
-		queueInput() {},
-	};
+	return createTestServerProcessContext({ process, projects, params: {}, state });
 }
 
-function createPlanReviewTurn(overrides: Partial<Record<string, unknown>> = {}) {
-	return {
-		id: "plan_review",
+function createPlanReviewTurn(
+	overrides: Partial<HumanTurnDefinition<Record<string, never>, Record<string, never>>> = {},
+) {
+	return humanTurn({
 		description: "Review the plan",
-		kind: "human" as const,
 		reviewSemanticRef: "plan",
-		actions: {},
-		...overrides,
-	};
-}
-
-function createHumanReviewTurns() {
-	return new Map([
-		[
-			"plan_review",
-			createPlanReviewTurn({
-				actions: {
-					approve_plan: { label: "Approve plan", acceptanceState: "accepted" },
-					request_revision: { label: "Request revision", acceptanceState: "requires_changes" },
-				},
-			}),
-		],
-		[
-			"implementation_review",
-			{
-				id: "implementation_review",
-				description: "Review the implementation",
-				kind: "human" as const,
-				reviewSemanticRef: "review",
-				actions: {
-					accept_change: { label: "accept_change", acceptanceState: "accepted" },
-					apply_review: { label: "apply_review", acceptanceState: "requires_changes" },
-				},
+		actions: {
+			approve_plan: { label: "Approve plan", acceptanceState: "accepted", complete: true },
+			request_revision: {
+				label: "Request revision",
+				acceptanceState: "requires_changes",
+				complete: true,
 			},
-		],
-	]);
+		},
+		...overrides,
+	});
 }
 
 function collectPlan(
@@ -317,7 +118,7 @@ function collectPlan(
 ) {
 	return collectProcessActionPlan({
 		process,
-		projects: [makeFakeProject(process.id)],
+		projects: [createTestProcessProject({ instanceId: process.id })],
 		processGraphs,
 		...registry.resolveContextData(process.processId, process),
 		turnRecords: { getById: () => null },
@@ -329,17 +130,15 @@ function collectPlan(
 
 describe("ProcessActionRegistry", () => {
 	it("builds server definitions from catalog processes", () => {
-		const registry = buildRegistry({
-			processes: [
-				makeProcess({
-					id: "test_process",
-					displayName: "Test",
-					server(api) {
-						api.action({ id: "do_thing", label: "Do thing", async plan() {} });
-					},
-				}),
-			],
-		});
+		const registry = buildRegistry([
+			makeProcess({
+				id: "test_process",
+				displayName: "Test",
+				server(api) {
+					api.action({ id: "do_thing", label: "Do thing", async plan() {} });
+				},
+			}),
+		]);
 
 		expect(registry.getAction("test_process", "do_thing")).toBeDefined();
 		expect(registry.getAction("test_process", "nonexistent")).toBeUndefined();
@@ -347,17 +146,15 @@ describe("ProcessActionRegistry", () => {
 	});
 
 	it("does not surface standalone actions absent from the selected human turn", () => {
-		const registry = buildRegistry({
-			processes: [
-				makeProcess({
-					id: "test_process",
-					displayName: "Test",
-					server(api) {
-						api.action({ id: "do_thing", label: "Do thing", async plan() {} });
-					},
-				}),
-			],
-		});
+		const registry = buildRegistry([
+			makeProcess({
+				id: "test_process",
+				displayName: "Test",
+				server(api) {
+					api.action({ id: "do_thing", label: "Do thing", async plan() {} });
+				},
+			}),
+		]);
 
 		expect(
 			registry.listVisibleActions("test_process", createVisibilityCtx(makeFakeAgent())),
@@ -365,46 +162,25 @@ describe("ProcessActionRegistry", () => {
 	});
 
 	it("derives human-turn action visibility from the current turn without action-level mapping", () => {
-		const registry = buildRegistry({
-			processes: [
-				makeProcess({
-					server(api) {
-						api.action({ id: "approve_plan", label: "Approve", async plan() {} });
-						api.action({
-							id: "request_revision",
-							label: "Request revision",
-							form: { id: "request_revision_form", title: "Request revision", fields: [] },
-							async plan() {},
-						});
-					},
-					turnDefinitions: withTurnDefinitionOverrides(
-						new Map([
-							[
-								"plan_review",
-								createPlanReviewTurn({
-									actions: {
-										approve_plan: { label: "Approve plan", acceptanceState: "accepted" },
-										request_revision: {
-											label: "Request revision",
-											acceptanceState: "requires_changes",
-										},
-									},
-								}),
-							],
-						]),
-					),
-				}),
-			],
-		});
+		const registry = buildRegistry([
+			makeProcess({
+				server(api) {
+					api.action({ id: "approve_plan", label: "Approve", async plan() {} });
+					api.action({
+						id: "request_revision",
+						label: "Request revision",
+						form: { id: "request_revision_form", title: "Request revision", fields: [] },
+						async plan() {},
+					});
+				},
+			}),
+		]);
 
 		expect(registry.isTurnScopedAction("ticket_issue_process", "approve_plan")).toBe(true);
 		expect(registry.isTurnScopedAction("ticket_issue_process", "request_revision")).toBe(true);
 		expect(registry.isTurnScopedAction("ticket_issue_process", "handoff_review")).toBe(false);
 		expect(
-			registry.listVisibleActions(
-				"ticket_issue_process",
-				createVisibilityCtx(createPlanReviewProcess(), {}),
-			),
+			registry.listVisibleActions("ticket_issue_process", createVisibilityCtx(makeFakeAgent(), {})),
 		).toEqual([
 			expect.objectContaining({
 				id: "approve_plan",
@@ -421,41 +197,36 @@ describe("ProcessActionRegistry", () => {
 	});
 
 	it("resolves current-turn scheduling previews without executing the action", () => {
-		const registry = buildRegistry({
-			processes: [
-				makeProcess({
-					server(api) {
-						api.action({
-							id: "approve_plan",
-							label: "Approve",
-							preview: { kind: "terminal", lifecycleStatus: "aborted" },
-							scheduling: { preview: { kind: "terminal", lifecycleStatus: "aborted" } },
-							plan: async () => {
-								throw new Error("Preview must not execute the action");
+		const registry = buildRegistry([
+			makeProcess({
+				server(api) {
+					api.action({
+						id: "approve_plan",
+						label: "Approve",
+						preview: { kind: "terminal", lifecycleStatus: "aborted" },
+						scheduling: { preview: { kind: "terminal", lifecycleStatus: "aborted" } },
+						plan: async () => {
+							throw new Error("Preview must not execute the action");
+						},
+					});
+				},
+				turns: {
+					plan_review: createPlanReviewTurn({
+						actions: {
+							approve_plan: {
+								label: "Approve plan",
+								acceptanceState: "accepted",
+								trigger: "plan_approved",
+								to: "implement",
+								preview: { kind: "trigger", trigger: "plan_approved" },
+								schedulable: true,
 							},
-						});
-					},
-					turnDefinitions: withTurnDefinitionOverrides(
-						new Map([
-							[
-								"plan_review",
-								createPlanReviewTurn({
-									actions: {
-										approve_plan: {
-											label: "Approve plan",
-											acceptanceState: "accepted",
-											preview: { kind: "trigger", trigger: "plan_approved" },
-											schedulable: true,
-										},
-									},
-								}),
-							],
-						]),
-					),
-				}),
-			],
-		});
-		const process = createPlanReviewProcess();
+						},
+					}),
+				},
+			}),
+		]);
+		const process = makeFakeAgent();
 
 		expect(
 			registry.resolveActionPreview("ticket_issue_process", process, "approve_plan"),
@@ -476,40 +247,35 @@ describe("ProcessActionRegistry", () => {
 		false,
 		true,
 	])("resolves unschedulable action previews (side effect: %s)", (sideEffect) => {
-		const registry = buildRegistry({
-			processes: [
-				makeProcess({
-					server(api) {
-						api.action({
-							id: "approve_plan",
-							label: "Approve",
-							plan: async () => {},
-							...(sideEffect
-								? { executionMode: "side_effect" as const, execute: async () => {} }
-								: {}),
-						});
-					},
-					turnDefinitions: withTurnDefinitionOverrides(
-						new Map([
-							[
-								"plan_review",
-								createPlanReviewTurn({
-									actions: {
-										approve_plan: {
-											label: "Approve plan",
-											acceptanceState: "accepted",
-											description: "Approve the saved plan and continue.",
-											preview: { kind: "trigger", trigger: "plan_approved" },
-										},
-									},
-								}),
-							],
-						]),
-					),
-				}),
-			],
-		});
-		const process = createPlanReviewProcess();
+		const registry = buildRegistry([
+			makeProcess({
+				server(api) {
+					api.action({
+						id: "approve_plan",
+						label: "Approve",
+						plan: async () => {},
+						...(sideEffect
+							? { executionMode: "side_effect" as const, execute: async () => {} }
+							: {}),
+					});
+				},
+				turns: {
+					plan_review: createPlanReviewTurn({
+						actions: {
+							approve_plan: {
+								label: "Approve plan",
+								acceptanceState: "accepted",
+								description: "Approve the saved plan and continue.",
+								trigger: "plan_approved",
+								to: "implement",
+								preview: { kind: "trigger", trigger: "plan_approved" },
+							},
+						},
+					}),
+				},
+			}),
+		]);
+		const process = makeFakeAgent();
 		expect(
 			registry.resolveActionScheduling("ticket_issue_process", process, "approve_plan"),
 		).toBeNull();
@@ -554,23 +320,21 @@ describe("ProcessActionRegistry", () => {
 		],
 		[{ kind: "trigger", trigger: "unknown" }, null],
 	] as const)("resolves server preview and scheduling targets for %j", (preview, target) => {
-		const registry = buildRegistry({
-			processes: [
-				makeProcess({
-					server(api) {
-						api.action({
-							id: "inspect",
-							label: "Inspect",
-							scheduling: { preview },
-							plan: async () => {
-								throw new Error("Preview must not execute the action");
-							},
-						});
-					},
-				}),
-			],
-		});
-		const process = createPlanReviewProcess();
+		const registry = buildRegistry([
+			makeProcess({
+				server(api) {
+					api.action({
+						id: "inspect",
+						label: "Inspect",
+						scheduling: { preview },
+						plan: async () => {
+							throw new Error("Preview must not execute the action");
+						},
+					});
+				},
+			}),
+		]);
+		const process = makeFakeAgent();
 		expect(registry.resolveActionPreview("ticket_issue_process", process, "inspect")).toEqual(
 			target ? { definition: preview, ...target } : null,
 		);
@@ -580,12 +344,25 @@ describe("ProcessActionRegistry", () => {
 	});
 
 	it("resolves UI human-turn actions from the selected turn", () => {
-		const registry = buildRegistry({
-			processes: [
-				makeProcess({ turnDefinitions: withTurnDefinitionOverrides(createHumanReviewTurns()) }),
-			],
-		});
-		const planProcess = createPlanReviewProcess();
+		const registry = buildRegistry([
+			makeProcess({
+				turns: {
+					implementation_review: humanTurn({
+						description: "Review the implementation",
+						reviewSemanticRef: "review",
+						actions: {
+							accept_change: { label: "Accept", acceptanceState: "accepted", complete: true },
+							apply_review: {
+								label: "Revise",
+								acceptanceState: "requires_changes",
+								complete: true,
+							},
+						},
+					}),
+				},
+			}),
+		]);
+		const planProcess = makeFakeAgent();
 		const implementationProcess = createImplementationReviewProcess();
 
 		expect(
@@ -617,61 +394,32 @@ describe("ProcessActionRegistry", () => {
 	});
 
 	it("exposes external trigger summaries for the selected human turn", () => {
-		const poemCreatorGraph: ProcessGraphView = {
-			id: "poem_creator_process",
-			entryTurnIds: new Set(["draft_poem"]),
-			turns: new Map([
-				["draft_poem", { turnType: "llm" as const }],
-				["poem_review", { turnType: "human" as const }],
-			]),
-		};
-		const registry = buildRegistry({
-			processes: [
-				makeProcess({
-					id: "poem_creator_process",
-					displayName: "Poem Creator",
-					graph: poemCreatorGraph,
-					turnDefinitions: new Map([
-						[
-							"draft_poem",
-							{
-								id: "draft_poem",
-								description: "Draft the poem",
-								kind: "llm",
-								availableTools: [],
-								completionMode: "turn_end",
-								branchType: "primary",
-								context: "fresh",
-								prompt: async () => "Draft poem",
-								outcomes: { draft_ready: { description: "ready", parameters: {} } },
-							},
-						],
-						[
-							"poem_review",
-							{
-								id: "poem_review",
-								description: "Review the poem",
-								kind: "human",
-								actions: {
-									request_poem_revision: {
-										label: "Request poem revision",
-										acceptanceState: "requires_changes",
-										externalTriggers: [
-											{
-												id: "poem_review_file",
-												label: "Configured poem review file",
-												description: "Write revision feedback to the poem review trigger file.",
-											},
-										],
+		const registry = buildRegistry([
+			makeProcess({
+				id: "poem_creator_process",
+				entry: "poem_review",
+				turns: {
+					poem_review: humanTurn({
+						description: "Review the poem",
+						commentary: "Review the poem or trigger a revision externally.",
+						actions: {
+							request_poem_revision: {
+								label: "Request poem revision",
+								acceptanceState: "requires_changes",
+								complete: true,
+								externalTriggers: [
+									{
+										id: "poem_review_file",
+										label: "Configured poem review file",
+										description: "Write revision feedback to the poem review trigger file.",
 									},
-								},
-								commentary: "Review the poem or trigger a revision externally.",
+								],
 							},
-						],
-					]),
-				}),
-			],
-		});
+						},
+					}),
+				},
+			}),
+		]);
 		const process = makeFakeAgent({
 			processId: "poem_creator_process",
 			selectedTurnId: "poem_review",
@@ -710,69 +458,41 @@ describe("ProcessActionRegistry", () => {
 	});
 
 	it("surfaces automatic selected turns as leitwerk-owned steps", () => {
-		const automaticGraph: ProcessGraphView = {
-			id: "automatic_process",
-			entryTurnIds: new Set(["implementation_review"]),
-			turns: new Map([
-				["implementation_review", { turnType: "human" as const }],
-				["commit_and_merge", { turnType: "automatic" as const }],
-			]),
-		};
-		const registry = buildRegistry({
-			processes: [
-				makeProcess({
-					id: "automatic_process",
-					displayName: "Automatic Process",
-					graph: automaticGraph,
-					turnDefinitions: new Map([
-						[
-							"implementation_review",
-							{
-								id: "implementation_review",
-								description: "Review the implementation",
-								kind: "human",
-								actions: {},
-							},
-						],
-						[
-							"commit_and_merge",
-							{
-								id: "commit_and_merge",
-								description: "Commit and merge",
-								kind: "automatic",
-								waitFor: () => false,
-								outcomes: {
-									finalized: { description: "done", parameters: {} },
+		const registry = buildRegistry([
+			makeProcess({
+				id: "automatic_process",
+				entry: "commit_and_merge",
+				turns: {
+					commit_and_merge: {
+						...createFixtureAutomaticTurn("Commit and merge"),
+						waitFor: () => false,
+						externalActions: {
+							change_merged: {
+								id: "change_merged",
+								source: {
+									kind: "example.change.merged",
+									label: "Change merged",
+									description: "Continue after the external change merges.",
+									config: {},
 								},
-								externalActions: {
-									change_merged: {
-										id: "change_merged",
-										source: {
-											kind: "example.change.merged",
-											label: "Change merged",
-											description: "Continue after the external change merges.",
-											config: {},
-										},
-										to: "commit_and_merge",
-									},
-									private_pipeline_failed: {
-										id: "private_pipeline_failed",
-										source: {
-											kind: "example.pipeline.failed",
-											label: "Private pipeline failed",
-											description: "Repair the private pipeline.",
-											config: {},
-										},
-										when: ({ state }) => (state as { scope?: string }).scope !== "public-only",
-										to: "commit_and_merge",
-									},
-								},
+								to: "commit_and_merge",
 							},
-						],
-					]),
-				}),
-			],
-		});
+							private_pipeline_failed: {
+								id: "private_pipeline_failed",
+								source: {
+									kind: "example.pipeline.failed",
+									label: "Private pipeline failed",
+									description: "Repair the private pipeline.",
+									config: {},
+								},
+								when: ({ state }) => (state as { scope?: string }).scope !== "public-only",
+								to: "commit_and_merge",
+							},
+						},
+					},
+				},
+			}),
+		]);
 		const process = makeFakeAgent({
 			processId: "automatic_process",
 			selectedTurnId: "commit_and_merge",
@@ -812,14 +532,6 @@ describe("ProcessActionRegistry", () => {
 	});
 
 	it("resolves selected external turns without UI actions", () => {
-		const externalGraph: ProcessGraphView = {
-			id: "single_prompt_external_complete_process",
-			entryTurnIds: new Set(["run_single_prompt"]),
-			turns: new Map([
-				["run_single_prompt", { turnType: "llm" as const }],
-				["await_external_prompt_completion", { turnType: "external" as const }],
-			]),
-		};
 		const externalCompletionTurn = flow
 			.external("await_external_prompt_completion")
 			.description("Wait for an external completion trigger");
@@ -832,38 +544,13 @@ describe("ProcessActionRegistry", () => {
 			})
 			.complete();
 
-		const registry = buildRegistry({
-			processes: [
-				makeProcess({
-					id: "single_prompt_external_complete_process",
-					displayName: "Single Prompt + External Complete",
-					graph: externalGraph,
-					turnDefinitions: new Map([
-						[
-							"run_single_prompt",
-							{
-								id: "run_single_prompt",
-								description: "Run prompt",
-								kind: "llm",
-								availableTools: [],
-								completionMode: "turn_end",
-								branchType: "primary",
-								context: "fresh",
-								prompt: async () => "Run prompt",
-								outcomes: { completed: { description: "done", parameters: {} } },
-							},
-						],
-						[
-							"await_external_prompt_completion",
-							{
-								id: "await_external_prompt_completion",
-								...externalCompletionTurn.definition,
-							},
-						],
-					]),
-				}),
-			],
-		});
+		const registry = buildRegistry([
+			makeProcess({
+				id: "single_prompt_external_complete_process",
+				entry: "await_external_prompt_completion",
+				turns: { await_external_prompt_completion: externalCompletionTurn.definition },
+			}),
+		]);
 		const process = makeFakeAgent({
 			processId: "single_prompt_external_complete_process",
 			selectedTurnId: "await_external_prompt_completion",
@@ -906,22 +593,20 @@ describe("ProcessActionRegistry", () => {
 describe("collectProcessActionPlan", () => {
 	it("collects turn selections and deferred events", async () => {
 		const process = makeFakeAgent();
-		const registry = buildRegistry({
-			processes: [
-				makeProcess({
-					server(api) {
-						api.action({
-							id: "approve_plan",
-							label: "Approve plan",
-							async plan(_input, ctx) {
-								await ctx.transition({ turnId: "implement", trigger: "plan_approved" });
-								ctx.emitEvent("plan_approved", { externalId: null, planRevision: 1 });
-							},
-						});
-					},
-				}),
-			],
-		});
+		const registry = buildRegistry([
+			makeProcess({
+				server(api) {
+					api.action({
+						id: "approve_plan",
+						label: "Approve plan",
+						async plan(_input, ctx) {
+							await ctx.transition({ turnId: "implement", trigger: "plan_approved" });
+							ctx.emitEvent("plan_approved", { externalId: null, planRevision: 1 });
+						},
+					});
+				},
+			}),
+		]);
 		const planned = await collectPlan(process, registry, "approve_plan");
 
 		expect("ok" in planned).toBe(false);
@@ -942,26 +627,24 @@ describe("collectProcessActionPlan", () => {
 
 	it("collects queued inputs", async () => {
 		const process = makeFakeAgent();
-		const registry = buildRegistry({
-			processes: [
-				makeProcess({
-					server(api) {
-						api.action({
-							id: "request_revision",
-							label: "Request revision",
-							async plan(input, ctx) {
-								await ctx.transition({ turnId: "generate_plan", trigger: "revision_requested" });
-								ctx.queueInput({
-									source: "app_steer",
-									kind: "instruction",
-									bodyMarkdown: input.message as string,
-								});
-							},
-						});
-					},
-				}),
-			],
-		});
+		const registry = buildRegistry([
+			makeProcess({
+				server(api) {
+					api.action({
+						id: "request_revision",
+						label: "Request revision",
+						async plan(input, ctx) {
+							await ctx.transition({ turnId: "generate_plan", trigger: "revision_requested" });
+							ctx.queueInput({
+								source: "app_steer",
+								kind: "instruction",
+								bodyMarkdown: input.message as string,
+							});
+						},
+					});
+				},
+			}),
+		]);
 		const planned = await collectPlan(process, registry, "request_revision", {
 			message: "Please add error handling",
 		});
@@ -984,25 +667,23 @@ describe("collectProcessActionPlan", () => {
 			selectedTurnId: "handoff_review",
 			lifecycleStatus: "active",
 		});
-		const registry = buildRegistry({
-			processes: [
-				makeProcess({
-					server(api) {
-						api.action({
-							id: "handoff_review",
-							label: "Handoff review",
-							async plan(_input, ctx) {
-								await ctx.transition({
-									turnId: "run_llm_review",
-									state: {},
-									effect: { runtime: "restart_worker" },
-								});
-							},
-						});
-					},
-				}),
-			],
-		});
+		const registry = buildRegistry([
+			makeProcess({
+				server(api) {
+					api.action({
+						id: "handoff_review",
+						label: "Handoff review",
+						async plan(_input, ctx) {
+							await ctx.transition({
+								turnId: "run_llm_review",
+								state: {},
+								effect: { runtime: "restart_worker" },
+							});
+						},
+					});
+				},
+			}),
+		]);
 		const planned = await collectPlan(process, registry, "handoff_review");
 
 		expect("ok" in planned).toBe(false);

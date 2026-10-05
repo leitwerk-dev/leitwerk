@@ -218,7 +218,6 @@ export function validateMappedTurn<TOutcome extends string, TParams, TState>(
 			spec.complete !== undefined ||
 			spec.lifecycleStatus !== undefined ||
 			spec.effect !== undefined ||
-			spec.lifecycleIntent !== undefined ||
 			spec.publishedProduct !== undefined
 		) {
 			errors.push(

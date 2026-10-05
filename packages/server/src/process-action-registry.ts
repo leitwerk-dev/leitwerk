@@ -224,30 +224,6 @@ function listExternalTriggers(
 		state: unknown;
 	},
 ): ProcessExternalSourceSummary[] {
-	if (isHumanTurnDefinition(turnDef)) {
-		const view = resolveHumanTurnView({ turnId, turn: turnDef });
-		return [
-			...view.externalTriggers.map((trigger) => ({
-				id: trigger.id,
-				kind: "human_action_external_trigger",
-				label: trigger.label,
-				description: trigger.description,
-			})),
-			...view.externalActions
-				.filter((action) => {
-					const definition = turnDef.externalActions?.[action.externalActionId];
-					return !definition?.when || definition.when(ctx);
-				})
-				.map((action) => ({
-					id: action.id,
-					externalActionId: action.externalActionId,
-					kind: action.sourceKind,
-					sourceKind: action.sourceKind,
-					label: action.label,
-					description: action.description,
-				})),
-		];
-	}
 	if (isExternalTurnDefinition(turnDef)) {
 		return turnDef.transitions.map((transition, index) => ({
 			id: getExternalSourceTransitionId({ turnId, source: transition.source, index }),
@@ -256,8 +232,22 @@ function listExternalTriggers(
 			description: transition.source.description ?? null,
 		}));
 	}
-	if (isAutomaticTurnDefinition(turnDef) && ctx.process.lifecycleStatus === "waiting") {
-		return Object.entries(turnDef.externalActions ?? {})
+	if (
+		!isHumanTurnDefinition(turnDef) &&
+		(!isAutomaticTurnDefinition(turnDef) || ctx.process.lifecycleStatus !== "waiting")
+	)
+		return [];
+	const triggers = isHumanTurnDefinition(turnDef)
+		? resolveHumanTurnView({ turnId, turn: turnDef }).externalTriggers.map((trigger) => ({
+				id: trigger.id,
+				kind: "human_action_external_trigger",
+				label: trigger.label,
+				description: trigger.description,
+			}))
+		: [];
+	return [
+		...triggers,
+		...Object.entries(turnDef.externalActions ?? {})
 			.filter(([, action]) => !action.when || action.when(ctx))
 			.map(([externalActionId, action]) => ({
 				id: getExternalActionArmingId({ turnId, externalActionId }),
@@ -266,9 +256,8 @@ function listExternalTriggers(
 				sourceKind: action.source.kind,
 				label: action.label ?? action.source.label ?? null,
 				description: action.description ?? action.source.description ?? null,
-			}));
-	}
-	return [];
+			})),
+	];
 }
 
 function resolveCurrentVisibleActionForProcess(
@@ -291,16 +280,8 @@ function isTurnScopedActionForProcess(
 	if (!processDef) {
 		return false;
 	}
-	for (const [turnId, { definition: turnDef }] of processDef.turns) {
-		if (isHumanTurnDefinition(turnDef)) {
-			const view = resolveHumanTurnView({ turnId, turn: turnDef });
-			if (
-				view.actions.some((action) => action.actionId === actionId) ||
-				view.externalTriggers.some((trigger) => trigger.actionId === actionId)
-			) {
-				return true;
-			}
-		}
+	for (const { definition: turnDef } of processDef.turns.values()) {
+		if (isHumanTurnDefinition(turnDef) && Object.hasOwn(turnDef.actions, actionId)) return true;
 	}
 	return false;
 }

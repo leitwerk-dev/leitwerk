@@ -2,6 +2,7 @@ import path from "node:path";
 import {
 	assertValidProcessProductName,
 	humanizeProcessLabel,
+	normalizeStringArray,
 	type ProcessInstance,
 	type ProcessProject,
 	type ProcessSemanticEntryRefKey,
@@ -9,6 +10,7 @@ import {
 	type ProcessTurnTerminalLifecycleStatus,
 	type TurnId,
 	type TurnProgressReport,
+	trimString,
 } from "@leitwerk-dev/domain";
 import type {
 	AutomaticTurnDefinition,
@@ -1031,14 +1033,33 @@ export class PlanResultBuilder<TParams = unknown, TState = unknown> extends Rout
 				acceptanceCriteria: this.acceptanceCriteriaSpec,
 			},
 			to: this.reviewTurnId,
-			lifecycleIntent: {
-				kind: "save_plan_result",
-				summaryParam: "summary",
-				acceptanceCriteriaParam: "acceptanceCriteria",
-				planMarkdownParam: "planMarkdown",
-				emitEventType: DEFAULT_PLAN_RESULT_OUTCOME_ID,
-				broadcastType: "plan.updated",
-				...(stateEffect ? { state: stateEffect } : {}),
+			async effect(execution) {
+				const plan = await stateEffect?.(execution);
+				const planRevision = execution.ctx.process.planRevision + 1;
+				const summary = trimString(execution.event.params.summary);
+				const acceptanceCriteria = normalizeStringArray(execution.event.params.acceptanceCriteria);
+				const planMarkdown =
+					typeof execution.event.turnResultMarkdown === "string"
+						? execution.event.turnResultMarkdown
+						: trimString(execution.event.params.planMarkdown);
+				return {
+					...plan,
+					processPatch: { ...plan?.processPatch, planRevision },
+					broadcasts: [
+						...(plan?.broadcasts ?? []),
+						{
+							type: "plan.updated",
+							payload: { planRevision, reviewState: "awaiting_approval", approved: false, summary },
+						},
+					],
+					emit: [
+						...(plan?.emit ?? []),
+						{
+							type: DEFAULT_PLAN_RESULT_OUTCOME_ID,
+							data: { planRevision, summary, planMarkdown, acceptanceCriteria },
+						},
+					],
+				};
 			},
 		};
 	}

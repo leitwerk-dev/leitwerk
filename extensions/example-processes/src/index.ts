@@ -1,6 +1,9 @@
-import type { LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
-import { coreHostCapabilities } from "@leitwerk-dev/process-sdk";
-import { createFileExternalSourceProvider } from "./file-external.js";
+import {
+	coreHostCapabilities,
+	createFileExternalSourceProvider,
+	type LeitwerkExtensionModule,
+} from "@leitwerk-dev/process-sdk";
+import { FILE_EXTERNAL_PRESENCE_KIND } from "./file-external.js";
 import {
 	k8sSmokeLongProcess,
 	k8sSmokeProcess,
@@ -29,11 +32,6 @@ const manifest = {
 	version: "0.1.0",
 } as const;
 
-const fileTriggerDefaults = {
-	poll_interval: "1s",
-	complete_prompt_path: "/tmp/complete-prompt",
-};
-
 /** @public */
 const exampleProcessesExtension: LeitwerkExtensionModule = {
 	manifest,
@@ -51,12 +49,11 @@ const exampleProcessesExtension: LeitwerkExtensionModule = {
 			return;
 		}
 		const config = (rawConfig ?? {}) as ExampleProcessesConfig;
-		const resolvedFileTriggerConfig = {
-			...fileTriggerDefaults,
-			...config.file_triggers,
-		};
 		createFileExternalSourceProvider(deps, {
-			"/tmp/complete-prompt": resolvedFileTriggerConfig.complete_prompt_path,
+			id: "example-file-external",
+			kind: FILE_EXTERNAL_PRESENCE_KIND,
+			inputMode: "none",
+			aliases: { "/tmp/complete-prompt": config.file_triggers?.complete_prompt_path },
 		});
 	},
 };

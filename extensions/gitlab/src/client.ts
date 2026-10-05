@@ -655,26 +655,6 @@ export class GitLabClient {
 	getMergeRequest(id: number, iid: number, signal?: AbortSignal): Promise<GitLabMergeRequest> {
 		return this.request(mrPath(id, iid), signal);
 	}
-	/** Read every label transition, including changes between watcher polls. @public */
-	listMergeRequestLabelEvents(
-		id: number,
-		iid: number,
-		signal?: AbortSignal,
-	): Promise<GitLabLabelEvent[]> {
-		return this.pages(`${mrPath(id, iid)}/resource_label_events`, signal);
-	}
-	/** Apply label deltas without replacing unrelated labels. @public */
-	updateMergeRequestLabels(
-		id: number,
-		iid: number,
-		patch: {
-			/** @public */ add_labels?: string;
-			/** @public */ remove_labels?: string;
-		},
-		signal?: AbortSignal,
-	): Promise<GitLabMergeRequest> {
-		return this.request(mrPath(id, iid), signal, patch, "PUT");
-	}
 	/** @public */
 	getChanges(id: number, iid: number, signal?: AbortSignal): Promise<GitLabDiff[]> {
 		return this.pages(`${mrPath(id, iid)}/diffs`, signal);
@@ -689,12 +669,6 @@ export class GitLabClient {
 	/** @internal */
 	getCommit(id: number, sha: string, signal?: AbortSignal): Promise<GitLabCommit> {
 		return this.request(`${projectPath(id)}/repository/commits/${encodeURIComponent(sha)}`, signal);
-	}
-	/** Find shared ancestry without cloning a repository. @public */
-	getMergeBase(id: number, refs: readonly string[], signal?: AbortSignal): Promise<GitLabCommit> {
-		const query = new URLSearchParams();
-		for (const ref of refs) query.append("refs[]", ref);
-		return this.request(`${projectPath(id)}/repository/merge_base?${query}`, signal);
 	}
 	/** @internal */
 	listMergeRequestPipelines(
@@ -914,20 +888,6 @@ export class GitLabClient {
 	}
 }
 /** @public */
-export interface GitLabLabelEvent {
-	/** Monotonically increasing GitLab resource-label event identity. @public */
-	id: number;
-	/** @public */
-	action: "add" | "remove";
-	/** @public */
-	created_at: string;
-	/** Deleted labels may have no name. @public */
-	label: {
-		/** @public */
-		name: string;
-	} | null;
-}
-/** @public */
 export type GitLabClientLike = Pick<
 	GitLabClient,
 	| "listIssues"
@@ -953,8 +913,6 @@ export type GitLabClientLike = Pick<
 	| "getGroup"
 	| "getJobTrace"
 	| "getMergeRequest"
-	| "listMergeRequestLabelEvents"
-	| "updateMergeRequestLabels"
 	| "getPipeline"
 	| "getProject"
 	| "listBranchPipelines"
@@ -971,7 +929,7 @@ export type GitLabClientLike = Pick<
 	| "resolveDiscussion"
 	| "resolveGitIdentity"
 > &
-	Partial<Pick<GitLabClient, "listRepositoryTree" | "getRepositoryFile" | "getMergeBase">>;
+	Partial<Pick<GitLabClient, "listRepositoryTree" | "getRepositoryFile">>;
 
 /** A pending current pipeline supersedes every older result. Synthetic merges must contain this source head. */
 /** @public */

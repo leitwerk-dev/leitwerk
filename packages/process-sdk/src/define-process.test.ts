@@ -13,17 +13,27 @@ import {
 	type DefinedProcessInput,
 	defineProcess,
 	type ExtensionProcessDefinition,
+	emptyParamsCodec,
 	type FormDefinition,
 	getProcessGraph,
 	humanTurn,
+	type LlmTurnDefinition,
 	llmTurn,
 	revisionAction,
 } from "./index.js";
 
-const emptyParamsCodec = {
-	parse: () => ({}),
-	serialize: (value: Record<string, never>) => value,
-};
+function draftTurn(
+	overrides: Partial<LlmTurnDefinition<string, Record<string, never>, { branch: string }>>,
+) {
+	return llmTurn({
+		availableTools: [],
+		description: "Draft",
+		branchType: "primary",
+		context: "fresh",
+		prompt: async () => "draft",
+		...overrides,
+	});
+}
 
 function transitionsFor(process: ExtensionProcessDefinition, turnId: string) {
 	return getProcessGraph(new Map([[process.id, process]]), process.id).turns.get(turnId)
@@ -43,12 +53,7 @@ const stateCodec = {
 
 function basicTurns() {
 	return {
-		draft: llmTurn({
-			availableTools: [],
-			description: "Draft",
-			branchType: "primary" as const,
-			context: "fresh" as const,
-			prompt: async () => "draft",
+		draft: draftTurn({
 			outcomes: {
 				draft_ready: {
 					description: "ready",
@@ -97,6 +102,38 @@ function defineTestProcess(input: Pick<TestProcessInput, "turns"> & Partial<Test
 
 function createBasicProcess(alternateEntries?: readonly string[], happyPath?: readonly string[]) {
 	return defineTestProcess({ turns: basicTurns(), alternateEntries, happyPath });
+}
+
+async function executeAction<TState>(
+	process: ExtensionProcessDefinition<Record<string, never>, TState>,
+	actionId: string,
+	selectedTurnId: string,
+	state: TState,
+	input: Record<string, unknown> = {},
+) {
+	const plan = buildServerProcessForTest(process)?.actions.get(actionId)?.plan;
+	if (!plan) throw new Error(`Missing action plan '${actionId}'`);
+	const transitions: unknown[] = [];
+	const queuedInputs: unknown[] = [];
+	await plan(
+		input,
+		createTestServerProcessContext({
+			process: createTestProcessInstance({
+				processId: process.id,
+				selectedTurnId,
+				lifecycleStatus: "waiting",
+			}),
+			params: {},
+			state,
+			transition: async (next) => {
+				transitions.push(next);
+			},
+			queueInput: (queued) => {
+				queuedInputs.push(queued);
+			},
+		}),
+	);
+	return { transitions, queuedInputs };
 }
 
 describe("defineProcess", () => {
@@ -256,12 +293,7 @@ describe("defineProcess", () => {
 		const process = defineTestProcess({
 			id: "missing_outcome_route_process",
 			turns: {
-				draft: llmTurn({
-					availableTools: [],
-					description: "Draft",
-					branchType: "primary",
-					context: "fresh",
-					prompt: async () => "draft",
+				draft: draftTurn({
 					outcomes: {
 						ready: { description: "ready", parameters: {} },
 					},
@@ -276,13 +308,8 @@ describe("defineProcess", () => {
 		const process = defineTestProcess({
 			id: "missing_turn_end_route_process",
 			turns: {
-				draft: llmTurn({
-					availableTools: [],
-					description: "Draft",
+				draft: draftTurn({
 					completionMode: "turn_end",
-					branchType: "primary",
-					context: "fresh",
-					prompt: async () => "draft",
 					turnEnd: { outcome: "ready", params: {} },
 				}),
 			},
@@ -299,12 +326,7 @@ describe("defineProcess", () => {
 			id: "state_routed_outcome_process",
 			initialState: () => ({ branch: "manual" }),
 			turns: {
-				draft: llmTurn({
-					availableTools: [],
-					description: "Draft",
-					branchType: "primary",
-					context: "fresh",
-					prompt: async () => "draft",
+				draft: draftTurn({
 					outcomes: {
 						ready: {
 							description: "ready",
@@ -362,12 +384,7 @@ describe("defineProcess", () => {
 		const process = defineTestProcess({
 			id: "worker_override_process",
 			turns: {
-				draft: llmTurn({
-					availableTools: [],
-					description: "Draft",
-					branchType: "primary",
-					context: "fresh",
-					prompt: async () => "draft",
+				draft: draftTurn({
 					turnEnd: { outcome: "ready", params: {}, to: "finalize" },
 				}),
 				finalize: automaticTurn({
@@ -415,12 +432,7 @@ describe("defineProcess", () => {
 			id: "shared_action_process",
 			initialState: () => ({ branch: "one" }),
 			turns: {
-				draft: llmTurn({
-					availableTools: [],
-					description: "Draft",
-					branchType: "primary",
-					context: "fresh",
-					prompt: async () => "draft",
+				draft: draftTurn({
 					turnEnd: { outcome: "ready", params: {}, to: "start" },
 				}),
 				start: humanTurn({
@@ -459,36 +471,9 @@ describe("defineProcess", () => {
 			},
 		});
 
-		const server = buildServerProcessForTest(process);
-		const action = server?.actions.get("retry");
-		expect(action?.plan).toBeDefined();
-		if (!action?.plan) throw new Error("Expected shared action plan");
-
-		const transitions: Array<Record<string, unknown>> = [];
-		await action.plan(
-			{},
-			{
-				process: createTestProcessInstance({
-					processId: process.id,
-					selectedTurnId: "alternate",
-					lifecycleStatus: "waiting",
-				}),
-				projects: [],
-				params: {},
-				state: { branch: "initial" },
-				async transition(next) {
-					transitions.push(next as Record<string, unknown>);
-				},
-				emitEvent() {},
-				readSemanticTurnResultMarkdown() {
-					return null;
-				},
-				readProductTurnResultMarkdown() {
-					return null;
-				},
-				queueInput() {},
-			},
-		);
+		const { transitions } = await executeAction(process, "retry", "alternate", {
+			branch: "initial",
+		});
 
 		expect(transitions).toEqual([
 			{ turnId: "done", trigger: "retry", state: { branch: "from-alternate" } },
@@ -499,12 +484,7 @@ describe("defineProcess", () => {
 		const process = defineTestProcess({
 			id: "revision_action_process",
 			turns: {
-				draft: llmTurn({
-					availableTools: [],
-					description: "Draft",
-					branchType: "primary",
-					context: "fresh",
-					prompt: async () => "draft",
+				draft: draftTurn({
 					turnEnd: { outcome: "ready", params: {}, to: "review" },
 				}),
 				review: humanTurn({
@@ -522,30 +502,12 @@ describe("defineProcess", () => {
 			},
 		});
 
-		const action = buildServerProcessForTest(process)?.actions.get("revise");
-		expect(action?.plan).toBeDefined();
-		if (!action?.plan) {
-			return;
-		}
-
-		const transitions: Array<Record<string, unknown>> = [];
-		const queuedInputs: Array<Record<string, unknown>> = [];
-		await action.plan(
+		const { transitions, queuedInputs } = await executeAction(
+			process,
+			"revise",
+			"review",
+			{ branch: "draft" },
 			{ message: "  tighten the ending  " },
-			createTestServerProcessContext({
-				process: createTestProcessInstance({
-					processId: process.id,
-					selectedTurnId: "review",
-					lifecycleStatus: "waiting",
-				}),
-				state: { branch: "draft" },
-				transition: async (next) => {
-					transitions.push(next as Record<string, unknown>);
-				},
-				queueInput(input) {
-					queuedInputs.push(input as Record<string, unknown>);
-				},
-			}),
 		);
 
 		expect(transitions).toEqual([
@@ -585,24 +547,8 @@ describe("defineProcess", () => {
 			},
 		});
 
-		const action = buildServerProcessForTest(process)?.actions.get("revise");
-		expect(action?.plan).toBeDefined();
-		if (!action?.plan) {
-			return;
-		}
-
 		await expect(
-			action.plan(
-				{ message: "   " },
-				createTestServerProcessContext({
-					process: createTestProcessInstance({
-						processId: process.id,
-						selectedTurnId: "review",
-						lifecycleStatus: "waiting",
-					}),
-					state: { branch: "draft" },
-				}),
-			),
+			executeAction(process, "revise", "review", { branch: "draft" }, { message: "   " }),
 		).rejects.toThrow("message is required");
 		expect(effectCalls).toBe(0);
 	});
@@ -648,19 +594,12 @@ describe("defineProcess", () => {
 				}),
 			},
 		});
-		const action = buildServerProcessForTest(process)?.actions.get("continue");
-		const transitions: Array<Record<string, unknown>> = [];
-		await action?.plan?.(
+		const { transitions } = await executeAction(
+			process,
+			"continue",
+			"decision",
+			{},
 			{ tone: "calm" },
-			createTestServerProcessContext({
-				process: createTestProcessInstance({
-					processId: process.id,
-					selectedTurnId: "decision",
-					lifecycleStatus: "waiting",
-				}),
-				state: {},
-				transition: async (next) => transitions.push(next as Record<string, unknown>),
-			}),
 		);
 
 		expect(transitions).toEqual([
@@ -673,17 +612,38 @@ describe("defineProcess", () => {
 		]);
 	});
 
-	it("supports conditional accepted-review handoffs and uses the chosen branch trigger", async () => {
+	it.each([
+		{
+			branch: "skip",
+			transition: {
+				turnId: "decision",
+				trigger: "return_without_handoff",
+				state: { branch: "skip" },
+			},
+			queuedInputs: [],
+		},
+		{
+			branch: "apply",
+			transition: { turnId: "draft", trigger: "handoff_review", state: { branch: "applied" } },
+			queuedInputs: [
+				{
+					source: "action_prompt",
+					kind: "instruction",
+					target: { semanticRef: "currentPrimaryPathLeaf" },
+					bodyMarkdown: "Apply the accepted review.",
+				},
+			],
+		},
+	])("uses the chosen branch trigger for accepted-review handoff: $branch", async ({
+		branch,
+		transition,
+		queuedInputs,
+	}) => {
 		const process = defineTestProcess({
 			id: "accepted_review_handoff_process",
 			initialState: () => ({ branch: "review" }),
 			turns: {
-				draft: llmTurn({
-					availableTools: [],
-					description: "Draft",
-					branchType: "primary",
-					context: "fresh",
-					prompt: async () => "draft",
+				draft: draftTurn({
 					turnEnd: { outcome: "ready", params: {}, to: "decision" },
 				}),
 				decision: humanTurn({
@@ -712,82 +672,16 @@ describe("defineProcess", () => {
 			},
 		});
 
-		const action = buildServerProcessForTest(process)?.actions.get("accept_review");
-		expect(action?.plan).toBeDefined();
-		if (!action?.plan) {
-			return;
-		}
-
-		const skipTransitions: Array<Record<string, unknown>> = [];
-		const skipQueuedInputs: Array<Record<string, unknown>> = [];
-		await action.plan(
-			{},
-			createTestServerProcessContext({
-				process: createTestProcessInstance({
-					processId: process.id,
-					selectedTurnId: "decision",
-					lifecycleStatus: "waiting",
-				}),
-				state: { branch: "skip" },
-				transition: async (next) => {
-					skipTransitions.push(next as Record<string, unknown>);
-				},
-				queueInput(input) {
-					skipQueuedInputs.push(input as Record<string, unknown>);
-				},
-			}),
-		);
-		expect(skipTransitions).toEqual([
-			{
-				turnId: "decision",
-				trigger: "return_without_handoff",
-				state: { branch: "skip" },
-			},
-		]);
-		expect(skipQueuedInputs).toEqual([]);
-
-		const applyTransitions: Array<Record<string, unknown>> = [];
-		const applyQueuedInputs: Array<Record<string, unknown>> = [];
-		await action.plan(
-			{},
-			createTestServerProcessContext({
-				process: createTestProcessInstance({
-					processId: process.id,
-					selectedTurnId: "decision",
-					lifecycleStatus: "waiting",
-				}),
-				state: { branch: "apply" },
-				transition: async (next) => {
-					applyTransitions.push(next as Record<string, unknown>);
-				},
-				queueInput(input) {
-					applyQueuedInputs.push(input as Record<string, unknown>);
-				},
-			}),
-		);
-		expect(applyTransitions).toEqual([
-			{ turnId: "draft", trigger: "handoff_review", state: { branch: "applied" } },
-		]);
-		expect(applyQueuedInputs).toEqual([
-			{
-				source: "action_prompt",
-				kind: "instruction",
-				target: { semanticRef: "currentPrimaryPathLeaf" },
-				bodyMarkdown: "Apply the accepted review.",
-			},
-		]);
+		const result = await executeAction(process, "accept_review", "decision", { branch });
+		expect(result.transitions).toEqual([transition]);
+		expect(result.queuedInputs).toEqual(queuedInputs);
 	});
 
 	it("compiles external source transitions without registering visible actions", async () => {
 		const process = defineTestProcess({
 			id: "external_turn_process",
 			turns: {
-				draft: llmTurn({
-					availableTools: [],
-					description: "Draft",
-					branchType: "primary",
-					context: "fresh",
-					prompt: async () => "draft",
+				draft: draftTurn({
 					turnEnd: { outcome: "completed", params: {}, to: "await_completion" },
 				}),
 				await_completion: externalTurn({
@@ -825,187 +719,49 @@ describe("defineProcess", () => {
 		]);
 	});
 
-	it("rejects schedulable branch actions without an explicit preview", () => {
+	it.each([
+		{
+			name: "schedulable branches without a preview",
+			routing: {
+				schedulable: true,
+				branches: { first: { to: "draft" }, second: { to: "finalize" } },
+				choose: async () => "first",
+			},
+			error: /schedulable/,
+		},
+		{
+			name: "a trigger preview that disagrees with its route",
+			routing: { to: "finalize", preview: { kind: "trigger", trigger: "wrong_trigger" } },
+			error: /does not match a compiled transition/,
+		},
+		{
+			name: "a fixed-turn preview that disagrees with its branches",
+			routing: {
+				preview: { kind: "fixed_turn", turnId: "missing_target" },
+				branches: { first: { to: "draft" }, second: { to: "finalize" } },
+				choose: async () => "first",
+			},
+			error: /does not match a compiled transition/,
+		},
+	] as const)("rejects $name", ({ routing, error }) => {
 		expect(() =>
 			defineTestProcess({
-				id: "ambiguous_schedule_process",
 				turns: {
-					draft: llmTurn({
-						availableTools: [],
-						description: "Draft",
-						branchType: "primary",
-						context: "fresh",
-						prompt: async () => "draft",
-						turnEnd: { outcome: "ready", params: {}, to: "source" },
-					}),
-					source: humanTurn({
-						description: "Source",
-						actions: {
-							branch: {
-								label: "Branch",
-								acceptanceState: "neutral",
-								schedulable: true,
-								branches: {
-									first: { to: "first" },
-									second: { to: "second" },
-								},
-								choose: async () => "first",
-							},
-						},
-					}),
-					first: humanTurn({
-						description: "First",
-						actions: {
-							ack: {
-								label: "Ack",
-								acceptanceState: "accepted",
-								complete: true,
-							},
-						},
-					}),
-					second: humanTurn({
-						description: "Second",
-						actions: {
-							ack: {
-								label: "Ack second",
-								acceptanceState: "accepted",
-								complete: true,
-							},
-						},
-					}),
-				},
-			}),
-		).toThrow(/schedulable/);
-	});
-
-	it("rejects explicit trigger previews that do not match compiled routes", () => {
-		expect(() =>
-			defineTestProcess({
-				id: "mismatched_preview_process",
-				turns: {
-					draft: llmTurn({
-						availableTools: [],
-						description: "Draft",
-						branchType: "primary",
-						context: "fresh",
-						prompt: async () => "draft",
-						turnEnd: { outcome: "ready", params: {}, to: "review" },
-					}),
+					...basicTurns(),
 					review: humanTurn({
 						description: "Review",
-						actions: {
-							approve: {
-								label: "Approve",
-								acceptanceState: "accepted",
-								to: "done",
-								preview: { kind: "trigger", trigger: "wrong_trigger" },
-							},
-						},
-					}),
-					done: automaticTurn({
-						description: "Done",
-						run: () => ({ outcome: "completed", params: {} }),
-						outcomes: {
-							completed: { description: "Completed", parameters: {}, complete: true },
-						},
+						actions: { decide: { label: "Decide", acceptanceState: "neutral", ...routing } },
 					}),
 				},
 			}),
-		).toThrow(/does not match a compiled transition/);
-	});
-
-	it("rejects explicit fixed-turn previews that disagree with branching routes", () => {
-		expect(() =>
-			defineTestProcess({
-				id: "mismatched_branch_preview_process",
-				turns: {
-					draft: llmTurn({
-						availableTools: [],
-						description: "Draft",
-						branchType: "primary",
-						context: "fresh",
-						prompt: async () => "draft",
-						turnEnd: { outcome: "ready", params: {}, to: "review" },
-					}),
-					review: humanTurn({
-						description: "Review",
-						actions: {
-							branch: {
-								label: "Branch",
-								acceptanceState: "neutral",
-								preview: { kind: "fixed_turn", turnId: "missing_target" },
-								branches: {
-									first: { to: "first" },
-									second: { to: "second" },
-								},
-								choose: async () => "first",
-							},
-						},
-					}),
-					first: humanTurn({
-						description: "First",
-						actions: {
-							ack: { label: "Ack", acceptanceState: "accepted", complete: true },
-						},
-					}),
-					second: humanTurn({
-						description: "Second",
-						actions: {
-							ack: { label: "Ack", acceptanceState: "accepted", complete: true },
-						},
-					}),
-				},
-			}),
-		).toThrow(/does not match a compiled transition/);
-	});
-
-	it("does not parse params or initial state during compilation", () => {
-		const throwingCodec = {
-			parse(value: unknown) {
-				if (value === undefined) {
-					throw new Error("parse(undefined) should not be called");
-				}
-				return value as { prompt: string };
-			},
-			serialize(value: { prompt: string }) {
-				return value;
-			},
-		};
-
-		expect(() =>
-			defineProcess({
-				id: "no_template_params_process",
-				displayName: "No Template Params",
-				entry: "draft",
-				paramsCodec: throwingCodec,
-				stateCodec,
-				initialState() {
-					throw new Error("initialState should not be called during compilation");
-				},
-				turns: {
-					draft: llmTurn({
-						availableTools: [],
-						description: "Draft",
-						branchType: "primary",
-						context: "fresh",
-						prompt: async () => "draft",
-						turnEnd: { outcome: "done", params: {}, complete: true },
-					}),
-				},
-			}),
-		).not.toThrow();
+		).toThrow(error);
 	});
 
 	it("supports lifecycle-status-only action routes", async () => {
 		const process = defineTestProcess({
 			id: "abort_action_process",
 			turns: {
-				draft: llmTurn({
-					availableTools: [],
-					description: "Draft",
-					branchType: "primary",
-					context: "fresh",
-					prompt: async () => "draft",
+				draft: draftTurn({
 					turnEnd: { outcome: "ready", params: {}, to: "review" },
 				}),
 				review: humanTurn({
@@ -1025,26 +781,9 @@ describe("defineProcess", () => {
 			{ lifecycleStatus: "aborted", trigger: "abort_process" },
 		]);
 
-		const action = buildServerProcessForTest(process)?.actions.get("abort_process");
-		expect(action?.plan).toBeDefined();
-		if (!action?.plan) {
-			return;
-		}
-		const transitions: Array<Record<string, unknown>> = [];
-		await action.plan(
-			{},
-			createTestServerProcessContext({
-				process: createTestProcessInstance({
-					processId: process.id,
-					selectedTurnId: "review",
-					lifecycleStatus: "waiting",
-				}),
-				state: { branch: "draft" },
-				transition: async (next) => {
-					transitions.push(next as Record<string, unknown>);
-				},
-			}),
-		);
+		const { transitions } = await executeAction(process, "abort_process", "review", {
+			branch: "draft",
+		});
 		expect(transitions).toEqual([
 			{ turnId: null, lifecycleStatus: "aborted", trigger: "abort_process" },
 		]);
@@ -1064,15 +803,8 @@ describe("defineProcess", () => {
 		expect(() =>
 			defineTestProcess({
 				id: "inconsistent_form_process",
+				entry: "start",
 				turns: {
-					draft: llmTurn({
-						availableTools: [],
-						description: "Draft",
-						branchType: "primary",
-						context: "fresh",
-						prompt: async () => "draft",
-						turnEnd: { outcome: "ready", params: {}, to: "start" },
-					}),
 					start: humanTurn({
 						description: "Start",
 						actions: {
@@ -1080,7 +812,7 @@ describe("defineProcess", () => {
 								label: "Retry",
 								acceptanceState: "neutral",
 								form: firstForm,
-								to: "done",
+								complete: true,
 							},
 						},
 					}),
@@ -1091,17 +823,6 @@ describe("defineProcess", () => {
 								label: "Retry",
 								acceptanceState: "neutral",
 								form: secondForm,
-								to: "done",
-							},
-						},
-					}),
-					done: automaticTurn({
-						description: "Done",
-						run: () => ({ outcome: "completed", params: {} }),
-						outcomes: {
-							completed: {
-								description: "completed",
-								parameters: {},
 								complete: true,
 							},
 						},

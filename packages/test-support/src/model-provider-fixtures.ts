@@ -3,6 +3,18 @@ import {
 	defineModelProvider,
 	defineModelProviders,
 } from "@leitwerk-dev/process-sdk";
+import type { ExtensionIntegrationHarnessOptions } from "./extension-integration-harness.js";
+
+/** @internal */
+export const fixtureModelProfiles: NonNullable<ExtensionIntegrationHarnessOptions["models"]> = [
+	{
+		id: "claude_fast",
+		thinkingLevel: "medium",
+		provider: "anthropic",
+		modelId: "claude-sonnet-4-20250514",
+	},
+	{ id: "local_qwen", thinkingLevel: "low", provider: "ollama", modelId: "qwen2.5-coder:14b" },
+];
 
 /** @public */
 export type FixtureModelProviderSet = ReturnType<typeof defineModelProviders>;

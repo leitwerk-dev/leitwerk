@@ -1,5 +1,5 @@
 import type { Actor } from "@leitwerk-dev/domain";
-import { accept, noWrites, reject } from "../decision.js";
+import { accept, modelOverrideMetadata, noWrites, reject } from "../decision.js";
 import { defineOperation } from "../operation.js";
 import { pendingTurnWait, turnWaitPredicate, writeTurnWait } from "../turn-wait-state.js";
 import { buildTurnSelectionWrites } from "../writes/build-turn-selection-writes.js";
@@ -7,6 +7,7 @@ import {
 	appendProcessEvent,
 	applyProcessPatchField,
 	createWrites,
+	type DecisionMetadata,
 	isWriteBuildFailure,
 	stampActorOnEvents,
 } from "../writes/writes.js";
@@ -39,7 +40,8 @@ interface ResolveTurnWaitInput {
 	paramsJson: string | null;
 	stateJson: string | null;
 	projectsJson: string;
-	state?: unknown;
+	/** State validated and encoded by the readiness service. */
+	nextStateJson?: string;
 	result: "ready" | "waiting" | "complete" | "retry" | "error";
 	message?: string;
 	now: number;
@@ -66,17 +68,8 @@ export const ResolveTurnWait = defineOperation<"resolve_turn_wait", ResolveTurnW
 			return reject("turn_wait_superseded", "The waiting condition has changed");
 		}
 		const writes = createWrites();
-		if (input.state !== undefined && input.result !== "retry" && input.result !== "error") {
-			const definition = deps.processGraphs.get(process.processId);
-			if (!definition) return reject("process_not_found", "Process definition is unavailable");
-			const state = definition.stateCodec.parse(input.state);
-			applyProcessPatchField(
-				writes,
-				process,
-				"stateJson",
-				JSON.stringify(definition.stateCodec.serialize(state)),
-			);
-		}
+		if (input.nextStateJson !== undefined && !["retry", "error"].includes(input.result))
+			applyProcessPatchField(writes, process, "stateJson", input.nextStateJson);
 		if (input.result === "ready") {
 			writeTurnWait(writes, process, null);
 			writes.waitForAdmission = wait.id;
@@ -131,12 +124,7 @@ export const ResolveTurnWait = defineOperation<"resolve_turn_wait", ResolveTurnW
 
 export const RetryTurnWait = defineOperation<
 	"retry_turn_wait",
-	{
-		instanceId: string;
-		actor?: Actor;
-		nextTurnModelProfileId?: string | null;
-		providerOptions?: Readonly<Record<string, string>>;
-	},
+	DecisionMetadata & { instanceId: string; actor?: Actor },
 	void
 >({
 	kind: "retry_turn_wait",
@@ -154,13 +142,7 @@ export const RetryTurnWait = defineOperation<
 			nextCheckAt: 0,
 			failures: 0,
 			message: null,
-			metadata: {
-				...wait.metadata,
-				...(input.nextTurnModelProfileId !== undefined
-					? { nextTurnModelProfileId: input.nextTurnModelProfileId }
-					: {}),
-				...(input.providerOptions ? { providerOptions: input.providerOptions } : {}),
-			},
+			metadata: { ...wait.metadata, ...modelOverrideMetadata(input) },
 		});
 		applyProcessPatchField(writes, process, "lifecycleStatus", "waiting");
 		appendProcessEvent(writes, process, {

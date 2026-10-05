@@ -1,9 +1,4 @@
-import {
-	type CoreServerSetupDeps,
-	createFileExternalSourceProvider as createProvider,
-	defineFileExternalSource,
-	type FileExternalInput,
-} from "@leitwerk-dev/process-sdk";
+import { defineFileExternalSource, type FileExternalInput } from "@leitwerk-dev/process-sdk";
 
 // Keep the persisted source kind stable when moving the process between extensions.
 /** @internal */
@@ -21,16 +16,3 @@ export const fileExternal = {
 		});
 	},
 };
-
-/** @internal */
-export function createFileExternalSourceProvider(
-	deps: CoreServerSetupDeps,
-	aliases: Partial<Record<string, string>> = {},
-) {
-	return createProvider(deps, {
-		id: "example-file-external",
-		kind: FILE_EXTERNAL_PRESENCE_KIND,
-		inputMode: "none",
-		aliases,
-	});
-}

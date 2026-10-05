@@ -1,7 +1,5 @@
 import {
 	assertValidProcessProductName,
-	trimString as normalizeEffectString,
-	normalizeStringArray as normalizeEffectStringArray,
 	type ProcessInstance,
 	type ProcessSemanticEntryRefKey,
 	type ProcessTurnStartSelection,
@@ -36,11 +34,10 @@ import {
 	validateProcessGraphTurnTransitions,
 } from "./process-graph.js";
 import type { ServerExtensionEventMap } from "./server-events.js";
-import { validateHumanTurnMetadata, validateTurnDefinition } from "./turn-semantics.js";
+import { validateTurnDefinition } from "./turn-semantics.js";
 import type { TurnWaitPredicate } from "./turn-wait.js";
 import type {
 	HumanTurnActionView,
-	HumanTurnExternalActionView,
 	HumanTurnExternalTrigger,
 	HumanTurnNotesField,
 	OutcomeToolParameterSpec,
@@ -161,30 +158,6 @@ export interface ProcessEffectPlan<TState = unknown> extends ProcessLifecycleEff
 	/** @public */
 	queueInput?: readonly ProcessQueuedInput[];
 }
-
-/** @internal */
-export interface SavePlanResultLifecycleIntent<TParams = unknown, TState = unknown> {
-	/** @internal */
-	kind: "save_plan_result";
-	/** @internal */
-	summaryParam: string;
-	/** @internal */
-	acceptanceCriteriaParam: string;
-	/** @internal */
-	planMarkdownParam: string;
-	/** @internal */
-	emitEventType: ProcessEventName;
-	/** @internal */
-	broadcastType: string;
-	/** @internal */
-	state?: ProcessOutcomeEffect<TParams, TState>;
-}
-
-/** @internal */
-export type ProcessOutcomeLifecycleIntent<
-	TParams = unknown,
-	TState = unknown,
-> = SavePlanResultLifecycleIntent<TParams, TState>;
 
 /** @public */
 export interface ProcessActionExecution<TParams = unknown, TState = unknown> {
@@ -340,8 +313,6 @@ interface ProcessToolOutcomeBaseSpec<TParams = unknown, TState = unknown> {
 	resultSummaryParameter?: string;
 	/** @internal */
 	effect?: ProcessOutcomeEffect<TParams, TState>;
-	/** @internal */
-	lifecycleIntent?: ProcessOutcomeLifecycleIntent<TParams, TState>;
 }
 
 /** @public */
@@ -640,58 +611,26 @@ type BranchRouteSpec = StaticRouteTarget & { trigger?: string };
 function compileBranchRoutes(input: {
 	branches: Record<string, BranchRouteSpec>;
 	knownTurnIds?: ReadonlySet<TurnId>;
-	targetContext(branchId: string): string;
-	emptyBranchError: string;
-	duplicateTriggerError(trigger: string): string;
-}): {
-	routes: Record<string, NormalizedActionRoute>;
-	transitions: NormalizedActionRoute[];
-} {
-	const routes: Record<string, NormalizedActionRoute> = {};
-	const transitions: NormalizedActionRoute[] = [];
+	context: string;
+}): Record<string, NormalizedActionRoute> {
+	const entries = Object.entries(input.branches);
+	if (entries.length === 0) throw new Error(`${input.context} must declare at least one branch`);
 	const usedTriggers = new Set<string>();
-	compileDeclarations(Object.entries(input.branches), ([branchId, branchSpec]) => {
-		if (branchId.trim() === "") throw new Error(input.emptyBranchError);
-		const target = normalizeStaticRouteTarget(
-			input.targetContext(branchId),
-			branchSpec,
-			input.knownTurnIds,
-		);
-		const trigger = branchSpec.trigger ?? branchId;
-		if (usedTriggers.has(trigger)) throw new Error(input.duplicateTriggerError(trigger));
-		usedTriggers.add(trigger);
-		const route = { ...target, trigger };
-		routes[branchId] = route;
-		transitions.push(route);
-	});
-	return { routes, transitions };
-}
-
-function resolveOutcomeRouting<TParams, TState>(input: {
-	turnId: TurnId;
-	outcome: string;
-	spec: ProcessToolOutcomeSpec<TParams, TState>;
-	knownTurnIds: ReadonlySet<TurnId>;
-}): CompiledOutcomeRouting<TParams, TState> | null {
-	if (!("branches" in input.spec)) {
-		return null;
-	}
-	const entries = Object.entries(input.spec.branches);
-	if (entries.length === 0) {
-		throw new Error(
-			`Turn '${input.turnId}' outcome '${input.outcome}' must declare at least one branch`,
-		);
-	}
-	const { routes } = compileBranchRoutes({
-		branches: input.spec.branches,
-		knownTurnIds: input.knownTurnIds,
-		targetContext: (branchId) =>
-			`Turn '${input.turnId}' outcome '${input.outcome}' branch '${branchId}'`,
-		emptyBranchError: `Turn '${input.turnId}' outcome '${input.outcome}' contains an empty branch id`,
-		duplicateTriggerError: (trigger) =>
-			`Turn '${input.turnId}' outcome '${input.outcome}' contains duplicate branch trigger '${trigger}'`,
-	});
-	return { routes, choose: input.spec.choose };
+	return Object.fromEntries(
+		compileDeclarations(entries, ([branchId, branchSpec]) => {
+			if (branchId.trim() === "") throw new Error(`${input.context} contains an empty branch id`);
+			const target = normalizeStaticRouteTarget(
+				`${input.context} branch '${branchId}'`,
+				branchSpec,
+				input.knownTurnIds,
+			);
+			const trigger = branchSpec.trigger ?? branchId;
+			if (usedTriggers.has(trigger))
+				throw new Error(`${input.context} contains duplicate branch trigger '${trigger}'`);
+			usedTriggers.add(trigger);
+			return [branchId, { ...target, trigger }] as const;
+		}),
+	);
 }
 
 function resolveActionRouting<TParams, TState>(input: {
@@ -704,20 +643,10 @@ function resolveActionRouting<TParams, TState>(input: {
 	transitions: readonly NormalizedActionRoute[];
 } {
 	if ("branches" in input.spec) {
-		const entries = Object.entries(input.spec.branches) as Array<[string, ProcessActionBranchSpec]>;
-		if (entries.length === 0) {
-			throw new Error(
-				`Action '${input.actionId}' on turn '${input.turnId}' must declare at least one branch`,
-			);
-		}
-		const { routes, transitions } = compileBranchRoutes({
+		const routes = compileBranchRoutes({
 			branches: input.spec.branches,
 			knownTurnIds: input.knownTurnIds,
-			targetContext: (branchId) =>
-				`Action '${input.actionId}' branch '${branchId}' on turn '${input.turnId}'`,
-			emptyBranchError: `Action '${input.actionId}' on turn '${input.turnId}' contains an empty branch id`,
-			duplicateTriggerError: (trigger) =>
-				`Action '${input.actionId}' on turn '${input.turnId}' contains duplicate branch trigger '${trigger}'`,
+			context: `Action '${input.actionId}' on turn '${input.turnId}'`,
 		});
 		return {
 			routing: {
@@ -725,7 +654,7 @@ function resolveActionRouting<TParams, TState>(input: {
 				routes,
 				choose: input.spec.choose,
 			},
-			transitions,
+			transitions: Object.values(routes),
 		};
 	}
 	const target = normalizeStaticRouteTarget(
@@ -895,70 +824,6 @@ function mergeProcessEffectPlans<TState>(
 	};
 }
 
-async function buildSavePlanResultEffect<TParams, TState>(input: {
-	intent: SavePlanResultLifecycleIntent<TParams, TState>;
-	execution: ProcessOutcomeExecution<TParams, TState>;
-}): Promise<ProcessEffectPlan<TState>> {
-	const statePlan = input.intent.state ? await input.intent.state(input.execution) : undefined;
-	const planRevision = input.execution.ctx.process.planRevision + 1;
-	const summary = normalizeEffectString(input.execution.event.params[input.intent.summaryParam]);
-	const acceptanceCriteria = normalizeEffectStringArray(
-		input.execution.event.params[input.intent.acceptanceCriteriaParam],
-	);
-	const planMarkdown =
-		typeof input.execution.event.turnResultMarkdown === "string"
-			? input.execution.event.turnResultMarkdown
-			: normalizeEffectString(input.execution.event.params[input.intent.planMarkdownParam]);
-
-	return mergeProcessEffectPlans(statePlan, {
-		processPatch: { planRevision },
-		broadcasts: [
-			{
-				type: input.intent.broadcastType,
-				payload: {
-					planRevision,
-					reviewState: "awaiting_approval",
-					approved: false,
-					summary,
-				},
-			},
-		],
-		emit: [
-			{
-				type: input.intent.emitEventType,
-				data: {
-					planRevision,
-					summary,
-					planMarkdown,
-					acceptanceCriteria,
-				},
-			},
-		],
-	}) as ProcessEffectPlan<TState>;
-}
-
-function resolveOutcomeEffect<TParams, TState>(input: {
-	spec: ProcessToolOutcomeSpec<TParams, TState> | ProcessTurnEndSpec<TParams, TState, string>;
-}): ProcessOutcomeEffect<TParams, TState> | undefined {
-	const lifecycleIntent = "lifecycleIntent" in input.spec ? input.spec.lifecycleIntent : undefined;
-	if (!lifecycleIntent) {
-		return input.spec.effect;
-	}
-	return async (execution) => {
-		const explicitPlan = input.spec.effect ? await input.spec.effect(execution) : undefined;
-		let lifecyclePlan: ProcessEffectPlan<TState> | undefined;
-		switch (lifecycleIntent.kind) {
-			case "save_plan_result":
-				lifecyclePlan = await buildSavePlanResultEffect({
-					intent: lifecycleIntent,
-					execution,
-				});
-				break;
-		}
-		return mergeProcessEffectPlans(explicitPlan, lifecyclePlan);
-	};
-}
-
 function areFormsEquivalent(
 	left: FormDefinition | undefined,
 	right: FormDefinition | undefined,
@@ -1108,12 +973,17 @@ function compileTurnOutcomeDefinitions<TParams, TState>(input: {
 		if (outcome.trim() === "") {
 			throw new Error(`Turn '${input.turnId}' declares an empty outcome id`);
 		}
-		const routing = resolveOutcomeRouting({
-			turnId: input.turnId,
-			outcome,
-			spec,
-			knownTurnIds: input.knownTurnIds,
-		});
+		const routing =
+			"branches" in spec
+				? {
+						routes: compileBranchRoutes({
+							branches: spec.branches,
+							knownTurnIds: input.knownTurnIds,
+							context: `Turn '${input.turnId}' outcome '${outcome}'`,
+						}),
+						choose: spec.choose,
+					}
+				: null;
 		const target = routing
 			? null
 			: buildOutcomeTransition(input.turnId, outcome, spec, input.knownTurnIds);
@@ -1125,7 +995,7 @@ function compileTurnOutcomeDefinitions<TParams, TState>(input: {
 		} else if (target) {
 			transitions.push({ ...target, outcome });
 		}
-		effects.set(outcome, resolveOutcomeEffect({ spec }));
+		effects.set(outcome, spec.effect);
 	});
 
 	if (input.turnEnd) {
@@ -1139,7 +1009,7 @@ function compileTurnOutcomeDefinitions<TParams, TState>(input: {
 			input.knownTurnIds,
 		);
 		transitions.push({ ...target, outcome: input.turnEnd.outcome });
-		effects.set(input.turnEnd.outcome, resolveOutcomeEffect({ spec: input.turnEnd }));
+		effects.set(input.turnEnd.outcome, input.turnEnd.effect);
 	}
 
 	return {
@@ -1291,19 +1161,13 @@ function deriveHumanTurnActions<TParams, TState>(input: {
 	spec: HumanTurnDefinition<TParams, TState>;
 	knownTurnIds?: ReadonlySet<TurnId>;
 	turnDefinitionsById?: ReadonlyMap<TurnId, TurnDefinition<unknown, unknown>>;
-	requireHumanActions?: boolean;
 }): {
 	actions: readonly DerivedHumanTurnAction<TParams, TState>[];
-	externalActions: readonly HumanTurnExternalActionView[];
 	transitions: readonly ProcessTurnTransition[];
 } {
 	const actionEntries = Object.entries(input.spec.actions) as Array<
 		[string, ProcessHumanTurnActionSpec<TParams, TState>]
 	>;
-	if (actionEntries.length === 0 && input.knownTurnIds && input.requireHumanActions !== false) {
-		throw new Error(`Human turn '${input.turnId}' must declare at least one action`);
-	}
-
 	const derivedActions: DerivedHumanTurnAction<TParams, TState>[] = [];
 	const transitions: ProcessTurnTransition[] = [];
 	const actionIdByTrigger = new Map<string, string>();
@@ -1312,23 +1176,12 @@ function deriveHumanTurnActions<TParams, TState>(input: {
 			throw new Error(`Human turn '${input.turnId}' declares an empty action id`);
 		}
 		validateActionPrimaryPrompt(input.turnId, actionId, actionSpec);
-		const resolved =
-			!input.knownTurnIds &&
-			!("branches" in actionSpec) &&
-			!hasDeclaredStaticRouteTarget(actionSpec)
-				? {
-						routing: {
-							kind: "static",
-							route: { trigger: actionSpec.trigger ?? actionId },
-						} satisfies CompiledActionRouting<TParams, TState>,
-						transitions: [] as readonly NormalizedActionRoute[],
-					}
-				: resolveActionRouting({
-						turnId: input.turnId,
-						actionId,
-						spec: actionSpec,
-						knownTurnIds: input.knownTurnIds,
-					});
+		const resolved = resolveActionRouting({
+			turnId: input.turnId,
+			actionId,
+			spec: actionSpec,
+			knownTurnIds: input.knownTurnIds,
+		});
 		for (const transition of resolved.transitions) {
 			const existingActionId = actionIdByTrigger.get(transition.trigger);
 			if (existingActionId && existingActionId !== actionId) {
@@ -1339,15 +1192,12 @@ function deriveHumanTurnActions<TParams, TState>(input: {
 			actionIdByTrigger.set(transition.trigger, actionId);
 			transitions.push({ ...transition });
 		}
-		const previewAndScheduling =
-			!input.knownTurnIds && resolved.transitions.length === 0
-				? {
-						...(actionSpec.preview ? { preview: actionSpec.preview } : {}),
-						...(actionSpec.schedulable && actionSpec.preview
-							? { scheduling: { preview: actionSpec.preview } }
-							: {}),
-					}
-				: buildActionPreviewAndScheduling(input.turnId, actionId, actionSpec, resolved.transitions);
+		const previewAndScheduling = buildActionPreviewAndScheduling(
+			input.turnId,
+			actionId,
+			actionSpec,
+			resolved.transitions,
+		);
 		derivedActions.push({
 			actionId,
 			actionSpec,
@@ -1369,11 +1219,23 @@ function deriveHumanTurnActions<TParams, TState>(input: {
 		});
 	});
 
-	const externalActionEntries = Object.entries(input.spec.externalActions ?? {}) as Array<
+	transitions.push(...compileExternalActionTransitions(input, actionIdByTrigger));
+	return { actions: derivedActions, transitions };
+}
+
+function compileExternalActionTransitions<TParams, TState>(
+	input: {
+		turnId: TurnId;
+		spec: Pick<HumanTurnDefinition<TParams, TState>, "externalActions">;
+		knownTurnIds?: ReadonlySet<TurnId>;
+		turnDefinitionsById?: ReadonlyMap<TurnId, TurnDefinition<unknown, unknown>>;
+	},
+	actionIdByTrigger = new Map<string, string>(),
+): readonly ProcessTurnTransition[] {
+	const entries = Object.entries(input.spec.externalActions ?? {}) as Array<
 		[string, ProcessHumanTurnExternalActionSpec<TParams, TState>]
 	>;
-	const derivedExternalActions: HumanTurnExternalActionView[] = [];
-	compileDeclarations(externalActionEntries, ([externalActionId, actionSpec]) => {
+	return compileDeclarations(entries, ([externalActionId, actionSpec]) => {
 		if (actionSpec.publishInput) {
 			if (actionSpec.complete === true || actionSpec.lifecycleStatus !== undefined) {
 				throw new Error(
@@ -1387,18 +1249,9 @@ function deriveHumanTurnActions<TParams, TState>(input: {
 				);
 			}
 		}
-		validateExternalActionPublishedInputTarget({
-			turnId: input.turnId,
-			externalActionId,
-			spec: actionSpec,
-			turnDefinitionsById: input.turnDefinitionsById,
-		});
-		const transition = resolveExternalActionRoute({
-			turnId: input.turnId,
-			externalActionId,
-			spec: actionSpec,
-			knownTurnIds: input.knownTurnIds,
-		});
+		const route = { ...input, externalActionId, spec: actionSpec };
+		validateExternalActionPublishedInputTarget(route);
+		const transition = resolveExternalActionRoute(route);
 		const existingActionId = actionIdByTrigger.get(transition.trigger);
 		if (existingActionId) {
 			throw new Error(
@@ -1406,21 +1259,8 @@ function deriveHumanTurnActions<TParams, TState>(input: {
 			);
 		}
 		actionIdByTrigger.set(transition.trigger, externalActionId);
-		transitions.push({ ...transition });
-		derivedExternalActions.push({
-			id: getExternalActionArmingId({ turnId: input.turnId, externalActionId }),
-			externalActionId,
-			sourceKind: actionSpec.source.kind,
-			label: actionSpec.label ?? actionSpec.source.label ?? null,
-			description: actionSpec.description ?? actionSpec.source.description ?? null,
-		});
+		return transition;
 	});
-
-	return {
-		actions: derivedActions,
-		externalActions: derivedExternalActions,
-		transitions,
-	};
 }
 
 /** @internal */
@@ -1434,8 +1274,6 @@ export function resolveHumanTurnView<TParams, TState>(input: {
 	actions: readonly HumanTurnActionView[];
 	/** @internal */
 	externalTriggers: readonly HumanTurnExternalTrigger[];
-	/** @internal */
-	externalActions: readonly HumanTurnExternalActionView[];
 } {
 	const derived = deriveHumanTurnActions({
 		turnId: input.turnId,
@@ -1444,7 +1282,6 @@ export function resolveHumanTurnView<TParams, TState>(input: {
 	return {
 		actions: derived.actions.map((action) => action.actionView),
 		externalTriggers: derived.actions.flatMap((action) => action.externalTriggers),
-		externalActions: derived.externalActions,
 	};
 }
 
@@ -1491,12 +1328,7 @@ function resolveActionRouteForExecution<TParams, TState>(input: {
 	};
 	const routes = input.use.routing.routes;
 	return Promise.resolve(input.use.routing.choose(actionExecution)).then((selectedBranchId) => {
-		if (!Object.hasOwn(routes, selectedBranchId)) {
-			throw new Error(
-				`Action '${input.actionId}' on turn '${input.use.turnId}' selected unknown branch '${selectedBranchId}'`,
-			);
-		}
-		const route = routes[selectedBranchId];
+		const route = Object.hasOwn(routes, selectedBranchId) ? routes[selectedBranchId] : undefined;
 		if (!route) {
 			throw new Error(
 				`Action '${input.actionId}' on turn '${input.use.turnId}' selected unknown branch '${selectedBranchId}'`,
@@ -1523,7 +1355,6 @@ function buildActionTransitionRequest<TState>(route: NormalizedActionRoute) {
 function validateHappyPathConnectivity<TParams, TState>(input: {
 	happyPath: readonly TurnId[] | undefined;
 	turns: ReadonlyMap<TurnId, ProcessTurnBinding<TurnDefinition<TParams, TState>>>;
-	turnDefinitionsById: ReadonlyMap<TurnId, TurnDefinition<unknown, unknown>>;
 }): string[] {
 	const errors: string[] = [];
 	const happyPath = input.happyPath;
@@ -1541,7 +1372,7 @@ function validateHappyPathConnectivity<TParams, TState>(input: {
 			const current = queue.shift() as TurnId;
 			for (const transition of getProcessTurnTransitions(input.turns.get(current))) {
 				const next = transition.nextTurnId;
-				if (next === undefined || !input.turnDefinitionsById.has(next)) {
+				if (next === undefined || !input.turns.has(next)) {
 					continue;
 				}
 				if (next === target) {
@@ -1551,7 +1382,7 @@ function validateHappyPathConnectivity<TParams, TState>(input: {
 				if (visited.has(next) || happyPathTurns.has(next)) {
 					continue;
 				}
-				const definition = input.turnDefinitionsById.get(next);
+				const definition = input.turns.get(next)?.definition;
 				if (definition?.kind !== "human") {
 					continue;
 				}
@@ -1686,13 +1517,7 @@ function compileProcessDefinition<TParams, TState>(
 	let validTurns = true;
 	let inspectableProducts = true;
 	for (const [turnId, turnSpec] of turnEntries) {
-		const errors = diagnostics.capture(
-			() =>
-				turnSpec.kind === "human"
-					? validateHumanTurnMetadata(turnId, turnSpec)
-					: validateTurnDefinition(turnId, turnSpec),
-			turnId,
-		);
+		const errors = diagnostics.capture(() => validateTurnDefinition(turnId, turnSpec), turnId);
 		if (errors === undefined) {
 			validTurns = false;
 			inspectableProducts = false;
@@ -1744,18 +1569,12 @@ function compileProcessDefinition<TParams, TState>(
 				});
 				const externalTransitions =
 					turnSpec.kind === "automatic" && turnSpec.externalActions
-						? deriveHumanTurnActions({
+						? compileExternalActionTransitions({
 								turnId,
-								spec: {
-									kind: "human",
-									description: turnSpec.description,
-									actions: {},
-									externalActions: turnSpec.externalActions,
-								},
+								spec: turnSpec,
 								knownTurnIds,
 								turnDefinitionsById,
-								requireHumanActions: false,
-							}).transitions
+							})
 						: [];
 				turns.set(
 					turnId,
@@ -1834,7 +1653,6 @@ function compileProcessDefinition<TParams, TState>(
 			for (const error of validateHappyPathConnectivity({
 				happyPath: input.happyPath,
 				turns: graphTurns,
-				turnDefinitionsById,
 			}))
 				diagnostics.add(error);
 		}

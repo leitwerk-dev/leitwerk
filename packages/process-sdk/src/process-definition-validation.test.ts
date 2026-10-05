@@ -73,7 +73,12 @@ describe.each([
 				description: "Invalid route",
 				run: () => ({ outcome: "done", params: {} }),
 				outcomes: {
-					first: { description: "First", parameters: {}, to: "missing_first" },
+					first: {
+						description: "First",
+						parameters: {},
+						branches: { one: { to: "missing_first" }, two: { to: "missing_branch" } },
+						choose: () => "one",
+					},
 					second: { description: "Second", parameters: {}, to: "missing_second" },
 				},
 			}),
@@ -101,6 +106,7 @@ describe.each([
 			/Process 'validated_process'.*turn 'invalid_parameter'.*minimum.*not a number/,
 			/Process 'validated_process'.*turn 'invalid_route'.*unknown turn 'missing_first'/,
 			/Process 'validated_process'.*turn 'invalid_route'.*unknown turn 'missing_second'/,
+			/Process 'validated_process'.*turn 'invalid_route'.*unknown turn 'missing_branch'/,
 			/Process 'validated_process'.*turn 'invalid_external_routes'.*unknown turn 'missing_external_first'/,
 			/Process 'validated_process'.*turn 'invalid_external_routes'.*unknown turn 'missing_external_second'/,
 			/Process 'validated_process'.*turn 'invalid_external_routes'.*worker turn 'consumer'.*requires .waitFor/,

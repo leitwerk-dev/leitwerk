@@ -133,15 +133,6 @@ import { type Broadcaster, createBroadcaster } from "./ws/broadcast.js";
 
 /** @public */
 export interface AppOptions {
-	/** Clock and cadence seam for readiness integration tests. @internal */
-	turnWait?: {
-		/** @internal */
-		now?: () => number;
-		/** @internal */
-		pollIntervalMs?: number;
-		/** @internal */
-		timeoutMs?: number;
-	};
 	/** @public */
 	config?: LeitwerkConfig;
 	/** @internal */
@@ -1261,7 +1252,6 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			registry: processActionRegistry,
 			commands: processEngine,
 			require: hostCapabilities.require.bind(hostCapabilities),
-			...opts.turnWait,
 		});
 		polling.create({
 			id: "turn-readiness",

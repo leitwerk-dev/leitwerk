@@ -75,7 +75,6 @@ export type {
 	GitLabFeedback,
 	GitLabIdentity,
 	GitLabJob,
-	GitLabLabelEvent,
 	GitLabMergeRequest,
 	GitLabObservation,
 	GitLabProject,

@@ -9,7 +9,9 @@ import {
 	defineModelProviders,
 	defineProcess,
 	type ExtensionProcessDefinition,
+	emptyParamsCodec,
 	humanTurn,
+	type LlmTurnDefinition,
 	llmTurn,
 	toProcessGraphView,
 } from "@leitwerk-dev/process-sdk";
@@ -260,11 +262,24 @@ describe("importExtensionModules", () => {
 });
 
 describe("buildExtensionCatalog", () => {
-	const emptyCodec = {
-		parse: () => ({}),
-		serialize: (value: Record<string, never>) => value,
-	};
 	type TestProcessInput = DefinedProcessInput<Record<string, never>, Record<string, never>>;
+
+	function testLlmTurn(
+		description: string,
+		overrides: Partial<
+			LlmTurnDefinition<string, Record<string, never>, Record<string, never>>
+		> = {},
+	) {
+		return llmTurn({
+			availableTools: [],
+			description,
+			branchType: "primary",
+			context: "fresh",
+			prompt: async () => "prompt",
+			turnEnd: { outcome: "done", params: {}, complete: true },
+			...overrides,
+		});
+	}
 
 	function defineTestProcess(
 		input: Pick<TestProcessInput, "id" | "turns"> & Partial<TestProcessInput>,
@@ -272,8 +287,8 @@ describe("buildExtensionCatalog", () => {
 		return defineProcess({
 			displayName: input.id,
 			entry: Object.keys(input.turns)[0],
-			paramsCodec: emptyCodec,
-			stateCodec: emptyCodec,
+			paramsCodec: emptyParamsCodec,
+			stateCodec: emptyParamsCodec,
 			initialState: () => ({}),
 			...input,
 		});
@@ -418,62 +433,11 @@ describe("buildExtensionCatalog", () => {
 		).rejects.toThrow("Processes must be created with defineProcess(...)");
 	});
 
-	it("allows multiple graph-defined processes to reuse the same registered turn metadata", async () => {
-		const first = defineTestProcess({
-			id: "first_process",
-			turns: {
-				run_single_prompt: llmTurn({
-					availableTools: [],
-					description: "Run a shared prompt",
-					branchType: "primary",
-					context: "fresh",
-					prompt: async () => "prompt",
-					turnEnd: { outcome: "completed", params: {}, complete: true },
-				}),
-			},
-		});
-		const second = defineTestProcess({
-			id: "second_process",
-			turns: {
-				run_single_prompt: llmTurn({
-					availableTools: [],
-					description: "Run a shared prompt",
-					branchType: "primary",
-					context: "fresh",
-					prompt: async () => "another prompt body",
-					turnEnd: { outcome: "completed", params: {}, complete: true },
-				}),
-			},
-		});
-
-		const catalog = await catalogWithProcesses(first, second);
-
-		expect(catalog.processes.get("first_process")?.turns.has("run_single_prompt")).toBe(true);
-		expect(catalog.processes.get("second_process")?.turns.has("run_single_prompt")).toBe(true);
-		expect(catalog.processes.size).toBe(2);
-		expect("processDefinitions" in catalog).toBe(false);
-		const firstProcess = catalog.processes.get("first_process");
-		expect(firstProcess).toBeDefined();
-		if (!firstProcess) {
-			return;
-		}
-		const graph = toProcessGraphView(firstProcess);
-		expect([...graph.entryTurnIds]).toEqual(["run_single_prompt"]);
-		expect(graph.turns.get("run_single_prompt")?.turnType).toBe("llm");
-	});
-
 	it("rejects registered processes with graph transition targets outside the process", async () => {
 		const process = defineTestProcess({
 			id: "invalid_graph_process",
 			turns: {
-				start: llmTurn({
-					availableTools: [],
-					description: "Start",
-					branchType: "primary",
-					context: "fresh",
-					prompt: async () => "prompt",
-					turnEnd: { outcome: "done", params: {}, complete: true },
-				}),
+				start: testLlmTurn("Start"),
 			},
 		});
 		const start = process.turns.get("start");
@@ -495,12 +459,7 @@ describe("buildExtensionCatalog", () => {
 			id: "disconnected_process",
 			happyPath: ["start", "done"],
 			turns: {
-				start: llmTurn({
-					availableTools: [],
-					description: "Start",
-					branchType: "primary",
-					context: "fresh",
-					prompt: () => "prompt",
+				start: testLlmTurn("Start", {
 					turnEnd: { outcome: "ready", params: {}, to: "done" },
 				}),
 				done: humanTurn({
@@ -528,14 +487,7 @@ describe("buildExtensionCatalog", () => {
 		const process = defineTestProcess({
 			id: "invalid_product_process",
 			turns: {
-				consume_plan: llmTurn({
-					availableTools: [],
-					description: "Consume plan",
-					branchType: "primary",
-					context: "fresh",
-					prompt: async () => "prompt",
-					turnEnd: { outcome: "done", params: {}, complete: true },
-				}),
+				consume_plan: testLlmTurn("Consume plan"),
 			},
 		});
 		const consumer = process.turns.get("consume_plan")?.definition;
@@ -551,14 +503,7 @@ describe("buildExtensionCatalog", () => {
 		const process = defineTestProcess({
 			id: "ambiguous_graph_process",
 			turns: {
-				start: llmTurn({
-					availableTools: [],
-					description: "Start",
-					branchType: "primary",
-					context: "fresh",
-					prompt: async () => "prompt",
-					turnEnd: { outcome: "done", params: {}, complete: true },
-				}),
+				start: testLlmTurn("Start"),
 			},
 		});
 		const start = process.turns.get("start");
@@ -576,12 +521,7 @@ describe("buildExtensionCatalog", () => {
 		const first = defineTestProcess({
 			id: "first_process",
 			turns: {
-				shared_turn: llmTurn({
-					availableTools: [],
-					description: "Shared",
-					branchType: "primary",
-					context: "fresh",
-					prompt: async () => "prompt",
+				shared_turn: testLlmTurn("Shared", {
 					turnEnd: { outcome: "completed", params: {}, complete: true },
 				}),
 			},
@@ -589,12 +529,8 @@ describe("buildExtensionCatalog", () => {
 		const second = defineTestProcess({
 			id: "second_process",
 			turns: {
-				shared_turn: llmTurn({
-					availableTools: [],
-					description: "Different description",
-					branchType: "primary",
-					context: "fresh",
-					prompt: async () => "prompt",
+				shared_turn: testLlmTurn("Different description", {
+					prompt: async () => "another prompt body",
 					turnEnd: { outcome: "completed", params: {}, complete: true },
 				}),
 				decision: humanTurn({
@@ -612,11 +548,21 @@ describe("buildExtensionCatalog", () => {
 
 		const catalog = await catalogWithProcesses(first, second);
 
-		expect(
-			catalog.processes.get("first_process")?.turns.get("shared_turn")?.definition.description,
-		).toBe("Shared");
-		expect(
-			catalog.processes.get("second_process")?.turns.get("shared_turn")?.definition.description,
-		).toBe("Different description");
+		expect(catalog.processes.size).toBe(2);
+		for (const [process, description, prompt] of [
+			[first, "Shared", "prompt"],
+			[second, "Different description", "another prompt body"],
+		] as const) {
+			const registered = catalog.processes.get(process.id);
+			if (!registered) throw new Error(`Missing process '${process.id}'`);
+			expect([...registered.turns.keys()]).toEqual([...process.turns.keys()]);
+			const turn = registered.turns.get("shared_turn")?.definition;
+			if (turn?.kind !== "llm") throw new Error("Missing shared turn");
+			expect(turn.description).toBe(description);
+			expect(await turn.prompt({} as never)).toBe(prompt);
+			const graph = toProcessGraphView(registered);
+			expect([...graph.entryTurnIds]).toEqual(["shared_turn"]);
+			expect(graph.turns.get("shared_turn")?.turnType).toBe("llm");
+		}
 	});
 });
