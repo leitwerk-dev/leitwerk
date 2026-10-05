@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Launch preflight · Leitwerk prototype</title>
+<style>
+:root{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#18212b;background:#fff;font-size:15px;line-height:1.5;--blue:#2f61b7;--border:#d9dee5;--muted:#4c5968}
+*{box-sizing:border-box}body{margin:0}button,input,select{font:inherit}button{cursor:pointer;border:1px solid #aeb7c2;border-radius:8px;background:#fff;color:#18212b;min-height:42px;padding:8px 14px;font-weight:600}button:hover{border-color:var(--blue);background:#f2f5fa}button:disabled{cursor:default;opacity:.48}button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid #2f61b7;outline-offset:3px}.primary{background:var(--blue);color:#fff;border-color:var(--blue)}.primary:hover{background:#234d94;color:#fff}header{border-bottom:1px solid var(--border);padding:16px 32px;display:flex;align-items:center;justify-content:space-between;gap:16px}header strong{font-size:18px}.prototype{color:var(--muted);font-size:14px}main{max-width:1240px;margin:auto;padding:34px 32px 48px}h1{font-size:32px;line-height:1.18;margin:0 0 12px}h2{font-size:19px;line-height:1.3;margin:0}h3{font-size:15px;margin:0}.intro{max-width:860px;color:var(--muted);margin:0 0 28px}.intro strong{color:#18212b;font-weight:500}.summary{display:flex;justify-content:space-between;align-items:center;gap:20px;background:#f2f4f7;padding:22px 24px;border-radius:10px;margin-bottom:24px}.summary p{margin:4px 0 0;color:var(--muted)}.summary h2{font-size:23px}.tag{display:inline-block;font-weight:600;font-size:13px;border-radius:5px;padding:3px 8px;background:#e6ecf6;color:#244c8f;white-space:nowrap}.pass{color:#146340;background:#eaf5ee}.block{color:#8f302b;background:#fff0ef}.warn{color:#865015;background:#fff4e4}.grid{display:grid;grid-template-columns:minmax(270px, .9fr) minmax(0,1.8fr);gap:36px}.panel-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:17px}.field{display:block;margin-bottom:15px}.field>span{font-weight:600;display:block;margin-bottom:5px}.field small{display:block;color:var(--muted);margin-top:4px}select,input[type=text]{width:100%;min-height:43px;padding:8px 10px;border:1px solid #aeb7c2;border-radius:7px;background:#fff;color:#18212b}.fixtures{border:0;padding:0;margin:22px 0 0}.fixtures legend{font-size:16px;font-weight:650;margin-bottom:7px}.toggle{display:flex;gap:10px;align-items:flex-start;border-bottom:1px solid #edf0f3;padding:10px 0}.toggle input{width:18px;height:18px;accent-color:var(--blue);margin:3px 0 0;flex-shrink:0}.toggle span{display:block}.toggle small{display:block;color:var(--muted);font-size:12px}.minor{font-size:13px;color:var(--muted);margin:10px 0}.checks{border-top:1px solid var(--border)}.check{display:grid;grid-template-columns:82px minmax(0,1fr);gap:14px;padding:16px 0;border-bottom:1px solid var(--border)}.check .tag{justify-self:start;align-self:start}.check p{margin:4px 0 0;font-size:14px;color:var(--muted)}.check button{font-size:13px;min-height:34px;margin-top:9px;padding:5px 10px}.plan{border:1px solid var(--border);border-radius:9px;margin-top:22px;padding:20px}.plan-head{display:flex;gap:12px;justify-content:space-between;align-items:center}.plan p{font-size:14px;margin:9px 0;color:var(--muted)}dl{display:grid;grid-template-columns:135px 1fr;gap:7px 12px;margin:14px 0;font-size:14px}dt{color:var(--muted)}dd{margin:0;overflow-wrap:anywhere}.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:17px}.notice{padding:12px 0;margin-top:10px;min-height:45px;font-size:14px;color:#244c8f}.guide{margin-top:34px;border-top:1px solid var(--border);padding-top:25px}.guide-heading{display:flex;justify-content:space-between;align-items:center}.tabs{display:flex;flex-wrap:wrap;gap:6px;margin:16px 0}.tabs button{font-size:14px;border-color:transparent;background:#f2f4f7}.tabs button[aria-selected=true]{border-color:var(--blue);background:#e6ecf6;color:#244c8f}.guide p{color:var(--muted);max-width:900px;margin:10px 0}.steps{display:flex;gap:8px;flex-wrap:wrap}.steps button{font-size:14px}.detail{margin-top:24px;padding:15px 0;border-top:1px solid var(--border)}summary{cursor:pointer;font-weight:600}.detail p{color:var(--muted);font-size:14px;max-width:900px}code{font-size:12px;background:#f2f4f7;padding:2px 4px;overflow-wrap:anywhere}footer{border-top:1px solid var(--border);padding-top:20px;margin-top:26px;font-size:13px;color:var(--muted)}
+@media(max-width:720px){header{padding:14px 20px;align-items:flex-start;flex-direction:column;gap:2px}main{padding:26px 20px}h1{font-size:28px}.grid{grid-template-columns:1fr;gap:28px}.summary{padding:18px;align-items:flex-start;flex-direction:column;gap:12px}.summary h2{font-size:21px}.check{grid-template-columns:72px minmax(0,1fr);gap:9px}.plan{padding:16px}.plan-head{align-items:flex-start;flex-direction:column}dl{grid-template-columns:110px 1fr}.tabs button{flex:1 1 40%}.steps{flex-direction:column}.steps button{text-align:left}.guide-heading{align-items:flex-start;gap:12px}.prototype{font-size:13px}}
+</style>
+</head>
+<body>
+<header><strong>Leitwerk <span style="color:#687483;font-weight:400">/ Launch preflight</span></strong><span class="prototype">Prototype • synthetic data • future proposal</span></header>
+<main>
+<h1>Know what a launch needs.</h1>
+<p class="intro"><strong>Can a single readiness review explain what blocks a launch, how to fix it, and when its plan is stale?</strong> Change the simulated environment, inspect the resolved requirements, then freeze a plan. Nothing is launched and no credentials are read.</p>
+<section class="summary" aria-label="Readiness summary"><div><h2 id="readiness"></h2><p id="counts"></p></div><span id="revision" class="tag"></span></section>
+<div class="grid">
+<section aria-labelledby="selection-title"><div class="panel-title"><h2 id="selection-title">Launch choices</h2><button id="reset">Reset</button></div>
+<label class="field"><span>Loaded process to resolve</span><select id="process"><option value="change">Change assistant · Docker required</option><option value="review">Repository review · no Docker needed</option></select><small>Illustrative code-defined processes; config provides runtime defaults.</small></label>
+<label class="field"><span>Model profile</span><select id="model"><option value="inherit">Inherit process default · team-coder</option><option value="team">Choose team-coder explicitly</option><option value="backup">Choose backup-coder explicitly</option></select><small id="model-hint"></small></label>
+<label class="field"><span>Runner</span><select id="runner"><option value="kubernetes">Kubernetes</option><option value="docker">Docker</option><option value="local">Local development</option></select></label>
+<label class="field"><span>New Kubernetes volume request</span><input id="volume" type="text" placeholder="Inherit code resolver" aria-describedby="volume-hint"><small id="volume-hint">Blank uses the process resolver. Try 8Gi or 40Gi; invalid values block.</small></label>
+<fieldset class="fixtures"><legend>Environment fixtures</legend><p class="minor">Toggle availability; these switches simulate operator changes.</p><div id="toggles"></div></fieldset>
+</section>
+<section aria-labelledby="checks-title"><div class="panel-title"><h2 id="checks-title">Resolved requirements</h2><span class="prototype">Read-only dry run</span></div><div id="checks" class="checks"></div>
+<section class="plan" aria-labelledby="plan-title"><div class="plan-head"><h2 id="plan-title">Launch plan</h2><span id="plan-state" class="tag">Draft</span></div><p id="plan-description"></p><div id="plan-fields"></div><div class="actions"><button class="primary" id="freeze">Freeze launch plan</button><button id="verify">Check frozen plan</button></div><div class="notice" role="status" aria-live="polite" id="notice"></div></section>
+</section></div>
+<section class="guide" aria-labelledby="guide-title"><div class="guide-heading"><h2 id="guide-title">Try a guided case</h2><span id="guide-progress" class="prototype"></span></div><div id="tabs" class="tabs" role="tablist" aria-label="Guided cases"></div><div role="tabpanel" id="walkthrough"><p id="guide-description"></p><div id="steps" class="steps"></div><p class="minor" id="guide-result"></p></div></section>
+<details class="detail"><summary>What this readiness review can establish</summary><p>The review resolves a code-defined process, model selection, runner capability, repository authorization and volume requirements against one synthetic environment revision. An explicit unavailable model remains a blocker. It never silently falls back.</p><p>A frozen plan is an advisory snapshot, not a launch reservation. A real launch must revalidate before durable state is created. Storage provisioning, repository checkout and worker acceptance still happen later; preparation is not a turn attempt. Kubernetes volume size is requested capacity, not a usage estimate. Existing volumes keep their size.</p><p>The local runner exposes host Docker authority when that fixture is enabled. Kubernetes and Docker require their respective private-daemon configuration. The prototype stores no secrets, makes no network calls and modifies no application state.</p></details>
+<footer>Idea 03 · Launch preflight. All process names, capability observations, revisions and capacity values on this page come from in-memory fixtures. Reloading discards the experiment.</footer>
+</main>
+<script>
+// Pure model: all state transitions and readiness derivation are DOM-independent.
+const Preflight = (() => {
+  const processes = {
+    change: {id:'change-assistant', name:'Change assistant', docker:true, storage:'20Gi', repositories:['sample/api','sample/web']},
+    review: {id:'repository-review', name:'Repository review', docker:false, storage:'8Gi', repositories:['sample/api']}
+  };
+  const defaults = {process:'change', model:'inherit', runner:'kubernetes', volume:'', loaded:true, credential:true, backupCredential:true, repoAccess:true, privateDocker:true, storageReady:true};
+  const scenarios = [
+    {id:'ready',name:'Ready to plan',description:'Resolve the process default, freeze the ready plan and verify that its captured revision still matches. Readiness remains advisory.',fixture:{},steps:[['Freeze the plan',{type:'freeze'}],['Verify the snapshot',{type:'verify'}]],result:'The inherited profile remains inherited in the plan. A ready review does not create a worker, volume or turn attempt.'},
+    {id:'provider',name:'Unavailable provider',description:'The team provider credential is unavailable, although a backup profile exists. Try freezing, restore the selected provider fixture, then freeze again.',fixture:{credential:false,model:'team'},steps:[['Try to freeze',{type:'freeze'}],['Restore team credential',{type:'set',key:'credential',value:true}],['Freeze repaired plan',{type:'freeze'}]],result:'The unavailable explicit choice blocked the plan; restoring its credential repaired it without changing model intent.'},
+    {id:'runner',name:'Incompatible runner',description:'A Docker-requiring process is selected on a Docker runner without private-daemon isolation. Restore that capability and retry. Ordinary process storage is already available.',fixture:{runner:'docker',privateDocker:false},steps:[['Try incompatible runner',{type:'freeze'}],['Configure private daemon',{type:'set',key:'privateDocker',value:true}],['Freeze compatible plan',{type:'freeze'}]],result:'The process requirement stayed in code. Repairing runner capability was sufficient; Kubernetes storage size did not affect the Docker runner.'},
+    {id:'stale',name:'Stale snapshot',description:'Freeze a ready plan, then revoke repository access. The saved snapshot must remain unchanged while the current readiness and freshness checks reject its use.',fixture:{},steps:[['Freeze ready plan',{type:'freeze'}],['Revoke repository access',{type:'set',key:'repoAccess',value:false}],['Check old plan',{type:'verify'}]],result:'The frozen snapshot retains its original revision. Readiness changes invalidate its use; a plan cannot reserve external access.'}
+  ];
+  function initial(id='ready') {const scenario=scenarios.find(x=>x.id===id);return {input:{...defaults,...scenario.fixture},revision:1,frozen:null,message:'Choose a guided case or change any fixture to explore.',guide:id,step:0,dirty:false};}
+  function evaluate(s) {
+    const i=s.input,p=processes[i.process],profile=i.model==='backup'?'backup-coder':'team-coder';
+    const source=i.model==='inherit'?'Process runtime default':'Explicit launch choice';
+    const hasCredential=i.model==='backup'?i.backupCredential:i.credential;
+    const capacity=i.volume.trim() || p.storage;
+    const capacityValid=/^(?:[1-9]\d*(?:\.\d+)?|0\.\d*[1-9]\d*)(?:Ki|Mi|Gi|Ti)$/.test(capacity);
+    const rows=[];
+    const add=(key,title,status,detail,repair)=>rows.push({key,title,status,detail,repair});
+    add('process','Process definition',i.loaded?'pass':'block',i.loaded?`${p.name} is loaded. Requirements come from its code definition.`:'Selected process definition is not loaded. Load its owning extension before launch.',i.loaded?null:{key:'loaded',value:true,label:'Simulate loading extension'});
+    add('model','Model and provider',hasCredential?'pass':'block',`${profile} · ${source}. ${hasCredential?'Provider credential is available.':'Selected provider credential is missing. Other profiles are never selected automatically.'}`,hasCredential?null:{key:i.model==='backup'?'backupCredential':'credential',value:true,label:'Simulate credential repair'});
+    add('runner','Runner capability',!p.docker||i.privateDocker?'pass':'block',!p.docker?`${i.runner} can run this process; Docker tooling is not required.`:i.privateDocker?(i.runner==='local'?'Host Docker access acknowledged and daemon reachable.':`${i.runner} private Docker capability is configured.`):(i.runner==='kubernetes'?'Configure the trusted RuntimeClass, host-user policy and Docker StorageClass.':i.runner==='docker'?'Docker tooling requires private-daemon isolation on this runner.':'Host Docker use must be acknowledged and the daemon reachable.'),!p.docker||i.privateDocker?null:{key:'privateDocker',value:true,label:'Simulate runner repair'});
+    add('repositories','Repository access',i.repoAccess?'pass':'block',i.repoAccess?`${p.repositories.join(' + ')} authorized. Full clones are prepared during bootstrap.`:`Access to ${p.repositories.join(' + ')} is unavailable. Repair scoped repository authorization.`,i.repoAccess?null:{key:'repoAccess',value:true,label:'Simulate access repair'});
+    if(i.runner==='kubernetes') add('volume','Process volume',!capacityValid||!i.storageReady?'block':'pass',!capacityValid?'Enter a positive binary capacity such as 8Gi, or clear the field to inherit the code resolver.':!i.storageReady?`${capacity} requested; the selected StorageClass cannot provision a volume.`:`${capacity} requested from ${i.volume.trim()?'explicit process setting':'code resolver'} for all repositories, tree and tooling. ${p.docker?'Docker-specific':'Ordinary'} StorageClass selected.`,!capacityValid?{key:'volume',value:'',label:'Use code resolver'}:!i.storageReady?{key:'storageReady',value:true,label:'Simulate storage repair'}:null);
+    else add('volume','Process storage',i.runner==='local'||i.storageReady?'pass':'block',i.runner==='local'?'Server-managed directory; Kubernetes sizing is not used.':i.storageReady?'Persistent ProcessVolume is available. Kubernetes sizing is not used.':'The runner cannot provision its persistent ProcessVolume.',i.runner!=='local'&&!i.storageReady?{key:'storageReady',value:true,label:'Simulate storage repair'}:null);
+    if(i.runner==='local') add('local','Deployment boundary','warn','Local workers are for development and testing. Enabled Docker tooling uses host authority.');
+    add('observation','What remains to be checked','warn','Fixture observations are advisory. Live repository checkout, volume provisioning and worker acceptance must still succeed.');
+    return {rows,blockers:rows.filter(x=>x.status==='block').length,warnings:rows.filter(x=>x.status==='warn').length,passed:rows.filter(x=>x.status==='pass').length,process:p.name,processId:p.id,profile,source,runner:i.runner,capacity:i.runner==='kubernetes'?capacity:'Runner-managed',repositories:[...p.repositories]};
+  }
+  function act(s,a) {
+    if(a.type==='scenario') return initial(a.id);
+    if(a.type==='reset') return initial();
+    if(a.type==='set') {
+      if(s.input[a.key]===a.value)return s;
+      return {...s,input:{...s.input,[a.key]:a.value},revision:s.revision+1,message:s.frozen?'Environment changed. The frozen plan is now stale; review and freeze a new plan.':'Fixture updated. Readiness was recalculated.'};
+    }
+    const result=evaluate(s);
+    if(a.type==='freeze') {
+      if(result.blockers) return {...s,message:`Plan not frozen: resolve ${result.blockers} blocker${result.blockers===1?'':'s'} first.`};
+      return {...s,frozen:{...result,revision:s.revision,selection:s.input.model},message:`Plan frozen at revision ${s.revision}. No process has been launched.`};
+    }
+    if(a.type==='verify')return {...s,message:!s.frozen?'Freeze a ready plan before checking its freshness.':s.frozen.revision!==s.revision?`Snapshot rejected: revision ${s.frozen.revision} is stale; current revision is ${s.revision}. Review current checks and freeze again.`:'Snapshot is current and has no blockers. A real launch must still revalidate external conditions.'};
+    return s;
+  }
+  function reduce(s,a) {
+    if(a.type==='step') {
+      if(s.dirty)return s;
+      const scenario=scenarios.find(x=>x.id===s.guide),step=scenario.steps[s.step];
+      return step?{...act(s,step[1]),step:s.step+1}:s;
+    }
+    const next=act(s,a);
+    return a.type==='scenario'||a.type==='reset'?next:{...next,dirty:true};
+  }
+  return {initial,evaluate,reduce,scenarios};
+})();
+// Imperative shell: render model state and dispatch user intentions.
+let state=Preflight.initial();
+const $=id=>document.getElementById(id);
+const escapeHtml=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const toggles=[['loaded','Process extension loaded','The selected code definition can be resolved.'],['credential','Team credential available','Used by the team-coder profile.'],['backupCredential','Backup credential available','Used only when explicitly selected.'],['repoAccess','Repository access authorized','The declared sample repositories are accessible.'],['privateDocker','Docker tooling capability available','Runner-specific configuration and availability.'],['storageReady','Process storage available','The selected isolated runner can provision storage.']];
+$('toggles').innerHTML=toggles.map(([key,label,hint])=>`<label class="toggle"><input type="checkbox" id="${key}"><span>${label}<small>${hint}</small></span></label>`).join('');
+function dispatch(action){state=Preflight.reduce(state,action);render();}
+function render(){
+  const r=Preflight.evaluate(state),f=state.frozen,stale=f&&f.revision!==state.revision;
+  $('readiness').textContent=r.blockers?`${r.blockers} blocker${r.blockers===1?'':'s'} before launch`:'Ready to freeze a launch plan';
+  $('counts').textContent=`${r.passed} checks passed · ${r.warnings} advisory warning${r.warnings===1?'':'s'} · no resources created`;
+  $('revision').textContent=`Environment revision ${state.revision}`;
+  for(const key of ['process','model','runner','volume'])$(key).value=state.input[key];
+  for(const [key] of toggles)$(key).checked=state.input[key];
+  $('volume').disabled=state.input.runner!=='kubernetes';
+  $('model-hint').textContent=`${r.profile} resolves from ${r.source.toLowerCase()}.`;
+  $('checks').innerHTML=r.rows.map(row=>`<div class="check"><span class="tag ${row.status}">${{pass:'Passed',block:'Blocker',warn:'Warning'}[row.status]}</span><div><h3>${row.title}</h3><p>${escapeHtml(row.detail)}</p>${row.repair?`<button data-repair="${row.key}">${row.repair.label}</button>`:''}</div></div>`).join('');
+  document.querySelectorAll('[data-repair]').forEach(button=>button.addEventListener('click',()=>{const repair=r.rows.find(row=>row.key===button.dataset.repair).repair;dispatch({type:'set',key:repair.key,value:repair.value});}));
+  $('plan-state').textContent=f?(stale?'Frozen · stale':'Frozen · current'):'Draft';$('plan-state').className=`tag ${f?(stale?'warn':'pass'):''}`;
+  $('plan-description').textContent=f?`Captured at environment revision ${f.revision}. ${stale?'This saved plan cannot be used with the current environment.':'Review again when any launch choice or capability changes.'}`:'Freeze captures the resolved choices for review. Blockers prevent freezing; advisory warnings remain visible.';
+  const p=f||r;
+  $('plan-fields').innerHTML=`<dl><dt>Process</dt><dd>${escapeHtml(p.process)}</dd><dt>Model</dt><dd>${p.profile} · ${p.source.toLowerCase()}</dd><dt>Runner / storage</dt><dd>${p.runner} / ${escapeHtml(p.capacity)}</dd><dt>Repositories</dt><dd>${p.repositories.join(', ')}</dd></dl>`;
+  $('freeze').textContent=f?'Freeze new plan':'Freeze launch plan';$('notice').textContent=state.message;
+  const scenario=Preflight.scenarios.find(x=>x.id===state.guide);
+  $('tabs').innerHTML=Preflight.scenarios.map(x=>`<button role="tab" id="tab-${x.id}" aria-selected="${x.id===state.guide}" aria-controls="walkthrough" tabindex="${x.id===state.guide?'0':'-1'}" data-scenario="${x.id}">${x.name}</button>`).join('');
+  document.querySelectorAll('[data-scenario]').forEach(button=>{button.addEventListener('click',()=>{dispatch({type:'scenario',id:button.dataset.scenario});$('tab-'+state.guide).focus();});button.addEventListener('keydown',event=>{if(!['ArrowRight','ArrowLeft','Home','End'].includes(event.key))return;event.preventDefault();const ids=Preflight.scenarios.map(x=>x.id),index=ids.indexOf(state.guide),next=event.key==='Home'?0:event.key==='End'?ids.length-1:(index+(event.key==='ArrowRight'?1:-1)+ids.length)%ids.length;dispatch({type:'scenario',id:ids[next]});$('tab-'+state.guide).focus();});});
+  $('walkthrough').setAttribute('aria-labelledby','tab-'+state.guide);
+  $('guide-description').textContent=scenario.description;
+  $('guide-progress').textContent=state.dirty?'Free play':`${state.step} of ${scenario.steps.length} steps`;
+  $('steps').innerHTML=scenario.steps.map(([label],index)=>`<button data-step="${index}" ${index!==state.step||state.dirty?'disabled':''}>${index<state.step?'✓':index+1}. ${label}</button>`).join('');
+  document.querySelectorAll('[data-step]').forEach(button=>button.addEventListener('click',()=>{dispatch({type:'step'});const next=document.querySelector('[data-step]:not(:disabled)');if(next)next.focus();}));
+  $('guide-result').textContent=state.dirty?'Free play changed this case. Select any case tab to restart its walkthrough.':state.step===scenario.steps.length?scenario.result:'Each step performs a real action in this simulation.';
+}
+for(const key of ['process','model','runner','volume'])$(key).addEventListener('change',event=>dispatch({type:'set',key,value:event.target.value}));
+for(const [key] of toggles)$(key).addEventListener('change',event=>dispatch({type:'set',key,value:event.target.checked}));
+$('freeze').addEventListener('click',()=>dispatch({type:'freeze'}));$('verify').addEventListener('click',()=>dispatch({type:'verify'}));$('reset').addEventListener('click',()=>dispatch({type:'reset'}));
+render();
+</script>
+</body>
+</html>
