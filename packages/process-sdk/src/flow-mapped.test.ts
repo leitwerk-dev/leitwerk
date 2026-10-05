@@ -61,6 +61,14 @@ function mappedBuilder() {
 		.freshPrimary();
 }
 
+function itemOutcomeBuilder() {
+	return mappedBuilder()
+		.buildPrompt(() => "Assess")
+		.outcomeTool("keep", (outcome) =>
+			outcome.description("Keep").yield(({ ctx }) => ({ id: ctx.item.id, verdict: "keep" })),
+		);
+}
+
 function mappedTurn() {
 	return mappedBuilder()
 		.buildPrompt((ctx) => `Review ${ctx.item.name} (${ctx.itemIndex + 1}/${ctx.itemCount})`)
@@ -88,6 +96,17 @@ function serverContext(state: State): MappedTurnServerContext<Record<string, nev
 	return { process: { id: "pi_1" } as never, projects: [], params: {}, state };
 }
 
+function iteration(key: string, itemIndex = 0, itemCount = 1) {
+	return {
+		runId: "run_1",
+		itemKey: key,
+		itemLabel: `Item ${key.toUpperCase()}`,
+		itemIndex,
+		itemCount,
+		item: { id: key, name: key.toUpperCase() },
+	};
+}
+
 describe("mapped LLM turns", () => {
 	it("builds one LLM definition with item outcomes and a collection route", () => {
 		const turn = mappedTurn();
@@ -108,19 +127,9 @@ describe("mapped LLM turns", () => {
 
 	it("gives prompts the active item from the worker context", async () => {
 		const prompt = await mappedTurn().definition.prompt({
-			params: {},
-			state: { kept: [] },
-			process: {},
-			projects: [],
-			iteration: {
-				runId: "run_1",
-				itemKey: "b",
-				itemLabel: "Item B",
-				itemIndex: 1,
-				itemCount: 3,
-				item: { id: "b", name: "B" },
-			},
-		} as never);
+			...serverContext({ kept: [] }),
+			iteration: iteration("b", 1, 3),
+		});
 
 		expect(prompt).toBe("Review B (2/3)");
 	});
@@ -215,14 +224,7 @@ describe("mapped LLM turns", () => {
 			callIntegrationTool,
 			reportProgress,
 			turnResultMarkdownByProduct: { plan: "the plan", review: "the review" },
-			iteration: {
-				runId: "run_1",
-				itemKey: "b",
-				itemLabel: "Item B",
-				itemIndex: 1,
-				itemCount: 3,
-				item: { id: "b", name: "B" },
-			},
+			iteration: iteration("b", 1, 3),
 		};
 		const prepared = await definition.prepare?.(ctx);
 		expect(callIntegrationTool).toHaveBeenCalledWith("inspect", { id: "b" });
@@ -263,10 +265,6 @@ describe("mapped LLM turns", () => {
 					.description("Assessed")
 					.resultSummary()
 					.requiredString("reason")
-					.requiredNumber("score")
-					.requiredBoolean("keep")
-					.requiredStringArray("evidence")
-					.object("details")
 					.requiredArray("findings", { items: { type: "object" } })
 					.yield(({ ctx }) => ({ id: ctx.item.id, verdict: "keep" }));
 			})
@@ -277,10 +275,6 @@ describe("mapped LLM turns", () => {
 			resultSummaryParameter: "resultSummary",
 			parameters: {
 				reason: { type: "string", required: true, requiredErrorCode: "reason_required" },
-				score: { type: "number", required: true },
-				keep: { type: "boolean", required: true },
-				evidence: { type: "array", required: true, items: { type: "string" } },
-				details: { type: "object" },
 				findings: { type: "array", required: true, items: { type: "object" } },
 			},
 		});
@@ -320,43 +314,17 @@ describe("mapped LLM turns", () => {
 	});
 
 	it("requires a yielded result, collection, and collection route", () => {
-		const base = () =>
-			flow
-				.mappedLlm<Record<string, never>, State, Item, Result>("review_item", {
-					items: () => [],
-					itemCodec,
-					resultCodec,
-					key: ({ item }) => item.id,
-				})
-				.description("Review one item");
-		expect(() => base().outcomeTool("keep", (outcome) => outcome.description("No yield"))).toThrow(
-			/must declare \.yield/,
+		expect(() =>
+			mappedBuilder().outcomeTool("keep", (outcome) => outcome.description("No yield")),
+		).toThrow(/must declare \.yield/);
+		expect(() => itemOutcomeBuilder().definition).toThrow(/must declare \.collect/);
+		expect(() => itemOutcomeBuilder().collect(({ state }) => state).definition).toThrow(
+			/must declare a collection route/,
 		);
-		expect(
-			() =>
-				base()
-					.buildPrompt(() => "Review")
-					.outcomeTool("keep", (outcome) =>
-						outcome.description("Keep").yield(({ ctx }) => ({ id: ctx.item.id, verdict: "keep" })),
-					).definition,
-		).toThrow(/must declare \.collect/);
-		expect(
-			() =>
-				base()
-					.buildPrompt(() => "Review")
-					.outcomeTool("keep", (outcome) =>
-						outcome.description("Keep").yield(({ ctx }) => ({ id: ctx.item.id, verdict: "keep" })),
-					)
-					.collect(({ state }) => state).definition,
-		).toThrow(/must declare a collection route/);
 	});
 
 	it("rejects ambiguous mapped completion and reserved item markdown", () => {
-		const builder = mappedBuilder()
-			.buildPrompt(() => "Assess")
-			.outcomeTool("keep", (outcome) =>
-				outcome.description("Keep").yield(({ ctx }) => ({ id: ctx.item.id, verdict: "keep" })),
-			);
+		const builder = itemOutcomeBuilder();
 		expect(() => builder.outcomeTool("keep", (outcome) => outcome)).toThrow(/duplicate outcome/);
 		expect(() => builder.outcomeTool(" ", (outcome) => outcome)).toThrow(/empty outcome/);
 		const collect = builder.collect(({ state }) => state);
@@ -441,26 +409,18 @@ describe("mapped LLM turns", () => {
 		const spec = mappedTurn().definition.forEach;
 		if (!spec) throw new Error("missing mapped spec");
 		const ctx = serverContext({ kept: [] });
-		const iteration = (key: string, itemIndex: number) => ({
-			runId: "run_1",
-			itemKey: key,
-			itemLabel: key,
-			itemIndex,
-			itemCount: 2,
-			item: { id: key, name: key },
-		});
 		const keep = await yieldMappedItemResult({
 			turnId: "review_item",
 			spec,
 			ctx,
-			iteration: iteration("a", 0),
+			iteration: iteration("a", 0, 2),
 			event: { turnRecordId: "trn_1", turnId: "review_item", outcome: "keep", params: {} },
 		});
 		const drop = await yieldMappedItemResult({
 			turnId: "review_item",
 			spec,
 			ctx,
-			iteration: iteration("b", 1),
+			iteration: iteration("b", 1, 2),
 			event: { turnRecordId: "trn_2", turnId: "review_item", outcome: "drop", params: {} },
 		});
 
@@ -491,14 +451,7 @@ describe("mapped LLM turns", () => {
 				turnId: "review_item",
 				spec: invalid,
 				ctx: serverContext({ kept: [] }),
-				iteration: {
-					runId: "run_1",
-					itemKey: "a",
-					itemLabel: "a",
-					itemIndex: 0,
-					itemCount: 1,
-					item: { id: "a", name: "A" },
-				},
+				iteration: iteration("a"),
 				event: { turnRecordId: "trn_1", turnId: "review_item", outcome: "keep", params: {} },
 			}),
 		).rejects.toBeInstanceOf(SafeOutcomePlanningError);
