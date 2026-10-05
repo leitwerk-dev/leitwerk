@@ -1,10 +1,9 @@
 import type { ProcessEvent } from "@leitwerk-dev/domain";
 import {
-	applyPiEventToLiveTurnProjection,
-	createMutableLiveTurnProjection,
-	snapshotTurnTrace,
+	createLiveTurnProjection,
+	restoreTurnTraceProjection,
 	type TurnReasoningDetailResponseBody,
-	type TurnTraceSnapshot,
+	type TurnTraceProjection,
 	type WsFrame,
 } from "@leitwerk-dev/protocol";
 
@@ -25,12 +24,11 @@ const PI_EVENT_TYPES: Record<string, string> = {
 /** Owns expanded history only. HTTP recovery replaces its base, then replays later frames once. */
 export class ReasoningHistory {
 	private inspectionEvents = new Map<number, ProcessEvent>();
-	private projection = createMutableLiveTurnProjection();
+	private projection: TurnTraceProjection = createLiveTurnProjection();
 	private boundary = 0;
 	private buffered = new Map<number, WsFrame>();
 	private pending = false;
 	private committed = false;
-	private piInput: TurnTraceSnapshot["piInput"] = null;
 	constructor(
 		readonly instanceId: string,
 		readonly turnRecordId: string,
@@ -52,18 +50,7 @@ export class ReasoningHistory {
 					event.eventSequence === undefined ? [] : [[event.eventSequence, event]],
 				),
 			);
-		this.projection = createMutableLiveTurnProjection();
-		this.projection.assistant = { ...response.reasoning.assistant };
-		this.projection.traceItems = response.reasoning.traceItems.map((item) => ({ ...item }));
-		this.projection.toolCalls = response.reasoning.toolCalls.map((tool) => ({
-			...tool,
-			result: tool.resultText,
-		}));
-		this.projection.toolCallsById = new Map(
-			this.projection.toolCalls.map((tool) => [tool.toolCallId, tool]),
-		);
-		this.projection.usage = response.reasoning.usage;
-		this.piInput = response.reasoning.piInput;
+		this.projection = restoreTurnTraceProjection(response.reasoning);
 		this.boundary = response.throughEventSequence;
 		this.committed = response.state === "committed";
 		this.pending = false;
@@ -97,7 +84,7 @@ export class ReasoningHistory {
 			data: frame.payload as Record<string, unknown>,
 			createdAt: frame.sentAt,
 		});
-		applyPiEventToLiveTurnProjection(this.projection, {
+		this.projection.apply({
 			eventType: PI_EVENT_TYPES[frame.type],
 			data: frame.payload as Record<string, unknown>,
 			fallbackTimestamp: frame.sentAt,
@@ -107,7 +94,7 @@ export class ReasoningHistory {
 	}
 	snapshot() {
 		return {
-			...snapshotTurnTrace(this.projection, this.piInput),
+			...this.projection.snapshot(),
 			events: [...this.inspectionEvents.values()].sort(
 				(a, b) => (a.eventSequence ?? 0) - (b.eventSequence ?? 0),
 			),

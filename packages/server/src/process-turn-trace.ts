@@ -7,9 +7,9 @@ import {
 } from "@leitwerk-dev/domain";
 import {
 	asWsEventPayloadRecord,
-	buildLiveTurnProjectionFromEvents,
 	buildPrimaryPathOperationalTraceItem,
 	compareTimestampStrings,
+	createLiveTurnProjection,
 	createTurnContinuationIndex,
 	extractPiSessionMessageText,
 	isPiSessionMessageEntryWithRecord,
@@ -24,7 +24,6 @@ import {
 	type PrimaryPathStreamingAssistantSnapshot,
 	type PrimaryPathTraceItemSnapshot,
 	reasoningPreviewTail,
-	snapshotTurnTrace,
 	type TurnPiInputPart,
 	type TurnPiInputSnapshot,
 	type TurnTracePreview,
@@ -423,12 +422,9 @@ export function buildCommittedTurnTrace(input: {
 	events: readonly ProcessEvent[];
 }): TurnTraceSnapshot {
 	const sessionTrace = buildTurnTraceFromSession(input);
-	const trace = snapshotTurnTrace(
-		buildLiveTurnProjectionFromEvents(
-			input.events.filter((event) => eventTurnRecordId(event) === input.turnRecord.id),
-		),
-		sessionTrace?.piInput ?? null,
-	);
+	const trace = createLiveTurnProjection(
+		input.events.filter((event) => eventTurnRecordId(event) === input.turnRecord.id),
+	).snapshot(sessionTrace?.piInput ?? null);
 	if (sessionTrace && !hasAdditionalRecordedActivity(trace, sessionTrace)) return sessionTrace;
 	trace.usage ??= sessionTrace?.usage ?? null;
 	for (const item of sessionTrace?.traceItems ?? []) {
