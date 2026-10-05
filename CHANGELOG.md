@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.4.0 (unreleased)
+
+### Breaking changes
+
+External transitions to LLM or automatic turns now require `.waitFor(predicate)`
+on the target turn. Move read-only readiness assessment into that callback; keep
+external writes in an executing turn or server delivery service. Readiness checks
+create no worker starts, leases, or turn attempts. Literal LLM prompts are supported.
+Existing process history remains intact. See the process SDK readiness contract for
+polling, errors, retries and migration guidance.
+
+
 ## [0.3.1](https://github.com/leitwerk-dev/leitwerk/compare/v0.3.0...v0.3.1) (2026-09-24)
 
 

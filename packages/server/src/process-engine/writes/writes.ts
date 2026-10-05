@@ -194,6 +194,8 @@ const METADATA_KEY_GROUPS = {
 
 /** @internal */
 export interface Writes {
+	/** A fenced, successful server-side wait check. Never supplied by extensions. @internal */
+	waitForAdmission?: string;
 	/** @internal */
 	processPatch: UpdateProcessInstanceInput;
 	/** @internal */
@@ -246,6 +248,7 @@ export type WriteBuildResult = Writes | WriteBuildFailure;
 
 export function createWrites(init: Partial<Writes> = {}): Writes {
 	return {
+		...(init.waitForAdmission ? { waitForAdmission: init.waitForAdmission } : {}),
 		processPatch: init.processPatch ?? {},
 		changedFields: [...(init.changedFields ?? [])],
 		...(init.projectWrite ? { projectWrite: init.projectWrite } : {}),
@@ -269,6 +272,7 @@ export function mergeWrites(...writesList: Array<Writes | undefined>): Writes {
 	for (const writes of writesList) {
 		if (!writes) continue;
 		Object.assign(merged.processPatch, writes.processPatch);
+		if (writes.waitForAdmission) merged.waitForAdmission = writes.waitForAdmission;
 		for (const field of writes.changedFields) {
 			if (!merged.changedFields.includes(field)) {
 				merged.changedFields.push(field);

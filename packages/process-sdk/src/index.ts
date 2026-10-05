@@ -335,6 +335,12 @@ export {
 	resolveLlmTurnRestorePrimaryLeafAfterTurn,
 	validateTurnDefinition,
 } from "./turn-semantics.js";
+export {
+	RetryableWaitError,
+	type TurnWaitCompletion,
+	type TurnWaitContext,
+	type TurnWaitPredicate,
+} from "./turn-wait.js";
 export type {
 	EventBus,
 	OutcomeToolArrayItemSpec,

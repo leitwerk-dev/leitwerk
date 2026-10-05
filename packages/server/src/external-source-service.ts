@@ -742,6 +742,16 @@ export function createExternalSourceService(
 				);
 				return accept({ writes, data: { ok: false, code: failure.code } });
 			};
+			const targetTurn = arming.transition.to
+				? ctx.deps.processGraphs.get(ctx.process.processId)?.turns.get(arming.transition.to)
+						?.definition
+				: undefined;
+			const wakesWorker = targetTurn?.kind === "llm" || targetTurn?.kind === "automatic";
+			if (wakesWorker && !targetTurn.waitFor)
+				return reject(
+					"external_readiness_required",
+					"External worker targets must declare waitFor",
+				);
 
 			const effectWrites = await buildExternalSourceEffectWrites({
 				arming,
@@ -833,6 +843,12 @@ export function createExternalSourceService(
 						patchedStateJson,
 					);
 				}
+			}
+			// A readiness notification is an edge, not a business turn. Published human
+			// input still keeps its product record for prompt/chronicle references.
+			if (wakesWorker && !publishedInput) {
+				externalWrites.turnRecordWrites = [];
+				externalWrites.turnAnnotationWrites = [];
 			}
 
 			for (const pendingFireId of input.pendingFireIds ?? []) {

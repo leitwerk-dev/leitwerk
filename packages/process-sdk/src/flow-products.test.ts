@@ -278,6 +278,7 @@ describe("flow product publication and consumption", () => {
 			);
 		const draft = flow
 			.llm("draft")
+			.waitFor(({ state }) => !!state)
 			.description("Draft")
 			.optionalConsume("message")
 			.buildPrompt((ctx) => ctx.input.message ?? "initial")

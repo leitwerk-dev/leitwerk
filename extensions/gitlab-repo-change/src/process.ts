@@ -53,7 +53,8 @@ export function createGitLabRepoChangeProcess(
 			id: "source_cancelled",
 			kind: "cancelled",
 			label: "GitLab source issue cancelled",
-			enabled: (p) => p.origin === "issue",
+			enabled: (params, state) =>
+				params.origin === "issue" && !!remote(state).prNumber && !!remote(state).headSha,
 			source: gitlabExternal.issueCancelled(({ params, state }) => {
 				if (params.origin !== "issue") throw new Error("Missing GitLab source issue");
 				return {

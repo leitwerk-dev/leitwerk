@@ -363,6 +363,13 @@ export interface ProcessSelectedTurnSummary {
 	commentary: string | null;
 	/** @internal */
 	externalTriggers: ProcessExternalSourceSummary[];
+	/** Present while a server-side condition is holding this turn. @internal */
+	readiness?: {
+		/** @internal */
+		message: string | null;
+		/** @internal */
+		nextCheckAt: string | null;
+	};
 }
 
 /** @internal */
@@ -1477,7 +1484,10 @@ export interface ProcessStartupSummary {
 }
 
 /** @internal */
-export type CurrentProcessErrorSummary = CurrentErrorSummary;
+export interface CurrentProcessErrorSummary extends CurrentErrorSummary {
+	/** Retry the waiting condition before starting an execution. @internal */
+	canRetry?: boolean;
+}
 
 /** @internal */
 export interface ProcessUsageEstimateSnapshot {

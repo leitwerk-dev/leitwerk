@@ -11,6 +11,11 @@ a fixed provider catalog.
 | Configuration storage, launch admission, and durable deduplication | Server. |
 
 See [external actions](process-sdk.md#external-actions) for in-flight routing.
+Worker targets of external edges must declare `.waitFor(...)`; the event wakes
+readiness and never starts a worker directly. The server owns readiness polling,
+backoff and restart recovery. Waiting checks create no turn records or leases.
+Process predicates perform read-only external observations; durable comment delivery
+and other remote writes remain with their owning adapter.
 
 ## Define a source
 

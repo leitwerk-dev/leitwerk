@@ -841,6 +841,7 @@ const poemCreatorProcessDefinition = flow
 		flow
 			.llm<PromptProcessParams, PoemCreatorState>(poemTurnIds.draftPoem)
 			.description("Draft Poem")
+			.waitFor(({ params, state }) => !!params.prompt.trim() || !!state.productRefs.message)
 			.fullPrimary()
 			.continueFromPrimaryLeaf()
 			.optionalConsume("message")

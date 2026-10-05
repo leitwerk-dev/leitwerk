@@ -3,6 +3,7 @@
 	"bootstrap-sha": "0d650094f359c0c8686b5ec0928a607d44fcc866",
 	"release-type": "node",
 	"initial-version": "0.1.0",
+	"release-as": "0.4.0",
 	"include-v-in-tag": false,
 	"include-component-in-tag": true,
 	"tag-separator": "",

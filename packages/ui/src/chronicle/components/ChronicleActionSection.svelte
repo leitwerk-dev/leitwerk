@@ -10,7 +10,7 @@ import type {
 import { tick } from "svelte";
 import FormFieldRenderer from "../../components/FormFieldRenderer.svelte";
 import ScheduleDateTimePicker from "../../components/ScheduleDateTimePicker.svelte";
-import { formatRelativeTime } from "../../lib/format.js";
+import { formatLocalDateTime, formatRelativeTime } from "../../lib/format.js";
 import type { ActionSectionController } from "../lib/action-bindings.js";
 import { buildActionModelDisplay } from "../lib/action-model-display.js";
 import { describeActionPreview as describeSharedActionPreview } from "../lib/action-preview.js";
@@ -58,6 +58,7 @@ const sectionTitle = $derived.by(() => {
 	if (actions.length > 0) {
 		return "Decide what happens next";
 	}
+	if (selectedTurn?.readiness) return "Waiting to continue";
 	return "Waiting for an update";
 });
 const sectionDescription = $derived.by(() => {
@@ -335,7 +336,7 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 		<div class="action-header-copy">
 			<div class="action-status-row" aria-label={actions.length > 0 ? "Action required" : "External trigger"}>
 				<span class="action-status-dot" aria-hidden="true"></span>
-				<span>{actions.length > 0 ? "Action required" : "Waiting for an event"}</span>
+				<span>{actions.length > 0 ? "Action required" : selectedTurn?.readiness ? "Waiting for a condition" : "Waiting for an event"}</span>
 			</div>
 			<h3>{sectionTitle}</h3>
 			<p class="action-description">{sectionDescription}</p>
@@ -354,6 +355,13 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 			</div>
 		{/if}
 	</div>
+	{/if}
+
+	{#if selectedTurn?.readiness}
+		<div data-section="turn-readiness" role="status">
+			<p class="action-description">{selectedTurn.readiness.message ?? "This step will continue when its condition is met."}</p>
+			<p class="action-description">{selectedTurn.readiness.nextCheckAt ? `Next check: ${formatLocalDateTime(selectedTurn.readiness.nextCheckAt)}.` : "Checking readiness…"}</p>
+		</div>
 	{/if}
 
 	{#if actions.length > 0}

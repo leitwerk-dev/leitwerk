@@ -59,6 +59,7 @@ import { getScheduledActionDetailForProcess } from "./future-execution-presenter
 import { physicalWorkerStarts } from "./physical-worker-starts.js";
 import type { ReadonlyPiSessionTree } from "./pi-session-tree.js";
 import { listVisibleActionsForProcess } from "./process-action-presenter.js";
+import { pendingTurnWait } from "./process-engine/turn-wait-state.js";
 import { resolveCurrentExecutionTurnRecordId } from "./process-execution.js";
 import { buildProcessFlowViewForProcess, getProcessGraph } from "./process-graph.js";
 import { presentProcessInstanceTree } from "./process-instance-tree-presenter.js";
@@ -949,6 +950,16 @@ export function buildCurrentProcessError(input: {
 	if (input.process.lifecycleStatus !== "error" || input.currentTurnRecovery) {
 		return null;
 	}
+	const wait = pendingTurnWait(input.process);
+	if (wait?.status === "error")
+		return {
+			title: input.selectedTurnDescription ?? "Waiting condition",
+			summary: wait.message ?? "The waiting condition failed",
+			canRetry: true,
+			guidance:
+				"Fix the condition or its configuration, then retry. Readiness is checked before starting a worker.",
+			technicalDetail: null,
+		};
 	const latestErrorEvent = input.events.findLast(
 		(event) => event.eventType === "lifecycle_parked" || event.eventType === "worker_failed",
 	);
