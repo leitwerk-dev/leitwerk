@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Settings provenance workbench · Leitwerk prototype</title>
+<style>
+:root{font-family:"Public Sans",ui-sans-serif,system-ui,sans-serif;color:#18212b;background:#f7f8fa;font-size:15px;line-height:1.5;--blue:#2f61b7;--line:#d9dee5;--muted:#4c5968;--soft:#f2f4f7;accent-color:var(--blue);caret-color:var(--blue);scrollbar-color:#aeb7c2 #f7f8fa}*{box-sizing:border-box}body{margin:0}::selection{background:#e6ecf6;color:#18212b}button,textarea,select{font:inherit;color:inherit}button{padding:9px 14px;border:1px solid #aeb7c2;border-radius:7px;background:white;cursor:pointer;min-height:42px}button:hover{background:#f2f4f7}button:disabled{cursor:default;color:#687483;background:#f2f4f7;border-color:var(--line)}button.primary{background:var(--blue);border-color:var(--blue);color:white}button.primary:hover{background:#254d91}button:focus-visible,textarea:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid var(--blue);outline-offset:3px}h1,h2,h3,p{margin:0}h1{font-size:29px;line-height:1.2;letter-spacing:-.025em}h2{font-size:19px;line-height:1.35}h3{font-size:15px}p{max-width:76ch}small,.muted{color:var(--muted)}small{font-size:13px}code{font-family:ui-monospace,SFMono-Regular,monospace;font-size:12px;overflow-wrap:anywhere}header{background:white;border-bottom:1px solid var(--line)}.shell{max-width:1280px;margin:auto;padding:26px 32px}header .shell{display:flex;align-items:flex-start;gap:24px;justify-content:space-between}.intro{margin-top:9px;color:var(--muted);max-width:79ch}.prototype{font-size:13px;color:var(--muted);margin-top:10px}.reset{white-space:nowrap}.context{display:flex;gap:30px;flex-wrap:wrap;padding-bottom:22px}.context>div{display:flex;gap:6px;align-items:baseline}.context strong{font-weight:600}.workspace{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px}.panel{background:white;border:1px solid var(--line);border-radius:10px;overflow:hidden}.panel-head{padding:20px 22px 16px;border-bottom:1px solid var(--line)}.panel-head p{margin-top:5px;font-size:14px;color:var(--muted)}.body{padding:20px 22px}.layer-nav{display:grid;grid-template-columns:repeat(3,1fr);gap:0;border-bottom:1px solid var(--line)}.layer-nav button{border:0;border-radius:0;text-align:left;padding:13px 16px;min-width:0;border-bottom:3px solid transparent}.layer-nav button[aria-pressed=true]{background:#eaf0fa;border-bottom-color:var(--blue)}.layer-nav strong,.layer-nav small{display:block}.layer-nav small{margin-top:4px;font-variant-numeric:tabular-nums}.editor-head{display:flex;gap:12px;align-items:baseline;justify-content:space-between;margin-bottom:16px}label{display:block;margin:14px 0 6px;font-weight:600;font-size:14px}textarea,select{width:100%;border:1px solid #aeb7c2;border-radius:6px;background:white;padding:10px 12px}textarea{resize:vertical;min-height:118px;line-height:1.55}textarea:disabled{background:var(--soft);color:var(--muted)}.hint{font-size:13px;color:var(--muted);margin-top:8px}.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:17px}.saved{border-top:1px solid var(--line);padding-top:15px;margin-top:19px}.saved p{white-space:pre-wrap;overflow-wrap:anywhere;margin-top:6px;font-size:14px}.tag{font-size:12px;display:inline-block;padding:2px 7px;border-radius:4px;background:#edf0f4;color:var(--muted);vertical-align:middle}.tag.blue{color:#264f96;background:#e6ecf6}.conflict{padding:14px;margin-top:16px;background:#fff7ec;border:1px solid #ddc49e;border-radius:6px;font-size:14px}.conflict p{margin-top:6px}.conflict button{margin-top:12px}.preview-header{display:flex;gap:10px;align-items:center;justify-content:space-between}.preview-header .tag{white-space:nowrap}.trace{padding:0 22px}.trace-row{padding:15px 0;border-bottom:1px solid var(--line)}.trace-row:last-child{border:0}.trace-top{display:flex;gap:12px;justify-content:space-between;align-items:baseline}.trace-top span{font-size:13px;color:var(--muted)}.trace-row p{margin-top:6px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px}.trace-row.suppressed p{color:#687483;text-decoration:line-through}.trace-row.suppressed strong{color:var(--muted)}.trace-bottom{padding:14px 22px;background:#f7f9fc;border-top:1px solid var(--line);font-size:14px;color:var(--muted)}.time-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:28px 0 12px}.time-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px}.time-panel{padding:20px 22px}.time-panel h3{font-size:17px;margin-bottom:4px}.time-panel .blocks{margin-top:17px}.block{margin-top:13px}.block:first-child{margin-top:0}.block p{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;margin-top:4px}.block small{font-weight:600}.empty{font-size:14px;color:var(--muted);padding:18px 0}.revisions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;font-variant-numeric:tabular-nums}.outcome{padding:13px 16px;margin:22px 0 0;background:#eaf0fa;color:#254c8c;border-radius:6px;min-height:48px;font-size:14px}.guides{margin-top:28px;padding-top:24px;border-top:1px solid var(--line)}.guide-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-top:13px}.guide-tabs button[aria-pressed=true]{background:#e6ecf6;color:#264f96;border-color:var(--blue)}.guide-desc{margin:15px 0;font-size:14px;color:var(--muted)}.steps{display:flex;gap:8px;flex-wrap:wrap}.steps button{text-align:left;font-size:13px}.steps button.done{color:#157a52;background:#eff7f2}.guide-footer{margin-top:12px;font-size:13px;color:var(--muted)}footer{margin-top:26px;color:var(--muted);font-size:13px}.draft-note{margin-top:10px;color:#264f96;font-size:13px}
+@media(max-width:800px){.shell{padding:24px 20px}.workspace,.time-grid{grid-template-columns:1fr;gap:16px}.context{gap:10px 20px}.time-heading{align-items:flex-start}.time-heading button{max-width:165px}header .shell{flex-direction:column;gap:16px}h1{font-size:26px}.layer-nav button{padding:12px 10px;font-size:14px}.layer-nav small{font-size:12px}.body,.panel-head,.time-panel{padding:18px}.trace{padding:0 18px}.trace-top{align-items:flex-start}.trace-top span{text-align:right}.steps{display:grid;grid-template-columns:1fr}.preview-header{align-items:flex-start}.context>div{flex-wrap:wrap}.time-heading h2{max-width:180px}.guide-tabs button{flex:1 1 100%;text-align:left}.editor-head{flex-wrap:wrap}.time-heading{margin-top:24px}}
+</style>
+</head>
+<body>
+<header><div class="shell"><div><h1>Settings provenance workbench</h1><p class="intro">Can we explain why an instruction applies, safely resolve competing edits, and make the boundary between future settings and prepared work unmistakable?</p><p class="prototype">Prototype • synthetic data • in-memory instruction layers • proposed developer workbench</p></div><button type="button" class="reset" id="reset-all">Reset workbench</button></div></header>
+<main class="shell">
+<div class="context"><div><span class="muted">Repository</span><strong>acme / checkout</strong></div><div><span class="muted">Setting</span><code>coding.repository_instructions</code></div><div><span class="muted">Schema</span><strong>1</strong></div></div>
+<div class="workspace">
+<section class="panel" aria-labelledby="layers-heading"><div class="panel-head"><h2 id="layers-heading">Edit an instruction layer</h2><p>Least to most specific: Code default → Instance → Repository.</p></div><div class="layer-nav" id="layer-nav" aria-label="Instruction layers"></div><div class="body" id="editor"></div></section>
+<section class="panel" aria-labelledby="preview-heading"><div class="panel-head"><div class="preview-header"><h2 id="preview-heading">Draft resolution</h2><span class="tag blue" id="draft-status"></span></div><p>Try changes before saving. Every surviving contribution keeps its source label.</p></div><div class="trace" id="trace"></div><div class="trace-bottom" id="trace-summary"></div></section>
+</div>
+<div class="outcome" id="outcome" role="status" aria-live="polite"></div>
+<div class="time-heading"><h2>What would the worker receive?</h2><button type="button" id="capture" class="primary">Freeze prepared settings</button></div>
+<div class="time-grid"><section class="panel time-panel" aria-labelledby="future-heading"><h3 id="future-heading">Future preparation</h3><small>Current saved values. Drafts are excluded.</small><div id="future"></div></section><section class="panel time-panel" aria-labelledby="captured-heading"><h3 id="captured-heading">Captured prepared settings</h3><small id="capture-meta">No start has been prepared in this simulation.</small><div id="captured"></div></section></div>
+<section class="guides" aria-labelledby="guide-heading"><h2 id="guide-heading">Try a guided case</h2><div class="guide-tabs" id="guide-tabs"></div><p class="guide-desc" id="guide-desc"></p><div class="steps" id="steps"></div><p class="guide-footer" id="guide-footer"></p></section>
+<footer>Each case starts fresh. Free-play controls work independently. Code-default editing simulates a code change; it is not an operator API. Capturing prepares inputs only and does not create a turn attempt.</footer>
+</main>
+<script>
+// Pure model. No DOM, storage, networking, clock, or random inputs.
+const LAYERS=['code','instance','repository'];
+const LABELS={code:'Code default',instance:'Instance',repository:'Repository'};
+const clone=value=>structuredClone(value);
+function fixture(){
+ const saved={code:{value:'Keep changes focused and explain tradeoffs.',mode:'replace',reset:false,revision:1},instance:{value:'Run the relevant validation before handing off.',mode:'append',reset:false,revision:2},repository:{value:'Preserve backwards compatibility in public APIs.',mode:'append',reset:false,revision:4}};
+ return {saved,drafts:Object.fromEntries(LAYERS.map(key=>[key,{...saved[key],expectedRevision:saved[key].revision,dirty:false,conflict:false}])),selected:'repository',captured:null,captureCount:0,notice:'Select a layer to explore its contribution, or start a guided case below.'};
+}
+function resolve(layers){
+ let blocks=[];const trace=[];
+ for(const key of LAYERS){
+  const row=layers[key],source={key,label:LABELS[key],revision:row.revision,schemaVersion:1,mode:row.mode};
+  if(row.reset){trace.push({...source,value:'',status:'Inherited · reset override'});continue;}
+  if(row.mode==='replace'){
+   for(const previous of trace)if(['Contributes','Empty append','Explicitly empty'].includes(previous.status))previous.status=`Cleared by ${LABELS[key]}`;
+   blocks=[];
+  }
+  blocks.push({...source,value:row.value});
+  trace.push({...source,value:row.value,status:row.value?'Contributes':row.mode==='replace'?'Explicitly empty':'Empty append'});
+ }
+ return {value:blocks.map(block=>block.value).filter(Boolean).join('\n\n'),blocks,trace};
+}
+function proposed(state){return Object.fromEntries(LAYERS.map(key=>[key,state.drafts[key].dirty?{...state.drafts[key],revision:state.saved[key].revision}:state.saved[key]]));}
+function transition(current,action){
+ if(action.type==='reset')return fixture();
+ const next=clone(current),key=action.key||next.selected,draft=next.drafts[key];
+ switch(action.type){
+  case 'select':next.selected=key;break;
+  case 'edit':Object.assign(draft,action.patch,{dirty:true});next.notice=`${LABELS[key]} draft updated. Future preparation still uses saved values.`;break;
+  case 'save':
+   if(key!=='code'&&draft.expectedRevision!==next.saved[key].revision){draft.conflict=true;next.notice=`409 conflict: ${LABELS[key]} changed from revision ${draft.expectedRevision} to ${next.saved[key].revision}. Your draft is preserved. Accept the current revision before saving again.`;break;}
+   if(draft.conflict){next.notice='Accept the current revision before resubmitting this draft.';break;}
+   next.saved[key]={value:draft.reset?null:draft.value,mode:draft.mode,reset:draft.reset,revision:next.saved[key].revision+1};
+   next.drafts[key]={...next.saved[key],value:next.saved[key].value??'',expectedRevision:next.saved[key].revision,dirty:false,conflict:false};
+   next.notice=draft.reset?`${LABELS[key]} reset to inheritance. Revision ${next.saved[key].revision} is retained; captured settings are unchanged.`:`${LABELS[key]} saved at ${key==='code'?'fixture version':'revision'} ${next.saved[key].revision}. Future preparation updated; captured settings are unchanged.`;break;
+  case 'remote':
+   if(key==='code'){next.notice='Remote edits apply to Instance or Repository overrides.';break;}
+   next.saved[key]={value:'Another operator: include migration checks in the handoff.',mode:'append',reset:false,revision:next.saved[key].revision+1};draft.dirty=true;
+   next.notice=`Simulated remote save: ${LABELS[key]} is now revision ${next.saved[key].revision}. The open draft still expects ${draft.expectedRevision}; try saving it.`;break;
+  case 'accept':draft.expectedRevision=next.saved[key].revision;draft.conflict=false;next.notice=`Accepted ${LABELS[key]} revision ${draft.expectedRevision}. Your draft is unchanged and has not been saved. Review it, then save explicitly.`;break;
+  case 'discard':next.drafts[key]={...next.saved[key],value:next.saved[key].value??'',expectedRevision:next.saved[key].revision,dirty:false,conflict:false};next.notice=`${LABELS[key]} draft now matches the current saved value.`;break;
+  case 'capture':next.captureCount++;next.captured={id:`prepared-${next.captureCount}`,version:1,purpose:'coding.implementation',repository:'acme / checkout',...resolve(next.saved),revisions:Object.fromEntries(LAYERS.map(layer=>[layer,next.saved[layer].revision]))};next.notice=`${next.captured.id} captured saved settings. Later edits, resets and recovery keep these inputs unchanged. No turn attempt was created.`;break;
+ }
+ return next;
+}
+const CASES=[
+ {name:'Append & prepare',description:'Add a repository instruction to the inherited layers. Prepare it, then change the code fixture to see future inputs diverge from captured inputs.',steps:[
+  ['Draft an append',[{type:'edit',key:'repository',patch:{mode:'append',reset:false,value:'Preserve public APIs. Include a concise rollout note.'}}]],
+  ['Save repository',[{type:'save',key:'repository'}]],['Freeze settings',[{type:'capture'}]],
+  ['Change code default',[{type:'select',key:'code'},{type:'edit',key:'code',patch:{value:'Explain tradeoffs and document observable behavior.'}},{type:'save',key:'code'}]]]},
+ {name:'Empty replace & reset',description:'An empty replacement clears all lower instruction blocks. A reset removes the override effect, restores inheritance and retains its revision.',steps:[
+  ['Draft empty replacement',[{type:'edit',key:'repository',patch:{mode:'replace',reset:false,value:''}}]],['Save empty value',[{type:'save',key:'repository'}]],['Freeze empty settings',[{type:'capture'}]],['Draft a reset',[{type:'edit',key:'repository',patch:{reset:true}}]],['Restore inheritance',[{type:'save',key:'repository'}]]]},
+ {name:'Competing edits',description:'Keep a local draft while another operator changes the same layer. The first save conflicts. Accept the new revision explicitly, then save your preserved draft.',steps:[
+  ['Freeze original settings',[{type:'capture'}]],['Write a local draft',[{type:'edit',key:'repository',patch:{mode:'append',reset:false,value:'My draft: include an API compatibility checklist.'}}]],['Simulate remote update',[{type:'remote',key:'repository'}]],['Attempt stale save',[{type:'save',key:'repository'}]],['Accept current revision',[{type:'accept',key:'repository'}]],['Save preserved draft',[{type:'save',key:'repository'}]]]}
+];
+// Thin DOM shell: behavior is dispatched through the pure transition.
+let state=fixture(),guide=null,step=0;
+const $=id=>document.getElementById(id);
+const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const rev=(key,value)=>`${key==='code'?'v':'r'}${value}`;
+function dispatch(action,fromGuide=false,keepEditor=false){state=transition(state,action);if(!fromGuide){guide=null;step=0;}render(keepEditor);}
+function sourceTags(revisions){return LAYERS.map(key=>`<span class="tag">${LABELS[key]} ${rev(key,revisions[key])}</span>`).join('');}
+function blocksHtml(resolved){if(!resolved.value)return '<p class="empty">No instructions. The effective value is an empty string.</p>';return `<div class="blocks">${resolved.blocks.filter(block=>block.value).map(block=>`<div class="block"><small>${esc(block.label)} · ${rev(block.key,block.revision)}</small><p>${esc(block.value)}</p></div>`).join('')}</div>`;}
+function render(keepEditor=false){
+ const key=state.selected,draft=state.drafts[key],saved=state.saved[key],focused=document.activeElement?.id;
+ $('layer-nav').innerHTML=LAYERS.map(layer=>`<button type="button" id="layer-${layer}" data-layer="${layer}" aria-pressed="${key===layer}"><strong>${LABELS[layer]}</strong><small>${rev(layer,state.saved[layer].revision)} saved${state.drafts[layer].dirty?' · draft':''}</small></button>`).join('');
+ if(!keepEditor)$('editor').innerHTML=`
+ <div class="editor-head"><h3>${LABELS[key]} ${key==='code'?'fixture':'override'}</h3><span class="tag">${key==='code'?'Fixture version':'Expected revision'} ${draft.expectedRevision}</span></div>
+ ${key==='code'?'<p class="hint">Simulates editing an extension’s code default. Schema version stays 1.</p>':`<label for="merge-mode">Instruction behavior</label><select id="merge-mode"><option value="append" ${!draft.reset&&draft.mode==='append'?'selected':''}>Append to inherited instructions</option><option value="replace" ${!draft.reset&&draft.mode==='replace'?'selected':''}>Replace inherited instructions</option><option value="reset" ${draft.reset?'selected':''}>Reset to inheritance</option></select>`}
+ <label for="instruction-text">${key==='code'?'Code-default text':'Draft instruction text'}</label><textarea id="instruction-text" ${draft.reset?'disabled':''}>${esc(draft.value)}</textarea>
+ <p class="hint">${key==='code'?'The code default is the lowest instruction layer.':draft.reset?'Saving removes this override’s effect and retains its revision.':draft.mode==='replace'?'An empty replacement clears inherited instructions. It is different from reset.':'Append keeps lower-layer contributions in order. An empty append adds no text.'}</p>
+ <div class="actions"><button type="button" class="primary" id="save-draft">${key==='code'?'Apply code fixture':draft.reset?'Save reset':'Save draft'}</button><button type="button" id="discard">Use saved value</button>${key!=='code'?'<button type="button" id="remote">Simulate remote update</button>':''}</div>
+ ${draft.conflict?`<div class="conflict" role="alert"><strong>409 · This override changed</strong><p>Your draft expects revision ${draft.expectedRevision}. Current saved revision: ${saved.revision}. Review the value below, then accept its revision to keep editing your draft.</p><button type="button" id="accept">Accept current revision</button></div>`:''}
+ <div class="saved"><small>Current saved ${key==='code'?'fixture':'override'} · ${rev(key,saved.revision)} · ${saved.reset?'reset':saved.mode}</small><p>${saved.reset?'No override effect. Inheritance is restored.':saved.value===''?'Empty string — inherited instructions cleared.':esc(saved.value)}</p></div>`;
+ const preview=resolve(proposed(state)),dirty=LAYERS.filter(layer=>state.drafts[layer].dirty);
+ $('draft-status').textContent=dirty.length?`${dirty.length} unsaved ${dirty.length===1?'layer':'layers'}`:'Matches saved';
+ $('trace').innerHTML=preview.trace.map(row=>`<div class="trace-row ${row.status.startsWith('Cleared')?'suppressed':''}"><div class="trace-top"><strong>${esc(row.label)}</strong><span>${esc(row.status)}</span></div><p>${row.value?esc(row.value):row.status.startsWith('Inherited')?'Override has no effect; lower layers survive.':row.mode==='replace'?'Empty string: all lower instruction blocks cleared.':'Empty append: no added text.'}</p><small>${state.drafts[row.key].dirty?'Unsaved draft over ':''}${rev(row.key,row.revision)} · schema ${row.schemaVersion} · ${row.mode}</small></div>`).join('');
+ $('trace-summary').textContent=`${preview.blocks.filter(block=>block.value).length} non-empty contributions · ${preview.value.length} characters in the resolved instruction text.`;
+ $('outcome').textContent=state.notice;
+ const future=resolve(state.saved),revisions=Object.fromEntries(LAYERS.map(layer=>[layer,state.saved[layer].revision]));
+ $('future').innerHTML=`${blocksHtml(future)}<div class="revisions">${sourceTags(revisions)}</div>${dirty.length?'<p class="draft-note">Unsaved edits appear only in the draft resolution above.</p>':''}`;
+ if(state.captured){const snapshot=state.captured;$('capture-meta').textContent=`${snapshot.id} · coding.implementation · snapshot v${snapshot.version}`;const same=JSON.stringify(snapshot.revisions)===JSON.stringify(revisions);$('captured').innerHTML=`${blocksHtml(snapshot)}<div class="revisions">${sourceTags(snapshot.revisions)}</div><p class="draft-note">${same?'Captured revisions match the current saved layers.':'Saved revisions have changed. This captured snapshot is unchanged.'}</p>`;
+ }else{$('capture-meta').textContent='No start has been prepared in this simulation.';$('captured').innerHTML='<p class="empty">Freeze the current saved settings to inspect the immutable inputs of a prepared start.</p>';}
+ $('guide-tabs').innerHTML=CASES.map((item,index)=>`<button type="button" id="guide-${index}" data-guide="${index}" aria-pressed="${guide===index}">${item.name}</button>`).join('');
+ $('guide-desc').textContent=guide===null?'Choose a case to load a fresh fixture, then follow its action buttons.':CASES[guide].description;
+ $('steps').innerHTML=guide===null?'':CASES[guide].steps.map(([label],index)=>`<button type="button" id="step-${index}" data-step="${index}" class="${index<step?'done':index===step?'primary':''}" ${index!==step?'disabled':''}>${index+1}. ${label}${index<step?' · done':''}</button>`).join('');
+ $('guide-footer').textContent=guide===null?'Free play is active.':step===CASES[guide].steps.length?'Case complete. Inspect the differences, explore freely, or select a case to restart.':`Step ${step+1} of ${CASES[guide].steps.length}. Free-play editing leaves the guided case.`;
+ if(focused&&!keepEditor){const target=focused.startsWith('step-')&&guide!==null?($(`step-${step}`)||$(`guide-${guide}`)):$(focused);target?.focus({preventScroll:true});}
+}
+document.addEventListener('click',event=>{
+ const button=event.target.closest('button');if(!button||button.disabled)return;
+ if(button.dataset.layer){dispatch({type:'select',key:button.dataset.layer});return;}
+ if(button.dataset.guide!==undefined){guide=Number(button.dataset.guide);step=0;state=fixture();state.notice=`${CASES[guide].name}: fixture reset. Start with step 1.`;render();return;}
+ if(button.dataset.step!==undefined&&guide!==null){for(const action of CASES[guide].steps[step][1])state=transition(state,action);step++;render();return;}
+ const actions={'reset-all':'reset','save-draft':'save',discard:'discard',remote:'remote',accept:'accept',capture:'capture'};if(actions[button.id])dispatch({type:actions[button.id]});
+});
+document.addEventListener('input',event=>{if(event.target.id==='instruction-text')dispatch({type:'edit',patch:{value:event.target.value}},false,true);});
+document.addEventListener('change',event=>{if(event.target.id==='merge-mode')dispatch({type:'edit',patch:event.target.value==='reset'?{reset:true}:{mode:event.target.value,reset:false}});});
+render();
+</script>
+</body></html>
