@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>External write reconciliation lab · Leitwerk prototype</title>
+<style>
+:root {font-family: ui-sans-serif,system-ui,sans-serif;color:#18212b;background:#f7f8fa;font-size:15px;line-height:1.5}
+*{box-sizing:border-box}body{margin:0}button,select,input{font:inherit}button,select{border:1px solid #aeb7c2;border-radius:7px;background:white;color:#18212b;padding:10px 14px;min-height:44px}button{cursor:pointer;font-weight:600}button:hover:not(:disabled){background:#edf2fa}button:disabled{color:#687483;background:#f2f4f7;cursor:default}button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid #2f61b7;outline-offset:3px}.primary{background:#2f61b7;color:white;border-color:#2f61b7}.primary:hover:not(:disabled){background:#244c91;color:white}h1{font-size:29px;line-height:1.15;margin:10px 0 14px}h2{font-size:19px;margin:0 0 13px}h3{font-size:16px;margin:0 0 8px}p{margin:0 0 12px}.muted{color:#4c5968}.badge{font-size:14px;color:#4c5968}main{max-width:1220px;margin:auto;padding:32px 28px 50px}header{max-width:830px;margin-bottom:25px}.guide{background:white;border:1px solid #d9dee5;padding:20px;margin-bottom:22px;border-radius:8px}.scenario-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:15px}.scenario-tabs button[aria-pressed=true]{color:#244c91;border-color:#2f61b7;background:#e6ecf6}.guide-body{display:grid;grid-template-columns:1fr 290px;gap:25px}.guide-body button{width:100%}.layout{display:grid;grid-template-columns:minmax(0,1fr) 325px;gap:24px}.panel{background:white;border:1px solid #d9dee5;border-radius:8px;padding:22px}.panel+.panel{margin-top:20px}.status{background:#e6ecf6;padding:14px 16px;border-radius:6px;margin-bottom:18px;overflow-wrap:anywhere}.status.error{background:#fbedeb;color:#7d2d27}.status.success{background:#ecf6f1;color:#155b40}.status strong{display:block;margin-bottom:4px}.summary{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;border-bottom:1px solid #d9dee5;padding-bottom:18px}.summary span{display:block;font-size:13px;color:#4c5968}.summary strong{font-size:24px;font-variant-numeric:tabular-nums}.stores{display:grid;grid-template-columns:1fr 1fr;gap:22px;margin-top:19px}.store{min-width:0}.store code{font-size:13px;overflow-wrap:anywhere}.store p{color:#4c5968;font-size:14px}.store-value{padding:12px;background:#f7f8fa;min-height:99px;border-radius:5px}.key{display:block;font-size:13px;color:#4c5968;margin-bottom:4px}.identity{border-top:1px solid #d9dee5;padding-top:14px;margin-top:18px;font-size:13px;overflow-wrap:anywhere}.actions{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}.actions button{flex:1}.control{display:block;margin-top:17px}.control select{display:block;width:100%;margin-top:6px;font-size:14px}.check{display:flex;align-items:flex-start;gap:9px;font-size:14px;margin-top:15px}.check input{width:18px;height:18px;flex-shrink:0;margin:2px 0 0}.hint{font-size:13px;color:#4c5968}.danger{color:#7d2d27}.wide{width:100%;margin-top:14px}ol{list-style:none;padding:0;margin:0}li{display:grid;grid-template-columns:28px minmax(0,1fr);gap:9px;padding:12px 0;border-bottom:1px solid #e4e8ed}li:last-child{border:0}.trace-number{color:#687483;font-size:13px;padding-top:2px}.trace-title{font-weight:600;font-size:14px}.trace-detail{color:#4c5968;font-size:13px;overflow-wrap:anywhere}.empty{color:#4c5968;padding:12px 0}.step-progress{font-size:13px;color:#4c5968;margin-bottom:8px}footer{margin-top:23px;color:#4c5968;font-size:13px}#phase{font-size:14px;font-weight:500;color:#4c5968}#guide-text{max-width:68ch}#outcome{font-size:14px}#error-name{font-family:ui-monospace,monospace;font-size:12px;margin-top:6px;overflow-wrap:anywhere}
+@media(max-width:850px){.layout{grid-template-columns:1fr}.guide-body{grid-template-columns:1fr}.guide-body button{max-width:400px}.control{margin-top:12px}.panel{padding:18px}main{padding:25px 18px}.stores{gap:13px}}
+@media(max-width:440px){main{padding:22px 14px}h1{font-size:26px}.guide{padding:16px}.scenario-tabs button{width:100%;text-align:left}.stores{grid-template-columns:1fr}.summary{gap:8px}.summary strong{font-size:22px}.summary span{font-size:12px}}
+</style>
+</head>
+<body>
+<main>
+<header><span class="badge">Leitwerk / Developer experiments · 09</span><h1>External write reconciliation lab</h1><p>Can a phase-by-phase trace make it obvious when retry recovers a write—and when it must stop?</p><p class="muted">Prototype • synthetic data. Step through one simulated pull request write. Every remote object and receipt lives only in this tab.</p></header>
+<section class="guide" aria-labelledby="guide-title">
+<h2 id="guide-title">Guided cases</h2>
+<div class="scenario-tabs" aria-label="Choose a guided case">
+<button type="button" data-scenario="normal">1. Write & replay</button>
+<button type="button" data-scenario="ambiguous">2. Lost response</button>
+<button type="button" data-scenario="missing">3. Missing remote</button>
+</div>
+<div class="guide-body"><div><h3 id="guide-heading"></h3><p id="guide-text" class="muted"></p><div id="guide-expectation" class="hint"></div></div><div><div id="guide-progress" class="step-progress"></div><button type="button" id="guide-next" class="primary"></button></div></div>
+</section>
+<div class="layout">
+<div>
+<section class="panel" aria-labelledby="state-title"><h2 id="state-title">Write state <span id="phase"></span></h2>
+<div id="status" class="status" role="status" aria-live="polite"><strong id="status-title"></strong><div id="outcome"></div><div id="error-name"></div></div>
+<div class="summary"><div><span>Remote objects</span><strong id="remote-count">0</strong></div><div><span>Execute calls</span><strong id="execute-count">0</strong></div><div><span>Ensure calls</span><strong id="call-count">0</strong></div></div>
+<div class="stores"><div class="store"><h3>Remote service</h3><div class="store-value" id="remote"></div></div><div class="store"><h3>Local write receipt</h3><div class="store-value" id="receipt"></div></div></div>
+<div class="identity"><span class="key">Stable identity · simulated process fixture-09</span><code>forgejo.pull_request.create / fixture-09:publish</code></div>
+</section>
+<section class="panel" aria-labelledby="trace-title"><h2 id="trace-title">Execution trace</h2><ol id="trace"></ol></section>
+</div>
+<aside class="controls">
+<section class="panel"><h2>Free play</h2><p class="muted">Start a call, then advance one boundary at a time.</p>
+<div class="actions"><button type="button" id="begin">Start / replay</button><button type="button" id="advance" class="primary">Next boundary</button></div>
+<label class="control" for="network">Next execution outcome<select id="network"><option value="normal">Commit + response arrives</option><option value="lost">Commit + response lost</option><option value="reject">Reject before committing</option></select></label>
+<label class="check"><input type="checkbox" id="fail-lookup"><span>Fail the next remote lookup</span></label>
+<label class="check"><input type="checkbox" id="fail-record"><span>Fail the next receipt save</span></label>
+<p class="hint" style="margin-top:12px">Faults are consumed once. Arm a lookup failure just before recovery to observe both errors together.</p>
+<button type="button" id="delete" class="wide danger">Delete fixture remote</button>
+<p class="hint" style="margin-top:8px">Removes the simulated remote object. The receipt survives.</p>
+<button type="button" id="reset" class="wide">Reset experiment</button>
+</section>
+<section class="panel"><h2>What the contract protects</h2><p class="hint">Before writing, lookup the stable identity. On execution error, lookup again. A receipt requires a recoverable remote object on every replay.</p><p class="hint">One call at a time here. Real coordination serializes by repository object and deduplication key within one server process.</p></section>
+</aside>
+</div>
+<footer>Future developer-tool proposal. The simulated receipt represents server-owned durable storage; it is not persisted by this page. No production APIs, credentials, or external writes are used.</footer>
+</main>
+<script>
+// Pure simulation model. No DOM, clocks, storage, network, or random input.
+const initialState = () => ({phase:"idle", remote:null, receipt:null, calls:0, executions:0, nextId:1, network:"normal", failLookup:false, failRecord:false, recorded:false, pending:null, executionError:null, responseMode:null, error:null, result:null, message:"Start a write or choose a guided case.", trace:[]});
+const addTrace = (state, title, detail) => ({...state, trace:[...state.trace, {title,detail}]});
+const fail = (state, error, message) => addTrace({...state,phase:"error",error,message},"Call rejected",`${error}: ${message}`);
+const finish = (state, remote, message) => addTrace({...state,phase:"success",result:remote,error:null,message},"Call returned",`${remote.id}. ${message}`);
+const active = (state) => !["idle","success","error"].includes(state.phase);
+function reduce(state, action) {
+ let s = {...state};
+ if(action.type === "reset") return initialState();
+ if(action.type === "network") return {...s,network:action.value};
+ if(action.type === "lookupFault") return {...s,failLookup:action.value};
+ if(action.type === "recordFault") return {...s,failRecord:action.value};
+ if(action.type === "delete") {
+  if(!s.remote) return addTrace(s,"Fixture unchanged","There is no remote object to delete.");
+  return addTrace({...s,remote:null,message:"Fixture remote deleted. Any local receipt is retained."},"Fixture deleted",`${s.remote.id} was removed outside the write call.`);
+ }
+ if(action.type === "begin") {
+  if(active(s)) return s;
+  s = {...s, calls:s.calls+1, recorded:s.receipt!==null, phase:s.receipt ? "already_recorded" : "before_execute", pending:null,executionError:null,error:null,result:null,message:"Ready to reconcile the stable remote identity."};
+  return addTrace(s,`Ensure call ${s.calls}`,`Receipt ${s.recorded ? "present" : "absent"}; reconcile(${s.phase}) is next.`);
+ }
+ if(action.type !== "next" || !active(s)) return s;
+ if(["before_execute","already_recorded","after_execute_error"].includes(s.phase)) {
+  const phase = s.phase;
+  s = addTrace(s,`reconcile(${phase})`,s.failLookup ? "Remote lookup failed." : s.remote ? `Found ${s.remote.id} by stable identity.` : "No matching remote object.");
+  if(s.failLookup) {
+   s = {...s,failLookup:false};
+   return phase === "after_execute_error" ? fail(s,"AggregateError",`${s.executionError}; recovery lookup also failed. Replay once the lookup works.`) : fail(s,"RemoteLookupError","Lookup failed. Execution was not attempted; retry when lookup works.");
+  }
+  if(phase === "already_recorded") {
+   return s.remote ? finish(s,s.remote,"Existing object returned. No execution and no new receipt.") : fail(s,"ExternalWriteMissingRemoteError","The logged write has no recoverable remote object. Execution is blocked; nothing is recreated.");
+  }
+  if(s.remote) return {...s,phase:"record",pending:s.remote,message:phase === "after_execute_error" ? "Recovered the committed object after the execution error. Save its receipt next." : "Found existing remote work. Save a receipt without executing."};
+  if(phase === "after_execute_error") return fail(s,s.executionError,"Recovery found no remote object. The original execution error is rethrown.");
+  return {...s,phase:"execute",message:"No remote object or receipt. Execution may proceed."};
+ }
+ if(s.phase === "execute") {
+  const mode = s.network;
+  s = {...s,executions:s.executions+1,network:"normal",responseMode:mode};
+  if(mode === "reject") return addTrace({...s,phase:"after_execute_error",executionError:"NetworkError",message:"Execution failed before committing. Check for remote work once more."},"execute() rejected","The remote rejected the request before creating an object.");
+  const remote = {id:`fixture-pr-${s.nextId}`,title:"Update synthetic release notes",marker:"fixture-09:publish"};
+  return addTrace({...s,remote,pending:remote,nextId:s.nextId+1,phase:"response",message:"The remote committed an object. The local caller has not received a response yet."},"Remote commit",`${remote.id} now exists. No receipt has been saved.`);
+ }
+ if(s.phase === "response") {
+  if(s.responseMode === "lost") return addTrace({...s,phase:"after_execute_error",executionError:"ResponseLostError",message:"The caller saw an execution error after the commit. Reconcile before deciding whether it failed."},"Response lost","Execution throws ResponseLostError; remote object remains.");
+  return addTrace({...s,phase:"record",message:"Execution returned the remote object. A receipt must be saved before success."},"Response received",`execute() returned ${s.pending.id}.`);
+ }
+ if(s.phase === "record") {
+  if(s.failRecord) {
+   s = addTrace({...s,failRecord:false},"Receipt save failed","Remote work exists; no durable receipt was recorded.");
+   return s.executionError ? fail(s,"AggregateError",`${s.executionError}; recovered object receipt save also failed. Replay reconciles again.`) : fail(s,"ReceiptStorageError","Saving the receipt failed. Replay reconciles existing remote work before any execution.");
+  }
+  s = addTrace({...s,receipt:{dedupKey:"fixture-09:publish",remoteId:s.pending.id}},"Receipt recorded",`Metadata saved for ${s.pending.id}.`);
+  return finish(s,s.pending,s.executionError ? "Ambiguous commit recovered. One object, one execution." : "Remote work and local receipt are now accounted for.");
+ }
+ return s;
+}
+const action = (type, value) => ({type,value});
+const steps = (...labels) => labels.map(label => ({label,action:action("next")}));
+const scenarios = {
+ normal:{title:"One write. A replay only reads.",text:"Follow a successful call through remote commit and receipt save, then repeat the same identity.",expect:"Expected: 1 remote object · 1 execute call · 2 ensure calls.",steps:[{label:"Start the first call",action:action("begin")},...steps("Look up the stable identity","Commit the remote write","Receive the response","Save receipt and return"),{label:"Replay the same identity",action:action("begin")},...steps("Fetch the recorded object")]},
+ ambiguous:{title:"The remote committed. The caller heard nothing.",text:"Lose the response after the write commits. Recovery must find that object before it can record a receipt and return.",expect:"Expected: after_execute_error recovers the original object; replay adds no duplicate.",steps:[{label:"Arm a lost response",action:action("network","lost")},{label:"Start the call",action:action("begin")},...steps("Look up the stable identity","Commit the remote write","Lose the response","Reconcile the execution error","Save recovered receipt"),{label:"Replay the same identity",action:action("begin")},...steps("Return the existing object")]},
+ missing:{title:"A receipt is not permission to recreate.",text:"First complete a write, then remove its remote object. Replay must surface the missing remote instead of silently creating a replacement.",expect:"Expected: ExternalWriteMissingRemoteError · 0 remote objects · 1 execute call.",steps:[{label:"Start a normal call",action:action("begin")},...steps("Look up the stable identity","Commit the remote write","Receive the response","Save receipt and return"),{label:"Delete the fixture remote",action:action("delete")},{label:"Replay the recorded write",action:action("begin")},...steps("Discover the missing remote")]}
+};
+// DOM shell: controls dispatch actions; rendering only reads model state.
+let state = initialState();
+let scenario = "normal";
+let guideIndex = 0;
+let freePlay = false;
+const el = id => document.getElementById(id);
+function dispatch(next, guided=false) {state=reduce(state,next);if(!guided) freePlay=true;render();}
+function selectScenario(name) {scenario=name;state=initialState();guideIndex=0;freePlay=false;render();}
+function render() {
+ const guide = scenarios[scenario];
+ document.querySelectorAll("[data-scenario]").forEach(button => {button.setAttribute("aria-pressed",String(button.dataset.scenario===scenario));});
+ el("guide-heading").textContent=guide.title;
+ el("guide-text").textContent=guide.text;
+ el("guide-expectation").textContent=guide.expect;
+ el("guide-progress").textContent=freePlay ? "Free play changed this case. Restart to follow its steps." : guideIndex===guide.steps.length ? `Case complete · ${guide.steps.length} steps observed` : `Step ${guideIndex+1} of ${guide.steps.length}`;
+ el("guide-next").textContent=freePlay || guideIndex===guide.steps.length ? "Restart guided case" : guide.steps[guideIndex].label;
+ el("phase").textContent=`/ ${state.phase}`;
+ el("status").className=`status ${state.phase==="error" ? "error" : state.phase==="success" ? "success" : ""}`;
+ el("status-title").textContent=state.phase==="error" ? "Call failed" : state.phase==="success" ? "Call succeeded" : state.phase==="idle" ? "Ready to explore" : "Call in progress";
+ el("outcome").textContent=state.message;
+ el("error-name").textContent=state.error || "";
+ el("remote-count").textContent=String(state.remote ? 1 : 0);
+ el("execute-count").textContent=String(state.executions);
+ el("call-count").textContent=String(state.calls);
+ el("remote").replaceChildren();
+ el("receipt").replaceChildren();
+ const field = (parent,label,value) => {const key=document.createElement("span");key.className="key";key.textContent=label;const val=document.createElement("code");val.textContent=value;parent.append(key,val);};
+ field(el("remote"),state.remote ? "Object present" : "No remote object",state.remote ? state.remote.id : "Nothing to recover");
+ if(state.remote) field(el("remote"),"Stable marker",state.remote.marker);
+ field(el("receipt"),state.receipt ? "Receipt present (simulated)" : "No receipt",state.receipt ? state.receipt.remoteId : "Not yet recorded");
+ if(state.receipt) field(el("receipt"),"Deduplication key",state.receipt.dedupKey);
+ el("begin").disabled=active(state);
+ el("advance").disabled=!active(state);
+ el("delete").disabled=!state.remote;
+ el("network").value=state.network;
+ el("fail-lookup").checked=state.failLookup;
+ el("fail-record").checked=state.failRecord;
+ el("trace").replaceChildren();
+ if(!state.trace.length) {const item=document.createElement("li");item.className="empty";item.style.display="block";item.textContent="No boundaries crossed yet. Start a call to follow the evidence.";el("trace").append(item);}
+ state.trace.forEach((entry,index) => {const item=document.createElement("li");const number=document.createElement("span");number.className="trace-number";number.textContent=String(index+1).padStart(2,"0");const text=document.createElement("div");const title=document.createElement("div");title.className="trace-title";title.textContent=entry.title;const detail=document.createElement("div");detail.className="trace-detail";detail.textContent=entry.detail;text.append(title,detail);item.append(number,text);el("trace").append(item);});
+}
+document.querySelectorAll("[data-scenario]").forEach(button => {button.addEventListener("click",() => selectScenario(button.dataset.scenario));});
+el("guide-next").addEventListener("click",() => {const guide=scenarios[scenario];if(freePlay || guideIndex===guide.steps.length) {selectScenario(scenario);return;}const next=guide.steps[guideIndex].action;guideIndex+=1;dispatch(next,true);});
+el("begin").addEventListener("click",() => dispatch(action("begin")));
+el("advance").addEventListener("click",() => dispatch(action("next")));
+el("delete").addEventListener("click",() => dispatch(action("delete")));
+el("reset").addEventListener("click",() => selectScenario("normal"));
+el("network").addEventListener("change",event => dispatch(action("network",event.target.value)));
+el("fail-lookup").addEventListener("change",event => dispatch(action("lookupFault",event.target.checked)));
+el("fail-record").addEventListener("change",event => dispatch(action("recordFault",event.target.checked)));
+render();
+</script>
+</body>
+</html>
