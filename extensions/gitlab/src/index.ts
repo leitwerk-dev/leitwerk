@@ -70,15 +70,17 @@ export {
 	gitlabRepositoryCredentials,
 } from "./capability.js";
 export type {
+	GitLabClientLike,
 	GitLabDiff,
 	GitLabFeedback,
 	GitLabIdentity,
 	GitLabJob,
+	GitLabLabelEvent,
 	GitLabMergeRequest,
 	GitLabObservation,
 	GitLabProject,
 } from "./client.js";
-export { observeMergeRequest } from "./client.js";
+export { GitLabError, observeMergeRequest } from "./client.js";
 export type { GitLabDeliveryObservation } from "./external.js";
 export {
 	gitLabFeedbackReadyAt,
@@ -100,4 +102,9 @@ export {
 	parseGitLabSelection,
 	selectGitLabProjects,
 } from "./selection.js";
-export { ensureGitLabSeenReaction, resolveGitLabBinding } from "./tools.js";
+export {
+	ensureGitLabComment,
+	ensureGitLabSeenReaction,
+	gitLabCommentMarker,
+	resolveGitLabBinding,
+} from "./tools.js";
