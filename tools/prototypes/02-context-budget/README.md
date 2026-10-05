@@ -46,10 +46,11 @@ Validated in an isolated `agent-browser --session idea-02` browser:
 - Oversized capture refused with a 1,432-token excess; reduced composition captured at 1,813 / 3,200 illustrative tokens.
 - Required-plan removal refused. Fresh snapshot retained both supplied products and local input, and omitted inherited conversation.
 - Publishing v4 left the draft at v3 until adoption. Captured versions were `[3, 4]`; the serialized first snapshot was byte-for-byte unchanged.
+- Review regression checks confirmed unapplied local input survives capacity, reserve, and chunk-treatment changes. Apply updates the future composition without changing captured evidence; invalid empty input remains editable, and reset restores the fixture draft. A visible status distinguishes unapplied edits.
 - Desktop screenshot at 1440 × 1100 and mobile screenshot at 390 × 844 were opened and visually inspected. Mobile document width was 390px with no horizontal overflow.
 - No browser errors were reported. Extracted inline JavaScript passed `node --check`; `git diff --check` passed.
 
-Screenshots show a summarized future draft next to the original captured evidence:
+Refreshed screenshots show a summarized future composition, a retained unapplied input draft, and the original captured evidence. Independent review confirmed the draft fix and updated notice styling.
 
 ![Desktop](screenshots/desktop.png)
 
