@@ -273,7 +273,21 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 	await start(false);
 	const driver = createProcessDriver(() => harness.ctx);
 	const armed = async (id: string) => {
-		await driver.wait(id, "deliver_change");
+		await driver.waitForProcess(
+			id,
+			(process) => {
+				const current = state(id);
+				return (
+					process.selectedTurnId === "deliver_change" &&
+					process.lifecycleStatus === "waiting" &&
+					current.delivery.stage === "awaiting" &&
+					!current.pendingEvidence &&
+					!current.delivery.adjustment &&
+					current.feedbackIds.length === 0
+				);
+			},
+			"delivery settled before observing another event",
+		);
 		await waitForValue(
 			() =>
 				(harness.ctx.deps.externalSourceService as CoreServerSetupDeps["externalSources"])
