@@ -61,3 +61,5 @@ A single synthetic revision conservatively invalidates a plan for every input ch
 The fixtures collapse each capability into a boolean and cover two illustrative process definitions. They do not validate network reachability, image availability, permissions, asynchronous provisioning or every model-selection layer. Capacity input intentionally accepts only positive `Ki`, `Mi`, `Gi` and `Ti` quantities; the production resolver supports the wider Kubernetes quantity grammar. Existing PVC reuse and resizing are outside this new-launch experiment.
 
 Screenshots: [desktop blocker review](screenshots/desktop.png) · [mobile repaired plan](screenshots/mobile.png).
+
+The standalone HTML also passes the repository Biome check.
