@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { asUnknownRecord } from "@leitwerk-dev/domain";
 import { projectParameters, type ServerExtensionAPI, stringArg } from "@leitwerk-dev/process-sdk";
+import { jiraTriggerLabel } from "./client.js";
 import type { JiraIntegration } from "./index.js";
 
 /** @internal */
@@ -48,18 +49,19 @@ export function registerJiraTools(api: ServerExtensionAPI, integration: JiraInte
 					);
 				}
 				const done = args.done === true;
+				const triggerLabel = jiraTriggerLabel(binding.triggerLabel);
 				return ctx.externalWrites.ensure(
 					{ writeType: name, dedupKey: digest },
 					{
 						reconcile: async () => {
 							const issue = await client.getIssue(id);
-							return !issue.fields.labels.includes("use-leitwerk") &&
+							return !issue.fields.labels.includes(triggerLabel) &&
 								(!done || issue.fields.labels.includes("leitwerk-done"))
 								? { issueId: id, done }
 								: null;
 						},
 						execute: async () => {
-							await client.updateLabels(id, ["use-leitwerk"], done ? ["leitwerk-done"] : []);
+							await client.updateLabels(id, [triggerLabel], done ? ["leitwerk-done"] : []);
 							return { issueId: id, done };
 						},
 						toMetadata: (result) => result,

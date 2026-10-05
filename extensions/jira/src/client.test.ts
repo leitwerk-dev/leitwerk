@@ -93,7 +93,10 @@ describe("Jira Data Center boundary", () => {
 		expect(await client.listProjectIssues("100")).toEqual([{ id: "7", key: "GARDEN-7" }]);
 		expect(requests.at(-1)?.url.searchParams.get("jql")).toBe("project = 100 ORDER BY id ASC");
 	});
-	it("retains the context path, uses a PAT header, and follows server-sized pages", async () => {
+	it.each([
+		undefined,
+		"use-leitwerk-beta",
+	])("retains context, credentials and pagination with trigger %s", async (triggerLabel) => {
 		const requests: URL[] = [];
 		const client = new JiraClient(
 			{ baseUrl: "https://jira.test/context/", token: "server-only-secret" },
@@ -103,12 +106,18 @@ describe("Jira Data Center boundary", () => {
 				expect(request.pathname).toBe("/context/rest/api/2/search");
 				expect(init?.headers).toMatchObject({ Authorization: "Bearer server-only-secret" });
 				expect(request.href).not.toContain("server-only-secret");
-				expect(request.searchParams.get("jql")).toContain('labels = "use-leitwerk"');
+				expect(request.searchParams.get("jql")).toContain(
+					`labels = "${triggerLabel ?? "use-leitwerk"}"`,
+				);
 				const startAt = Number(request.searchParams.get("startAt"));
 				return Response.json({ startAt, total: 3, issues: [{ id: String(startAt + 1) }] });
 			},
 		);
-		expect(await client.searchIssues(["100"])).toEqual([{ id: "1" }, { id: "2" }, { id: "3" }]);
+		expect(await client.searchIssues(["100"], triggerLabel)).toEqual([
+			{ id: "1" },
+			{ id: "2" },
+			{ id: "3" },
+		]);
 		expect(requests).toHaveLength(3);
 		expect(JSON.stringify(client)).not.toContain("server-only-secret");
 	});

@@ -79,9 +79,12 @@ export class LocalJiraSplitAdapter implements JiraClientLike {
 	/** @internal */ async listComponents(): Promise<JiraComponent[]> {
 		return structuredClone(this.components);
 	}
-	/** @internal */ async searchIssues(projectIds: readonly string[]) {
+	/** @internal */ async searchIssues(projectIds: readonly string[], triggerLabel?: string) {
 		return [...this.issues.values()]
-			.filter((issue) => projectIds.includes(issue.fields.project.id) && jiraEligible(issue))
+			.filter(
+				(issue) =>
+					projectIds.includes(issue.fields.project.id) && jiraEligible(issue, triggerLabel),
+			)
 			.map((issue) => structuredClone(issue));
 	}
 	/** @internal */ async searchSplitIssues(projectIds: readonly string[]) {

@@ -57,7 +57,7 @@ ID. Renaming a project or component preserves its settings. Discovery is explici
 executing a process uses its retained bindings.
 
 The issue watcher requires explicit project IDs and defaults to 30-second polling.
-Only issues with `use-leitwerk`, without `leitwerk-done`, and outside the Done status
+Only issues with the configured watcher `label` (default `use-leitwerk`), without `leitwerk-done`, and outside the Done status
 category qualify. Installation URL (including context path) and immutable issue ID
 form the launch deduplication key. Skip labels never launch a process by themselves.
 The consuming process rechecks source eligibility and component mappings at admission.

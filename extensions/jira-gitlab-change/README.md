@@ -14,7 +14,32 @@ process_configs:
         profile: team
         projects: ['10000', '10001']
         poll_interval: 30s
+        label: use-leitwerk # use-leitwerk-beta for a separate beta trigger
 ```
+
+The watcher label defaults to `use-leitwerk`. Admission retains the selected trigger
+for eligibility, cancellation, approval bypass and final label removal. Changing the
+watcher configuration does not retarget existing runs. The immutable issue identity
+still deduplicates launches across labels and restarts.
+
+Optional model labels select an instance default at admission:
+
+```yaml
+extensions:
+  jira-gitlab-change:
+    model_labels:
+      leitwerk-model-astra: astra-high
+      leitwerk-model-sol: sol-medium
+      leitwerk-model-luna: luna-medium
+```
+
+Values refer to registered, process-allowed model profile IDs. Without a model label,
+normal watcher/process defaults apply. One label overrides the watcher default;
+explicit per-turn overrides retain precedence. Unknown or multiple `leitwerk-model-*`
+labels and unavailable profiles reject admission and remain retryable. The captured
+label/profile selection survives restarts and label reapplication. Later Jira edits
+do not switch the model of an existing run; use its Leitwerk model settings. Model
+labels alone do not trigger a change.
 
 In Settings, refresh sources, select a Jira component, and override **GitLab
 repositories**. Select repositories with their GitLab profile and **HTTPS** to use

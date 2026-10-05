@@ -19,6 +19,7 @@ import {
 	type JiraIssue,
 	jiraEligible,
 	jiraIssueExternalId,
+	jiraTriggerLabel,
 	parseJiraProfiles,
 } from "./client.js";
 import { registerJiraTicketCreation } from "./ticket-creation.js";
@@ -48,6 +49,8 @@ export const jiraSubjectIdentity = (baseUrl: string, id: string) => JSON.stringi
 /** @public */
 export interface JiraWatcherConfig {
 	/** @internal */
+	label?: string;
+	/** @internal */
 	profile: string;
 
 	/** @internal */
@@ -59,6 +62,8 @@ export interface JiraWatcherConfig {
 
 /** @public */
 export interface JiraWatcherEvent {
+	/** @internal */
+	triggerLabel?: string;
 	/** @internal */
 	profile: string;
 
@@ -92,18 +97,25 @@ export const jiraIssueWatcherSource = defineProcessWatcherSource<
 			throw new Error("Invalid Jira poll_interval");
 		return {
 			enabled: c.enabled,
-			config: { profile: c.profile, projects: c.projects as string[], pollInterval },
+			config: {
+				profile: c.profile,
+				projects: c.projects as string[],
+				pollInterval,
+				label: jiraTriggerLabel(c.label),
+			},
 			launchModelConfig: parseProcessWatcherLaunchModelConfig(c.launch),
 		};
 	},
 	presentConfig: (c) => ({
 		targetSummary: `Jira ${c.profile} · ${c.projects.join(", ")}`,
-		details: [{ label: "Trigger", value: "use-leitwerk" }],
+		details: [{ label: "Trigger", value: jiraTriggerLabel(c.label) }],
 	}),
 });
 
 /** @public */
 export interface JiraSourceConfig {
+	/** @internal */
+	triggerLabel?: string;
 	/** @internal */
 	profile: string;
 	/** @internal */
@@ -210,13 +222,24 @@ export function setupJiraIntegration(
 				if (!watcher.enabled || !shouldPoll(key, watcher.config.pollInterval)) continue;
 				try {
 					const client = integration.client(watcher.config.profile);
-					for (const issue of await client.searchIssues(watcher.config.projects)) {
-						if (!jiraEligible(issue) || !watcher.config.projects.includes(issue.fields.project.id))
+					for (const issue of await client.searchIssues(
+						watcher.config.projects,
+						watcher.config.label,
+					)) {
+						if (
+							!jiraEligible(issue, watcher.config.label) ||
+							!watcher.config.projects.includes(issue.fields.project.id)
+						)
 							continue;
 						const id = jiraIssueExternalId(client.baseUrl, issue.id);
 						const launch = await deps.launchRuns.startWatcher(
 							watcher,
-							{ profile: watcher.config.profile, issue, projects: watcher.config.projects },
+							{
+								profile: watcher.config.profile,
+								issue,
+								projects: watcher.config.projects,
+								triggerLabel: jiraTriggerLabel(watcher.config.label),
+							},
 							{ idempotencyKey: id },
 						);
 						if (launch.error)
@@ -245,8 +268,9 @@ export function setupJiraIntegration(
 					if (issue.id !== c.issueId) throw new Error("Uncorrelated Jira issue evidence");
 					const fire =
 						c.mode === "plan_bypass"
-							? jiraEligible(issue) && issue.fields.labels.includes("leitwerk-skip-plan-decision")
-							: !jiraEligible(issue);
+							? jiraEligible(issue, c.triggerLabel) &&
+								issue.fields.labels.includes("leitwerk-skip-plan-decision")
+							: !jiraEligible(issue, c.triggerLabel);
 					if (fire)
 						await report.fire(
 							armed,

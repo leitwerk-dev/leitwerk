@@ -16,6 +16,7 @@ import { LocalGit } from "@leitwerk-dev/test-support/local-git";
 import { expect, it, onTestFinished } from "vitest";
 import { createJiraGitLabChange } from "./index.js";
 import { createJiraGitLabLauncher, jiraGitLabParamsCodec } from "./launch.js";
+import { parseJiraModelLabels } from "./models.js";
 
 function fixture(bindingPatch: Record<string, unknown> = {}, https = false) {
 	const root = mkdtempSync(join(tmpdir(), "jira-retained-"));
@@ -152,6 +153,51 @@ function fixture(bindingPatch: Record<string, unknown> = {}, https = false) {
 		},
 	};
 }
+
+it("captures the beta trigger and model selection without changing the issue identity", async () => {
+	const f = fixture({}, true);
+	const original = await f.resolve();
+	f.child.fields.labels = ["use-leitwerk-beta", "leitwerk-model-sol"];
+	f.launcher.configure({ ...f.services, modelLabels: { "leitwerk-model-sol": "sol-medium" } });
+	const event = { ...f.event, triggerLabel: "use-leitwerk-beta" };
+	const launch = await f.launcher.resolve(event, {
+		modelProfiles: [
+			{ id: "sol-medium", provider: "openai", modelId: "gpt-6.1-sol", thinkingLevel: "medium" },
+		],
+	});
+	expect(launch.externalId).toBe(original.externalId);
+	expect(launch.defaultModelProfileId).toBe("sol-medium");
+	expect(launch.params).toMatchObject({
+		jiraTriggerLabel: "use-leitwerk-beta",
+		modelSelection: { label: "leitwerk-model-sol", profileId: "sol-medium" },
+	});
+	expect(launch.projects?.[0].metadata?.jira).toMatchObject({ triggerLabel: "use-leitwerk-beta" });
+	await expect(f.launcher.resolve(event, { modelProfiles: [] })).rejects.toThrow("unavailable");
+	await expect(f.resolve()).rejects.toThrow("no longer eligible");
+	f.child.fields.labels.push("leitwerk-model-astra");
+	await expect(f.launcher.resolve(event)).rejects.toThrow("only one");
+	f.child.fields.labels = ["use-leitwerk-beta", "leitwerk-model-typo"];
+	await expect(f.launcher.resolve(event)).rejects.toThrow("Unknown Jira model label");
+	f.child.fields.labels = ["use-leitwerk-beta", "leitwerk-model-sol"];
+	expect((await f.launcher.resolve(event)).defaultModelProfileId).toBe("sol-medium");
+	f.child.fields.labels = ["use-leitwerk-beta"];
+	const eligibility = f.launcher
+		.checks(event, launch)
+		.find((check) => check.id === "jira_eligibility");
+	if (!eligibility) throw new Error("Missing eligibility check");
+	await expect(eligibility.run({} as never)).rejects.toThrow("changed before admission");
+});
+
+it("validates configured model labels and leaves unlabelled runs on normal defaults", async () => {
+	expect(parseJiraModelLabels(undefined)).toEqual({});
+	expect(() => parseJiraModelLabels({ model_labels: { "other-label": "sol" } })).toThrow(
+		"model_labels",
+	);
+	expect(() => parseJiraModelLabels({ model_labels: { "leitwerk-model-sol": " " } })).toThrow(
+		"model_labels",
+	);
+	expect((await fixture({}, true).resolve()).defaultModelProfileId).toBeUndefined();
+});
 
 it("fills missing checkout credentials from the exact mapping and preserves receipts and wiki history across restart", async () => {
 	const f = fixture();

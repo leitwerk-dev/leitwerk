@@ -33,6 +33,7 @@ import {
 	type JiraGitLabParams,
 	jiraGitLabParamsCodec,
 } from "./launch.js";
+import { parseJiraModelLabels } from "./models.js";
 
 export * from "./launch.js";
 
@@ -85,6 +86,7 @@ export function createJiraGitLabChange(options: {
 				profile: params.jiraProfile,
 				baseUrl: params.jiraBaseUrl,
 				issueId: params.issueId,
+				triggerLabel: params.jiraTriggerLabel,
 				mode: "cancelled",
 			})),
 			read: () => ({ kind: "observed" }),
@@ -110,6 +112,7 @@ export function createJiraGitLabChange(options: {
 			(await ctx.callIntegrationTool("jira_get_source_issue", {
 				projectKey: ctx.params.repositories[0].key,
 			})) as JiraIssue,
+			ctx.params.jiraTriggerLabel,
 		);
 	adapter.linkIssue = async (ctx, current) => {
 		await ctx.callIntegrationTool("jira_comment", {
@@ -164,7 +167,9 @@ export function createJiraGitLabChange(options: {
 			async planDecision(params) {
 				const issue = await launcher.readIssue(params);
 				return {
-					skip: jiraEligible(issue) && issue.fields.labels.includes("leitwerk-skip-plan-decision"),
+					skip:
+						jiraEligible(issue, params.jiraTriggerLabel) &&
+						issue.fields.labels.includes("leitwerk-skip-plan-decision"),
 					reason: "Jira label",
 				};
 			},
@@ -179,6 +184,7 @@ export function createJiraGitLabChange(options: {
 				profile: params.jiraProfile,
 				baseUrl: params.jiraBaseUrl,
 				issueId: params.issueId,
+				triggerLabel: params.jiraTriggerLabel,
 				planRevision: state.routing?.plan?.planRevision,
 				mode: "plan_bypass",
 			})),
@@ -213,7 +219,7 @@ export function createJiraGitLabChange(options: {
 		setupCatalog(api) {
 			api.registerProcess(process);
 		},
-		setupServer(api) {
+		setupServer(api, config) {
 			const jira = api.require(jiraIntegration),
 				gitlab = api.require(gitlabIntegration),
 				settings = api.require(scopedSettingsCapability);
@@ -221,6 +227,7 @@ export function createJiraGitLabChange(options: {
 				throw new Error("Integration capabilities must be singular");
 			const wiki = api.get(topicWikiCapability);
 			launcher.configure({
+				modelLabels: parseJiraModelLabels(config),
 				jira,
 				gitlab,
 				get ssh() {

@@ -368,10 +368,10 @@ export class JiraClient {
 	}
 
 	/** @internal */
-	searchIssues(projectIds: readonly string[]) {
+	searchIssues(projectIds: readonly string[], triggerLabel?: string) {
 		if (!projectIds.length || projectIds.some((id) => !/^\d+$/.test(id)))
 			throw new Error("Select explicit Jira project IDs");
-		const jql = `project in (${projectIds.join(",")}) AND labels = "use-leitwerk" AND (labels not in ("leitwerk-done")) AND statusCategory != Done ORDER BY id ASC`;
+		const jql = `project in (${projectIds.join(",")}) AND labels = ${JSON.stringify(jiraTriggerLabel(triggerLabel))} AND (labels not in ("leitwerk-done")) AND statusCategory != Done ORDER BY id ASC`;
 		return this.#pages<JiraIssue>(
 			`search?jql=${encodeURIComponent(jql)}&fields=summary,description,labels,project,components,status`,
 			"issues",
@@ -475,9 +475,19 @@ export class JiraClient {
 	}
 }
 
+/** Resolve and validate the change trigger; absent values preserve existing runs. @internal */
+export function jiraTriggerLabel(value: unknown = undefined): string {
+	if (value === undefined) return "use-leitwerk";
+	if (typeof value !== "string" || !/^[A-Za-z0-9_.-]{1,255}$/.test(value))
+		throw new Error(
+			"Jira trigger label must contain only letters, digits, dots, underscores or hyphens",
+		);
+	return value;
+}
+
 /** @public */
-export const jiraEligible = (issue: JiraIssue) =>
-	issue.fields.labels.includes("use-leitwerk") &&
+export const jiraEligible = (issue: JiraIssue, triggerLabel?: string) =>
+	issue.fields.labels.includes(jiraTriggerLabel(triggerLabel)) &&
 	!issue.fields.labels.includes("leitwerk-done") &&
 	issue.fields.status.statusCategory.key !== "done";
 /** Installation context paths and immutable issue IDs define launch identity. @public */

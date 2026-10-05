@@ -27,7 +27,7 @@ describe("Jira coordinated GitLab change", () => {
 		const retained = f.params(id);
 		f.issue.fields.labels = [];
 		await f.pollDiscovery();
-		f.issue.fields.labels = ["use-leitwerk"];
+		f.issue.fields.labels = ["use-leitwerk-beta"];
 		f.issue.key = "RENAMED-500";
 		await f.restart();
 		expect((await f.pollDiscovery()).errors).toEqual([]);
@@ -59,7 +59,7 @@ describe("Jira coordinated GitLab change", () => {
 		f.gitlab.save();
 		await f.poll();
 		await f.wait(id, null, "completed");
-		expect(f.issue.fields.labels).not.toContain("use-leitwerk");
+		expect(f.issue.fields.labels).not.toContain("use-leitwerk-beta");
 		expect(f.issue.fields.labels).not.toContain("leitwerk-done");
 		expect(f.comments.filter((comment) => comment.body.includes("Partial result"))).toHaveLength(1);
 		await f.restart();
@@ -206,7 +206,12 @@ describe("Jira coordinated GitLab change", () => {
 		onTestFinished,
 	}) => {
 		const f = await jiraFixture(onTestFinished);
-		const event = { profile: "team", issue: structuredClone(f.issue), projects: ["100"] };
+		const event = {
+			profile: "team",
+			issue: structuredClone(f.issue),
+			projects: ["100"],
+			triggerLabel: "use-leitwerk-beta",
+		};
 		const launch = await f.flow.launcher.resolve(event);
 		f.issue.fields.components = [];
 		await expect(f.flow.launcher.resolve(event)).rejects.toThrow("No repositories mapped");

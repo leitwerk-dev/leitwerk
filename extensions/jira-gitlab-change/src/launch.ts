@@ -16,9 +16,11 @@ import {
 	jiraIssueExternalId,
 	jiraSplitChildMatches,
 	jiraSubjectIdentity,
+	jiraTriggerLabel,
 } from "@leitwerk-dev/jira";
 import {
 	type Codec,
+	type LauncherContext,
 	type LaunchPreparationCheck,
 	type ProcessLaunchConfig,
 	repositorySettingsIdentity,
@@ -27,6 +29,8 @@ import {
 	type SettingDefinition,
 	type TopicWikiStore,
 } from "@leitwerk-dev/process-sdk";
+
+import { selectJiraModel } from "./models.js";
 
 /** @public */
 export interface RepositoryMapping {
@@ -63,6 +67,15 @@ export interface RepositoryBinding extends GitLabPublicationParams {
 
 /** @public */
 export interface JiraGitLabParams extends GitLabPublicationParams {
+	/** @internal */
+	jiraTriggerLabel?: string;
+	/** @internal */
+	modelSelection?: {
+		/** @internal */
+		label: string;
+		/** @internal */
+		profileId: string;
+	};
 	/** @internal */
 	wikiTopicId?: string;
 	/** @internal */
@@ -131,6 +144,7 @@ function validateMapping(r: Record<string, unknown> | null): RepositoryMapping {
 export const jiraGitLabParamsCodec: Codec<JiraGitLabParams> = {
 	parse(value) {
 		const r = asUnknownRecord(value);
+		jiraTriggerLabel(r?.jiraTriggerLabel);
 		if (
 			r?.origin !== "jira" ||
 			!Array.isArray(r.repositories) ||
@@ -174,6 +188,8 @@ export function createJiraGitLabLauncher() {
 		settings: ScopedSettingsResolver;
 		/** @internal */
 		wiki?: TopicWikiStore;
+		/** @internal */
+		modelLabels?: Readonly<Record<string, string>>;
 	} | null = null;
 	const requireServices = () => {
 		if (!services) throw new Error("Jira GitLab integration is not configured");
@@ -228,16 +244,32 @@ export function createJiraGitLabLauncher() {
 	};
 
 	/** @internal */
-	async function resolve(event: JiraWatcherEvent): Promise<ProcessLaunchConfig<JiraGitLabParams>> {
+	async function resolve(
+		event: JiraWatcherEvent,
+		ctx: LauncherContext = {},
+	): Promise<ProcessLaunchConfig<JiraGitLabParams>> {
 		const { jira, gitlab, ssh, settings, wiki } = requireServices();
 		const client = jira.client(event.profile);
 		const issue = await client.getIssue(event.issue.id);
 		if (
 			issue.id !== event.issue.id ||
-			!jiraEligible(issue) ||
+			!jiraEligible(issue, event.triggerLabel) ||
 			!event.projects.includes(issue.fields.project.id)
 		)
 			throw new Error("Jira source issue is no longer eligible");
+		const triggerLabel = jiraTriggerLabel(event.triggerLabel);
+		const modelSelection = selectJiraModel(
+			issue.fields.labels,
+			requireServices().modelLabels ?? {},
+		);
+		if (
+			modelSelection &&
+			ctx.modelProfiles &&
+			!ctx.modelProfiles.some((p) => p.id === modelSelection.profileId)
+		)
+			throw new Error(
+				`Jira model profile ${modelSelection.profileId} is unavailable for this process`,
+			);
 		const project = settings.discover({
 			scopeType: "jira.project",
 			identity: jiraSubjectIdentity(client.baseUrl, issue.fields.project.id),
@@ -350,7 +382,12 @@ export function createJiraGitLabLauncher() {
 				...project,
 				metadata: {
 					...project.metadata,
-					jira: { profile: event.profile, baseUrl: client.baseUrl, issueId: issue.id },
+					jira: {
+						profile: event.profile,
+						baseUrl: client.baseUrl,
+						issueId: issue.id,
+						triggerLabel,
+					},
 				},
 			});
 		}
@@ -384,6 +421,8 @@ export function createJiraGitLabLauncher() {
 		if (publication && topic?.id !== publication.topicId)
 			throw new Error("Generated ticket's source issue wiki binding changed");
 		const params: JiraGitLabParams = {
+			jiraTriggerLabel: triggerLabel,
+			...(modelSelection ? { modelSelection } : {}),
 			...(topic ? { wikiTopicId: topic.id } : {}),
 			...first,
 			origin: "jira",
@@ -399,6 +438,7 @@ export function createJiraGitLabLauncher() {
 		};
 		return {
 			processId: "jira_gitlab_change_process",
+			defaultModelProfileId: modelSelection?.profileId,
 			...(topic && sourceIssue
 				? {
 						metadata: {

@@ -70,7 +70,7 @@ export async function jiraFixture(
 				{ id: "202", name: "Unmapped" },
 			],
 			labels: [
-				"use-leitwerk",
+				"use-leitwerk-beta",
 				...(options.skipPlan ? ["leitwerk-skip-plan-decision"] : []),
 				...(options.skipSimplification ? ["leitwerk-skip-simplification"] : []),
 			],
@@ -274,7 +274,14 @@ export async function jiraFixture(
 					jira_gitlab_change_process: {
 						default_model_profile: "fake",
 						turn_configs: {},
-						watchers: { use_leitwerk: { enabled: true, profile: "team", projects: ["100"] } },
+						watchers: {
+							use_leitwerk: {
+								enabled: true,
+								profile: "team",
+								projects: ["100"],
+								label: "use-leitwerk-beta",
+							},
+						},
 					},
 				};
 			},
