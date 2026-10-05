@@ -60,3 +60,5 @@ This is a future UI proposal with four fixtures, one subscription per process, a
 ![Mobile wait radar](screenshots/mobile.png)
 
 </details>
+
+The standalone HTML also passes the repository Biome check.
