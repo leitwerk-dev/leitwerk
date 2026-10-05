@@ -104,8 +104,9 @@ Process handles expose application actions and detached readonly snapshots.
 `waitFor()` is bounded and reports the final observation on timeout. `restart()`
 retains file-backed storage and existing process handles; its `whileStopped` callback
 can change an external fixture, and `extensionConfig` can replace wiring.
-`request()` exercises HTTP without exposing server internals. Await `close()` before
-releasing caller-owned fixtures.
+`request()` exercises HTTP without exposing server internals. `launch(id, input, modelConfig?)`
+accepts launcher model overrides through the normal launch contract. Await `close()`
+before releasing caller-owned fixtures.
 
 See the [integration harness API](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/test-support/src/integration.ts)
 for options and observations. Use fixture builders from `@leitwerk-dev/test-support/fixtures`

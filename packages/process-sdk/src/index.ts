@@ -144,6 +144,13 @@ export {
 	type ExternalSourcePollReporter,
 } from "./external-source-poll.js";
 export {
+	consumeTriggerFile,
+	createFileExternalSourceProvider,
+	defineFileExternalSource,
+	type FileExternalInput,
+	readTriggerFile,
+} from "./file-external-source.js";
+export {
 	AutomaticOutcomeBuilder,
 	createFlowPromptContext,
 	type FlowAutomaticRunContext,
@@ -238,7 +245,6 @@ export {
 	type ProcessGraphView,
 	serializeProcessGraph,
 	toProcessGraphView,
-	validateProcessGraphEntryTurns,
 	validateProcessGraphProducts,
 	validateProcessGraphTurnTransitions,
 } from "./process-graph.js";

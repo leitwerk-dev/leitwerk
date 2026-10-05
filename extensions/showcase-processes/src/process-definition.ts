@@ -1,7 +1,6 @@
 import {
 	type Codec,
 	createEmptyStructuralProcessState,
-	type ExtensionProcessDefinition,
 	type FormDefinition,
 	flow,
 	parseStructuralProcessState,
@@ -40,13 +39,9 @@ interface PoemCreatorState extends StructuralProcessState {
 
 const promptProcessParamsCodec: Codec<PromptProcessParams> = {
 	parse(value) {
-		const record = typeof value === "object" && value !== null ? value : {};
-		return {
-			prompt:
-				typeof (record as { prompt?: unknown }).prompt === "string"
-					? (record as { prompt: string }).prompt
-					: "",
-		};
+		const record =
+			typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+		return { prompt: typeof record.prompt === "string" ? record.prompt : "" };
 	},
 	serialize(value) {
 		return value;
@@ -59,14 +54,12 @@ const poemCreatorStateCodec: Codec<PoemCreatorState> = {
 		const record =
 			typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
 		const latestReviewOutcome =
-			typeof record.latestReviewOutcome === "string"
-				? record.latestReviewOutcome === "issues_found"
-					? "leave_feedback"
-					: record.latestReviewOutcome === "no_issues" ||
-							record.latestReviewOutcome === "leave_feedback"
-						? record.latestReviewOutcome
-						: null
-				: null;
+			record.latestReviewOutcome === "issues_found"
+				? "leave_feedback"
+				: record.latestReviewOutcome === "no_issues" ||
+						record.latestReviewOutcome === "leave_feedback"
+					? record.latestReviewOutcome
+					: null;
 		return {
 			...structural,
 			latestReviewMarkdown:
@@ -81,85 +74,22 @@ const poemCreatorStateCodec: Codec<PoemCreatorState> = {
 	},
 };
 
-function validateLaunchInput(input: Record<string, unknown>, fallbackPrompt?: string) {
-	const inputPrompt = typeof input.prompt === "string" ? input.prompt.trim() : "";
-	const prompt = inputPrompt || fallbackPrompt?.trim() || "";
-	if (!prompt) {
-		return {
-			ok: false as const,
-			errors: [{ code: "required", fieldId: "prompt", message: "prompt is required" }],
-		};
-	}
+function poemLaunchConfig(prompt: string) {
 	return {
-		ok: true as const,
-		prompt,
+		processId: "poem_creator_process",
+		params: { prompt },
+		titleSourceFields: [{ label: "Poem Prompt", value: prompt }],
+		startTurnId: poemTurnIds.draftPoem,
 	};
 }
 
-function buildPromptTitleSourceFields(prompt: string, label = "Prompt") {
-	return [{ label, value: prompt }] as const;
-}
-
-function promptLaunchResolution(options: {
-	processId: string;
-	startTurnId: string;
-	defaultPrompt?: () => string;
-	titleLabel?: string;
-}) {
-	return {
-		resolveDefaults: () => ({ prompt: options.defaultPrompt?.() ?? "" }),
-		resolveLaunchConfig(input: Record<string, unknown>) {
-			const validated = validateLaunchInput(input, options.defaultPrompt?.());
-			if (!validated.ok) return validated;
-			return {
-				ok: true as const,
-				launchConfig: {
-					processId: options.processId,
-					params: { prompt: validated.prompt },
-					titleSourceFields: buildPromptTitleSourceFields(validated.prompt, options.titleLabel),
-					startTurnId: options.startTurnId,
-				},
-			};
-		},
-	};
-}
-
-function clearReviewRefs(state: PoemCreatorState["semanticEntryRefs"]) {
+function resetPoemReview(state: PoemCreatorState): PoemCreatorState {
 	return {
 		...state,
-		review: null,
-	};
-}
-
-function patchPoemCreatorState(
-	state: PoemCreatorState,
-	input: {
-		latestReviewMarkdown?: PoemCreatorState["latestReviewMarkdown"];
-		latestReviewSummary?: PoemCreatorState["latestReviewSummary"];
-		latestReviewOutcome?: PoemCreatorState["latestReviewOutcome"];
-		semanticEntryRefs?: PoemCreatorState["semanticEntryRefs"];
-		clearReviewRefs?: boolean;
-	},
-): PoemCreatorState {
-	const nextState: PoemCreatorState = {
-		...state,
-		...("latestReviewMarkdown" in input
-			? { latestReviewMarkdown: input.latestReviewMarkdown ?? null }
-			: {}),
-		...("latestReviewSummary" in input
-			? { latestReviewSummary: input.latestReviewSummary ?? null }
-			: {}),
-		...("latestReviewOutcome" in input
-			? { latestReviewOutcome: input.latestReviewOutcome ?? null }
-			: {}),
-		...("semanticEntryRefs" in input ? { semanticEntryRefs: input.semanticEntryRefs } : {}),
-	};
-	if (!input.clearReviewRefs) {
-		return nextState;
-	}
-	return {
-		...nextState,
-		semanticEntryRefs: clearReviewRefs(nextState.semanticEntryRefs),
+		latestReviewMarkdown: null,
+		latestReviewSummary: null,
+		latestReviewOutcome: null,
+		semanticEntryRefs: { ...state.semanticEntryRefs, review: null },
 	};
 }
 
@@ -306,14 +236,7 @@ const poemDraftReviewSpec = flow
 			.trigger("operator_re_review")
 			.schedulable()
 			.to(poemTurnIds.reviewPoemDraft)
-			.effect(({ ctx }) => ({
-				state: patchPoemCreatorState(ctx.state, {
-					latestReviewMarkdown: null,
-					latestReviewSummary: null,
-					latestReviewOutcome: null,
-					clearReviewRefs: true,
-				}),
-			})),
+			.effect(({ ctx }) => ({ state: resetPoemReview(ctx.state) })),
 	)
 	.externalAction(
 		"poem_review_file",
@@ -369,17 +292,11 @@ const poemReviewFeedbackSpec = flow
 			.description("Return to the poem decision without applying the review feedback.")
 			.acceptanceState("neutral")
 			.to(poemTurnIds.poemReview)
-			.effect(({ ctx }) => ({
-				state: patchPoemCreatorState(ctx.state, {
-					latestReviewMarkdown: null,
-					latestReviewSummary: null,
-					latestReviewOutcome: null,
-					clearReviewRefs: true,
-				}),
-			})),
+			.effect(({ ctx }) => ({ state: resetPoemReview(ctx.state) })),
 	).definition;
 
-const poemCreatorProcessDefinition = flow
+/** @internal */
+export const poemCreatorProcess = flow
 	.process<PromptProcessParams, PoemCreatorState>("poem_creator_process")
 	.displayName("Poem Creator")
 	.entry(poemTurnIds.draftPoem)
@@ -408,14 +325,7 @@ const poemCreatorProcessDefinition = flow
 			})
 			.publish("poem-draft")
 			.to(poemTurnIds.poemReview)
-			.state(({ ctx }) =>
-				patchPoemCreatorState(ctx.state, {
-					latestReviewMarkdown: null,
-					latestReviewSummary: null,
-					latestReviewOutcome: null,
-					clearReviewRefs: true,
-				}),
-			),
+			.state(({ ctx }) => resetPoemReview(ctx.state)),
 	)
 	.turn({ id: poemTurnIds.poemReview, definition: poemDraftReviewSpec })
 	.turn(
@@ -447,14 +357,13 @@ const poemCreatorProcessDefinition = flow
 						publish: true,
 					})
 					.to(poemTurnIds.poemReview)
-					.state(({ ctx, event }) =>
-						patchPoemCreatorState(ctx.state, {
-							latestReviewMarkdown: null,
-							latestReviewSummary:
-								typeof event.params.summary === "string" ? event.params.summary : null,
-							latestReviewOutcome: "no_issues",
-						}),
-					),
+					.state(({ ctx, event }) => ({
+						...ctx.state,
+						latestReviewMarkdown: null,
+						latestReviewSummary:
+							typeof event.params.summary === "string" ? event.params.summary : null,
+						latestReviewOutcome: "no_issues",
+					})),
 			)
 			.outcomeTool("leave_feedback", (tool) =>
 				tool
@@ -466,17 +375,16 @@ const poemCreatorProcessDefinition = flow
 						publish: true,
 					})
 					.to(poemTurnIds.poemReviewFeedback)
-					.state(({ ctx, event }) =>
-						patchPoemCreatorState(ctx.state, {
-							latestReviewMarkdown:
-								typeof event.params.message === "string"
-									? event.params.message
-									: (ctx.output?.content ?? null),
-							latestReviewSummary:
-								typeof event.params.summary === "string" ? event.params.summary : null,
-							latestReviewOutcome: "leave_feedback",
-						}),
-					),
+					.state(({ ctx, event }) => ({
+						...ctx.state,
+						latestReviewMarkdown:
+							typeof event.params.message === "string"
+								? event.params.message
+								: (ctx.output?.content ?? null),
+						latestReviewSummary:
+							typeof event.params.summary === "string" ? event.params.summary : null,
+						latestReviewOutcome: "leave_feedback",
+					})),
 			),
 	)
 	.turn({ id: poemTurnIds.poemReviewFeedback, definition: poemReviewFeedbackSpec })
@@ -514,12 +422,14 @@ const poemCreatorProcessDefinition = flow
 				],
 				submitLabel: "Create Poem",
 			},
-			...promptLaunchResolution({
-				processId: "poem_creator_process",
-				startTurnId: poemTurnIds.draftPoem,
-				defaultPrompt: buildDefaultPoemPrompt,
-				titleLabel: "Poem Prompt",
-			}),
+			resolveDefaults: () => ({ prompt: buildDefaultPoemPrompt() }),
+			resolveLaunchConfig(input) {
+				const prompt = typeof input.prompt === "string" ? input.prompt.trim() : "";
+				return {
+					ok: true,
+					launchConfig: poemLaunchConfig(prompt || buildDefaultPoemPrompt().trim()),
+				};
+			},
 		},
 	})
 	.watcher({
@@ -528,18 +438,6 @@ const poemCreatorProcessDefinition = flow
 		description:
 			"Launch Poem Creator whenever the configured filesystem watcher finds a prompt file",
 		source: filesystemWatcherSource,
-		resolveLaunchConfig(event) {
-			const prompt = event.content.trim();
-			return {
-				processId: "poem_creator_process",
-				params: { prompt },
-				titleSourceFields: buildPromptTitleSourceFields(prompt, "Poem Prompt"),
-				startTurnId: poemTurnIds.draftPoem,
-			};
-		},
+		resolveLaunchConfig: (event) => poemLaunchConfig(event.content.trim()),
 	})
 	.define();
-
-/** @internal */
-export const poemCreatorProcess: ExtensionProcessDefinition<PromptProcessParams, PoemCreatorState> =
-	poemCreatorProcessDefinition;

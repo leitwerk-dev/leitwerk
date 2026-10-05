@@ -4,9 +4,11 @@ import path from "node:path";
 import {
 	builtinPiProvider,
 	createCapabilityToken,
+	type DefinedProcessInput,
 	defineModelProvider,
 	defineModelProviders,
 	defineProcess,
+	type ExtensionProcessDefinition,
 	humanTurn,
 	llmTurn,
 	toProcessGraphView,
@@ -258,6 +260,38 @@ describe("importExtensionModules", () => {
 });
 
 describe("buildExtensionCatalog", () => {
+	const emptyCodec = {
+		parse: () => ({}),
+		serialize: (value: Record<string, never>) => value,
+	};
+	type TestProcessInput = DefinedProcessInput<Record<string, never>, Record<string, never>>;
+
+	function defineTestProcess(
+		input: Pick<TestProcessInput, "id" | "turns"> & Partial<TestProcessInput>,
+	) {
+		return defineProcess({
+			displayName: input.id,
+			entry: Object.keys(input.turns)[0],
+			paramsCodec: emptyCodec,
+			stateCodec: emptyCodec,
+			initialState: () => ({}),
+			...input,
+		});
+	}
+
+	function catalogWithProcesses(
+		...processes: ExtensionProcessDefinition<Record<string, never>, Record<string, never>>[]
+	) {
+		return buildExtensionCatalog([
+			createLoadedExtensionModuleForTest({
+				manifest: { id: "process-extension", version: "0.1.0" },
+				setupCatalog(api) {
+					for (const process of processes) api.registerProcess(process);
+				},
+			}),
+		]);
+	}
+
 	it("orders present optional dependencies before capability consumers", async () => {
 		const token = createCapabilityToken<string>("test:optional-owner");
 		const observed: unknown[] = [];
@@ -385,17 +419,8 @@ describe("buildExtensionCatalog", () => {
 	});
 
 	it("allows multiple graph-defined processes to reuse the same registered turn metadata", async () => {
-		const emptyCodec = {
-			parse: () => ({}),
-			serialize: (value: Record<string, never>) => value,
-		};
-		const first = defineProcess({
+		const first = defineTestProcess({
 			id: "first_process",
-			displayName: "First",
-			entry: "run_single_prompt",
-			paramsCodec: emptyCodec,
-			stateCodec: emptyCodec,
-			initialState: () => ({}),
 			turns: {
 				run_single_prompt: llmTurn({
 					availableTools: [],
@@ -407,13 +432,8 @@ describe("buildExtensionCatalog", () => {
 				}),
 			},
 		});
-		const second = defineProcess({
+		const second = defineTestProcess({
 			id: "second_process",
-			displayName: "Second",
-			entry: "run_single_prompt",
-			paramsCodec: emptyCodec,
-			stateCodec: emptyCodec,
-			initialState: () => ({}),
 			turns: {
 				run_single_prompt: llmTurn({
 					availableTools: [],
@@ -426,15 +446,7 @@ describe("buildExtensionCatalog", () => {
 			},
 		});
 
-		const catalog = await buildExtensionCatalog([
-			createLoadedExtensionModuleForTest({
-				manifest: { id: "shared-turn-extension", version: "0.1.0" },
-				setupCatalog(api) {
-					api.registerProcess(first);
-					api.registerProcess(second);
-				},
-			}),
-		]);
+		const catalog = await catalogWithProcesses(first, second);
 
 		expect(catalog.processes.get("first_process")?.turns.has("run_single_prompt")).toBe(true);
 		expect(catalog.processes.get("second_process")?.turns.has("run_single_prompt")).toBe(true);
@@ -451,17 +463,8 @@ describe("buildExtensionCatalog", () => {
 	});
 
 	it("rejects registered processes with graph transition targets outside the process", async () => {
-		const emptyCodec = {
-			parse: () => ({}),
-			serialize: (value: Record<string, never>) => value,
-		};
-		const process = defineProcess({
+		const process = defineTestProcess({
 			id: "invalid_graph_process",
-			displayName: "Invalid Graph",
-			entry: "start",
-			paramsCodec: emptyCodec,
-			stateCodec: emptyCodec,
-			initialState: () => ({}),
 			turns: {
 				start: llmTurn({
 					availableTools: [],
@@ -479,34 +482,18 @@ describe("buildExtensionCatalog", () => {
 		}
 		setProcessTurnTransitions(start, [{ nextTurnId: "missing", outcome: "done" }]);
 
-		await expect(
-			buildExtensionCatalog([
-				createLoadedExtensionModuleForTest({
-					manifest: { id: "invalid-graph-extension", version: "0.1.0" },
-					setupCatalog(api) {
-						api.registerProcess(process);
-					},
-				}),
-			]),
-		).rejects.toThrow(/invalid_graph_process.*undeclared nextTurnId 'missing'/);
+		await expect(catalogWithProcesses(process)).rejects.toThrow(
+			/invalid_graph_process.*undeclared nextTurnId 'missing'/,
+		);
 	});
 
 	it.each([
 		"declaration",
 		"retained",
 	] as const)("rechecks %s routing changes against the happy path", async (source) => {
-		const emptyCodec = {
-			parse: () => ({}),
-			serialize: (value: Record<string, never>) => value,
-		};
-		const process = defineProcess({
+		const process = defineTestProcess({
 			id: "disconnected_process",
-			displayName: "Disconnected Process",
-			entry: "start",
 			happyPath: ["start", "done"],
-			paramsCodec: emptyCodec,
-			stateCodec: emptyCodec,
-			initialState: () => ({}),
 			turns: {
 				start: llmTurn({
 					availableTools: [],
@@ -532,32 +519,14 @@ describe("buildExtensionCatalog", () => {
 			setProcessTurnTransitions(start, [{ outcome: "ready", lifecycleStatus: "completed" }]);
 		}
 
-		await expect(
-			buildExtensionCatalog([
-				createLoadedExtensionModuleForTest({
-					manifest: { id: "disconnected-extension", version: "0.1.0" },
-					setupCatalog(api) {
-						api.registerProcess(process);
-					},
-				}),
-			]),
-		).rejects.toThrow(
+		await expect(catalogWithProcesses(process)).rejects.toThrow(
 			/disconnected_process.*happy path segment 'start' -> 'done' is not connected/,
 		);
 	});
 
 	it("rechecks product declarations changed after definition", async () => {
-		const emptyCodec = {
-			parse: () => ({}),
-			serialize: (value: Record<string, never>) => value,
-		};
-		const process = defineProcess({
+		const process = defineTestProcess({
 			id: "invalid_product_process",
-			displayName: "Invalid Product",
-			entry: "consume_plan",
-			paramsCodec: emptyCodec,
-			stateCodec: emptyCodec,
-			initialState: () => ({}),
 			turns: {
 				consume_plan: llmTurn({
 					availableTools: [],
@@ -573,30 +542,14 @@ describe("buildExtensionCatalog", () => {
 		if (consumer?.kind !== "llm") throw new Error("test consumer is missing");
 		consumer.consumedProducts = ["plan"];
 
-		await expect(
-			buildExtensionCatalog([
-				createLoadedExtensionModuleForTest({
-					manifest: { id: "invalid-product-extension", version: "0.1.0" },
-					setupCatalog(api) {
-						api.registerProcess(process);
-					},
-				}),
-			]),
-		).rejects.toThrow(/invalid_product_process.*consumes product 'plan' that is never published/);
+		await expect(catalogWithProcesses(process)).rejects.toThrow(
+			/invalid_product_process.*consumes product 'plan' that is never published/,
+		);
 	});
 
 	it("rejects registered processes with graph transitions that do not declare exactly one target", async () => {
-		const emptyCodec = {
-			parse: () => ({}),
-			serialize: (value: Record<string, never>) => value,
-		};
-		const process = defineProcess({
+		const process = defineTestProcess({
 			id: "ambiguous_graph_process",
-			displayName: "Ambiguous Graph",
-			entry: "start",
-			paramsCodec: emptyCodec,
-			stateCodec: emptyCodec,
-			initialState: () => ({}),
 			turns: {
 				start: llmTurn({
 					availableTools: [],
@@ -614,30 +567,14 @@ describe("buildExtensionCatalog", () => {
 		}
 		setProcessTurnTransitions(start, [{ outcome: "done" }]);
 
-		await expect(
-			buildExtensionCatalog([
-				createLoadedExtensionModuleForTest({
-					manifest: { id: "ambiguous-graph-extension", version: "0.1.0" },
-					setupCatalog(api) {
-						api.registerProcess(process);
-					},
-				}),
-			]),
-		).rejects.toThrow(/ambiguous_graph_process.*exactly one target/);
+		await expect(catalogWithProcesses(process)).rejects.toThrow(
+			/ambiguous_graph_process.*exactly one target/,
+		);
 	});
 
 	it("allows process-scoped turn ids even when their metadata diverges", async () => {
-		const emptyCodec = {
-			parse: () => ({}),
-			serialize: (value: Record<string, never>) => value,
-		};
-		const first = defineProcess({
+		const first = defineTestProcess({
 			id: "first_process",
-			displayName: "First",
-			entry: "shared_turn",
-			paramsCodec: emptyCodec,
-			stateCodec: emptyCodec,
-			initialState: () => ({}),
 			turns: {
 				shared_turn: llmTurn({
 					availableTools: [],
@@ -649,13 +586,8 @@ describe("buildExtensionCatalog", () => {
 				}),
 			},
 		});
-		const second = defineProcess({
+		const second = defineTestProcess({
 			id: "second_process",
-			displayName: "Second",
-			entry: "shared_turn",
-			paramsCodec: emptyCodec,
-			stateCodec: emptyCodec,
-			initialState: () => ({}),
 			turns: {
 				shared_turn: llmTurn({
 					availableTools: [],
@@ -678,15 +610,7 @@ describe("buildExtensionCatalog", () => {
 			},
 		});
 
-		const catalog = await buildExtensionCatalog([
-			createLoadedExtensionModuleForTest({
-				manifest: { id: "conflicting-turn-extension", version: "0.1.0" },
-				setupCatalog(api) {
-					api.registerProcess(first);
-					api.registerProcess(second);
-				},
-			}),
-		]);
+		const catalog = await catalogWithProcesses(first, second);
 
 		expect(
 			catalog.processes.get("first_process")?.turns.get("shared_turn")?.definition.description,

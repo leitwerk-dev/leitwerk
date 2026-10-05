@@ -7,9 +7,9 @@ import {
 } from "@leitwerk-dev/domain";
 import {
 	asWsEventPayloadRecord,
-	buildLiveTurnProjectionFromEvents,
 	buildPrimaryPathOperationalTraceItem,
 	compareTimestampStrings,
+	createLiveTurnProjection,
 	createTurnContinuationIndex,
 	extractPiSessionMessageText,
 	isPiSessionMessageEntryWithRecord,
@@ -19,12 +19,10 @@ import {
 	type PiSessionContentBlock,
 	type PiSessionEntry,
 	type PiSessionMessageRecord,
-	PRIMARY_PATH_OPERATIONAL_PI_EVENT_TYPES,
 	type PrimaryPathOperationalTraceItemSnapshot,
 	type PrimaryPathStreamingAssistantSnapshot,
 	type PrimaryPathTraceItemSnapshot,
 	reasoningPreviewTail,
-	snapshotTurnTrace,
 	type TurnPiInputPart,
 	type TurnPiInputSnapshot,
 	type TurnTracePreview,
@@ -37,7 +35,6 @@ import type { ReadonlyPiSessionTree } from "./pi-session-tree.js";
 const MULTI_PART_PI_INPUT_SEPARATOR =
 	"\n\n--- UI-added separator between Pi input messages ---\n\n";
 const PREVIEW_MAX_LENGTH = 520;
-const OPERATIONAL_PI_EVENT_TYPE_SET = new Set<string>(PRIMARY_PATH_OPERATIONAL_PI_EVENT_TYPES);
 
 function buildTurnPiInputSnapshot(parts: readonly TurnPiInputPart[]): TurnPiInputSnapshot | null {
 	const firstPart = parts[0];
@@ -179,19 +176,6 @@ function buildCompactionEntryTraceItem(
 		message: summary ? `Pi compacted context. Summary:\n${summary}` : "Pi compacted context.",
 		timestamp: entry.timestamp,
 	};
-}
-
-function buildOperationalEventTraceItem(
-	event: ProcessEvent,
-): PrimaryPathOperationalTraceItemSnapshot | null {
-	if (!OPERATIONAL_PI_EVENT_TYPE_SET.has(event.eventType)) {
-		return null;
-	}
-	return buildPrimaryPathOperationalTraceItem({
-		eventType: event.eventType,
-		data: asWsEventPayloadRecord(event.data),
-		fallbackTimestamp: event.createdAt,
-	});
 }
 
 function eventTurnRecordId(event: ProcessEvent): string | null {
@@ -357,7 +341,14 @@ function buildTurnTraceFromSlice(input: {
 
 	for (const event of input.events ?? []) {
 		if (eventTurnRecordId(event) === input.turnRecordId) {
-			appendOperationalTraceItem(traceItems, buildOperationalEventTraceItem(event));
+			appendOperationalTraceItem(
+				traceItems,
+				buildPrimaryPathOperationalTraceItem({
+					eventType: event.eventType,
+					data: asWsEventPayloadRecord(event.data),
+					fallbackTimestamp: event.createdAt,
+				}),
+			);
 		}
 	}
 
@@ -423,12 +414,9 @@ export function buildCommittedTurnTrace(input: {
 	events: readonly ProcessEvent[];
 }): TurnTraceSnapshot {
 	const sessionTrace = buildTurnTraceFromSession(input);
-	const trace = snapshotTurnTrace(
-		buildLiveTurnProjectionFromEvents(
-			input.events.filter((event) => eventTurnRecordId(event) === input.turnRecord.id),
-		),
-		sessionTrace?.piInput ?? null,
-	);
+	const trace = createLiveTurnProjection(
+		input.events.filter((event) => eventTurnRecordId(event) === input.turnRecord.id),
+	).snapshot(sessionTrace?.piInput ?? null);
 	if (sessionTrace && !hasAdditionalRecordedActivity(trace, sessionTrace)) return sessionTrace;
 	trace.usage ??= sessionTrace?.usage ?? null;
 	for (const item of sessionTrace?.traceItems ?? []) {

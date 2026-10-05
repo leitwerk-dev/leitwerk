@@ -236,17 +236,6 @@ function isTerminalLifecycleStatus(value: string | undefined): value is "complet
 }
 
 /** @internal */
-export function validateProcessGraphEntryTurns(graph: ProcessGraphView): readonly string[] {
-	const errors: string[] = [];
-	for (const turnId of graph.entryTurnIds) {
-		if (!graph.turns.has(turnId)) {
-			errors.push(`Entry turn '${turnId}' is not declared in turns`);
-		}
-	}
-	return errors;
-}
-
-/** @internal */
 export function validateProcessGraphProducts(graph: ProcessGraphView): readonly string[] {
 	const errors: string[] = [];
 	const publishedProducts = new Set<string>();

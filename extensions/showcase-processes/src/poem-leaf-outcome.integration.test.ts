@@ -4,7 +4,7 @@ import {
 	waitForValue,
 } from "@leitwerk-dev/test-support/integration";
 import { describe, expect, it } from "vitest";
-import { createShowcaseHarness, http } from "./testing/harness.js";
+import { createShowcaseHarness } from "./testing/harness.js";
 
 type ReviewScript =
 	| {
@@ -152,20 +152,10 @@ describe("poem leaf outcome adoption", () => {
 				}),
 			);
 
-			const actionResponse = await http(
-				harness,
-				`/api/processes/${encodeURIComponent(instanceId)}/actions/request_poem_revision`,
-				{
-					method: "POST",
-					headers: { "content-type": "application/json" },
-					body: JSON.stringify({
-						input: {
-							message: "Keep the setting, but make the ending warmer and more optimistic.",
-						},
-					}),
-				},
-			);
-			expect(actionResponse.status).toBe(200);
+			const actionResponse = await harness.process(instanceId).action("request_poem_revision", {
+				message: "Keep the setting, but make the ending warmer and more optimistic.",
+			});
+			expect(actionResponse.statusCode).toBe(200);
 
 			const snapshots = await waitForValue(
 				() => harness.process(instanceId).snapshot().leafOutcomes,
