@@ -45,10 +45,7 @@ const resultCodec: Codec<Result> = {
 };
 
 const review = flow
-	.llm<Params, State>("review_item")
-	.description("Review one item")
-	.freshPrimary()
-	.forEach<Item, Result>({
+	.mappedLlm<Params, State, Item, Result>("review_item", {
 		items: ({ state }) => state.pending,
 		itemCodec,
 		resultCodec,
@@ -56,6 +53,8 @@ const review = flow
 		label: ({ item }) => `Item ${item.name}`,
 		stateAfterSnapshot: ({ state }) => ({ kept: state.kept }),
 	})
+	.description("Review one item")
+	.freshPrimary()
 	.buildPrompt(
 		(ctx) =>
 			`Review ${ctx.item.name} (${ctx.itemIndex + 1} of ${ctx.itemCount}); state ${JSON.stringify(ctx.state)}`,

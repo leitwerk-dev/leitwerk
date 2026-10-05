@@ -201,13 +201,7 @@ export function createSplitProcess(
 		)
 		.turn(
 			flow
-				.llm<SplitParams, SplitState>("assess_repository")
-				.description("Assess repository applicability")
-				.freshPrimary()
-				.tools("read", "bash")
-				.integrationTools(...inspectionTools)
-				.askQuestions()
-				.forEach<SplitRepository, SplitDraft>({
+				.mappedLlm<SplitParams, SplitState, SplitRepository, SplitDraft>("assess_repository", {
 					items: ({ params, state }) =>
 						params.repositories.filter((repository) => state.candidates.includes(repository.key)),
 					itemCodec: repositoryCodec,
@@ -215,6 +209,11 @@ export function createSplitProcess(
 					key: ({ item }) => item.key,
 					label: ({ item }) => item.name,
 				})
+				.description("Assess repository applicability")
+				.freshPrimary()
+				.tools("read", "bash")
+				.integrationTools(...inspectionTools)
+				.askQuestions()
 				.buildPrompt(
 					(ctx) =>
 						`Determine whether this repository needs changes for the source issue's requirements. Use GitLab file reads and checkout_repository as needed. Do not change code or publish anything. Distinguish already compliant, not applicable, and unresolved; lack of access is unresolved. For an applicable repository prepare one ticket with concrete acceptance criteria, evidence and inspected commit. ${ctx.params.subtaskType ? `Use issueType Sub-task (${ctx.params.subtaskType.name}); Story and Task are not allowed.` : `Default issue type: ${ctx.params.issueType}; only Story or Task are allowed.`}\n${wikiInstructions}\nSource issue: ${JSON.stringify(ctx.state.epic)}\nRepository: ${JSON.stringify(ctx.item)}\nReturn assessment JSON: ${draftShape}`,

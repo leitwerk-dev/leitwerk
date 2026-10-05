@@ -91,7 +91,8 @@ it does not define turns, transitions, actions, or completion policy.
 
 | Builder | Execution |
 | --- | --- |
-| `flow.llm` | Optionally prepares deterministic input, then prompts an agent with authorized tools. `.forEach(...)` runs it sequentially for frozen items. |
+| `flow.llm` | Optionally prepares deterministic input, then prompts an agent with authorized tools. |
+| `flow.mappedLlm` | Runs an LLM turn sequentially for frozen items, then collects their results and routes once. |
 | `flow.automatic` | Runs deterministic TypeScript in a worker. Server operations require authorized integration tools. |
 | `flow.human` | Waits for an operator action or a declared external action. |
 | `flow.external` | Waits for a declared external source. |
@@ -183,16 +184,14 @@ for the runtime contract.
 
 ### Mapped LLM turns
 
-Use `.forEach(...)` to run an LLM turn once per item, such as each candidate in a
+Use `flow.mappedLlm(turnId, items)` to run an LLM turn once per item, such as each candidate in a
 shortlist. The turn remains one graph node. Items run sequentially, each with its own
 turn record, Chronicle card, and rail entry. Each outcome yields a typed result;
 `.collect(...)` combines the results and routes once.
 
 ```ts
 const investigate = flow
-  .llm<Params, State>("investigate_candidate")
-  .description("Investigate one candidate")
-  .forEach<Candidate, InvestigationResult>({
+  .mappedLlm<Params, State, Candidate, InvestigationResult>("investigate_candidate", {
     items: ({ state }) => state.candidates,
     itemCodec: candidateCodec,
     resultCodec: investigationResultCodec,
@@ -200,7 +199,14 @@ const investigate = flow
     label: ({ item }) => `${item.service}: ${item.pattern}`,
     stateAfterSnapshot: ({ state }) => ({ ...state, candidates: [] }),
   })
-  .buildPrompt((ctx) => `Candidate ${ctx.itemIndex + 1} of ${ctx.itemCount}: ${ctx.item.pattern}`)
+  .description("Investigate one candidate")
+  .askQuestions()
+  .executionPurpose("candidate_investigation")
+  .optionalConsume("plan")
+  .prepare(({ item }) => ({ focus: `${item.service}: ${item.pattern}` }))
+  .buildPrompt((ctx) =>
+    `Candidate ${ctx.itemIndex + 1} of ${ctx.itemCount}: ${ctx.prepared.focus}\n${ctx.input.plan ?? ""}`,
+  )
   .outcomeTool("candidate_noise", (outcome) =>
     outcome
       .description("Classify this candidate as noise")
@@ -212,6 +218,24 @@ const investigate = flow
     state.dispositions.some(needsReview) ? "review" : "done",
   );
 ```
+
+Mapped and ordinary LLM builders share configuration methods: descriptions, execution
+purpose, tools and dynamic integration-tool selection, operator questions, products,
+preparation, and context selection. Declare a publisher for every consumed product,
+including the optional `plan` in this example. Item outcomes yield results; collection
+owns completion. Mapped builders do not expose `.publish(...)` or `.end(...)`.
+
+Declare `.prepare(...)`, `.consume(...)`, and `.optionalConsume(...)` before
+`.buildPrompt(...)` so its callback receives the refined types. `prepare` infers its
+return type. A typed `FlowForEachOptions<Params, State, Item, Result>` source lets
+`flow.mappedLlm(...)` infer all four types. For an inline source, supply all four type
+arguments as above; supplying only `Params, State` leaves item and result types at
+their defaults. Builders retain their fluent mutation behavior.
+
+To migrate, replace `flow.llm<Params, State>(id).forEach<Item, Result>(items)` with
+`flow.mappedLlm<Params, State, Item, Result>(id, items)` and move shared configuration
+after the factory. The compiled definition still uses `LlmTurnDefinition.forEach`;
+persisted mapped runs and recovery keep the same representation.
 
 Entering the turn evaluates `items` once on the server. Each item is parsed and
 serialized by `itemCodec`; keys must be unique, non-empty, and at most 200 characters,

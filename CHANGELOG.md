@@ -4,6 +4,15 @@
 
 ### Breaking changes
 
+* **process-sdk:** Replace `flow.llm(...).forEach(...)` with
+  `flow.mappedLlm<Params, State, Item, Result>(turnId, items)`. Move shared LLM
+  configuration after the factory. Mapped turns now support the same configuration
+  methods as ordinary LLM turns, including questions, execution purpose, optional
+  products, and dynamic integration tools. Item outcomes yield typed results;
+  collection owns state and routing. Compiled definitions and persisted mapped runs
+  keep their existing representation. This change requires a minor release while
+  the package is in `0.x`.
+
 * **process-sdk:** `defineProcess(...)` and `flow.process(...).define()` now reject
   invalid declared metadata before returning, including errors previously deferred
   to catalog loading or server setup. Independent errors are reported together.
