@@ -67,16 +67,19 @@ describe("flow process composition", () => {
 		expect(process.resolveStorageSize).toBe(resolver);
 	});
 
-	it("delegates to defineProcess and composes fragment turns", () => {
+	it("compiles configuration snapshots and composes fragment turns", () => {
 		const fragment = flow.fragment("plan").turn(publishingTurn()).turn(consumingTurn());
+		const builder = processBuilder().use(fragment).happyPath("publish_plan", "consume_plan");
+		const process = builder.runtime({ docker: true, repositoryCheckout: "on_demand" }).define();
 
-		const process = processBuilder().use(fragment).define();
-
+		expect(builder.runtime({ docker: false }).define()).not.toHaveProperty("runtime");
 		expect(process).toMatchObject({
 			id: "test_process",
 			displayName: "Test Process",
 			entryTurnId: "publish_plan",
 			alternateEntryTurnIds: [],
+			happyPath: ["publish_plan", "consume_plan"],
+			runtime: { docker: true, repositoryCheckout: "on_demand" },
 		});
 		expect([...process.turns.keys()].sort()).toEqual(["consume_plan", "publish_plan"]);
 		expect(process.worker).toBeDefined();

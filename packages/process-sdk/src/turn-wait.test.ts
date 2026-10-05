@@ -16,6 +16,7 @@ describe("turn readiness definitions", () => {
 
 	it.each([
 		"llm",
+		"mapped",
 		"automatic",
 	] as const)("rejects an external edge to an ungated %s turn", (kind) => {
 		const build = (gated: boolean) => {
@@ -25,11 +26,27 @@ describe("turn readiness definitions", () => {
 				.description("Work")
 				.run(async () => ({ outcome: "done", params: {} }))
 				.outcome("done", (o) => o.description("Done").complete());
+			const mapped = flow
+				.mappedLlm("work", {
+					items: () => [{}],
+					itemCodec: emptyParamsCodec,
+					resultCodec: emptyParamsCodec,
+					key: () => "one",
+				})
+				.description("Work")
+				.prompt("Work.")
+				.outcomeTool("done", (outcome) => outcome.description("Done").yield(() => ({})));
 			if (gated) {
 				llm.waitFor(() => false);
+				mapped.waitFor(() => false);
 				automatic.waitFor(() => false);
 			}
-			const worker = kind === "llm" ? llm.end("done").complete() : automatic;
+			const worker =
+				kind === "llm"
+					? llm.end("done").complete()
+					: kind === "mapped"
+						? mapped.collect(({ state }) => state).complete()
+						: automatic;
 			return flow
 				.process("external_readiness")
 				.displayName("Readiness")

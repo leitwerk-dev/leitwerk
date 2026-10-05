@@ -8,6 +8,26 @@ import { emptyParamsCodec } from "./codecs.js";
 import { flow } from "./flow.js";
 
 const stateCodec = { parse: () => ({}), serialize: (value: Record<string, never>) => value };
+const fileSource = {
+	kind: "example.file.instruction",
+	config: {},
+	inputMode: "instruction" as const,
+};
+
+function llmTurn<TParams = unknown, TState = unknown>(id: string) {
+	return flow.llm<TParams, TState>(id).description(id);
+}
+
+function inputPublishingReview(target?: string) {
+	return flow
+		.human("review")
+		.description("Review")
+		.action("complete", (action) => action.label("Complete").acceptanceState("accepted").complete())
+		.externalAction("review_file", fileSource, (external) => {
+			const published = external.publishInput("message", { inputField: "instruction" });
+			return target ? published.to(target) : published.complete();
+		});
+}
 
 function workerCtx(products: Record<string, string> = {}) {
 	return createTestWorkerProcessContext({
@@ -21,9 +41,7 @@ function workerCtx(products: Record<string, string> = {}) {
 
 describe("flow product publication and consumption", () => {
 	it("compiles consumed product metadata and hydrates prompt input", async () => {
-		const turn = flow
-			.llm<{ prompt: string }, Record<string, never>>("implement")
-			.description("Implement")
+		const turn = llmTurn<{ prompt: string }, Record<string, never>>("implement")
 			.tools("read")
 			.fullPrimary()
 			.consume("plan")
@@ -36,9 +54,7 @@ describe("flow product publication and consumption", () => {
 	});
 
 	it("does not require a project unless the prompt asks for one", async () => {
-		const turn = flow
-			.llm<{ prompt: string }, Record<string, never>>("draft")
-			.description("Draft")
+		const turn = llmTurn<{ prompt: string }, Record<string, never>>("draft")
 			.outcomeTool("done", (tool) => tool.description("Done").complete())
 			.buildPrompt((ctx) => ctx.prompts.initial);
 
@@ -55,9 +71,7 @@ describe("flow product publication and consumption", () => {
 	});
 
 	it("hydrates hyphenated product names through bracket access", async () => {
-		const turn = flow
-			.llm<{ prompt: string }, Record<string, never>>("review")
-			.description("Review")
+		const turn = llmTurn<{ prompt: string }, Record<string, never>>("review")
 			.consume("implementation-summary")
 			.outcomeTool("done", (tool) => tool.description("Done").complete())
 			.buildPrompt((ctx) => ctx.input["implementation-summary"]);
@@ -67,21 +81,21 @@ describe("flow product publication and consumption", () => {
 		).toBe("## Implementation");
 	});
 
-	it("fails fast when required product markdown is missing from the worker payload", async () => {
-		const turn = flow
-			.llm<{ prompt: string }, Record<string, never>>("implement")
-			.description("Implement")
+	it("rejects missing or blank markdown when a product is required and optional", () => {
+		const turn = llmTurn<{ prompt: string }, Record<string, never>>("implement")
 			.consume("plan")
+			.optionalConsume("plan")
 			.outcomeTool("done", (tool) => tool.description("Done").complete())
 			.buildPrompt((ctx) => ctx.input.plan);
 
 		expect(() => turn.definition.prompt(workerCtx())).toThrow(/requires product 'plan'/);
+		expect(() => turn.definition.prompt(workerCtx({ plan: " " }))).toThrow(
+			/requires product 'plan'/,
+		);
 	});
 
 	it("compiles review publication to required markdown and compatibility semantic ref", () => {
-		const turn = flow
-			.llm("review")
-			.description("Review")
+		const turn = llmTurn("review")
 			.buildPrompt(() => "Review")
 			.outcomeTool("no_issues", (tool) => tool.description("No issues").complete())
 			.publish("review");
@@ -98,9 +112,7 @@ describe("flow product publication and consumption", () => {
 	});
 
 	it("derives the review semantic ref from an outcome-published review product", () => {
-		const turn = flow
-			.llm("review")
-			.description("Review")
+		const turn = llmTurn("review")
 			.buildPrompt(() => "Review")
 			.outcomeTool("request_changes", (tool) =>
 				tool.description("Request changes").markdown("review", { publish: true }).complete(),
@@ -110,42 +122,23 @@ describe("flow product publication and consumption", () => {
 		expect(turn.definition.outcomes?.request_changes?.publishedProduct).toBe("review");
 	});
 
-	it("compiles plan publication as a generic product publication", () => {
-		const turn = flow
-			.llm("generate_plan")
-			.description("Draft plan")
-			.buildPrompt(() => "Plan")
-			.publish("plan")
-			.to("plan_decision");
+	it.each([
+		["plan", "plan"],
+		["implementation-summary", undefined],
+	] as const)("compiles routed %s publication to a deterministic turnEnd", (productName, semanticRef) => {
+		const turn = llmTurn("publish")
+			.buildPrompt(() => "Result")
+			.publish(productName)
+			.to("decision").definition;
 
-		expect(turn.definition.publishedProduct).toBe("plan");
-		expect(turn.definition.resultSemanticRef).toBe("plan");
-		expect(turn.definition.outcomes).toBeUndefined();
-		expect(turn.definition.turnEnd).toMatchObject({
-			outcome: "plan",
-			to: "plan_decision",
-		});
-	});
-
-	it("compiles routed generic publication to a deterministic turnEnd outcome", () => {
-		const turn = flow
-			.llm("implement")
-			.description("Implement")
-			.buildPrompt(() => "Implement")
-			.publish("implementation-summary")
-			.to("implementation_decision");
-
-		expect(turn.definition.outcomes).toBeUndefined();
-		expect(turn.definition.turnEnd).toMatchObject({
-			outcome: "implementation-summary",
-			to: "implementation_decision",
-		});
+		expect(turn.publishedProduct).toBe(productName);
+		expect(turn.resultSemanticRef).toBe(semanticRef);
+		expect(turn.outcomes).toBeUndefined();
+		expect(turn.turnEnd).toMatchObject({ outcome: productName, to: "decision" });
 	});
 
 	it("rejects routed publication plus explicit outcome tools in flow v1", () => {
-		const turn = flow
-			.llm("ambiguous")
-			.description("Ambiguous")
+		const turn = llmTurn("ambiguous")
 			.buildPrompt(() => "Prompt")
 			.outcomeTool("done", (tool) => tool.description("Done").complete())
 			.publish("implementation-summary")
@@ -155,9 +148,7 @@ describe("flow product publication and consumption", () => {
 	});
 
 	it("rejects publication with no route and no outcome tools", () => {
-		const turn = flow
-			.llm("stuck")
-			.description("Stuck")
+		const turn = llmTurn("stuck")
 			.buildPrompt(() => "Prompt")
 			.publish("review");
 
@@ -165,10 +156,7 @@ describe("flow product publication and consumption", () => {
 	});
 
 	it("rejects .end() and outcome tools after publication", () => {
-		const builder = flow
-			.llm("published")
-			.description("Published")
-			.buildPrompt(() => "Prompt");
+		const builder = llmTurn("published").buildPrompt(() => "Prompt");
 		builder.publish("result").to("next");
 
 		expect(() => builder.end("done")).toThrow(/both \.publish\(\.\.\.\) and \.end/);
@@ -178,9 +166,7 @@ describe("flow product publication and consumption", () => {
 	});
 
 	it("rejects outcome tool parameters that collide with generated markdown", () => {
-		const turn = flow
-			.llm("bad_markdown_param")
-			.description("Bad")
+		const turn = llmTurn("bad_markdown_param")
 			.buildPrompt(() => "Prompt")
 			.outcomeTool("done", (tool) =>
 				tool.description("Done").requiredString("markdown", "Markdown").complete(),
@@ -190,9 +176,7 @@ describe("flow product publication and consumption", () => {
 	});
 
 	it("compiles outcome parameter shorthands", () => {
-		const turn = flow
-			.llm("classify")
-			.description("Classify")
+		const turn = llmTurn("classify")
 			.buildPrompt(() => "Classify")
 			.outcomeTool("classified", (tool) =>
 				tool
@@ -217,9 +201,7 @@ describe("flow product publication and consumption", () => {
 	});
 
 	it("compiles outcome parameters and state effects", async () => {
-		const turn = flow
-			.llm<unknown, { value: string }>("commit")
-			.description("Commit")
+		const turn = llmTurn<unknown, { value: string }>("commit")
 			.buildPrompt(() => "Commit")
 			.outcomeTool("committed", (tool) =>
 				tool
@@ -262,24 +244,9 @@ describe("flow product publication and consumption", () => {
 	});
 
 	it("allows selected-turn external actions to publish input consumed by their target LLM", () => {
-		const source = {
-			kind: "example.file.instruction",
-			config: {},
-			inputMode: "instruction" as const,
-		};
-		const review = flow
-			.human("review")
-			.description("Review")
-			.action("complete", (action) =>
-				action.label("Complete").acceptanceState("accepted").complete(),
-			)
-			.externalAction("review_file", source, (external) =>
-				external.publishInput("message", { inputField: "instruction" }).to("draft"),
-			);
-		const draft = flow
-			.llm("draft")
+		const review = inputPublishingReview("draft");
+		const draft = llmTurn("draft")
 			.waitFor(({ state }) => !!state)
-			.description("Draft")
 			.optionalConsume("message")
 			.buildPrompt((ctx) => ctx.input.message ?? "initial")
 			.end("done")
@@ -308,11 +275,6 @@ describe("flow product publication and consumption", () => {
 	});
 
 	it("rejects external input publication to terminal or non-consuming targets", () => {
-		const source = {
-			kind: "example.file.instruction",
-			config: {},
-			inputMode: "instruction" as const,
-		};
 		const base = () =>
 			flow
 				.process("test_process")
@@ -321,35 +283,13 @@ describe("flow product publication and consumption", () => {
 				.codecs({ params: emptyParamsCodec, state: stateCodec })
 				.initialState(() => ({}));
 
-		expect(() =>
-			base()
-				.turn(
-					flow
-						.human("review")
-						.description("Review")
-						.action("complete", (action) =>
-							action.label("Complete").acceptanceState("accepted").complete(),
-						)
-						.externalAction("review_file", source, (external) =>
-							external.publishInput("message", { inputField: "instruction" }).complete(),
-						),
-				)
-				.define(),
-		).toThrow(/external action 'review_file' cannot publish input on a terminal route/);
+		expect(() => base().turn(inputPublishingReview()).define()).toThrow(
+			/external action 'review_file' cannot publish input on a terminal route/,
+		);
 
 		expect(() =>
 			base()
-				.turn(
-					flow
-						.human("review")
-						.description("Review")
-						.action("complete", (action) =>
-							action.label("Complete").acceptanceState("accepted").complete(),
-						)
-						.externalAction("review_file", source, (external) =>
-							external.publishInput("message", { inputField: "instruction" }).to("next_human"),
-						),
-				)
+				.turn(inputPublishingReview("next_human"))
 				.turn(
 					flow
 						.human("next_human")
@@ -363,9 +303,7 @@ describe("flow product publication and consumption", () => {
 	});
 
 	it("validates consumed products against process publications", () => {
-		const consumer = flow
-			.llm("consumer")
-			.description("Consumer")
+		const consumer = llmTurn("consumer")
 			.consume("plan")
 			.outcomeTool("done", (tool) => tool.description("Done").complete())
 			.buildPrompt((ctx) => ctx.input.plan);
