@@ -345,18 +345,12 @@ export function validateAutomaticTurnDefinition<
 	];
 }
 
-/** @internal */
-export function validateHumanTurnDefinition<TParams = unknown, TState = unknown>(
+/** Intrinsic metadata checked before action derivation, which also validates routing. @internal */
+export function validateHumanTurnMetadata<TParams = unknown, TState = unknown>(
 	turnId: string,
 	turnDef: HumanTurnDefinition<TParams, TState>,
 ): string[] {
 	const errors: string[] = [];
-
-	try {
-		resolveHumanTurnView({ turnId, turn: turnDef });
-	} catch (error: unknown) {
-		errors.push(error instanceof Error ? error.message : String(error));
-	}
 	if (turnDef.reviewProduct) {
 		errors.push(...validateProcessProductName(turnDef.reviewProduct));
 	}
@@ -409,49 +403,25 @@ export function validateHumanTurnDefinition<TParams = unknown, TState = unknown>
 		}
 	}
 
-	for (const [externalActionId, externalAction] of Object.entries(turnDef.externalActions ?? {})) {
-		if (externalActionId.trim() === "") {
-			errors.push(`Human turn '${turnId}' contains an external action with an empty id`);
-		}
-		if (externalAction.id !== externalActionId) {
-			errors.push(
-				`Human turn '${turnId}' external action '${externalActionId}' has mismatched id '${externalAction.id}'`,
-			);
-		}
-		if (externalAction.source.kind.trim() === "") {
-			errors.push(
-				`Human turn '${turnId}' external action '${externalActionId}' must declare a non-empty source kind`,
-			);
-		}
-		const targetCount =
-			(externalAction.to !== undefined ? 1 : 0) +
-			(externalAction.complete === true ? 1 : 0) +
-			(externalAction.lifecycleStatus !== undefined ? 1 : 0);
-		if (targetCount !== 1) {
-			errors.push(
-				`Human turn '${turnId}' external action '${externalActionId}' must declare exactly one target`,
-			);
-		}
-		if (externalAction.publishInput) {
-			errors.push(...validateProcessProductName(externalAction.publishInput.productName));
-			if (externalAction.publishInput.inputField.trim() === "") {
-				errors.push(
-					`Human turn '${turnId}' external action '${externalActionId}' publishInput must declare a non-empty inputField`,
-				);
-			}
-			if (externalAction.complete === true || externalAction.lifecycleStatus !== undefined) {
-				errors.push(
-					`Human turn '${turnId}' external action '${externalActionId}' cannot publish input on a terminal route`,
-				);
-			}
-		}
-	}
-
 	const duplicateNote = findDuplicateBy(turnDef.notesFields ?? [], (field) => field.id);
 	if (duplicateNote !== undefined) {
 		errors.push(`Human turn '${turnId}' contains duplicate notes field id '${duplicateNote.id}'`);
 	}
 
+	return errors;
+}
+
+/** @internal */
+export function validateHumanTurnDefinition<TParams = unknown, TState = unknown>(
+	turnId: string,
+	turnDef: HumanTurnDefinition<TParams, TState>,
+): string[] {
+	const errors = validateHumanTurnMetadata(turnId, turnDef);
+	try {
+		resolveHumanTurnView({ turnId, turn: turnDef });
+	} catch (error) {
+		errors.push(error instanceof Error ? error.message : String(error));
+	}
 	return errors;
 }
 

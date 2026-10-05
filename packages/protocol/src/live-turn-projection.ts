@@ -38,11 +38,9 @@ interface ProjectionToolCall extends PrimaryPathToolCallSnapshot {
 
 interface LiveTurnProjectionState {
 	assistant: PrimaryPathStreamingAssistantSnapshot;
-	toolCalls: ProjectionToolCall[];
 	traceItems: PrimaryPathTraceItemSnapshot[];
 	usage: UsageSnapshot | null;
 	toolCallsById: Map<string, ProjectionToolCall>;
-	openToolCallIdsByName: Map<string, string[]>;
 	nextFallbackOrdinal: number;
 }
 
@@ -235,48 +233,6 @@ export function buildPrimaryPathOperationalTraceItem(input: {
 	return null;
 }
 
-function addOpenToolCallId(
-	projection: LiveTurnProjectionState,
-	toolName: string,
-	toolCallId: string,
-) {
-	const ids = projection.openToolCallIdsByName.get(toolName) ?? [];
-	if (!ids.includes(toolCallId)) ids.push(toolCallId);
-	projection.openToolCallIdsByName.set(toolName, ids);
-}
-
-function consumeLatestOpenToolCallId(
-	projection: LiveTurnProjectionState,
-	toolName: string,
-): string | null {
-	const ids = projection.openToolCallIdsByName.get(toolName);
-	if (!ids || ids.length === 0) {
-		return null;
-	}
-	const toolCallId = ids.pop() ?? null;
-	if (ids.length === 0) {
-		projection.openToolCallIdsByName.delete(toolName);
-	} else {
-		projection.openToolCallIdsByName.set(toolName, ids);
-	}
-	return toolCallId;
-}
-
-function removeOpenToolCallId(projection: LiveTurnProjectionState, toolCallId: string) {
-	for (const [toolName, ids] of projection.openToolCallIdsByName.entries()) {
-		const nextIds = ids.filter((candidate) => candidate !== toolCallId);
-		if (nextIds.length === ids.length) {
-			continue;
-		}
-		if (nextIds.length === 0) {
-			projection.openToolCallIdsByName.delete(toolName);
-		} else {
-			projection.openToolCallIdsByName.set(toolName, nextIds);
-		}
-		return;
-	}
-}
-
 function canonicalizeToolCallId(input: {
 	projection: LiveTurnProjectionState;
 	data: WsEventPayloadRecord;
@@ -285,17 +241,12 @@ function canonicalizeToolCallId(input: {
 	preferOpenCall: boolean;
 }): string {
 	const explicitToolCallId = readWsEventToolCallId(input.data);
-	if (explicitToolCallId) {
-		if (input.preferOpenCall) {
-			removeOpenToolCallId(input.projection, explicitToolCallId);
-		}
-		return explicitToolCallId;
-	}
+	if (explicitToolCallId) return explicitToolCallId;
 	if (input.preferOpenCall) {
-		const openToolCallId = consumeLatestOpenToolCallId(input.projection, input.toolName);
-		if (openToolCallId) {
-			return openToolCallId;
-		}
+		const openToolCall = [...input.projection.toolCallsById.values()]
+			.reverse()
+			.find((tool) => tool.status === "running" && tool.toolName === input.toolName);
+		if (openToolCall) return openToolCall.toolCallId;
 	}
 	// Replayed canonical IDs and restored snapshots do not retain the old ordinal.
 	// Reserve their identities by checking the index, without interpreting ID strings.
@@ -346,11 +297,9 @@ function createProjectionState(): LiveTurnProjectionState {
 			thinking: "",
 			lastUpdatedAt: null,
 		},
-		toolCalls: [],
 		traceItems: [],
 		usage: null,
 		toolCallsById: new Map<string, ProjectionToolCall>(),
-		openToolCallIdsByName: new Map<string, string[]>(),
 		nextFallbackOrdinal: 1,
 	};
 }
@@ -358,7 +307,7 @@ function createProjectionState(): LiveTurnProjectionState {
 function snapshotLiveTurnProjection(projection: LiveTurnProjectionState): LiveTurnSnapshot {
 	return {
 		assistant: { ...projection.assistant },
-		toolCalls: projection.toolCalls.map((toolCall) => {
+		toolCalls: Array.from(projection.toolCallsById.values(), (toolCall) => {
 			const { restoredResult: _restoredResult, ...snapshot } = cloneToolCall(toolCall);
 			return snapshot;
 		}),
@@ -372,6 +321,9 @@ function applyPiEventToLiveTurnProjection(
 	input: LiveTurnProjectionEvent,
 ): AppliedLiveTurnProjectionEvent {
 	let timestamp = readWsEventTimestamp(input.data, input.fallbackTimestamp);
+	let canonicalData = input.data;
+	let toolCallId: string | null = null;
+	let toolName: string | null = null;
 	if (input.eventType === "pi.stream.delta") {
 		const text = readWsEventStreamText(input.data);
 		if (text) {
@@ -385,15 +337,15 @@ function applyPiEventToLiveTurnProjection(
 		}
 	} else if (input.eventType === "pi.tool.call" || input.eventType === "pi.tool.result") {
 		const isResult = input.eventType === "pi.tool.result";
-		const toolName = readWsEventToolName(input.data);
-		const toolCallId = canonicalizeToolCallId({
+		toolName = readWsEventToolName(input.data);
+		toolCallId = canonicalizeToolCallId({
 			projection,
 			data: input.data,
 			timestamp,
 			toolName,
 			preferOpenCall: isResult,
 		});
-		const canonicalData =
+		canonicalData =
 			readWsEventToolCallId(input.data) === toolCallId ? input.data : { ...input.data, toolCallId };
 		const existingToolCall = projection.toolCallsById.get(toolCallId);
 		const toolCall: ProjectionToolCall = existingToolCall ?? {
@@ -406,37 +358,19 @@ function applyPiEventToLiveTurnProjection(
 			result: null,
 			isError: false,
 		};
-		if (!existingToolCall) {
-			projection.toolCalls.push(toolCall);
-			projection.toolCallsById.set(toolCallId, toolCall);
-		}
+		if (!existingToolCall) projection.toolCallsById.set(toolCallId, toolCall);
 		if (isResult) {
 			toolCall.status = "completed";
 			toolCall.completedAt = timestamp;
 			toolCall.result = canonicalData.result ?? null;
 			delete toolCall.restoredResult;
 			toolCall.isError = canonicalData.isError === true;
-			if (existingToolCall) removeOpenToolCallId(projection, toolCallId);
 		}
 		ensureToolTraceItem(projection, toolCallId);
-		if (!isResult && toolCall.status === "running") {
-			addOpenToolCallId(projection, toolCall.toolName, toolCallId);
-		}
-		return {
-			canonicalData,
-			timestamp,
-			toolCallId,
-			toolName,
-			usage: cloneUsageSnapshot(projection.usage),
-		};
 	} else if (input.eventType === "pi.usage") {
 		projection.usage = mergeUsageSnapshots(projection.usage, normalizeUsageSnapshot(input.data));
 	} else {
-		const operationalTraceItem = buildPrimaryPathOperationalTraceItem({
-			eventType: input.eventType,
-			data: input.data,
-			fallbackTimestamp: input.fallbackTimestamp,
-		});
+		const operationalTraceItem = buildPrimaryPathOperationalTraceItem(input);
 		if (operationalTraceItem) {
 			projection.traceItems.push(operationalTraceItem);
 			timestamp = operationalTraceItem.timestamp;
@@ -444,10 +378,10 @@ function applyPiEventToLiveTurnProjection(
 	}
 
 	return {
-		canonicalData: input.data,
+		canonicalData,
 		timestamp,
-		toolCallId: null,
-		toolName: null,
+		toolCallId,
+		toolName,
 		usage: cloneUsageSnapshot(projection.usage),
 	};
 }
@@ -478,7 +412,7 @@ function snapshotTurnTrace(
 		traceItems: projection.traceItems.map((item) => ({ ...item })),
 		usage: cloneUsageSnapshot(projection.usage),
 		piInput,
-		toolCalls: projection.toolCalls.map((toolCall) => {
+		toolCalls: Array.from(projection.toolCallsById.values(), (toolCall) => {
 			const { result, restoredResult, ...tool } = cloneToolCall(toolCall);
 			if (restoredResult) return { ...tool, ...restoredResult };
 			const record =
@@ -546,11 +480,7 @@ export function restoreTurnTraceProjection(trace: TurnTraceSnapshot): TurnTraceP
 			result: null,
 			restoredResult: { resultText, truncated },
 		});
-		state.toolCalls.push(toolCall);
 		state.toolCallsById.set(toolCall.toolCallId, toolCall);
-		if (toolCall.status === "running") {
-			addOpenToolCallId(state, toolCall.toolName, toolCall.toolCallId);
-		}
 	}
 	return traceProjection(state, trace.piInput);
 }

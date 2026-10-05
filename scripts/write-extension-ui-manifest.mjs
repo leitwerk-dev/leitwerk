@@ -1,26 +1,17 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export function createCustomElementRenderer({ tagName, modulePath, rendererApiVersion = 1 }) {
-	return {
-		kind: "custom_element",
-		tagName,
-		module: modulePath,
-		rendererApiVersion,
-	};
-}
-
-export async function writeExtensionUiManifest({ packageDirUrl, extensionManifestId, renderers }) {
+export async function writeExtensionUiManifest({ packageDirUrl, modulePaths }) {
 	const packageDir = fileURLToPath(packageDirUrl);
-	const outDir = path.join(packageDir, "dist/ui");
-	const manifestPath = path.join(outDir, "manifest.json");
-	const manifest = {
-		apiVersion: 1,
-		extensionManifestId,
-		renderers,
-	};
-
-	await mkdir(outDir, { recursive: true });
+	const { leitwerk } = JSON.parse(await readFile(path.join(packageDir, "package.json"), "utf8"));
+	const manifest = JSON.parse(await readFile(path.join(packageDir, leitwerk.ui.source), "utf8"));
+	for (const renderer of Object.values(manifest.renderers)) {
+		const modulePath = modulePaths[renderer.module];
+		if (!modulePath) throw new Error(`No built module mapping for '${renderer.module}'`);
+		renderer.module = modulePath;
+	}
+	const manifestPath = path.join(packageDir, leitwerk.ui.import);
+	await mkdir(path.dirname(manifestPath), { recursive: true });
 	await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf8");
 }

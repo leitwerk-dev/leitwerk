@@ -1,11 +1,12 @@
 import { createHash } from "node:crypto";
 import type { CoreServerSetupDeps } from "@leitwerk-dev/process-sdk";
 import {
+	consumeTriggerFile,
 	defineProcessWatcherSource,
 	parseProcessWatcherLaunchModelConfig,
+	readTriggerFile,
 } from "@leitwerk-dev/process-sdk";
 import { emptyPollResult, parseDurationMs } from "@leitwerk-dev/watcher-utils";
-import { consumeTriggerFile, readTriggerFile } from "./trigger-files.js";
 
 /** @internal */
 export interface FilesystemWatcherEvent {
@@ -88,8 +89,8 @@ export function createFilesystemWatcherProvider(deps: CoreServerSetupDeps) {
 			async pollOnce() {
 				const result = emptyPollResult();
 				const file = await readTriggerFile(watcher.config.filePath);
-				if (!file.exists || file.content.trim() === "") return result;
-				const content = file.content.trim();
+				if (file === null || file.trim() === "") return result;
+				const content = file.trim();
 				const sourceEventKey = createHash("sha256")
 					.update(`${watcher.config.filePath}\0${content}`)
 					.digest("hex");

@@ -2,17 +2,8 @@ import { existsSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { waitForValue } from "@leitwerk-dev/test-support/integration";
 import { afterAll, beforeAll, describe, expect, it, onTestFinished } from "vitest";
-import { createExampleHarness, http, launchProcess } from "./testing/harness.js";
-
-async function createFileTriggerHarness(completePromptPath: string) {
-	return createExampleHarness({
-		extensionConfig: {
-			"example-processes": { file_triggers: { complete_prompt_path: completePromptPath } },
-		},
-	});
-}
+import { createExampleHarness } from "./testing/harness.js";
 
 let harness: Awaited<ReturnType<typeof createExampleHarness>>;
 
@@ -26,9 +17,9 @@ afterAll(async () => {
 
 describe("example processes extension", () => {
 	it("lists all UI launchers and resolves defaults/options from configured model profiles", async () => {
-		const listResponse = await http(harness, `/api/launchers`);
+		const listResponse = await harness.request({ url: "/api/launchers" });
 		const listBody = await listResponse.json();
-		expect(listResponse.status).toBe(200);
+		expect(listResponse.statusCode).toBe(200);
 		expect(listBody.launchers).toHaveLength(6);
 		expect(listBody.launchers).toEqual(
 			expect.arrayContaining([
@@ -50,12 +41,11 @@ describe("example processes extension", () => {
 			]),
 		);
 
-		const defaultsResponse = await http(
-			harness,
-			`/api/launchers/single_prompt_process.single_prompt_ui/defaults`,
-		);
+		const defaultsResponse = await harness.request({
+			url: "/api/launchers/single_prompt_process.single_prompt_ui/defaults",
+		});
 		const defaultsBody = await defaultsResponse.json();
-		expect(defaultsResponse.status).toBe(200);
+		expect(defaultsResponse.statusCode).toBe(200);
 		expect(defaultsBody.defaults).toEqual({
 			prompt: "",
 		});
@@ -64,17 +54,13 @@ describe("example processes extension", () => {
 			turnConfigs: {},
 		});
 
-		const optionsResponse = await http(
-			harness,
-			`/api/launchers/single_prompt_with_tool_process.single_prompt_with_tool_ui/options`,
-			{
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({}),
-			},
-		);
+		const optionsResponse = await harness.request({
+			url: "/api/launchers/single_prompt_with_tool_process.single_prompt_with_tool_ui/options",
+			method: "POST",
+			payload: {},
+		});
 		const optionsBody = await optionsResponse.json();
-		expect(optionsResponse.status).toBe(200);
+		expect(optionsResponse.statusCode).toBe(200);
 		expect(optionsBody.options).toEqual({});
 		expect(
 			listBody.launchers.find(
@@ -100,142 +86,108 @@ describe("example processes extension", () => {
 		});
 	});
 
-	it("runs a launched single prompt once and completes on turn end without a done tool", async () => {
-		const launched = await launchProcess(
-			harness,
-			"single_prompt_process.single_prompt_ui",
-			{ prompt: "Say hello." },
-			"local_qwen",
-		);
-		expect(launched).toMatchObject({
+	it.each([
+		{
 			processId: "single_prompt_process",
-			defaultModelProfileId: "local_qwen",
-		});
-
-		const process = await waitForValue(
-			() => harness.process(launched.id).snapshot().process,
-			(value) => value?.lifecycleStatus === "completed",
-		);
-		expect(process).toMatchObject({
-			lifecycleStatus: "completed",
-			defaultModelProfileId: "local_qwen",
-		});
-
-		const turnRecords = harness.process(launched.id).snapshot().turns;
-		expect(turnRecords).toHaveLength(1);
-		expect(turnRecords[0]).toMatchObject({
+			launcherId: "single_prompt_process.single_prompt_ui",
 			turnId: "run_single_prompt",
-			status: "succeeded",
-		});
-	});
-
-	it("runs a launched single prompt that explicitly requires the done tool", async () => {
-		const launched = await launchProcess(
-			harness,
-			"single_prompt_with_tool_process.single_prompt_with_tool_ui",
-			{ prompt: "Say hello, then confirm completion." },
-			"claude_fast",
-		);
-		expect(launched).toMatchObject({
+			defaultModelProfileId: "local_qwen",
+			prompt: "Say hello.",
+		},
+		{
 			processId: "single_prompt_with_tool_process",
-			defaultModelProfileId: "claude_fast",
-		});
-
-		const process = await waitForValue(
-			() => harness.process(launched.id).snapshot().process,
-			(value) => value?.lifecycleStatus === "completed",
-		);
-		expect(process).toMatchObject({
-			lifecycleStatus: "completed",
-			defaultModelProfileId: "claude_fast",
-		});
-
-		const turnRecords = harness.process(launched.id).snapshot().turns;
-		expect(turnRecords).toHaveLength(1);
-		expect(turnRecords[0]).toMatchObject({
+			launcherId: "single_prompt_with_tool_process.single_prompt_with_tool_ui",
 			turnId: "run_single_prompt_with_tool",
-			status: "succeeded",
-		});
+			defaultModelProfileId: "claude_fast",
+			prompt: "Say hello, then confirm completion.",
+		},
+	])("runs $processId once with model $defaultModelProfileId", async ({
+		processId,
+		launcherId,
+		turnId,
+		defaultModelProfileId,
+		prompt,
+	}) => {
+		const launched = await harness.launch(launcherId, { prompt }, { defaultModelProfileId });
+		expect(launched.snapshot().process).toMatchObject({ processId, defaultModelProfileId });
+		const { process, turns } = await launched.waitFor(
+			({ process }) => process.lifecycleStatus === "completed",
+		);
+		expect(process).toMatchObject({ lifecycleStatus: "completed", defaultModelProfileId });
+		expect(turns).toHaveLength(1);
+		expect(turns[0]).toMatchObject({ turnId, status: "succeeded" });
 	});
 
 	it("waits on an external turn and completes when the configured prompt-complete file is written", async () => {
 		const dir = await mkdtemp(path.join(tmpdir(), "o2-example-processes-file-trigger-"));
 		onTestFinished(() => rm(dir, { recursive: true, force: true }));
 		const completePromptPath = path.join(dir, "complete_prompt");
-		const fileTriggerHarness = await createFileTriggerHarness(completePromptPath);
-		try {
-			const launched = await launchProcess(
-				fileTriggerHarness,
-				"single_prompt_external_complete_process.single_prompt_external_complete_ui",
-				{ prompt: "Say hello, then wait for the external completion trigger." },
-				"local_qwen",
-			);
-			expect(launched.processId).toBe("single_prompt_external_complete_process");
+		const fileTriggerHarness = await createExampleHarness({
+			extensionConfig: {
+				"example-processes": { file_triggers: { complete_prompt_path: completePromptPath } },
+			},
+		});
+		onTestFinished(() => fileTriggerHarness.close());
+		const launched = await fileTriggerHarness.launch(
+			"single_prompt_external_complete_process.single_prompt_external_complete_ui",
+			{ prompt: "Say hello, then wait for the external completion trigger." },
+			{ defaultModelProfileId: "local_qwen" },
+		);
+		expect(launched.snapshot().process.processId).toBe("single_prompt_external_complete_process");
 
-			const waitingProcess = await waitForValue(
-				() => fileTriggerHarness.process(launched.id).snapshot().process,
-				(value) =>
-					value?.selectedTurnId === "await_external_prompt_completion" &&
-					value?.lifecycleStatus === "waiting",
-			);
-			expect(waitingProcess).toMatchObject({
-				selectedTurnId: "await_external_prompt_completion",
-				lifecycleStatus: "waiting",
-			});
-			await waitForValue(
-				() => fileTriggerHarness.process(launched.id).snapshot().events,
-				(events) =>
-					events.some(
-						(event) =>
-							event.eventType === "external_source_armed" &&
-							event.data.sourceKind === "@leitwerk-dev/showcase-processes.file.presence",
-					),
-			);
+		const waiting = await launched.waitFor(
+			({ process }) =>
+				process.selectedTurnId === "await_external_prompt_completion" &&
+				process.lifecycleStatus === "waiting",
+		);
+		expect(waiting.process).toMatchObject({
+			selectedTurnId: "await_external_prompt_completion",
+			lifecycleStatus: "waiting",
+		});
+		await launched.waitFor(({ events }) =>
+			events.some(
+				(event) =>
+					event.eventType === "external_source_armed" &&
+					event.data.sourceKind === "@leitwerk-dev/showcase-processes.file.presence",
+			),
+		);
 
-			const detailResponse = await http(fileTriggerHarness, `/api/processes/${launched.id}`);
-			const detailBody = await detailResponse.json();
-			expect(detailResponse.status).toBe(200);
-			expect(detailBody.selectedTurn).toMatchObject({
-				turnId: "await_external_prompt_completion",
-				kind: "external",
-				externalTriggers: [
-					expect.objectContaining({
-						kind: "@leitwerk-dev/showcase-processes.file.presence",
-					}),
-				],
-			});
-
-			await writeFile(completePromptPath, "complete\n", "utf8");
-
-			const completedProcess = await waitForValue(
-				() => ({
-					process: fileTriggerHarness.process(launched.id).snapshot().process,
-					fileRemoved: !existsSync(completePromptPath),
+		const detailResponse = await fileTriggerHarness.request({
+			url: `/api/processes/${launched.id}`,
+		});
+		const detailBody = await detailResponse.json();
+		expect(detailResponse.statusCode).toBe(200);
+		expect(detailBody.selectedTurn).toMatchObject({
+			turnId: "await_external_prompt_completion",
+			kind: "external",
+			externalTriggers: [
+				expect.objectContaining({
+					kind: "@leitwerk-dev/showcase-processes.file.presence",
 				}),
-				(value) =>
-					value.process?.selectedTurnId === null &&
-					value.process?.lifecycleStatus === "completed" &&
-					value.fileRemoved,
-			);
-			expect(completedProcess.process).toMatchObject({
-				selectedTurnId: null,
-				lifecycleStatus: "completed",
-			});
-			const externalTurnRecords = fileTriggerHarness
-				.process(launched.id)
-				.snapshot()
-				.turns.filter((turnRecord) => turnRecord.turnType === "external");
-			expect(externalTurnRecords).toHaveLength(1);
-			expect(externalTurnRecords[0]).toMatchObject({
-				turnId: "await_external_prompt_completion",
-				turnType: "external",
-				status: "succeeded",
-			});
-			expect(fileTriggerHarness.process(launched.id).snapshot().annotations).toEqual(
-				expect.arrayContaining([expect.objectContaining({ annotationType: "external_trigger" })]),
-			);
-		} finally {
-			await fileTriggerHarness.close();
-		}
+			],
+		});
+
+		await writeFile(completePromptPath, "complete\n", "utf8");
+
+		const completed = await launched.waitFor(
+			({ process }) =>
+				process.selectedTurnId === null &&
+				process.lifecycleStatus === "completed" &&
+				!existsSync(completePromptPath),
+		);
+		expect(completed.process).toMatchObject({
+			selectedTurnId: null,
+			lifecycleStatus: "completed",
+		});
+		const externalTurnRecords = completed.turns.filter((turn) => turn.turnType === "external");
+		expect(externalTurnRecords).toHaveLength(1);
+		expect(externalTurnRecords[0]).toMatchObject({
+			turnId: "await_external_prompt_completion",
+			turnType: "external",
+			status: "succeeded",
+		});
+		expect(completed.annotations).toEqual(
+			expect.arrayContaining([expect.objectContaining({ annotationType: "external_trigger" })]),
+		);
 	});
 });

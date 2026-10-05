@@ -196,7 +196,7 @@ it.each([
 it("restores running tools and correlates later results in the same order as live execution", () => {
 	const timestamp = "2026-10-05T00:00:00Z";
 	const projection = createLiveTurnProjection();
-	for (const toolCallId of ["first", "second", "third"]) {
+	for (const toolCallId of ["first", "second", "third", "first"]) {
 		projection.apply({
 			eventType: "pi.tool.call",
 			data: { toolCallId, toolName: "read", arguments: { path: toolCallId } },
