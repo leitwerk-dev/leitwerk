@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Attention digest · Leitwerk prototype</title>
+<style>
+:root{font-family:"Public Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#18212b;background:#f4f5f7;line-height:1.5;font-size:15px;--blue:#2f61b7;--border:#d5dbe3;--muted:#526170}
+*{box-sizing:border-box}body{margin:0}main{max-width:1260px;margin:auto;padding:32px}h1{font-size:34px;line-height:1.15;margin:10px 0 12px;letter-spacing:-.6px}h2{font-size:21px;margin:0 0 12px}h3{font-size:17px;margin:0 0 4px}p{margin:8px 0}.intro{max-width:820px;font-size:17px}.muted,small{color:var(--muted)}small{font-size:13px}.brand{color:var(--blue);font-weight:650}.header{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.tag{background:white;border:1px solid var(--border);border-radius:20px;padding:5px 12px;display:inline-block;font-size:13px}.section{background:white;border:1px solid var(--border);border-radius:12px;padding:22px;margin-top:20px}.columns{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,1fr);gap:24px}.bar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.row{padding:16px 0;border-top:1px solid var(--border)}.row:first-child{border-top:0}.line{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.badge{font-size:13px;border-radius:6px;padding:3px 7px;background:#edf2fa;color:#214b8c}.error{background:#fff1f0;color:#8a2925}.buttons{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}button,select{font:inherit;border:1px solid var(--border);background:white;border-radius:22px;color:#18212b;padding:9px 15px;min-height:44px;cursor:pointer}button:hover{border-color:var(--blue);background:#f5f8fd}button:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid var(--blue);outline-offset:3px}button:disabled{opacity:.5;cursor:default}.primary{background:#18212b;color:white;border-color:#18212b}.primary:hover{background:#2b3a4b;color:white}.selected{background:#edf2fa;border-color:var(--blue);color:#214b8c}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-family:inherit;font-size:14px;background:#f4f5f7;padding:16px;margin:12px 0;border-radius:8px}summary{cursor:pointer;min-height:36px;padding-top:8px}.processes{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}.process{border-top:1px solid var(--border);padding-top:12px}.note{color:#214b8c;background:#edf2fa;border-radius:8px;padding:12px 16px;margin-top:16px}.scenario{background:#f4f5f7;padding:16px;margin-top:12px;border-radius:8px}.steps{padding-left:24px}.steps li{margin:10px 0}.steps button{text-align:left}.done{color:#526170}.events{max-height:340px;overflow:auto}.event{padding:10px 0;border-top:1px solid var(--border)}.clock{font-variant-numeric:tabular-nums}.explain{font-size:13px;color:var(--muted)}.control-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px}.empty{padding:14px 0;color:var(--muted)}.foot{margin:20px 0;color:var(--muted);font-size:13px}
+@media(max-width:760px){main{padding:20px 16px}h1{font-size:29px}.header{display:block}.header .tag{margin-top:12px}.columns,.control-grid,.processes{grid-template-columns:1fr}.section{padding:16px}.columns{gap:22px}.processes{gap:12px}.bar{align-items:flex-start}.intro{font-size:16px}.buttons button{flex-grow:1}.steps{padding-left:20px}.steps button{width:100%}}
+</style>
+</head>
+<body>
+<main>
+<header><div class="header"><span class="brand">Leitwerk / Operator experiments / 19</span><span class="tag">Prototype • synthetic data</span></div><h1>Attention, without the noise.</h1><p class="intro">Can a concise digest quiet repeated observations while every failed turn and pending human decision stays visible?</p><p class="muted">Explore episode-aware grouping, acknowledgements and temporary quiet periods. All state is simulated in this tab. The digest is a local text download.</p></header>
+<section class="section" aria-labelledby="digest-title"><div class="bar"><h2 id="digest-title">Current attention</h2><span class="clock" id="clock"></span></div><p class="muted" id="counts"></p><div class="columns"><div><div id="digest"></div><details id="quiet-details"><summary id="quiet-summary"></summary><div id="quiet"></div></details></div><aside><h3>Digest preview</h3><p class="explain">Reflects current attention; resolved episodes stay in history. Every failure and decision is retained.</p><pre id="preview"></pre><button type="button" id="download" class="primary">Download digest .txt</button></aside></div><p id="outcome" class="note" role="status" aria-live="polite"></p></section>
+<section class="section" aria-labelledby="current-title"><h2 id="current-title">Current process state</h2><p class="explain">Acknowledging an observation changes digest visibility, never the process lifecycle or selected turn.</p><div class="processes" id="processes"></div></section>
+<section class="section" aria-labelledby="controls-title"><div class="bar"><h2 id="controls-title">Try your own events</h2><button type="button" id="reset">Reset all</button></div><label for="process">Process</label> <select id="process"><option value="release">Release packaging</option><option value="auth">Authentication cleanup</option><option value="docs">SDK documentation</option></select><div class="control-grid"><div><p class="muted">Inject synthetic observations</p><div class="buttons"><button type="button" data-action="wait">One healthy wait</button><button type="button" data-action="burst">12 healthy waits</button><button type="button" data-action="fail">Turn failure</button><button type="button" data-action="decision">New human decision</button></div></div><div><p class="muted">Resolve reasons or change time</p><div class="buttons"><button type="button" data-action="resolveWait">Resolve healthy wait</button><button type="button" data-action="recover">Simulate successful recovery</button><button type="button" data-action="answer">Answer current decision</button><button type="button" data-action="tick">Advance clock 15 min</button></div></div></div></section>
+<section class="section" aria-labelledby="guide-title"><h2 id="guide-title">Guided cases</h2><div class="buttons" id="tabs" role="group" aria-label="Choose a guided case"></div><div id="guide" class="scenario"></div></section>
+<section class="section" aria-labelledby="evidence-title"><h2 id="evidence-title">Grouping evidence & history</h2><p class="muted">Group by process + reason + episode. Repeated observations share an open episode. Resolution closes it; a recurrence gets a fresh identity.</p><details><summary id="episodes-summary"></summary><div id="episodes"></div></details><details><summary id="events-summary"></summary><div id="events" class="events"></div></details></section>
+<p class="foot">Future proposal • no production connection, saved preferences, background clock, Slack or email delivery. Reloading clears the simulation.</p>
+</main>
+<script>
+// Pure simulation: event identity, episode identity and attention policy are separate.
+const catalog = { release: { name: "Release packaging", turn: "package" }, auth: { name: "Authentication cleanup", turn: "verify" }, docs: { name: "SDK documentation", turn: "review" } };
+const reasons = { wait: "Healthy external wait", failure: "Failed turn", decision: "Human decision pending" };
+const critical = (episode) => episode.reason !== "wait";
+const clockText = (minute) => `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
+function fresh() { return { now: 600, nextEvent: 1, nextEpisode: 1, episodes: [], events: [], snoozes: {}, message: "The digest starts with one wait, one failure and one pending decision." }; }
+function activeEpisode(state, process, reason) { return state.episodes.find((e) => e.process === process && e.reason === reason && e.closedAt === null); }
+function record(state, process, kind, episode, text) { state.events.push({ id: state.nextEvent++, at: state.now, process, kind, episode: episode?.id ?? null, text }); }
+function closeEpisode(state, process, reason, why) { const episode = activeEpisode(state, process, reason); if (episode) { episode.closedAt = state.now; record(state, process, "resolved", episode, why); return true; } return false; }
+function observe(state, process, reason) {
+let episode = activeEpisode(state, process, reason);
+if (!episode) { episode = { id: `E${state.nextEpisode++}`, process, reason, openedAt: state.now, lastAt: state.now, closedAt: null, observations: 0, acknowledgedAt: null }; state.episodes.push(episode); }
+episode.observations++; episode.lastAt = state.now;
+record(state, process, "observation", episode, reasons[reason]);
+return episode;
+}
+function reducer(previous, action) {
+const state = structuredClone(previous); const process = action.process ?? "release";
+if (action.type === "wait" || action.type === "burst") {
+const count = action.type === "burst" ? 12 : 1;
+for (let i = 0; i < count; i++) observe(state, process, "wait");
+state.message = `${count} healthy observation${count === 1 ? "" : "s"} added to ${catalog[process].name}; one open wait episode groups them.`;
+} else if (action.type === "fail") {
+const episode = observe(state, process, "failure");
+state.message = `${catalog[process].name}: failure ${episode.id} is visible even during a quiet period. The selected turn stays ${catalog[process].turn}.`;
+} else if (action.type === "decision") {
+closeEpisode(state, process, "decision", "Superseded by a newer decision");
+const episode = observe(state, process, "decision");
+state.message = `New decision ${episode.id} needs a response. An older acknowledgement cannot carry into this episode.`;
+} else if (["resolveWait", "recover", "answer"].includes(action.type)) {
+const reason = { resolveWait: "wait", recover: "failure", answer: "decision" }[action.type];
+const changed = closeEpisode(state, process, reason, { wait: "External event arrived", failure: "Simulated retry succeeded", decision: "Operator answered decision" }[reason]);
+state.message = changed ? `${reasons[reason]} resolved for ${catalog[process].name}. Its evidence remains in history.` : `No open ${reasons[reason].toLowerCase()} exists for ${catalog[process].name}.`;
+} else if (action.type === "ack") {
+const episode = state.episodes.find((e) => e.id === action.id && e.closedAt === null);
+if (episode) { episode.acknowledgedAt = state.now; record(state, episode.process, "acknowledged", episode, "Operator marked this episode seen"); state.message = critical(episode) ? `${episode.id} marked seen; unresolved failures and decisions remain visible.` : `${episode.id} acknowledged. Repeats in this episode stay quiet; a new episode will reappear.`; }
+} else if (action.type === "snooze") {
+state.snoozes[process] = state.now + 15;
+record(state, process, "quiet period", null, `Healthy waits quiet until ${clockText(state.now + 15)}`);
+state.message = `${catalog[process].name}: healthy waits quiet until ${clockText(state.now + 15)}. Failures and pending decisions stay visible.`;
+} else if (action.type === "wake") {
+delete state.snoozes[process];
+for (const episode of state.episodes) if (episode.process === process && !critical(episode) && episode.closedAt === null) episode.acknowledgedAt = null;
+record(state, process, "restore", null, "Healthy waits restored to digest"); state.message = `Healthy waits restored for ${catalog[process].name}.`;
+} else if (action.type === "tick") { state.now += 15; state.message = `Simulated time is ${clockText(state.now)}. Expired quiet periods end; acknowledged episodes remain quiet.`; }
+return state;
+}
+function disposition(state, episode) {
+if (episode.closedAt !== null) return "Resolved";
+if (critical(episode)) return "Always visible";
+if (episode.acknowledgedAt !== null) return `Acknowledged at ${clockText(episode.acknowledgedAt)}`;
+if ((state.snoozes[episode.process] ?? 0) > state.now) return `Quiet until ${clockText(state.snoozes[episode.process])}`;
+return "Visible";
+}
+function groups(state) { const open = state.episodes.filter((e) => e.closedAt === null); return { visible: open.filter((e) => ["Visible", "Always visible"].includes(disposition(state, e))).sort((a,b) => ({ failure: 0, decision: 1, wait: 2 }[a.reason] - { failure: 0, decision: 1, wait: 2 }[b.reason]) || a.openedAt - b.openedAt), quiet: open.filter((e) => !["Visible", "Always visible"].includes(disposition(state, e))) }; }
+function processState(state, id) {
+const open = state.episodes.filter((e) => e.process === id && e.closedAt === null);
+const failure = open.find((e) => e.reason === "failure");
+return { lifecycleStatus: failure ? "error" : open.length ? "waiting" : "active", selectedTurnId: catalog[id].turn, failedTurnRecord: failure ? `record-${failure.id}` : null };
+}
+function digestText(state) { const group = groups(state); return [`Leitwerk attention · simulated ${clockText(state.now)}`, `${group.visible.length} current reasons · ${group.quiet.length} quiet wait episodes`, "", ...group.visible.map((e) => `${reasons[e.reason]} — ${catalog[e.process].name}\n  ${e.id} · ${e.observations} observation${e.observations === 1 ? "" : "s"} · selected turn: ${catalog[e.process].turn}${e.acknowledgedAt !== null ? " · seen, still unresolved" : ""}`), ...(group.visible.length ? [] : ["No current attention to report."])].join("\n"); }
+function seeded() { return [{ type: "wait", process: "release" }, { type: "fail", process: "auth" }, { type: "decision", process: "docs" }].reduce(reducer, fresh()); }
+const scenarios = [
+{ title: "1. Quiet a noisy wait", description: "Repeated healthy polls should become one reason. A quiet period expires using the simulated clock.", steps: [{ label: "Add 12 repeated healthy waits", action: { type: "burst", process: "release" } }, { label: "Quiet packaging waits for 15 minutes", action: { type: "snooze", process: "release" } }, { label: "Advance 15 minutes: the wait returns", action: { type: "tick" } }], conclusion: "Thirteen observations remain one wait episode; the quiet period ends at 10:15. Failure and decision stayed visible throughout." },
+{ title: "2. Failure beats snooze", description: "A process quiet period must never mask a new failed turn. Marking a failure seen is not recovery.", steps: [{ label: "Quiet packaging waits", action: { type: "snooze", process: "release" } }, { label: "Inject a packaging failure", action: { type: "fail", process: "release" } }, { label: "Mark the failure seen", dynamic: "ackFailure" }], conclusion: "The packaging failure remains in the digest, marked seen. Its lifecycle is error; selected turn package is unchanged." },
+{ title: "3. Fresh episodes reappear", description: "A resolved issue and a replaced decision get new identities. Seen markers belong only to the episode they acknowledged.", steps: [{ label: "Acknowledge the packaging wait", dynamic: "ackWait" }, { label: "Resolve that wait", action: { type: "resolveWait", process: "release" } }, { label: "Inject a recurring wait: new identity", action: { type: "wait", process: "release" } }, { label: "Mark the current SDK decision seen", dynamic: "ackDecision" }, { label: "Request a newer SDK decision", action: { type: "decision", process: "docs" } }, { label: "Recover authentication's failed turn", action: { type: "recover", process: "auth" } }, { label: "Inject the recurring authentication failure", action: { type: "fail", process: "auth" } }], conclusion: "The recurring wait and failure have fresh episode IDs. The newer SDK decision has no inherited acknowledgement; resolved evidence remains in history." }
+];
+// DOM shell; all policy is in the pure functions above.
+let state = seeded(); state.message = fresh().message; let scenario = 0; let step = 0;
+const el = (id) => document.getElementById(id);
+function button(label, action, extra = "") { return `<button type="button" data-command="${action.type}" data-process="${action.process ?? ""}" data-id="${action.id ?? ""}" ${extra}>${label}</button>`; }
+function episodeMarkup(e, quiet = false) { return `<article class="row"><div class="line"><h3>${catalog[e.process].name}</h3><span class="badge ${e.reason === "failure" ? "error" : ""}">${reasons[e.reason]}</span></div><p>${e.reason === "failure" ? `Recovery needed on ${catalog[e.process].turn}.` : e.reason === "decision" ? "A human response is still required." : "Healthy listener; waiting for an external event."} ${e.acknowledgedAt !== null && critical(e) ? "Marked seen, still unresolved." : ""}</p><small>${e.id} · ${e.observations} observation${e.observations === 1 ? "" : "s"} · last ${clockText(e.lastAt)} · ${disposition(state,e)}</small><details><summary>Why this group?</summary><p class="explain">${catalog[e.process].name} + ${reasons[e.reason]} + ${e.id}. ${e.observations} observations since ${clockText(e.openedAt)} share this still-open episode. ${critical(e) ? "This reason cannot be hidden by acknowledgement or a quiet period." : "Acknowledgement quiets this episode; a timed quiet period covers healthy waits on this process."}</p></details><div class="buttons">${quiet ? button("Restore wait", { type: "wake", process: e.process }) : button(e.acknowledgedAt !== null ? "Marked seen" : critical(e) ? "Mark seen" : "Acknowledge wait", { type: "ack", id: e.id }, e.acknowledgedAt !== null ? "disabled" : "")}${quiet ? "" : button("Quiet healthy waits 15 min", { type: "snooze", process: e.process })}</div></article>`; }
+function render() {
+const group = groups(state); const observations = state.events.filter((e) => e.kind === "observation").length;
+el("clock").textContent = `Simulated clock · ${clockText(state.now)}`;
+el("counts").textContent = `${group.visible.length} visible reasons · ${group.quiet.length} quiet waits · ${observations} observations received`;
+el("digest").innerHTML = group.visible.map((e) => episodeMarkup(e)).join("") || '<p class="empty">Nothing needs attention. New events will appear here.</p>';
+el("quiet-summary").textContent = `${group.quiet.length} quiet wait episodes`;
+el("quiet").innerHTML = group.quiet.map((e) => episodeMarkup(e, true)).join("") || '<p class="empty">No waits are hidden.</p>';
+el("preview").textContent = digestText(state); el("outcome").textContent = state.message;
+el("processes").innerHTML = Object.entries(catalog).map(([id,p]) => { const current = processState(state,id); return `<article class="process"><h3>${p.name}</h3><p>Lifecycle: <strong>${current.lifecycleStatus}</strong><br>Selected turn: <strong>${current.selectedTurnId}</strong></p><small>Current failed record: ${current.failedTurnRecord ?? "none"}<br>Healthy waits quiet until: ${(state.snoozes[id] ?? 0) > state.now ? clockText(state.snoozes[id]) : "no active timer"}</small></article>`; }).join("");
+el("tabs").innerHTML = scenarios.map((s,i) => `<button type="button" data-scenario="${i}" class="${i === scenario ? "selected" : ""}" aria-pressed="${i === scenario}">${s.title}</button>`).join("");
+const guide = scenarios[scenario]; el("guide").innerHTML = `<p>${guide.description}</p><p class="explain">Selecting a case resets the simulation. Each step performs a real action.</p><ol class="steps">${guide.steps.map((s,i) => `<li class="${i < step ? "done" : ""}"><button type="button" data-step="${i}" ${i !== step ? "disabled" : ""}>${i < step ? "Done · " : ""}${s.label}</button></li>`).join("")}</ol>${step === guide.steps.length ? `<p class="note">${guide.conclusion}</p>` : ""}`;
+el("episodes-summary").textContent = `Episode ledger (${state.episodes.length}) — current and resolved`;
+el("episodes").innerHTML = state.episodes.map((e) => `<div class="event"><strong>${e.id} · ${catalog[e.process].name} · ${reasons[e.reason]}</strong><br><small>${disposition(state,e)} · opened ${clockText(e.openedAt)} · ${e.observations} observations · acknowledged ${e.acknowledgedAt === null ? "never" : clockText(e.acknowledgedAt)}${e.closedAt === null ? "" : ` · closed ${clockText(e.closedAt)}`}</small></div>`).join("");
+el("events-summary").textContent = `Underlying event log (${state.events.length}) — newest first`;
+el("events").innerHTML = [...state.events].reverse().map((e) => `<div class="event"><strong>#${e.id} · ${clockText(e.at)} · ${catalog[e.process].name}</strong><br>${e.text}<br><small>${e.kind} · ${e.episode ?? "process preference"}</small></div>`).join("");
+}
+function dispatch(action) { state = reducer(state, action); render(); }
+document.addEventListener("click", (event) => {
+const target = event.target.closest("button"); if (!target) return;
+if (target.dataset.command) dispatch({ type: target.dataset.command, process: target.dataset.process || undefined, id: target.dataset.id });
+if (target.dataset.action) dispatch({ type: target.dataset.action, process: el("process").value });
+if (target.dataset.scenario !== undefined) { scenario = Number(target.dataset.scenario); step = 0; state = seeded(); state.message = `Case ${scenario + 1} ready. Start with its first step.`; render(); }
+if (target.dataset.step !== undefined) { const current = scenarios[scenario].steps[step]; let action = current.action; if (current.dynamic) { const [process,reason] = { ackFailure: ["release","failure"], ackWait: ["release","wait"], ackDecision: ["docs","decision"] }[current.dynamic]; const episode = activeEpisode(state,process,reason); action = episode ? { type: "ack", id: episode.id } : { type: "noop" }; } step++; dispatch(action); }
+if (target.id === "reset") { state = seeded(); state.message = fresh().message; scenario = 0; step = 0; el("process").value = "release"; render(); }
+if (target.id === "download") { const url = URL.createObjectURL(new Blob([digestText(state)], { type: "text/plain" })); const link = document.createElement("a"); link.href = url; link.download = "leitwerk-attention-digest.txt"; link.click(); URL.revokeObjectURL(url); el("outcome").textContent = "Current digest downloaded locally. No message was sent."; }
+});
+render();
+</script>
+</body>
+</html>
