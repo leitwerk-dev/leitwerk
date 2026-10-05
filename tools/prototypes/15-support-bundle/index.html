@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Support bundle · Leitwerk prototype</title>
+<style>
+:root{font-family:ui-sans-serif,system-ui,sans-serif;color:#18212b;background:#fff;font-size:15px;line-height:1.5;--blue:#2f61b7;--border:#d9dee5;--muted:#4c5968}*{box-sizing:border-box}body{margin:0}button,input,textarea{font:inherit}button{min-height:40px;border:1px solid var(--border);border-radius:6px;background:white;padding:8px 13px;color:#18212b;cursor:pointer}button:hover{background:#f2f4f7}button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:3px solid #2f61b7;outline-offset:3px}button.primary{background:var(--blue);color:white;border-color:var(--blue)}button.primary:hover{background:#244d94}button[aria-pressed=true]{color:#244d94;background:#e6ecf6;border-color:#2f61b7}button:disabled{cursor:default;opacity:.5}::selection{background:#e6ecf6}header{border-bottom:1px solid var(--border);padding:18px 32px;display:flex;justify-content:space-between;align-items:center;gap:20px}header strong{font-size:18px}header span{color:var(--muted);font-size:14px}main{max-width:1240px;margin:auto;padding:30px 32px 48px}h1{font-size:30px;line-height:1.2;margin:0 0 12px}h2{font-size:18px;margin:0 0 12px}h3{font-size:16px;margin:0 0 10px}p{margin:0 0 12px;max-width:78ch}.intro{color:var(--muted);margin-bottom:24px}.intro strong{color:#18212b}.layout{display:grid;grid-template-columns:270px minmax(0,1fr);gap:32px}.sections{border-top:1px solid var(--border)}.section-choice{padding:13px 0;border-bottom:1px solid var(--border);display:grid;grid-template-columns:20px 1fr;gap:9px;align-items:start}.section-choice input{width:17px;height:17px;margin:4px 0;accent-color:var(--blue)}.section-choice small{display:block;color:var(--muted);margin-top:3px;font-size:13px}aside .limit{font-size:13px;color:var(--muted);margin-top:16px}.summary{background:#f2f4f7;padding:16px 18px;margin-bottom:16px;border-radius:6px}.summary strong{display:block;font-size:17px;margin-bottom:3px}.summary p{font-size:14px;margin:0}.summary.blocked{background:#fff3e4;color:#78420d}.stats{display:flex;gap:18px;flex-wrap:wrap;font-size:14px;color:var(--muted);margin-top:9px}.review-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}.review-heading h2{margin:0}.toggle{display:flex;align-items:center;gap:7px;font-size:14px}.toggle input{accent-color:var(--blue)}.field-row{display:grid;grid-template-columns:150px minmax(0,1fr);gap:16px;padding:12px 0;border-top:1px solid var(--border)}.field-name{font-weight:600;font-size:14px}.field-name small{display:block;color:var(--muted);font-weight:400;font-size:12px}.values{display:grid;grid-template-columns:1fr 1fr;gap:16px}.values.single{grid-template-columns:1fr}.value{font-family:ui-monospace,SFMono-Regular,monospace;font-size:12px;overflow-wrap:anywhere;white-space:pre-wrap}.raw{color:#687483}.caption{font:12px ui-sans-serif,system-ui,sans-serif;color:var(--muted);margin-bottom:4px}.reason{font-size:12px;color:#4c5968;margin-top:5px}.section-title{padding:16px 0 7px;color:var(--muted);font-weight:600;font-size:13px}.section-title:first-child{padding-top:4px}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}.custom{padding-top:22px;margin-top:22px;border-top:1px solid var(--border)}textarea{display:block;width:100%;min-height:74px;border:1px solid #aeb7c2;border-radius:6px;padding:10px;margin-top:7px;resize:vertical;caret-color:var(--blue)}label.note-label{font-size:14px}.note-help{font-size:13px;color:var(--muted);margin-top:8px}.manifest{border-top:1px solid var(--border);margin-top:20px;padding-top:15px;font-size:14px}.manifest ul{margin:8px 0;padding-left:20px;color:var(--muted)}.walkthrough{margin-top:30px;border-top:1px solid var(--border);padding-top:22px}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.walkthrough p{color:var(--muted);font-size:14px}.steps{display:flex;gap:8px;flex-wrap:wrap}.steps button{font-size:13px}.footer{font-size:13px;color:var(--muted);margin-top:24px}.status{padding:12px 0;color:#244d94;min-height:44px;font-size:14px}.empty{padding:26px 0;color:var(--muted)}.count{font-variant-numeric:tabular-nums}summary{cursor:pointer}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f2f4f7;padding:14px;font-size:12px;border-radius:6px;max-height:300px;overflow:auto}a{color:var(--blue);text-underline-offset:3px}@media(max-width:740px){header{padding:15px 18px;align-items:start}header span{font-size:12px;text-align:right}main{padding:24px 18px}h1{font-size:26px}.layout{grid-template-columns:1fr;gap:22px}.sections{display:grid;grid-template-columns:1fr 1fr;gap:0 15px}.field-row{grid-template-columns:1fr;gap:7px}.field-name small{display:inline;margin-left:7px}.values{gap:12px}.review-heading{align-items:start}.stats{gap:8px 16px}.walkthrough{margin-top:22px}.steps{display:grid}.steps button{text-align:left}.section-title{font-size:14px}}@media(max-width:390px){.sections{grid-template-columns:1fr}.values{grid-template-columns:1fr}.review-heading{flex-direction:column}}
+</style>
+</head>
+<body>
+<header><strong>Leitwerk / Support</strong><span>Prototype · synthetic data<br>No connection to your processes</span></header>
+<main>
+<h1>Share the evidence. Choose what leaves.</h1>
+<p class="intro"><strong>Design question:</strong> Can an operator prepare useful diagnostics with explainable redaction, preserved execution links, and an explicit review before download?</p>
+<div class="layout">
+<aside><h2>Bundle contents</h2><div id="sections" class="sections"></div><p class="limit">Only fixtures on this page are read. No environment, credential files, process logs, or repository files are collected.</p><button id="reset" type="button">Reset experiment</button><div class="manifest"><h3>Omissions</h3><div id="omissions"></div></div></aside>
+<section aria-label="Bundle review">
+<div id="summary" class="summary" aria-live="polite"></div>
+<div class="review-heading"><h2>Field-by-field preview</h2><label class="toggle"><input id="raw-toggle" type="checkbox" checked>Show raw fixtures</label></div>
+<div id="preview"></div>
+<div class="custom"><h3>Challenge the review gate</h3><label for="note" class="note-label">Additional operator note (synthetic text only)</label><textarea id="note" placeholder="Try an unfamiliar secret or an internal incident phrase"></textarea><p class="note-help">Unknown free text always blocks export. This fixture sanitizer cannot establish that arbitrary text is safe. Redact the entire added field or exclude it.</p><div class="actions"><button id="add-note" type="button">Add note to bundle</button><button id="redact-note" type="button">Redact entire note</button><button id="exclude-note" type="button">Exclude note</button></div></div>
+<div class="actions"><button id="review" type="button">Confirm preview reviewed</button><button id="download" type="button" class="primary">Download JSON</button></div>
+<p id="status" class="status" role="status"></p>
+<details><summary>Inspect the export manifest and payload</summary><pre id="payload"></pre></details>
+</section>
+</div>
+<section class="walkthrough" aria-labelledby="guided"><h2 id="guided">Try a guided scenario</h2><div id="tabs" class="tabs"></div><p id="scenario-text"></p><div id="steps" class="steps"></div></section>
+<p class="footer">Future proposal, not a production export or a security guarantee. Exact-match fixture rules leave diagnostic meanings intact; real unstructured evidence needs a broader policy and human review. Nothing is uploaded.</p>
+</main>
+<script>
+// Pure fixture model: no DOM, I/O, ambient state, or real credentials.
+const SECTION_DEFS = [
+{id:"process",title:"Process & lineage",hint:"State, selected turn, correlated IDs"},
+{id:"execution",title:"Execution evidence",hint:"Recorded model, timing, error code"},
+{id:"runtime",title:"Runtime diagnostics",hint:"Fixture credential and repository URL"},
+{id:"personal",title:"Personal content",hint:"Attribution and operator request"}
+];
+const FIELDS = [
+["process","instanceId","prc_SYNTHETIC_42","id"],
+["process","selectedTurnId","implement","plain"],
+["process","lifecycleStatus","error","plain"],
+["process","turnRecordId","tr_SYNTHETIC_7","id"],
+["execution","instanceId","prc_SYNTHETIC_42","id"],
+["execution","turnRecordId","tr_SYNTHETIC_7","id"],
+["execution","model","fixture-provider / fixture-model","plain"],
+["execution","durationMs",1820,"plain"],
+["execution","errorCode","WORKER_CONNECTION_LOST","plain"],
+["execution","historicalInstructions",{state:"not_recorded",reason:"Not captured for this fixture execution"},"plain"],
+["runtime","workerLeaseId","lease_SYNTHETIC_9","id"],
+["runtime","authorization","Bearer FAKE_SUPPORT_TOKEN_DO_NOT_USE","secret"],
+["runtime","repositoryUrl","https://fixture-user:FAKE_REPO_TOKEN@example.invalid/team/private-app.git","repository"],
+["runtime","toolOutput","Request failed for prc_SYNTHETIC_42; bearer FAKE_SUPPORT_TOKEN_DO_NOT_USE","text"],
+["personal","operatorEmail","maya.fixture@example.invalid","person"],
+["personal","request","Maya Fixture requests review of example.invalid/team/private-app; contact maya.fixture@example.invalid","personalText"]
+].map(([section,key,value,kind])=>({section,key,value,kind}));
+const SCENARIOS = [
+{title:"Default redaction",description:"Inspect the before/after values. Process and execution IDs share aliases; credentials are removed. Confirm the current preview and download its JSON.",steps:[{label:"Review current preview",type:"review"},{label:"Download JSON",type:"download"}]},
+{title:"Leave personal content out",description:"Keep operational evidence but omit the complete personal-content section. The manifest must explain the omission. Changing selection clears an earlier review.",steps:[{label:"Exclude personal content",type:"omitPersonal"},{label:"Review remaining evidence",type:"review"},{label:"Download JSON",type:"download"}]},
+{title:"Unfamiliar secret",description:"An added note contains a secret the fixture rules do not recognize. Try downloading, then redact the entire field and review again. The export records why that field was removed.",steps:[{label:"Add unfamiliar note",type:"addFixtureNote"},{label:"Attempt blocked download",type:"download"},{label:"Redact entire note",type:"redactNote"},{label:"Review revised preview",type:"review"},{label:"Download JSON",type:"download"}]}
+];
+function initialState(scenario=0){return {included:SECTION_DEFS.map(s=>s.id),note:"",noteMode:"absent",reviewed:false,showRaw:true,scenario,step:0,message:"Select sections, inspect the transformations, then confirm your review.",downloadCount:0};}
+function aliasMap(){return Object.fromEntries([...new Set(FIELDS.filter(f=>f.kind==="id").map(f=>f.value))].map((value,index)=>[value,`reference-${index+1}`]));}
+function sanitize(field,aliases){
+let value=field.value,reason="Retained diagnostic evidence",changed=false;
+if(field.kind==="id"){value=aliases[field.value];reason="Stable alias preserves links within this bundle";changed=true;}
+if(field.kind==="secret"){value="[credential removed]";reason="Known credential field is always removed";changed=true;}
+if(field.kind==="repository"){value="[repository-1]";reason="Repository location and embedded credentials removed";changed=true;}
+if(field.kind==="person"){value="[person-1]";reason="Personal attribution replaced with a local alias";changed=true;}
+if(field.kind==="text"){value=`Request failed for ${aliases.prc_SYNTHETIC_42}; bearer [credential removed]`;reason="Fixture rule removes known token and aliases process ID";changed=true;}
+if(field.kind==="personalText"){value="[person-1] requests review of [repository-1]; contact [person-1]";reason="Fixture rule aliases name, address, and repository";changed=true;}
+return {...field,output:value,reason,changed};
+}
+function inspect(state){
+const rows=FIELDS.filter(f=>state.included.includes(f.section)).map(f=>sanitize(f,aliasMap()));
+const omissions=SECTION_DEFS.filter(s=>!state.included.includes(s.id)).map(s=>({section:s.id,reason:"Section excluded by operator"}));
+const blockers=[];
+if(state.noteMode==="pending"){rows.push({section:"additional",key:"operatorNote",value:state.note,output:"[export blocked pending field decision]",reason:"Unknown free text: redact this entire field or exclude it",changed:false});blockers.push("An unclassified operator note needs a decision.");}
+if(state.noteMode==="redacted"){rows.push({section:"additional",key:"operatorNote",value:state.note,output:"[field removed by operator]",reason:"Custom redaction of the entire unknown field",changed:true});}
+if(state.noteMode==="excluded")omissions.push({section:"additional",field:"operatorNote",reason:"Unknown free-text field excluded by operator"});
+if(!rows.length)blockers.push("Choose at least one diagnostic section.");
+return {rows,omissions,blockers,changed:rows.filter(r=>r.changed).length};
+}
+function bundle(state){
+const view=inspect(state);if(view.blockers.length||!state.reviewed)return null;
+const sections={};for(const row of view.rows){sections[row.section]??={};sections[row.section][row.key]=row.output;}
+return {manifest:{format:"leitwerk-support-prototype-v1",source:"synthetic fixtures only",reviewed:true,sections:Object.keys(sections),fieldCount:view.rows.length,transformedFieldCount:view.changed,omissions:view.omissions,transformations:view.rows.filter(r=>r.changed).map(r=>({path:`${r.section}.${r.key}`,reason:r.reason})),limits:["Fixture-specific sanitizer; arbitrary free text is not classified","Aliases preserve correlation within this bundle only","Missing historical evidence remains not_recorded","No environment, credentials, repository files, or live process state collected"]},sections};
+}
+function reduce(state,action){
+if(action.type==="reset")return initialState();
+if(action.type==="scenario")return initialState(action.index);
+if(action.type==="showRaw")return {...state,showRaw:action.value};
+const next={...state};
+if(action.type==="toggle"){next.included=state.included.includes(action.id)?state.included.filter(id=>id!==action.id):[...state.included,action.id];next.reviewed=false;next.message="Section selection changed. Review the updated preview before download.";}
+if(action.type==="omitPersonal"){next.included=state.included.filter(id=>id!=="personal");next.reviewed=false;next.message="Personal content is omitted and recorded in the manifest.";}
+if(action.type==="addNote"||action.type==="addFixtureNote"){
+const note=action.type==="addFixtureNote"?"Escalation phrase: FAKE_CASE_SENSITIVE_BLUEBIRD":action.value.trim();
+if(!note)return {...state,message:"Enter a synthetic note first."};
+next.note=note;next.noteMode="pending";next.reviewed=false;next.message="Export blocked: the added note is unclassified. Redact the whole field or exclude it.";
+}
+if(action.type==="redactNote"||action.type==="excludeNote"){
+if(!state.note)return {...state,message:"Add a synthetic note first."};
+next.noteMode=action.type==="redactNote"?"redacted":"excluded";next.reviewed=false;next.message=action.type==="redactNote"?"The entire note is removed from the export. Review the updated preview.":"The note is excluded. The omission is recorded; review again.";
+}
+if(action.type==="review"){
+const view=inspect(next);next.reviewed=view.blockers.length===0;next.message=next.reviewed?"Current preview reviewed. JSON download is ready.":`Review blocked: ${view.blockers.join(" ")}`;
+}
+if(action.type==="download"){
+const view=inspect(next);const payload=bundle(next);
+next.message=payload?"JSON downloaded. It contains only the reviewed preview and manifest.":`Download blocked: ${view.blockers.join(" ")||"Confirm the current preview review first."}`;
+if(payload)next.downloadCount++;
+}
+return next;
+}
+// DOM shell: render state, dispatch actions, and materialize the reviewed export.
+let state=initialState();
+const $=id=>document.getElementById(id);
+const esc=value=>String(value).replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[char]);
+const display=value=>typeof value==="object"?JSON.stringify(value):String(value);
+function render(){
+const view=inspect(state);
+$("sections").innerHTML=SECTION_DEFS.map(section=>`<label class="section-choice"><input type="checkbox" data-section="${section.id}" ${state.included.includes(section.id)?"checked":""}><span>${section.title}<small>${section.hint}</small></span></label>`).join("");
+$("summary").className=`summary${view.blockers.length?" blocked":""}`;
+$("summary").innerHTML=`<strong>${view.blockers.length?"Export blocked":state.reviewed?"Reviewed · ready to download":"Ready for your review"}</strong><p>${esc(view.blockers.join(" ")||"Review each change. Missing historical evidence stays explicitly unavailable.")}</p><div class="stats"><span>${view.rows.length} fields</span><span>${view.changed} transformed</span><span>${view.omissions.length} omissions</span><span>${state.downloadCount} downloads this session</span></div>`;
+let lastSection="";
+$("preview").innerHTML=view.rows.map(row=>{const heading=row.section!==lastSection?`<div class="section-title">${esc(SECTION_DEFS.find(s=>s.id===row.section)?.title||"Additional note")}</div>`:"";lastSection=row.section;return `${heading}<div class="field-row"><div class="field-name">${esc(row.key)}</div><div><div class="values ${state.showRaw?"":"single"}">${state.showRaw?`<div><div class="caption">Raw fixture</div><div class="value raw">${esc(display(row.value))}</div></div>`:""}<div><div class="caption">${state.noteMode==="pending"&&row.section==="additional"?"Pending decision":"Export value"}</div><div class="value">${esc(display(row.output))}</div></div></div><div class="reason">${esc(row.reason)}</div></div></div>`;}).join("")||'<p class="empty">No sections selected. Choose evidence to include.</p>';
+$("omissions").innerHTML=view.omissions.length?`<ul>${view.omissions.map(item=>`<li>${esc(SECTION_DEFS.find(s=>s.id===item.section)?.title||"Additional note")}: ${esc(item.reason)}</li>`).join("")}</ul>`:'<p class="limit">No selected sections omitted.</p>';
+$("raw-toggle").checked=state.showRaw;
+$("redact-note").disabled=!state.note||state.noteMode==="redacted";
+$("exclude-note").disabled=!state.note||state.noteMode==="excluded";
+$("status").textContent=state.message;
+$("payload").textContent=bundle(state)?JSON.stringify(bundle(state),null,2):"Payload becomes available after the current preview is reviewed and all blockers are resolved.";
+$("tabs").innerHTML=SCENARIOS.map((scenario,index)=>`<button type="button" data-scenario="${index}" aria-pressed="${state.scenario===index}">${scenario.title}</button>`).join("");
+const scenario=SCENARIOS[state.scenario];
+$("scenario-text").textContent=scenario.description;
+$("steps").innerHTML=scenario.steps.map((step,index)=>`<button type="button" data-step="${index}" ${index>state.step?"disabled":""}>${index<state.step?"Done · ":`${index+1}. `}${step.label}</button>`).join("");
+}
+function dispatch(action){
+state=reduce(state,action);render();
+if(action.type==="download"){
+const payload=bundle(state);if(!payload)return;
+const url=URL.createObjectURL(new Blob([JSON.stringify(payload,null,2)],{type:"application/json"}));
+const link=document.createElement("a");link.href=url;link.download="leitwerk-synthetic-support-bundle.json";link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+}
+$("sections").addEventListener("change",event=>{if(event.target.dataset.section)dispatch({type:"toggle",id:event.target.dataset.section});});
+$("raw-toggle").addEventListener("change",event=>dispatch({type:"showRaw",value:event.target.checked}));
+$("reset").addEventListener("click",()=>{$("note").value="";dispatch({type:"reset"});});
+$("add-note").addEventListener("click",()=>dispatch({type:"addNote",value:$("note").value}));
+$("redact-note").addEventListener("click",()=>dispatch({type:"redactNote"}));
+$("exclude-note").addEventListener("click",()=>dispatch({type:"excludeNote"}));
+$("review").addEventListener("click",()=>dispatch({type:"review"}));
+$("download").addEventListener("click",()=>dispatch({type:"download"}));
+$("tabs").addEventListener("click",event=>{if(event.target.dataset.scenario!==undefined){$("note").value="";dispatch({type:"scenario",index:Number(event.target.dataset.scenario)});}});
+$("steps").addEventListener("click",event=>{if(event.target.dataset.step===undefined)return;const index=Number(event.target.dataset.step);const action=SCENARIOS[state.scenario].steps[index];dispatch(action);state={...state,step:Math.max(state.step,index+1)};render();});
+render();
+</script>
+</body>
+</html>

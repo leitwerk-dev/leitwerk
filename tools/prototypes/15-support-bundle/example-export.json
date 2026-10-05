@@ -1,0 +1,88 @@
+{
+	"manifest": {
+		"format": "leitwerk-support-prototype-v1",
+		"source": "synthetic fixtures only",
+		"reviewed": true,
+		"sections": ["process", "execution", "runtime", "personal"],
+		"fieldCount": 16,
+		"transformedFieldCount": 10,
+		"omissions": [],
+		"transformations": [
+			{
+				"path": "process.instanceId",
+				"reason": "Stable alias preserves links within this bundle"
+			},
+			{
+				"path": "process.turnRecordId",
+				"reason": "Stable alias preserves links within this bundle"
+			},
+			{
+				"path": "execution.instanceId",
+				"reason": "Stable alias preserves links within this bundle"
+			},
+			{
+				"path": "execution.turnRecordId",
+				"reason": "Stable alias preserves links within this bundle"
+			},
+			{
+				"path": "runtime.workerLeaseId",
+				"reason": "Stable alias preserves links within this bundle"
+			},
+			{
+				"path": "runtime.authorization",
+				"reason": "Known credential field is always removed"
+			},
+			{
+				"path": "runtime.repositoryUrl",
+				"reason": "Repository location and embedded credentials removed"
+			},
+			{
+				"path": "runtime.toolOutput",
+				"reason": "Fixture rule removes known token and aliases process ID"
+			},
+			{
+				"path": "personal.operatorEmail",
+				"reason": "Personal attribution replaced with a local alias"
+			},
+			{
+				"path": "personal.request",
+				"reason": "Fixture rule aliases name, address, and repository"
+			}
+		],
+		"limits": [
+			"Fixture-specific sanitizer; arbitrary free text is not classified",
+			"Aliases preserve correlation within this bundle only",
+			"Missing historical evidence remains not_recorded",
+			"No environment, credentials, repository files, or live process state collected"
+		]
+	},
+	"sections": {
+		"process": {
+			"instanceId": "reference-1",
+			"selectedTurnId": "implement",
+			"lifecycleStatus": "error",
+			"turnRecordId": "reference-2"
+		},
+		"execution": {
+			"instanceId": "reference-1",
+			"turnRecordId": "reference-2",
+			"model": "fixture-provider / fixture-model",
+			"durationMs": 1820,
+			"errorCode": "WORKER_CONNECTION_LOST",
+			"historicalInstructions": {
+				"state": "not_recorded",
+				"reason": "Not captured for this fixture execution"
+			}
+		},
+		"runtime": {
+			"workerLeaseId": "reference-3",
+			"authorization": "[credential removed]",
+			"repositoryUrl": "[repository-1]",
+			"toolOutput": "Request failed for reference-1; bearer [credential removed]"
+		},
+		"personal": {
+			"operatorEmail": "[person-1]",
+			"request": "[person-1] requests review of [repository-1]; contact [person-1]"
+		}
+	}
+}
