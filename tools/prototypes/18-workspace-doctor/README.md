@@ -41,6 +41,7 @@ The fixture models one process with two full clones. It has no turn acceptance a
 - Browser checks confirmed capacity waiting does not start the startup clock, admitted timeout preserves the clone, and a replacement reaches readiness.
 - Browser checks confirmed malformed mise configuration produces actionable evidence and disabling optional mise preparation allows readiness with explicit skipped stages.
 - Desktop (1440 px) and mobile (390 px) screenshots were captured and visually inspected. The mobile page has no horizontal overflow; stage evidence follows the dependency map.
+- Visual review removed accent stripes from the summary, selected stage, and inspector. Refreshed desktop/mobile screenshots were inspected independently and the prior findings were resolved.
 
 These focused checks cover the standalone experiment. Application full validation was not run because application code, dependencies, and runtime/build configuration are unchanged.
 
