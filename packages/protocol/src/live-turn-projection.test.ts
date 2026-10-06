@@ -3,46 +3,38 @@ import { describe, expect, it } from "vitest";
 import type { TurnTraceSnapshot } from "./http-contracts.js";
 import { createLiveTurnProjection, restoreTurnTraceProjection } from "./live-turn-projection.js";
 
+function recordedEvent(
+	id: string,
+	eventType: string,
+	createdAt: string,
+	data: ProcessEvent["data"],
+	instanceId = "agt_1",
+): ProcessEvent {
+	return { id, instanceId, eventType, data, createdAt };
+}
+
 describe("live-turn-projection", () => {
 	it("orders same-timestamp events by persisted creation time", () => {
 		const projection = createLiveTurnProjection([
-			{
-				id: "evt_3",
-				instanceId: "agt_1",
-				eventType: "pi.stream.delta",
-				data: {
-					turnRecordId: "trn_1",
-					streamType: "thinking",
-					text: "second\n",
-					timestamp: "2026-01-01T00:00:01Z",
-				},
-				createdAt: "2026-01-01T00:00:02Z",
-			},
-			{
-				id: "evt_2",
-				instanceId: "agt_1",
-				eventType: "pi.tool.call",
-				data: {
-					turnRecordId: "trn_1",
-					toolCallId: "tool_1",
-					name: "bash",
-					arguments: { command: "echo ok" },
-					timestamp: "2026-01-01T00:00:01Z",
-				},
-				createdAt: "2026-01-01T00:00:01.500Z",
-			},
-			{
-				id: "evt_1",
-				instanceId: "agt_1",
-				eventType: "pi.stream.delta",
-				data: {
-					turnRecordId: "trn_1",
-					streamType: "thinking",
-					text: "first\n",
-					timestamp: "2026-01-01T00:00:01Z",
-				},
-				createdAt: "2026-01-01T00:00:01Z",
-			},
+			recordedEvent("evt_3", "pi.stream.delta", "2026-01-01T00:00:02Z", {
+				turnRecordId: "trn_1",
+				streamType: "thinking",
+				text: "second\n",
+				timestamp: "2026-01-01T00:00:01Z",
+			}),
+			recordedEvent("evt_2", "pi.tool.call", "2026-01-01T00:00:01.500Z", {
+				turnRecordId: "trn_1",
+				toolCallId: "tool_1",
+				name: "bash",
+				arguments: { command: "echo ok" },
+				timestamp: "2026-01-01T00:00:01Z",
+			}),
+			recordedEvent("evt_1", "pi.stream.delta", "2026-01-01T00:00:01Z", {
+				turnRecordId: "trn_1",
+				streamType: "thinking",
+				text: "first\n",
+				timestamp: "2026-01-01T00:00:01Z",
+			}),
 		]);
 
 		expect(projection.rawSnapshot()).toMatchObject({
@@ -83,13 +75,7 @@ describe("live-turn-projection", () => {
 		messageParts,
 	}) => {
 		const projection = createLiveTurnProjection([
-			{
-				id: "event",
-				instanceId: "process",
-				eventType,
-				data,
-				createdAt: "2026-01-01T00:00:01Z",
-			},
+			recordedEvent("event", eventType, "2026-01-01T00:00:01Z", data, "process"),
 		]);
 		const trace = projection.rawSnapshot().traceItems;
 		expect(trace).toMatchObject([{ kind: "operational_event", eventType, severity }]);
@@ -100,52 +86,40 @@ describe("live-turn-projection", () => {
 
 	it("aggregates cumulative usage and cost across multiple pi.usage events", () => {
 		const projection = createLiveTurnProjection([
-			{
-				id: "evt_usage_1",
-				instanceId: "agt_1",
-				eventType: "pi.usage",
-				data: {
-					turnRecordId: "trn_1",
-					input: 100,
-					output: 20,
-					reasoning: 12,
-					cacheRead: 300,
-					cacheWrite: 40,
-					totalTokens: 460,
-					cost: {
-						input: 1,
-						output: 2,
-						cacheRead: 0.5,
-						cacheWrite: 0.25,
-						total: 3.75,
-					},
-					timestamp: "2026-01-01T00:00:02Z",
+			recordedEvent("evt_usage_1", "pi.usage", "2026-01-01T00:00:02Z", {
+				turnRecordId: "trn_1",
+				input: 100,
+				output: 20,
+				reasoning: 12,
+				cacheRead: 300,
+				cacheWrite: 40,
+				totalTokens: 460,
+				cost: {
+					input: 1,
+					output: 2,
+					cacheRead: 0.5,
+					cacheWrite: 0.25,
+					total: 3.75,
 				},
-				createdAt: "2026-01-01T00:00:02Z",
-			},
-			{
-				id: "evt_usage_2",
-				instanceId: "agt_1",
-				eventType: "pi.usage",
-				data: {
-					turnRecordId: "trn_1",
-					input: 80,
-					output: 30,
-					reasoning: 8,
-					cacheRead: 5,
+				timestamp: "2026-01-01T00:00:02Z",
+			}),
+			recordedEvent("evt_usage_2", "pi.usage", "2026-01-01T00:00:03Z", {
+				turnRecordId: "trn_1",
+				input: 80,
+				output: 30,
+				reasoning: 8,
+				cacheRead: 5,
+				cacheWrite: 0,
+				totalTokens: 115,
+				cost: {
+					input: 0.75,
+					output: 0.5,
+					cacheRead: 0.125,
 					cacheWrite: 0,
-					totalTokens: 115,
-					cost: {
-						input: 0.75,
-						output: 0.5,
-						cacheRead: 0.125,
-						cacheWrite: 0,
-						total: 1.375,
-					},
-					timestamp: "2026-01-01T00:00:03Z",
+					total: 1.375,
 				},
-				createdAt: "2026-01-01T00:00:03Z",
-			},
+				timestamp: "2026-01-01T00:00:03Z",
+			}),
 		]);
 
 		expect(projection.rawSnapshot().usage).toEqual({

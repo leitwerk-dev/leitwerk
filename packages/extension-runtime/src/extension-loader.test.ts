@@ -27,6 +27,10 @@ import { createLoadedExtensionModuleForTest } from "./testing.js";
 
 const tempDirs: string[] = [];
 const originalRuntimeLane = process.env[LEITWERK_RUNTIME_LANE_ENV];
+const runtimeLanes = [
+	{ lane: "source", directory: "src", extension: "ts" },
+	{ lane: "dist", directory: "dist", extension: "js" },
+];
 
 beforeEach(() => {
 	delete process.env[LEITWERK_RUNTIME_LANE_ENV];
@@ -63,6 +67,7 @@ async function createExtensionPackage(
 		discover?: boolean;
 		extensionMetadata?: unknown;
 		piMetadata?: unknown;
+		skillsMetadata?: unknown;
 	},
 ) {
 	const pkgDir = path.join(root, "extensions", "example");
@@ -78,6 +83,7 @@ async function createExtensionPackage(
 				},
 				...(opts.discover === false ? { discover: false } : {}),
 				...(opts.piMetadata === undefined ? {} : { pi: opts.piMetadata }),
+				...(opts.skillsMetadata === undefined ? {} : { skills: opts.skillsMetadata }),
 			},
 		}),
 	);
@@ -96,6 +102,31 @@ async function createExtensionPackage(
 }
 
 describe("resolveExtensionEntries", () => {
+	it.each([
+		"source",
+		"dist",
+	])("discovers the same generated skill pack in the %s lane", async (lane) => {
+		process.env[LEITWERK_RUNTIME_LANE_ENV] = lane;
+		const root = await createWorkspace();
+		const pkgDir = await createExtensionPackage(root, {
+			withDist: true,
+			skillsMetadata: "./dist/skills/manifest.json",
+		});
+		const entries = await resolveExtensionEntries({ startDir: root, sources: [pkgDir] });
+		expect(entries[0].skillPackPath).toBe(path.join(pkgDir, "dist/skills/manifest.json"));
+		const loaded = await importExtensionModules(entries);
+		expect(loaded[0].skillPackPath).toBe(entries[0].skillPackPath);
+	});
+
+	it("rejects skill-pack metadata outside the package", async () => {
+		const root = await createWorkspace();
+		const pkgDir = await createExtensionPackage(root, {
+			withDist: true,
+			skillsMetadata: "../outside.json",
+		});
+		await expect(resolveExtensionEntries({ startDir: root, sources: [pkgDir] })).rejects.toThrow();
+	});
+
 	it("returns an empty entry list when no extension sources are configured", async () => {
 		process.env[LEITWERK_RUNTIME_LANE_ENV] = "source";
 		const root = await createWorkspace();
@@ -104,40 +135,23 @@ describe("resolveExtensionEntries", () => {
 		await expect(resolveExtensionEntries({ startDir: root, sources: [] })).resolves.toEqual([]);
 	});
 
-	it("resolves configured relative package directories", async () => {
-		process.env[LEITWERK_RUNTIME_LANE_ENV] = "source";
+	it.each(runtimeLanes)("resolves configured package directories in the $lane lane", async ({
+		lane,
+		directory,
+		extension,
+	}) => {
+		process.env[LEITWERK_RUNTIME_LANE_ENV] = lane;
 		const root = await createWorkspace();
-		const pkgDir = await createExtensionPackage(root, { withDist: false });
-
+		const pkgDir = await createExtensionPackage(root, { withDist: lane === "dist" });
 		const entries = await resolveExtensionEntries({
 			startDir: root,
 			sources: ["./extensions/example"],
 		});
-
 		expect(entries).toEqual([
 			{
 				packageName: "@example/example",
 				packageDir: pkgDir,
-				entryPath: path.join(pkgDir, "src", "index.ts"),
-			},
-		]);
-	});
-
-	it("resolves configured package directories to built entrypoints in the dist lane", async () => {
-		process.env[LEITWERK_RUNTIME_LANE_ENV] = "dist";
-		const root = await createWorkspace();
-		const pkgDir = await createExtensionPackage(root, { withDist: true });
-
-		const entries = await resolveExtensionEntries({
-			startDir: root,
-			sources: ["./extensions/example"],
-		});
-
-		expect(entries).toEqual([
-			{
-				packageName: "@example/example",
-				packageDir: pkgDir,
-				entryPath: path.join(pkgDir, "dist", "index.js"),
+				entryPath: path.join(pkgDir, directory, `index.${extension}`),
 			},
 		]);
 	});
@@ -182,51 +196,37 @@ describe("resolveExtensionEntries", () => {
 		);
 	});
 
-	it("resolves Pi entries and resources through the active source lane", async () => {
-		process.env[LEITWERK_RUNTIME_LANE_ENV] = "source";
+	it.each(runtimeLanes)("resolves Pi entries and resources in the $lane lane", async ({
+		lane,
+		directory,
+		extension,
+	}) => {
+		process.env[LEITWERK_RUNTIME_LANE_ENV] = lane;
 		const root = await createWorkspace();
 		const pkgDir = await createExtensionPackage(root, {
-			withDist: false,
+			withDist: lane === "dist",
 			piMetadata: {
 				worker: { source: "./src/pi-worker.ts", import: "./dist/pi-worker.js" },
 				server: { source: "./src/pi-server.ts", import: "./dist/pi-server.js" },
-				resources: { skills: ["./skills"], prompts: ["./prompts"] },
+				resources: lane === "source" ? { skills: ["./skills"], prompts: ["./prompts"] } : undefined,
 			},
 		});
-		await mkdir(path.join(pkgDir, "skills"));
-		await mkdir(path.join(pkgDir, "prompts"));
-
+		if (lane === "source") {
+			await mkdir(path.join(pkgDir, "skills"));
+			await mkdir(path.join(pkgDir, "prompts"));
+		}
 		const [entry] = await resolveExtensionEntries({
 			startDir: root,
 			sources: ["./extensions/example"],
 		});
-
 		expect(entry.pi).toEqual({
-			workerEntryPath: path.join(pkgDir, "src", "pi-worker.ts"),
-			serverEntryPath: path.join(pkgDir, "src", "pi-server.ts"),
+			workerEntryPath: path.join(pkgDir, directory, `pi-worker.${extension}`),
+			serverEntryPath: path.join(pkgDir, directory, `pi-server.${extension}`),
 			resources: {
-				skillDirectories: [path.join(pkgDir, "skills")],
-				promptDirectories: [path.join(pkgDir, "prompts")],
+				skillDirectories: lane === "source" ? [path.join(pkgDir, "skills")] : [],
+				promptDirectories: lane === "source" ? [path.join(pkgDir, "prompts")] : [],
 			},
 		});
-	});
-
-	it("resolves Pi entries through the active dist lane", async () => {
-		process.env[LEITWERK_RUNTIME_LANE_ENV] = "dist";
-		const root = await createWorkspace();
-		const pkgDir = await createExtensionPackage(root, {
-			withDist: true,
-			piMetadata: {
-				worker: { source: "./src/pi-worker.ts", import: "./dist/pi-worker.js" },
-				server: { source: "./src/pi-server.ts", import: "./dist/pi-server.js" },
-			},
-		});
-		const [entry] = await resolveExtensionEntries({
-			startDir: root,
-			sources: ["./extensions/example"],
-		});
-		expect(entry.pi?.workerEntryPath).toBe(path.join(pkgDir, "dist", "pi-worker.js"));
-		expect(entry.pi?.serverEntryPath).toBe(path.join(pkgDir, "dist", "pi-server.js"));
 	});
 
 	it("rejects a Pi worker entry outside its owning package", async () => {
@@ -311,7 +311,7 @@ describe("buildExtensionCatalog", () => {
 		const token = createCapabilityToken<string>("test:optional-owner");
 		const observed: unknown[] = [];
 		const consumer = createLoadedExtensionModuleForTest({
-			manifest: { id: "consumer", version: "1", optional: ["owner"] },
+			manifest: { id: "consumer", version: "1", optional: ["owner", "owner"] },
 			setupCatalog(api) {
 				const { get, require: requireCapability } = api;
 				observed.push(get(token), requireCapability(token));

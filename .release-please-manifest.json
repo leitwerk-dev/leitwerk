@@ -33,5 +33,6 @@
 	"extensions/jira": "0.3.1",
 	"extensions/jira-gitlab-change": "0.3.1",
 	"extensions/jira-epic-split": "0.3.1",
-	"extensions/example-processes": "0.3.1"
+	"extensions/example-processes": "0.3.1",
+	"extensions/mattpocock-skills": "0.3.1"
 }

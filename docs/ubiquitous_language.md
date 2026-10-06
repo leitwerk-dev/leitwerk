@@ -76,6 +76,7 @@ Behavioral rules belong in the linked references, not in a second glossary.
 
 | Term | Definition |
 |---|---|
+| **Skill Pack** | Extension-owned bundle of adapted skills, explicit dependencies, and upstream provenance, built from a pinned source and reviewed patch. |
 | **Installed Skill** | Skill revision imported into SQLite with an active status available for future process launch selection. |
 | **Attached Skill** | Immutable skill revision explicitly pinned to a process instance during launch creation. |
 | **Skill Candidate** | Discovered skill revision in a configured Git repository that is available for installation. |

@@ -4,6 +4,7 @@ export {
 	SERIALIZED_SYSTEM_ACTOR,
 	serializeActor,
 } from "./actor.js";
+export { orderDependencies } from "./dependency-order.js";
 export type {
 	Actor,
 	CurrentExecutionRef,

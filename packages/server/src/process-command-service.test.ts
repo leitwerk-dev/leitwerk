@@ -8,17 +8,33 @@ import { afterEach, describe, expect, it } from "vitest";
 import { getDefaultConfig } from "./config/config-loader.js";
 import { buildProcessActionRegistry } from "./process-action-registry.js";
 import { createProcessEngine } from "./process-engine/engine.js";
+import type { ProcessEngineDeps } from "./process-engine/types.js";
 import { getProcessGraph } from "./process-graph.js";
 import { createProcessOperationCoordinator } from "./process-operation-coordinator.js";
 import { createFilesystemSessionReader } from "./process-session-store.js";
 import { createFakeWorkerSupervisor as createFakeSupervisor } from "./test-helpers/fake-worker-supervisor.js";
 import { createOwnedTestDeps as createTestDeps } from "./test-helpers/owned-test-deps.js";
 import { defineGraphFixtureProcess } from "./test-helpers/process-binding-fixtures.js";
-import { createDefaultTestProcessGraphRegistry } from "./test-helpers/process-fixtures.js";
+import {
+	createDefaultTestProcessGraphRegistry,
+	createFixtureLlmTurn,
+} from "./test-helpers/process-fixtures.js";
 import { prepareSuccessfulLlmTurnStarts as createSuccessfulLlmTurnStarts } from "./test-helpers/turn-start-preflight-fixtures.js";
 
 const processGraphs = createDefaultTestProcessGraphRegistry();
 const ticketProcessGraph = getProcessGraph(processGraphs, "ticket_issue_process");
+
+function createTestEngine(
+	deps: ReturnType<typeof createTestDeps>,
+	overrides: Pick<ProcessEngineDeps, "getSupervisor"> & Partial<ProcessEngineDeps>,
+) {
+	return createProcessEngine({
+		...deps,
+		processOperations: createProcessOperationCoordinator(),
+		processGraphs,
+		...overrides,
+	});
+}
 
 function createLlmTestConfig() {
 	const config = getDefaultConfig();
@@ -33,17 +49,12 @@ const prepareSuccessfulLlmTurnStarts = createSuccessfulLlmTurnStarts({ profileId
 const defaultTurnDefinitions = new Map<string, TurnDefinition>([
 	[
 		"generate_plan",
-		{
-			id: "generate_plan",
-			description: "Generate the candidate plan",
-			kind: "llm",
-			availableTools: [],
+		createFixtureLlmTurn("Generate the candidate plan", {
 			completionMode: "turn_end",
-			branchType: "primary",
-			context: "fresh",
+			turnEnd: undefined,
 			prompt: async () => "Generate a plan",
 			outcomes: { plan_saved: { description: "saved", parameters: {} } },
-		},
+		}),
 	],
 	[
 		"plan_review",
@@ -56,17 +67,12 @@ const defaultTurnDefinitions = new Map<string, TurnDefinition>([
 	],
 	[
 		"implement",
-		{
-			id: "implement",
-			description: "Implement",
-			kind: "llm",
-			availableTools: [],
+		createFixtureLlmTurn("Implement", {
 			completionMode: "turn_end",
-			branchType: "primary",
+			turnEnd: undefined,
 			context: "full",
-			prompt: async () => "Implement",
 			outcomes: { done: { description: "done", parameters: {} } },
-		},
+		}),
 	],
 	[
 		"handoff_review",
@@ -80,12 +86,9 @@ const defaultTurnDefinitions = new Map<string, TurnDefinition>([
 	],
 	[
 		"run_llm_review",
-		{
-			id: "run_llm_review",
-			description: "Run review",
-			kind: "llm",
-			availableTools: [],
+		createFixtureLlmTurn("Run review", {
 			completionMode: "turn_end",
+			turnEnd: undefined,
 			branchType: "leaf_branch",
 			context: "full",
 			prompt: async () => "Review",
@@ -93,66 +96,47 @@ const defaultTurnDefinitions = new Map<string, TurnDefinition>([
 				issues_found: { description: "issues", parameters: {} },
 				no_issues: { description: "clean", parameters: {} },
 			},
-		},
+		}),
 	],
 	[
 		"address_review",
-		{
-			id: "address_review",
-			description: "Address review",
-			kind: "llm",
-			availableTools: [],
+		createFixtureLlmTurn("Address review", {
 			completionMode: "turn_end",
-			branchType: "primary",
+			turnEnd: undefined,
 			context: "full",
-			prompt: async () => "Address review",
 			outcomes: { comments_addressed: { description: "done", parameters: {} } },
-		},
+		}),
 	],
 	[
 		"verify_build",
-		{
-			id: "verify_build",
-			description: "Verify build",
-			kind: "llm",
-			availableTools: [],
+		createFixtureLlmTurn("Verify build", {
 			completionMode: "turn_end",
-			branchType: "primary",
+			turnEnd: undefined,
 			context: "full",
-			prompt: async () => "Verify build",
 			outcomes: {
 				build_failing: { description: "failing", parameters: {} },
 				build_passing: { description: "passing", parameters: {} },
 			},
-		},
+		}),
 	],
 	[
 		"fix_build",
-		{
-			id: "fix_build",
-			description: "Fix build",
-			kind: "llm",
-			availableTools: [],
+		createFixtureLlmTurn("Fix build", {
 			completionMode: "turn_end",
-			branchType: "primary",
+			turnEnd: undefined,
 			context: "full",
-			prompt: async () => "Fix build",
 			outcomes: { build_fixed: { description: "fixed", parameters: {} } },
-		},
+		}),
 	],
 	[
 		"commit_and_complete",
-		{
-			id: "commit_and_complete",
-			description: "Commit and complete",
-			kind: "llm",
-			availableTools: [],
+		createFixtureLlmTurn("Commit and complete", {
 			completionMode: "turn_end",
-			branchType: "primary",
+			turnEnd: undefined,
 			context: "full",
 			prompt: async () => "Commit",
 			outcomes: { committed: { description: "committed", parameters: {} } },
-		},
+		}),
 	],
 	[
 		"implementation_review",
@@ -370,11 +354,8 @@ describe("createProcessEngine retry lifecycle effects", () => {
 			forkPiEntryId: "pi_pre_impl",
 		});
 		const supervisor = createFakeSupervisor();
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
+		const commands = createTestEngine(deps, {
 			getSupervisor: () => supervisor,
-			processGraphs,
 		});
 
 		const result = await commands.retryProcess(process.id);
@@ -412,11 +393,8 @@ describe("createProcessEngine retry lifecycle effects", () => {
 			forkPiEntryId: "pi_pre_impl",
 		});
 		const supervisor = createFakeSupervisor([process.id]);
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
+		const commands = createTestEngine(deps, {
 			getSupervisor: () => supervisor,
-			processGraphs,
 		});
 
 		const result = await commands.retryProcess(process.id);
@@ -462,11 +440,8 @@ describe("createProcessEngine retry lifecycle effects", () => {
 			startedAt: "2026-04-25T10:00:01.500Z",
 		});
 		const supervisor = createFakeSupervisor([process.id]);
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
+		const commands = createTestEngine(deps, {
 			getSupervisor: () => supervisor,
-			processGraphs,
 			sessionReader: createFilesystemSessionReader(treeFilesDir),
 		});
 
@@ -531,11 +506,8 @@ describe("createProcessEngine retry lifecycle effects", () => {
 			modelProfileId: "claude_fast",
 			startedAt: "2026-04-25T10:00:01.500Z",
 		});
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
+		const commands = createTestEngine(deps, {
 			getSupervisor: () => createFakeSupervisor([process.id]),
-			processGraphs,
 			sessionReader: createFilesystemSessionReader(treeFilesDir),
 		});
 
@@ -587,11 +559,8 @@ describe("createProcessEngine retry lifecycle effects", () => {
 			startedAt: "2026-04-25T10:00:02.000Z",
 		});
 		const supervisor = createFakeSupervisor([process.id]);
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
+		const commands = createTestEngine(deps, {
 			getSupervisor: () => supervisor,
-			processGraphs,
 			sessionReader: createFilesystemSessionReader(treeFilesDir),
 		});
 
@@ -636,11 +605,8 @@ describe("createProcessEngine retry lifecycle effects", () => {
 			startedAt: "2026-04-25T10:00:01.500Z",
 		});
 		const supervisor = createFakeSupervisor([process.id]);
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
+		const commands = createTestEngine(deps, {
 			getSupervisor: () => supervisor,
-			processGraphs,
 			sessionReader: createFilesystemSessionReader(treeFilesDir),
 		});
 
@@ -695,11 +661,8 @@ describe("createProcessEngine retry lifecycle effects", () => {
 			modelProfileId: "claude_fast",
 			startedAt: "2026-04-25T10:00:01.500Z",
 		});
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
+		const commands = createTestEngine(deps, {
 			getSupervisor: () => createFakeSupervisor([process.id]),
-			processGraphs,
 			sessionReader: createFilesystemSessionReader(treeFilesDir),
 		});
 
@@ -743,11 +706,8 @@ describe("createProcessEngine retry lifecycle effects", () => {
 			modelProfileId: "claude_fast",
 			startedAt: "2026-04-25T10:00:01.500Z",
 		});
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
+		const commands = createTestEngine(deps, {
 			getSupervisor: () => createFakeSupervisor([process.id]),
-			processGraphs,
 			sessionReader: createFilesystemSessionReader(treeFilesDir),
 		});
 
@@ -791,11 +751,8 @@ describe("createProcessEngine retry lifecycle effects", () => {
 			startedAt: "2026-04-25T10:00:01.500Z",
 		});
 		const supervisor = createFakeSupervisor([process.id]);
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
+		const commands = createTestEngine(deps, {
 			getSupervisor: () => supervisor,
-			processGraphs,
 			sessionReader: createFilesystemSessionReader(treeFilesDir),
 		});
 
@@ -842,11 +799,8 @@ describe("createProcessEngine retry lifecycle effects", () => {
 			resultPiEntryId: null,
 			startedAt: "2026-04-25T10:00:02.000Z",
 		});
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
+		const commands = createTestEngine(deps, {
 			getSupervisor: () => createFakeSupervisor(),
-			processGraphs,
 			sessionReader: createFilesystemSessionReader(treeFilesDir),
 		});
 
@@ -875,11 +829,8 @@ describe("createProcessEngine retry lifecycle effects", () => {
 			forkPiEntryId: "pi_pre_impl",
 		});
 		const supervisor = createFakeSupervisor([process.id]);
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
+		const commands = createTestEngine(deps, {
 			getSupervisor: () => supervisor,
-			processGraphs,
 		});
 
 		const result = await commands.recordWorkerFailure(process.id, {
@@ -921,11 +872,8 @@ describe("createProcessEngine retry lifecycle effects", () => {
 			forkPiEntryId: "pi_pre_impl",
 		});
 		const supervisor = createFakeSupervisor([process.id]);
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
+		const commands = createTestEngine(deps, {
 			getSupervisor: () => supervisor,
-			processGraphs,
 		});
 
 		const originalTurn = deps.turnRecords.getById("trn_impl_failed_1");
@@ -956,11 +904,8 @@ describe("createProcessEngine queued input lifecycle effects", () => {
 			selectedTurnId: "run_llm_review",
 			lifecycleStatus: "active",
 		});
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
+		const commands = createTestEngine(deps, {
 			getSupervisor: () => createFakeSupervisor(),
-			processGraphs,
 		});
 
 		const result = await commands.queueInputs(process.id, [
@@ -1000,11 +945,8 @@ describe("createProcessEngine queued input lifecycle effects", () => {
 			selectedTurnId: "run_llm_review",
 			lifecycleStatus: "active",
 		});
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
+		const commands = createTestEngine(deps, {
 			getSupervisor: () => createFakeSupervisor(),
-			processGraphs,
 		});
 
 		const result = await commands.queueInputs(process.id, [
@@ -1039,11 +981,8 @@ describe("createProcessEngine queued input lifecycle effects", () => {
 			payloadJson: JSON.stringify({ input: {}, actionLabel: "Approve plan" }),
 			nextRunAt: "2026-04-25T09:00:00.000Z",
 		});
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
+		const commands = createTestEngine(deps, {
 			getSupervisor: () => createFakeSupervisor(),
-			processGraphs,
 		});
 
 		const result = await commands.queueInputs(process.id, [
@@ -1070,11 +1009,8 @@ describe("createProcessEngine external action dispatch", () => {
 		const registry = buildProcessActionRegistry({
 			processes: new Map([["ticket_issue_process", createProcess(() => {})]]),
 		});
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
+		const commands = createTestEngine(deps, {
 			getSupervisor: () => supervisor,
-			processGraphs,
 			getProcessActionRegistry: () => registry,
 		});
 
@@ -1150,12 +1086,9 @@ describe("createProcessEngine process transition effects", () => {
 				],
 			]),
 		});
-		const commands = createProcessEngine({
-			...deps,
+		const commands = createTestEngine(deps, {
 			config: createLlmTestConfig(),
-			processOperations: createProcessOperationCoordinator(),
 			getSupervisor: () => supervisor,
-			processGraphs,
 			getProcessActionRegistry: () => registry,
 			prepareTurnStarts: prepareSuccessfulLlmTurnStarts,
 		});
@@ -1268,11 +1201,8 @@ describe("createProcessEngine process transition effects", () => {
 				],
 			]),
 		});
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
+		const commands = createTestEngine(deps, {
 			getSupervisor: () => supervisor,
-			processGraphs,
 			getProcessActionRegistry: () => registry,
 		});
 
@@ -1382,9 +1312,7 @@ describe("createProcessEngine process transition effects", () => {
 		const registry = buildProcessActionRegistry({
 			processes: new Map([["poem_creator_process", poemCreatorProcess]]),
 		});
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
+		const commands = createTestEngine(deps, {
 			getSupervisor: () => supervisor,
 			processGraphs: new Map([["poem_creator_process", poemCreatorProcess]]),
 			getProcessActionRegistry: () => registry,
@@ -1462,12 +1390,9 @@ describe("createProcessEngine process transition effects", () => {
 				],
 			]),
 		});
-		const commands = createProcessEngine({
-			...deps,
+		const commands = createTestEngine(deps, {
 			config: createLlmTestConfig(),
-			processOperations: createProcessOperationCoordinator(),
 			getSupervisor: () => supervisor,
-			processGraphs,
 			getProcessActionRegistry: () => registry,
 			prepareTurnStarts: prepareSuccessfulLlmTurnStarts,
 		});
@@ -1513,12 +1438,9 @@ describe("createProcessEngine process transition effects", () => {
 				],
 			]),
 		});
-		const commands = createProcessEngine({
-			...deps,
+		const commands = createTestEngine(deps, {
 			config: createLlmTestConfig(),
-			processOperations: createProcessOperationCoordinator(),
 			getSupervisor: () => supervisor,
-			processGraphs,
 			getProcessActionRegistry: () => registry,
 			prepareTurnStarts: prepareSuccessfulLlmTurnStarts,
 		});
@@ -1562,12 +1484,9 @@ describe("createProcessEngine process transition effects", () => {
 				],
 			]),
 		});
-		const commands = createProcessEngine({
-			...deps,
+		const commands = createTestEngine(deps, {
 			config: createLlmTestConfig(),
-			processOperations: createProcessOperationCoordinator(),
 			getSupervisor: () => supervisor,
-			processGraphs,
 			getProcessActionRegistry: () => registry,
 			prepareTurnStarts: prepareSuccessfulLlmTurnStarts,
 		});
@@ -1608,11 +1527,8 @@ describe("createProcessEngine process transition effects", () => {
 				],
 			]),
 		});
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
+		const commands = createTestEngine(deps, {
 			getSupervisor: () => createFakeSupervisor(),
-			processGraphs,
 			getProcessActionRegistry: () => registry,
 		});
 
@@ -1662,11 +1578,8 @@ describe("createProcessEngine process transition effects", () => {
 				],
 			]),
 		});
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
+		const commands = createTestEngine(deps, {
 			getSupervisor: () => supervisor,
-			processGraphs,
 			getProcessActionRegistry: () => registry,
 		});
 
@@ -1698,11 +1611,8 @@ describe("createProcessEngine future action cleanup", () => {
 			payloadJson: JSON.stringify({ input: {}, actionLabel: "Approve plan" }),
 			nextRunAt: "2026-04-25T09:00:00.000Z",
 		});
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
+		const commands = createTestEngine(deps, {
 			getSupervisor: () => createFakeSupervisor(),
-			processGraphs,
 		});
 
 		const result = await commands.abortProcess(process.id);
@@ -1732,11 +1642,8 @@ describe("createProcessEngine future action cleanup", () => {
 				throw new Error("worker shutdown failed");
 			},
 		});
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
+		const commands = createTestEngine(deps, {
 			getSupervisor: () => supervisor,
-			processGraphs,
 		});
 
 		const result = await commands.abortProcess(process.id);
@@ -1766,11 +1673,8 @@ describe("createProcessEngine future action cleanup", () => {
 			forkPiEntryId: "pi_pre_impl",
 		});
 		const supervisor = createFakeSupervisor([process.id]);
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
+		const commands = createTestEngine(deps, {
 			getSupervisor: () => supervisor,
-			processGraphs,
 		});
 
 		const result = await commands.abortProcess(process.id);
@@ -1841,11 +1745,8 @@ describe("createProcessEngine future action cleanup", () => {
 				],
 			]),
 		});
-		const commands = createProcessEngine({
-			...deps,
-			processOperations: createProcessOperationCoordinator(),
+		const commands = createTestEngine(deps, {
 			getSupervisor: () => supervisor,
-			processGraphs,
 			getProcessActionRegistry: () => registry,
 		});
 
@@ -1942,10 +1843,8 @@ describe("createProcessEngine future action cleanup", () => {
 			);
 			const localProcessGraphs = new Map([["ticket_issue_process", scheduledProcessDefinition]]);
 			const registry = buildProcessActionRegistry({ processes: localProcessGraphs });
-			const commands = createProcessEngine({
-				...deps,
+			const commands = createTestEngine(deps, {
 				toastTtlMs: 1234,
-				processOperations: createProcessOperationCoordinator(),
 				getSupervisor: () => undefined,
 				processGraphs: localProcessGraphs,
 				getProcessActionRegistry: () => registry,
@@ -2013,12 +1912,9 @@ describe("createProcessEngine future action cleanup", () => {
 				startedAt: "2026-04-30T12:00:00.000Z",
 			});
 			const registry = createPlanReviewActionRegistry();
-			const commands = createProcessEngine({
-				...deps,
+			const commands = createTestEngine(deps, {
 				toastTtlMs: 1234,
-				processOperations: createProcessOperationCoordinator(),
 				getSupervisor: () => undefined,
-				processGraphs,
 				getProcessActionRegistry: () => registry,
 			});
 			const broadcast = deps.broadcaster.broadcast.bind(deps.broadcaster);
@@ -2085,12 +1981,9 @@ describe("createProcessEngine future action cleanup", () => {
 					throw new Error("stop exploded");
 				},
 			});
-			const commands = createProcessEngine({
-				...deps,
+			const commands = createTestEngine(deps, {
 				toastTtlMs: 1234,
-				processOperations: createProcessOperationCoordinator(),
 				getSupervisor: () => supervisor,
-				processGraphs,
 				getProcessActionRegistry: () => registry,
 			});
 			const broadcast = deps.broadcaster.broadcast.bind(deps.broadcaster);
@@ -2156,12 +2049,9 @@ describe("createProcessEngine future action cleanup", () => {
 				pathType: "primary",
 				startedAt: "2026-04-30T12:00:00.000Z",
 			});
-			const commands = createProcessEngine({
-				...deps,
+			const commands = createTestEngine(deps, {
 				toastTtlMs: 1234,
-				processOperations: createProcessOperationCoordinator(),
 				getSupervisor: () => undefined,
-				processGraphs,
 			});
 			const broadcast = deps.broadcaster.broadcast.bind(deps.broadcaster);
 			deps.broadcaster.broadcast = (frame) => {
@@ -2217,12 +2107,9 @@ describe("createProcessEngine future action cleanup", () => {
 					throw new Error("stop exploded");
 				},
 			});
-			const commands = createProcessEngine({
-				...deps,
+			const commands = createTestEngine(deps, {
 				toastTtlMs: 1234,
-				processOperations: createProcessOperationCoordinator(),
 				getSupervisor: () => supervisor,
-				processGraphs,
 				getProcessActionRegistry: () => registry,
 			});
 			const broadcast = deps.broadcaster.broadcast.bind(deps.broadcaster);

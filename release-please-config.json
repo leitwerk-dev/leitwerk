@@ -110,7 +110,8 @@
 				"@leitwerk-dev/jira",
 				"@leitwerk-dev/jira-gitlab-change",
 				"@leitwerk-dev/jira-epic-split",
-				"@leitwerk-dev/example-processes"
+				"@leitwerk-dev/example-processes",
+				"@leitwerk-dev/mattpocock-skills"
 			]
 		}
 	],
@@ -299,6 +300,11 @@
 		},
 		"extensions/example-processes": {
 			"component": "@leitwerk-dev/example-processes",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"extensions/mattpocock-skills": {
+			"component": "@leitwerk-dev/mattpocock-skills",
 			"skip-github-release": true,
 			"skip-changelog": true
 		}

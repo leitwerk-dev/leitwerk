@@ -118,6 +118,7 @@ import { createProjectedSessionSnapshotStore } from "./session-summary-projectio
 import { createSessionTransferHelperRelays } from "./session-transfer-helper-relays.js";
 import { createSessionTransferService } from "./session-transfer-service.js";
 import { createSkillCatalogService } from "./skills/catalog-service.js";
+import { importExtensionSkills } from "./skills/extension-importer.js";
 import { createDiagnosticTraceWriter } from "./supervisor/diagnostic-trace-writer.js";
 import { createIpcHandler, type IpcHandler } from "./supervisor/ipc-handler.js";
 import { startStaleHeartbeatWatchdog } from "./supervisor/stale-heartbeat-watchdog.js";
@@ -425,7 +426,9 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		const repos = createAllRepos(db, {
 			...(credentialCipher ? { credentialCipher } : {}),
 		});
+		const extensionSkills = await importExtensionSkills(extensionCatalog.modules);
 		repos.transaction((transactionRepos) => {
+			transactionRepos.skills.reconcileExtensions(extensionSkills);
 			// Directly configured skills are no longer supported. Deactivate any left by an older release.
 			transactionRepos.skills.reconcile([]);
 			transactionRepos.skills.backfillDependencies();

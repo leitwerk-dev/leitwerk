@@ -1,0 +1,490 @@
+diff --git a/skills/engineering/codebase-design/DESIGN-IT-TWICE.md b/skills/engineering/codebase-design/DESIGN-IT-TWICE.md
+index d099013..ed677d7 100644
+--- a/skills/engineering/codebase-design/DESIGN-IT-TWICE.md
++++ b/skills/engineering/codebase-design/DESIGN-IT-TWICE.md
+@@ -1,6 +1,6 @@
+ # Design It Twice
+ 
+-When the user wants to explore alternative interfaces for a chosen deepening candidate, use this parallel sub-agent pattern. Based on "Design It Twice" (Ousterhout): your first idea is unlikely to be the best.
++When the user wants to explore alternative interfaces for a chosen deepening candidate, use these sequential design passes. Based on "Design It Twice" (Ousterhout): your first idea is unlikely to be the best.
+ 
+ Uses the vocabulary in [SKILL.md](SKILL.md): **module**, **interface**, **seam**, **adapter**, **leverage**.
+ 
+@@ -8,28 +8,28 @@ Uses the vocabulary in [SKILL.md](SKILL.md): **module**, **interface**, **seam**
+ 
+ ### 1. Frame the problem space
+ 
+-Before spawning sub-agents, write a user-facing explanation of the problem space for the chosen candidate:
++Before designing alternatives, write a user-facing explanation of the problem space for the chosen candidate:
+ 
+ - The constraints any new interface would need to satisfy
+ - The dependencies it would rely on, and which category they fall into (see [DEEPENING.md](DEEPENING.md))
+ - A rough illustrative code sketch to ground the constraints, not a proposal, just a way to make the constraints concrete
+ 
+-Show this to the user, then immediately proceed to Step 2. The user reads and thinks while the sub-agents work in parallel.
++Show this to the user, then immediately proceed to Step 2. Work through each design before comparing them.
+ 
+-### 2. Spawn sub-agents
++### 2. Design alternatives
+ 
+-Spawn 3+ sub-agents in parallel. Each must produce a **radically different** interface for the deepened module.
++Develop three **radically different** interfaces for the deepened module, one after another. Keep each design self-contained until comparison.
+ 
+-Prompt each sub-agent with a separate technical brief (file paths, coupling details, dependency category from [DEEPENING.md](DEEPENING.md), what sits behind the seam). The brief is independent of the user-facing problem-space explanation in Step 1. Give each agent a different design constraint:
++Start each pass with a separate technical brief (file paths, coupling details, dependency category from [DEEPENING.md](DEEPENING.md), what sits behind the seam). The brief is independent of the user-facing problem-space explanation in Step 1. Use a different design constraint for each pass:
+ 
+-- Agent 1: "Minimize the interface: aim for 1–3 entry points max. Maximise leverage per entry point."
+-- Agent 2: "Maximise flexibility: support many use cases and extension."
+-- Agent 3: "Optimise for the most common caller: make the default case trivial."
+-- Agent 4 (if applicable): "Design around ports & adapters for cross-seam dependencies."
++- Pass 1: "Minimize the interface: aim for 1–3 entry points max. Maximise leverage per entry point."
++- Pass 2: "Maximise flexibility: support many use cases and extension."
++- Pass 3: "Optimise for the most common caller: make the default case trivial."
++- Optional pass: "Design around ports & adapters for cross-seam dependencies."
+ 
+-Include both [SKILL.md](SKILL.md) vocabulary and GLOSSARY.md vocabulary in the brief so each sub-agent names things consistently with the architecture language and the project's domain language.
++Include both [SKILL.md](SKILL.md) vocabulary and the target repository’s domain vocabulary in the brief so each design names things consistently with the architecture language and the project's domain language.
+ 
+-Each sub-agent outputs:
++Each design includes:
+ 
+ 1. Interface (types, methods, params, plus invariants, ordering, error modes)
+ 2. Usage example showing how callers use it
+diff --git a/skills/engineering/codebase-design/SKILL.md b/skills/engineering/codebase-design/SKILL.md
+index 3f63c81..3e68b03 100644
+--- a/skills/engineering/codebase-design/SKILL.md
++++ b/skills/engineering/codebase-design/SKILL.md
+@@ -1,5 +1,5 @@
+ ---
+-name: codebase-design
++name: mattpocock-codebase-design
+ description: Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module's interface, find deepening opportunities, decide where a seam goes, make code more testable or AI-navigable, or when another skill needs the deep-module vocabulary.
+ ---
+ 
+@@ -111,4 +111,4 @@ Good interfaces make testing natural:
+ ## Going deeper
+ 
+ - **Deepening a cluster given its dependencies**, see [DEEPENING.md](DEEPENING.md): dependency categories, seam discipline, and replace-don't-layer testing.
+-- **Exploring alternative interfaces**, see [DESIGN-IT-TWICE.md](DESIGN-IT-TWICE.md): spin up parallel sub-agents to design the interface several radically different ways, then compare on depth, locality, and seam placement.
++- **Exploring alternative interfaces**, see [DESIGN-IT-TWICE.md](DESIGN-IT-TWICE.md): design several radically different interfaces in sequential passes, then compare on depth, locality, and seam placement.
+diff --git a/skills/engineering/codebase-design/agents/openai.yaml b/skills/engineering/codebase-design/agents/openai.yaml
+deleted file mode 100644
+index 3180715..0000000
+--- a/skills/engineering/codebase-design/agents/openai.yaml
++++ /dev/null
+@@ -1,3 +0,0 @@
+-interface:
+-  display_name: "Codebase Design"
+-  short_description: "Vocabulary for deep-module design"
+diff --git a/skills/engineering/domain-modeling/GLOSSARY-FORMAT.md b/skills/engineering/domain-modeling/GLOSSARY-FORMAT.md
+index 9c0b4c7..ee43f1a 100644
+--- a/skills/engineering/domain-modeling/GLOSSARY-FORMAT.md
++++ b/skills/engineering/domain-modeling/GLOSSARY-FORMAT.md
+@@ -1,4 +1,6 @@
+-# GLOSSARY.md Format
++# Default glossary format
++
++Use this format when the target repository has no documented glossary format. Follow existing repository paths and conventions when present.
+ 
+ ## Structure
+ 
+diff --git a/skills/engineering/domain-modeling/SKILL.md b/skills/engineering/domain-modeling/SKILL.md
+index a4438c6..718c4e6 100644
+--- a/skills/engineering/domain-modeling/SKILL.md
++++ b/skills/engineering/domain-modeling/SKILL.md
+@@ -1,49 +1,23 @@
+ ---
+-name: domain-modeling
+-description: Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a GLOSSARY.md, or recording or editing an ADR.
++name: mattpocock-domain-modeling
++description: Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a domain glossary, or recording or editing an ADR.
+ ---
+ 
+ # Domain Modeling
+ 
+ Actively build and sharpen the project's domain model as you design. This is the *active* discipline: challenging terms, inventing edge-case scenarios, and writing the glossary and decisions down the moment they crystallise. (Merely *reading* `GLOSSARY.md` for vocabulary is not this skill: that's a one-line habit any skill can do. This skill is for when you're changing the model, not just consuming it.)
+ 
+-## File structure
+-
+-Most repos have a single context:
+-
+-```
+-/
+-├── GLOSSARY.md
+-├── docs/
+-│   └── adr/
+-│       ├── 0001-event-sourced-orders.md
+-│       └── 0002-postgres-for-write-model.md
+-└── src/
+-```
+-
+-If a `GLOSSARY-MAP.md` exists at the root, the repo has multiple contexts. The map points to where each one lives:
+-
+-```
+-/
+-├── GLOSSARY-MAP.md
+-├── docs/
+-│   └── adr/                          ← system-wide decisions
+-├── src/
+-│   ├── ordering/
+-│   │   ├── GLOSSARY.md
+-│   │   └── docs/adr/                 ← context-specific decisions
+-│   └── billing/
+-│       ├── GLOSSARY.md
+-│       └── docs/adr/
+-```
+-
+-Create files lazily: only when you have something to write. If no `GLOSSARY.md` exists, create one when the first term is resolved. If no `docs/adr/` exists, create it when the first ADR is needed.
++## Repository conventions
++
++Read the target repository’s agent instructions and existing domain documentation first. Use its glossary and ADR paths and formats. Common glossary names include `GLOSSARY.md`, `CONTEXT.md`, and `docs/ubiquitous_language.md`; a context map may identify several glossaries. References to the glossary below mean the repository’s chosen file.
++
++Update documents when the task authorizes those changes and the active turn exposes the necessary tools. Otherwise, publish proposed terms and decisions in the result. If no convention exists, use `GLOSSARY.md` and `docs/adr/` as defaults when creating the first needed document.
+ 
+ ## During the session
+ 
+ ### Challenge against the glossary
+ 
+-When the user uses a term that conflicts with the existing language in `GLOSSARY.md`, call it out immediately. "Your glossary defines 'cancellation' as X, but you seem to mean Y. Which is it?"
++When the user uses a term that conflicts with the existing language in the glossary, call it out immediately. "Your glossary defines 'cancellation' as X, but you seem to mean Y. Which is it?"
+ 
+ ### Sharpen fuzzy language
+ 
+@@ -57,11 +31,11 @@ When domain relationships are being discussed, stress-test them with specific sc
+ 
+ When the user states how something works, check whether the code agrees. If you find a contradiction, surface it: "Your code cancels entire Orders, but you just said partial cancellation is possible. Which is right?"
+ 
+-### Update GLOSSARY.md inline
++### Update the glossary inline
+ 
+-When a term is resolved, update `GLOSSARY.md` right there. Don't batch these up: capture them as they happen. Use the format in [GLOSSARY-FORMAT.md](./GLOSSARY-FORMAT.md).
++When a term is resolved, update the repository’s glossary as part of the authorized changes. Don't batch these up: capture them as they happen. Use the repository’s format, or [GLOSSARY-FORMAT.md](./GLOSSARY-FORMAT.md) when establishing one.
+ 
+-`GLOSSARY.md` should be totally devoid of implementation details. Do not treat `GLOSSARY.md` as a spec, a scratch pad, or a repository for implementation decisions. It is a glossary and nothing else.
++The glossary should be totally devoid of implementation details. Do not treat the glossary as a spec, a scratch pad, or a repository for implementation decisions. It is a glossary and nothing else.
+ 
+ ### Offer ADRs sparingly
+ 
+@@ -71,4 +45,4 @@ Only offer to create an ADR when all three are true:
+ 2. **Surprising without context**: a future reader will wonder "why did they do it this way?"
+ 3. **The result of a real trade-off**: there were genuine alternatives and you picked one for specific reasons
+ 
+-If any of the three is missing, skip the ADR. Use the format in [ADR-FORMAT.md](./ADR-FORMAT.md).
++If any of the three is missing, skip the ADR. Use the repository’s ADR format, or [ADR-FORMAT.md](./ADR-FORMAT.md) when establishing one.
+diff --git a/skills/engineering/domain-modeling/agents/openai.yaml b/skills/engineering/domain-modeling/agents/openai.yaml
+deleted file mode 100644
+index 7f1522d..0000000
+--- a/skills/engineering/domain-modeling/agents/openai.yaml
++++ /dev/null
+@@ -1,3 +0,0 @@
+-interface:
+-  display_name: "Domain Modeling"
+-  short_description: "Build and sharpen a domain model"
+diff --git a/skills/engineering/improve-codebase-architecture/HTML-REPORT.md b/skills/engineering/improve-codebase-architecture/HTML-REPORT.md
+deleted file mode 100644
+index e39e825..0000000
+--- a/skills/engineering/improve-codebase-architecture/HTML-REPORT.md
++++ /dev/null
+@@ -1,123 +0,0 @@
+-# HTML Report Format
+-
+-The architectural review is rendered as a single self-contained HTML file in the OS temp directory. Tailwind and Mermaid both come from CDNs. Mermaid handles graph-shaped diagrams reliably; hand-built divs and inline SVG handle the more editorial visuals (mass diagrams, cross-sections). Mix the two: don't lean on Mermaid for everything, it'll start to look generic.
+-
+-## Scaffold
+-
+-```html
+-<!doctype html>
+-<html lang="en">
+-  <head>
+-    <meta charset="utf-8" />
+-    <title>Architecture review for {{repo name}}</title>
+-    <script src="https://cdn.tailwindcss.com"></script>
+-    <script type="module">
+-      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+-      mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose" });
+-    </script>
+-    <style>
+-      /* small custom layer for things Tailwind doesn't cover cleanly:
+-         dashed seam lines, hand-drawn-feeling arrow heads, etc. */
+-      .seam { stroke-dasharray: 4 4; }
+-      .leak { stroke: #dc2626; }
+-      .deep { background: linear-gradient(135deg, #0f172a, #1e293b); }
+-    </style>
+-  </head>
+-  <body class="bg-stone-50 text-slate-900 font-sans">
+-    <main class="max-w-5xl mx-auto px-6 py-12 space-y-12">
+-      <header>...</header>
+-      <section id="candidates" class="space-y-10">...</section>
+-      <section id="top-recommendation">...</section>
+-    </main>
+-  </body>
+-</html>
+-```
+-
+-## Header
+-
+-Repo name, date, and a compact legend: solid box = module, dashed line = seam, red arrow = leakage, thick dark box = deep module. No introduction paragraph. Straight into the candidates.
+-
+-## Candidate card
+-
+-The diagrams carry the weight. Prose is sparse, plain, and uses the glossary terms (from the `/codebase-design` skill) without ceremony.
+-
+-Each candidate is one `<article>`:
+-
+-- **Title**: short, names the deepening (e.g. "Collapse the Order intake pipeline").
+-- **Badge row**: recommendation strength (`Strong` = emerald, `Worth exploring` = amber, `Speculative` = slate), plus a tag for the dependency category (`in-process`, `local-substitutable`, `ports & adapters`, `mock`).
+-- **Files**: monospaced list, `font-mono text-sm`.
+-- **Before / After diagram**: the centrepiece. Two columns, side by side. See patterns below.
+-- **Problem**: one sentence. What hurts.
+-- **Solution**: one sentence. What changes.
+-- **Wins**: bullets, ≤6 words each. e.g. "Tests hit one interface", "Pricing logic stops leaking", "Delete 4 shallow wrappers".
+-- **ADR callout** (if applicable): one line in an amber-tinted box.
+-
+-No paragraphs of explanation. If the diagram needs a paragraph to be understood, redraw the diagram.
+-
+-## Diagram patterns
+-
+-Pick the pattern that fits the candidate. Mix them. Don't make every diagram look the same. Variety is part of the point.
+-
+-### Mermaid graph (the workhorse for dependencies / call flow)
+-
+-Use a Mermaid `flowchart` or `graph` when the point is "X calls Y calls Z, and look at the mess." Wrap it in a Tailwind-styled card so it doesn't feel parachuted in. Style with classDef to colour leakage edges red and the deep module dark. Sequence diagrams work well for "before: 6 round-trips; after: 1."
+-
+-```html
+-<div class="rounded-lg border border-slate-200 bg-white p-4">
+-  <pre class="mermaid">
+-    flowchart LR
+-      A[OrderHandler] --> B[OrderValidator]
+-      B --> C[OrderRepo]
+-      C -.leak.-> D[PricingClient]
+-      classDef leak stroke:#dc2626,stroke-width:2px;
+-      class C,D leak
+-  </pre>
+-</div>
+-```
+-
+-### Hand-built boxes-and-arrows (when Mermaid's layout fights you)
+-
+-Modules as `<div>`s with borders and labels. Arrows as inline SVG `<line>` or `<path>` elements positioned absolutely over a relative container. Reach for this when you want the "after" diagram to feel like one thick-bordered deep module with greyed-out internals, since Mermaid won't render that with the right weight.
+-
+-### Cross-section (good for layered shallowness)
+-
+-Stack horizontal bands (`h-12 border-l-4`) to show layers a call passes through. Before: 6 thin layers each doing nothing. After: 1 thick band labelled with the consolidated responsibility.
+-
+-### Mass diagram (good for "interface as wide as implementation")
+-
+-Two rectangles per module: one for interface surface area, one for implementation. Before: interface rectangle is nearly as tall as the implementation rectangle (shallow). After: interface rectangle is short, implementation rectangle is tall (deep).
+-
+-### Call-graph collapse
+-
+-Before: a tree of function calls rendered as nested boxes. After: the same tree collapsed into one box, with the now-internal calls shown faded inside it.
+-
+-## Style guidance
+-
+-- Lean editorial, not corporate-dashboard. Generous whitespace. Serif optional for headings (`font-serif` works well with stone/slate).
+-- Colour sparingly: one accent (emerald or indigo) plus red for leakage and amber for warnings.
+-- Keep diagrams ~320px tall so before/after sits comfortably side by side without scrolling.
+-- Use `text-xs uppercase tracking-wider` for module labels inside diagrams, so they read as schematic, not as UI.
+-- The only scripts are the Tailwind CDN and the Mermaid ESM import. The report is otherwise static: no app code, no interactivity beyond Mermaid's own rendering.
+-
+-## Top recommendation section
+-
+-One larger card. Candidate name, one sentence on why, anchor link to its card. That's it.
+-
+-## Tone
+-
+-Plain English, concise, but the architectural nouns and verbs come straight from the `/codebase-design` skill. Concision is not an excuse to drift.
+-
+-**Use exactly:** module, interface, implementation, depth, deep, shallow, seam, adapter, leverage, locality.
+-
+-**Never substitute:** component, service, unit (for module) · API, signature (for interface) · boundary (for seam) · layer, wrapper (for module, when you mean module).
+-
+-**Phrasings that fit the style:**
+-
+-- "Order intake module is shallow: interface nearly matches the implementation."
+-- "Pricing leaks across the seam."
+-- "Deepen: one interface, one place to test."
+-- "Two adapters justify the seam: HTTP in prod, in-memory in tests."
+-
+-**Wins bullets** name the gain in glossary terms: *"locality: bugs concentrate in one module"*, *"leverage: one interface, N call sites"*, *"interface shrinks; implementation absorbs the wrappers"*. Don't write *"easier to maintain"* or *"cleaner code"*, because those terms aren't in the glossary and don't earn their place.
+-
+-No hedging, no throat-clearing, no "it's worth noting that…". If a sentence could be a bullet, make it a bullet. If a bullet could be cut, cut it. If a term isn't in the `/codebase-design` glossary, reach for one that is before inventing a new one.
+diff --git a/skills/engineering/improve-codebase-architecture/MARKDOWN-REPORT.md b/skills/engineering/improve-codebase-architecture/MARKDOWN-REPORT.md
+new file mode 100644
+index 0000000..15a24bf
+--- /dev/null
++++ b/skills/engineering/improve-codebase-architecture/MARKDOWN-REPORT.md
+@@ -0,0 +1,30 @@
++# Architecture report
++
++Write the report as Markdown for the operator’s result view. Use the repository’s domain names and the vocabulary from `mattpocock-codebase-design`.
++
++Start with the repository, reviewed scope, and a short recommendation. Give each candidate a heading and include:
++
++- A recommendation strength: **Strong**, **Worth exploring**, or **Speculative**.
++- The affected files and observed behavior that demonstrates the problem.
++- The proposed change and its effect on locality, leverage, and testing.
++- Separate **Before** and **After** fenced Mermaid diagrams.
++- An ADR conflict when concrete evidence warrants reopening that decision.
++
++Use simple Mermaid flowcharts for dependencies and sequence diagrams for call order. Give nodes short, quoted labels and use domain names. For example:
++
++```mermaid
++flowchart LR
++    A["Order intake"] --> B["Validation"]
++    B --> C["Pricing"]
++    C --> D["Order storage"]
++```
++
++```mermaid
++flowchart LR
++    A["Caller"] --> B["Order placement"]
++    B --> C["Order storage adapter"]
++```
++
++Tie each diagram to evidence and label proposed behavior as a proposal. Close with the strongest candidate, the reason to tackle it first, and any operator decision needed next.
++
++Use the active turn’s result-publication instructions to deliver the Markdown. Completion and operator questions follow the active turn’s available tools.
+diff --git a/skills/engineering/improve-codebase-architecture/SKILL.md b/skills/engineering/improve-codebase-architecture/SKILL.md
+index 44cc7d3..43283b1 100644
+--- a/skills/engineering/improve-codebase-architecture/SKILL.md
++++ b/skills/engineering/improve-codebase-architecture/SKILL.md
+@@ -1,7 +1,6 @@
+ ---
+-name: improve-codebase-architecture
+-description: Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick.
+-disable-model-invocation: true
++name: mattpocock-improve-codebase-architecture
++description: Scan a codebase for deepening opportunities, present them as a Markdown report with Mermaid diagrams, then grill through whichever one you pick.
+ ---
+ 
+ # Improve Codebase Architecture
+@@ -10,8 +9,8 @@ Surface architectural friction and propose **deepening opportunities**: refactor
+ 
+ This command is _informed_ by the project's domain model and built on a shared design vocabulary:
+ 
+-- Call the Skill tool with "codebase-design" for the architecture vocabulary (**module**, **interface**, **depth**, **seam**, **adapter**, **leverage**, **locality**) and its principles (the deletion test, "the interface is the test surface", "one adapter = hypothetical seam, two = real"). Use these terms exactly in every suggestion, and don't drift into "component," "service," "API," or "boundary."
+-- The domain language in `GLOSSARY.md` gives names to good seams; ADRs in `docs/adr/` record decisions this command should not re-litigate.
++- Read [mattpocock-codebase-design](../mattpocock-codebase-design/SKILL.md) with the available `read` tool for the architecture vocabulary (**module**, **interface**, **depth**, **seam**, **adapter**, **leverage**, **locality**) and its principles (the deletion test, "the interface is the test surface", "one adapter = hypothetical seam, two = real"). Use these terms exactly in every suggestion, and don't drift into "component," "service," "API," or "boundary."
++- Read the target repository’s agent instructions to locate its domain glossary and ADRs. Follow those conventions; common glossary locations include `GLOSSARY.md`, `CONTEXT.md`, and `docs/ubiquitous_language.md`.
+ 
+ ## Process
+ 
+@@ -22,9 +21,9 @@ This command is _informed_ by the project's domain model and built on a shared d
+ - If the user named a direction (a module, a subsystem, a pain point), take it, and skip the inference below.
+ - Otherwise, walk back a good stretch of the commit history (`git log --oneline`) to find the codebase's hot spots, the files and areas that keep coming up, and let those paths pull your attention first. If the changes are scattered with no clear hot spot, widen the net.
+ 
+-Read the project's domain glossary (`GLOSSARY.md`) and any ADRs in the area you're touching first.
++Read the project's documented domain glossary and any ADRs in the area you're touching first.
+ 
+-Then spawn a sub-agent to walk the codebase. Don't follow rigid heuristics; explore organically and note where you experience friction:
++Then walk the codebase yourself using the active turn’s workspace tools. Don't follow rigid heuristics; explore organically and note where you experience friction:
+ 
+ - Where does understanding one concept require bouncing between many small modules?
+ - Where are modules **shallow**, with an interface nearly as complex as the implementation?
+@@ -34,38 +33,23 @@ Then spawn a sub-agent to walk the codebase. Don't follow rigid heuristics; expl
+ 
+ Apply the **deletion test** to anything you suspect is shallow: would deleting it concentrate complexity, or just move it? A "yes, concentrates" is the signal you want.
+ 
+-### 2. Present candidates as an HTML report
++### 2. Present candidates as a Markdown report
+ 
+-Write a self-contained HTML file to the OS temp directory so nothing lands in the repo. Resolve the temp dir from `$TMPDIR`, falling back to `/tmp` (or `%TEMP%` on Windows), and write to `<tmpdir>/architecture-review-<timestamp>.html` so each run gets a fresh file. Open it for the user (`xdg-open <path>` on Linux, `open <path>` on macOS, `start <path>` on Windows) and tell them the absolute path.
++Read [MARKDOWN-REPORT.md](MARKDOWN-REPORT.md) for the report format. Produce Markdown with fenced Mermaid diagrams showing each candidate before and after. Include affected files, the concrete problem, the proposed improvement, benefits to locality and leverage, and recommendation strength. End with your top recommendation and explain why it deserves attention first.
+ 
+-The report uses **Tailwind via CDN** for layout and styling, and **Mermaid via CDN** for diagrams where a graph/flow/sequence reliably communicates the structure. Mix Mermaid with hand-crafted CSS/SVG visuals: use Mermaid when relationships are graph-shaped (call graphs, dependencies, sequences), and hand-built divs/SVG when you want something more editorial (mass diagrams, cross-sections, collapse animations). Each candidate gets a **before/after visualisation**. Be visual.
++Use the target repository’s domain vocabulary and the architecture vocabulary from `mattpocock-codebase-design`. Surface an ADR conflict only when observed friction warrants revisiting the decision, and explain that conflict alongside the candidate.
+ 
+-For each candidate, render a card with:
++Publish the report using the active turn’s result-publication instructions. Those instructions determine whether the result belongs in assistant output, a result tool, or an outcome argument. Follow the active turn’s completion rules.
+ 
+-- **Files**: which files/modules are involved
+-- **Problem**: why the current architecture is causing friction
+-- **Solution**: plain English description of what would change
+-- **Benefits**: explained in terms of locality and leverage, and how tests would improve
+-- **Before / After diagram**: side-by-side, custom-drawn, illustrating the shallowness and the deepening
+-- **Recommendation strength**: one of `Strong`, `Worth exploring`, `Speculative`, rendered as a badge
+-
+-End the report with a **Top recommendation** section: which candidate you'd tackle first and why.
+-
+-**Use GLOSSARY.md vocabulary for the domain, and the `/codebase-design` vocabulary for the architecture.** If `GLOSSARY.md` defines "Order," talk about "the Order intake module," not "the FooBarHandler," and not "the Order service."
+-
+-**ADR conflicts**: if a candidate contradicts an existing ADR, only surface it when the friction is real enough to warrant revisiting the ADR. Mark it clearly in the card (e.g. a warning callout: _"contradicts ADR-0007, but worth reopening because…"_). Don't list every theoretical refactor an ADR forbids.
+-
+-See [HTML-REPORT.md](HTML-REPORT.md) for the full HTML scaffold, diagram patterns, and styling guidance.
+-
+-Do NOT propose interfaces yet. After the file is written, ask the user: "Which of these would you like to explore?"
++If `ask_questions` is available and exploring a candidate fits the current task, present the candidates to the operator and call it with distinct choices, a recommended choice, and the reason for that recommendation. Wait for its response before choosing a candidate. Otherwise, include the candidate decision in the report’s next steps and finish according to the turn contract.
+ 
+ ### 3. Grilling loop
+ 
+-Once the user picks a candidate, call the Skill tool with "grilling" to walk the decision tree with them: constraints, dependencies, the shape of the deepened module, what sits behind the seam, what tests survive.
++Once the user picks a candidate, read [mattpocock-grilling](../mattpocock-grilling/SKILL.md) with `read` to walk the decision tree with them: constraints, dependencies, the shape of the deepened module, what sits behind the seam, what tests survive.
+ 
+-Side effects happen inline as decisions crystallize; call the Skill tool with "domain-modeling" to keep the domain model current as you go:
++Keep changes within the task’s authorized scope and the active turn’s tools. Read [mattpocock-domain-modeling](../mattpocock-domain-modeling/SKILL.md) when glossary or ADR changes are part of the task:
+ 
+-- **Naming a deepened module after a concept not in `GLOSSARY.md`?** Add the term to `GLOSSARY.md`. Create the file lazily if it doesn't exist.
+-- **Sharpening a fuzzy term during the conversation?** Update `GLOSSARY.md` right there.
++- **Naming a deepened module after a concept not in the repository’s glossary?** Add the term to the repository’s glossary. Use the repository’s documented location; propose a location if it has no convention.
++- **Sharpening a fuzzy term during the conversation?** Update the repository’s glossary right there.
+ - **User rejects the candidate with a load-bearing reason?** Offer an ADR, framed as: _"Want me to record this as an ADR so future architecture reviews don't re-suggest it?"_ Only offer when the reason would actually be needed by a future explorer to avoid re-suggesting the same thing; skip ephemeral reasons ("not worth it right now") and self-evident ones.
+-- **Want to explore alternative interfaces for the deepened module?** Call the Skill tool with "codebase-design" and use its design-it-twice parallel sub-agent pattern.
++- **Want to explore alternative interfaces for the deepened module?** Read [mattpocock-codebase-design](../mattpocock-codebase-design/SKILL.md) with the available `read` tool and work through its design-it-twice alternatives sequentially.
+diff --git a/skills/engineering/improve-codebase-architecture/agents/openai.yaml b/skills/engineering/improve-codebase-architecture/agents/openai.yaml
+deleted file mode 100644
+index 706fdca..0000000
+--- a/skills/engineering/improve-codebase-architecture/agents/openai.yaml
++++ /dev/null
+@@ -1,5 +0,0 @@
+-interface:
+-  display_name: "Improve Codebase Architecture"
+-  short_description: "Find and grill architecture improvements"
+-policy:
+-  allow_implicit_invocation: false
+diff --git a/skills/productivity/grilling/SKILL.md b/skills/productivity/grilling/SKILL.md
+index 8ca78c6..5190dce 100644
+--- a/skills/productivity/grilling/SKILL.md
++++ b/skills/productivity/grilling/SKILL.md
+@@ -1,5 +1,5 @@
+ ---
+-name: grilling
++name: mattpocock-grilling
+ description: Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases.
+ ---
+ 
+@@ -7,22 +7,10 @@ Interview the user relentlessly until you reach a shared understanding. Map this
+ 
+ Work the tree in **rounds**. The **frontier** is every decision whose prerequisites are already settled: the questions you can ask _now_ without guessing at answers you haven't heard yet. Ask the whole frontier in one round: number each question and give your recommended answer. Then wait for the user's answers before the next round.
+ 
+-Format a round like so:
+-
+-```
+-❓ **Q1** - **<question title>**: <question body, might be multiple paragraphs, including multiple choices>
+-
+-➡️ <your recommended answer>
+-
+----
+-
+-❓ **Q2** - **<question title>**: <question body, might be multiple paragraphs, including multiple choices>
+-
+-➡️ <your recommended answer>
+-```
++Use the active turn’s `ask_questions` tool for each round. Supply focused questions with distinct prepared choices; mark a recommended choice and explain why. Wait for the returned answers before progressing dependent decisions. When that tool is unavailable, publish the unresolved questions and recommendations through the turn’s result contract and leave those decisions open for follow-up.
+ 
+ Each round the user answers reshapes the tree: settled decisions push the frontier outward and unblock questions that depended on them. Recompute the frontier and ask the next round. A question whose answer depends on another question still open in this round belongs to a _later_ round, not this one.
+ 
+-Finding _facts_ is your job, never the user's. When a frontier question needs a fact from the environment (filesystem, tools, etc.), dispatch a sub-agent to find it; don't ask the user for anything you could look up yourself. Don't block on it: a running exploration is an unsettled prerequisite, so only the questions downstream of it wait for the sub-agent to report; ask the rest of the frontier now. The _decisions_ are the user's: put each to them and wait.
++Finding _facts_ is your job. Inspect the environment with the active turn’s tools before asking the operator for decisions. Work through independent exploration sequentially; then ask the questions whose prerequisites are settled.
+ 
+-The session is done when the frontier is empty: every branch of the design tree visited, nothing left silently assumed. Do not act on it until the user confirms you have reached a shared understanding.
++The session is done when the frontier is empty: every branch of the design tree visited, nothing left silently assumed. Confirm the settled decisions through `ask_questions` when it is available. Carry out changes only within the current task’s authorized scope and tools.
+diff --git a/skills/productivity/grilling/agents/openai.yaml b/skills/productivity/grilling/agents/openai.yaml
+deleted file mode 100644
+index ddbdb96..0000000
+--- a/skills/productivity/grilling/agents/openai.yaml
++++ /dev/null
+@@ -1,3 +0,0 @@
+-interface:
+-  display_name: "Grilling"
+-  short_description: "Stress-test thinking a round of questions at a time"

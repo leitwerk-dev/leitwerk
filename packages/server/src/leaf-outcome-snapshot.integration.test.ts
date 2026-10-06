@@ -7,6 +7,7 @@ import {
 	defineProcess,
 	type LeitwerkExtensionModule,
 	llmTurn,
+	type ProcessLeafOutcomeDefinition,
 	REQUIRED_MARKDOWN_RESULT_TURN_RESULT,
 	type StructuralProcessState,
 } from "@leitwerk-dev/process-sdk";
@@ -84,121 +85,71 @@ function createReviewCaptureTurn() {
 	});
 }
 
-const captureSuccessTurnId = "capture_leaf_outcome_success";
-const captureSuccessProcess = defineProcess<{ prompt: string }, StructuralProcessState>({
-	id: "capture_success_process",
-	displayName: "Capture Success Process",
-	entry: captureSuccessTurnId,
-	turns: { [captureSuccessTurnId]: createCaptureTurn() },
-	paramsCodec: simpleParamsCodec,
-	stateCodec: structuralStateCodec,
-	initialState() {
-		return createEmptyStructuralProcessState();
-	},
-	worker(api) {
-		api.start(captureSuccessTurnId);
-	},
-	ui(api) {
-		api.leafOutcome({
-			rendererId: "test:capture_success_process.leaf_outcome",
-			capture(ctx) {
-				const leafEntry = ctx.readLeafEntry();
-				const leafMessage =
-					typeof leafEntry?.message?.content === "string" ? leafEntry.message.content : null;
-				return {
-					rendererId: "test:capture_success_process.leaf_outcome",
-					props: {
-						prompt: ctx.params.prompt,
-						leafEntryId: ctx.leaf.entryId,
-						hasLeafEntry: leafEntry !== null,
-					},
-					fallbackMarkdown: ctx.turnRecord?.turnResultMarkdown ?? leafMessage,
-				};
-			},
-		});
-	},
+function createCaptureFixture(
+	kind: "success" | "review" | "error",
+	turn: ReturnType<typeof createCaptureTurn>,
+	capture: ProcessLeafOutcomeDefinition<{ prompt: string }, StructuralProcessState>["capture"],
+) {
+	const id = `capture_${kind}_process`;
+	const turnId = `capture_leaf_outcome_${kind}`;
+	const process = defineProcess({
+		id,
+		displayName: `Capture ${kind[0].toUpperCase()}${kind.slice(1)} Process`,
+		entry: turnId,
+		turns: { [turnId]: turn },
+		paramsCodec: simpleParamsCodec,
+		stateCodec: structuralStateCodec,
+		initialState: createEmptyStructuralProcessState,
+		worker(api) {
+			api.start(turnId);
+		},
+		ui(api) {
+			api.leafOutcome({ rendererId: `test:${id}.leaf_outcome`, capture });
+		},
+	});
+	const extension: LeitwerkExtensionModule = {
+		manifest: { id: `capture-${kind}-test`, version: "0.1.0" },
+		setupCatalog(api) {
+			api.registerProcess(process);
+		},
+	};
+	return { process, extension };
+}
+
+const captureSuccess = createCaptureFixture("success", createCaptureTurn(), (ctx) => {
+	const leafEntry = ctx.readLeafEntry();
+	const leafMessage =
+		typeof leafEntry?.message?.content === "string" ? leafEntry.message.content : null;
+	return {
+		rendererId: "test:capture_success_process.leaf_outcome",
+		props: {
+			prompt: ctx.params.prompt,
+			leafEntryId: ctx.leaf.entryId,
+			hasLeafEntry: leafEntry !== null,
+		},
+		fallbackMarkdown: ctx.turnRecord?.turnResultMarkdown ?? leafMessage,
+	};
 });
 
-const captureSuccessExtension: LeitwerkExtensionModule = {
-	manifest: { id: "capture-success-test", version: "0.1.0" },
-	setupCatalog(api) {
-		api.registerProcess(captureSuccessProcess);
-	},
-};
-
-const captureReviewTurnId = "capture_leaf_outcome_review";
-const captureReviewProcess = defineProcess<{ prompt: string }, StructuralProcessState>({
-	id: "capture_review_process",
-	displayName: "Capture Review Process",
-	entry: captureReviewTurnId,
-	turns: { [captureReviewTurnId]: createReviewCaptureTurn() },
-	paramsCodec: simpleParamsCodec,
-	stateCodec: structuralStateCodec,
-	initialState() {
-		return createEmptyStructuralProcessState();
-	},
-	worker(api) {
-		api.start(captureReviewTurnId);
-	},
-	ui(api) {
-		api.leafOutcome({
-			rendererId: "test:capture_review_process.leaf_outcome",
-			capture(ctx) {
-				const leafEntry = ctx.readLeafEntry();
-				const leafMessage =
-					typeof leafEntry?.message?.content === "string" ? leafEntry.message.content : null;
-				return {
-					rendererId: "test:capture_review_process.leaf_outcome",
-					props: {
-						leafEntryId: ctx.leaf.entryId,
-						latestReviewEntryId: ctx.state.semanticEntryRefs.review?.entryId ?? null,
-						currentPrimaryPathLeafEntryId:
-							ctx.state.semanticEntryRefs.currentPrimaryPathLeaf?.entryId ?? null,
-					},
-					fallbackMarkdown: leafMessage,
-				};
-			},
-		});
-	},
+const captureReview = createCaptureFixture("review", createReviewCaptureTurn(), (ctx) => {
+	const leafEntry = ctx.readLeafEntry();
+	const leafMessage =
+		typeof leafEntry?.message?.content === "string" ? leafEntry.message.content : null;
+	return {
+		rendererId: "test:capture_review_process.leaf_outcome",
+		props: {
+			leafEntryId: ctx.leaf.entryId,
+			latestReviewEntryId: ctx.state.semanticEntryRefs.review?.entryId ?? null,
+			currentPrimaryPathLeafEntryId:
+				ctx.state.semanticEntryRefs.currentPrimaryPathLeaf?.entryId ?? null,
+		},
+		fallbackMarkdown: leafMessage,
+	};
 });
 
-const captureReviewExtension: LeitwerkExtensionModule = {
-	manifest: { id: "capture-review-test", version: "0.1.0" },
-	setupCatalog(api) {
-		api.registerProcess(captureReviewProcess);
-	},
-};
-
-const captureErrorTurnId = "capture_leaf_outcome_error";
-const captureErrorProcess = defineProcess<{ prompt: string }, StructuralProcessState>({
-	id: "capture_error_process",
-	displayName: "Capture Error Process",
-	entry: captureErrorTurnId,
-	turns: { [captureErrorTurnId]: createCaptureTurn() },
-	paramsCodec: simpleParamsCodec,
-	stateCodec: structuralStateCodec,
-	initialState() {
-		return createEmptyStructuralProcessState();
-	},
-	worker(api) {
-		api.start(captureErrorTurnId);
-	},
-	ui(api) {
-		api.leafOutcome({
-			rendererId: "test:capture_error_process.leaf_outcome",
-			capture() {
-				throw new Error("capture exploded");
-			},
-		});
-	},
+const captureError = createCaptureFixture("error", createCaptureTurn(), () => {
+	throw new Error("capture exploded");
 });
-
-const captureErrorExtension: LeitwerkExtensionModule = {
-	manifest: { id: "capture-error-test", version: "0.1.0" },
-	setupCatalog(api) {
-		api.registerProcess(captureErrorProcess);
-	},
-};
 
 afterEach(async () => {
 	const results = await Promise.allSettled(harnesses.splice(0).map((harness) => harness.close()));
@@ -311,28 +262,57 @@ function seedAcceptedLlmTurn(
 	});
 }
 
+async function setupCapture(
+	fixture: ReturnType<typeof createCaptureFixture>,
+	prompt: string,
+	start: Omit<Parameters<typeof seedAcceptedLlmTurn>[1], "instanceId" | "turnId">,
+	stateJson = baseStateJson("root-user"),
+) {
+	const harness = await createIntegrationHarness({
+		extensionCatalog: buildExtensionCatalogFromModules([fixture.extension]),
+	});
+	harnesses.push(harness);
+	const turnId = fixture.process.entryTurnId;
+	const process = harness.ctx.deps.processes.create({
+		processId: fixture.process.id,
+		lifecycleStatus: "active",
+		selectedTurnId: turnId,
+		paramsJson: JSON.stringify({ prompt }),
+		stateJson,
+	});
+	seedAcceptedLlmTurn(harness, { ...start, instanceId: process.id, turnId });
+	return {
+		harness,
+		process,
+		complete: (resultPiEntryId: string, turnResultMarkdown: string | null) =>
+			harness.ctx.deps.processEngine.recordTurnOutcome(process.id, {
+				instanceId: process.id,
+				turnRecordId: start.turnRecordId,
+				turnId,
+				turnType: "llm",
+				outcome: "completed",
+				params: {},
+				pathType: start.pathType,
+				forkPiEntryId: start.forkPiEntryId,
+				resultPiEntryId,
+				turnResultMarkdown,
+				rootEntryId: "root-user",
+			}),
+	};
+}
+
 describe("leaf outcome snapshot capture", () => {
 	it("captures a durable leaf outcome snapshot on successful primary-path turn completion and exposes it via process detail", async () => {
-		const harness = await createIntegrationHarness({
-			extensionCatalog: buildExtensionCatalogFromModules([captureSuccessExtension]),
-		});
-		harnesses.push(harness);
-
-		const process = harness.ctx.deps.processes.create({
-			processId: "capture_success_process",
-			lifecycleStatus: "active",
-			selectedTurnId: captureSuccessTurnId,
-			paramsJson: JSON.stringify({ prompt: "Write a short answer" }),
-			stateJson: baseStateJson("root-user"),
-		});
-		seedAcceptedLlmTurn(harness, {
-			instanceId: process.id,
-			turnRecordId: "trn_success",
-			turnId: captureSuccessTurnId,
-			pathType: "primary",
-			forkPiEntryId: "root-user",
-			startedAt: "2026-04-18T10:00:00.000Z",
-		});
+		const { harness, process, complete } = await setupCapture(
+			captureSuccess,
+			"Write a short answer",
+			{
+				turnRecordId: "trn_success",
+				pathType: "primary",
+				forkPiEntryId: "root-user",
+				startedAt: "2026-04-18T10:00:00.000Z",
+			},
+		);
 		await writeTreeFile(harness, process.id, [
 			{
 				id: "root-user",
@@ -350,19 +330,7 @@ describe("leaf outcome snapshot capture", () => {
 			},
 		]);
 
-		const result = await harness.ctx.deps.processEngine.recordTurnOutcome(process.id, {
-			instanceId: process.id,
-			turnRecordId: "trn_success",
-			turnId: captureSuccessTurnId,
-			turnType: "llm",
-			outcome: "completed",
-			params: {},
-			pathType: "primary",
-			forkPiEntryId: "root-user",
-			resultPiEntryId: "assistant-plan",
-			turnResultMarkdown: "## Final answer\n\nHello",
-			rootEntryId: "root-user",
-		});
+		const result = await complete("assistant-plan", "## Final answer\n\nHello");
 
 		expect(result.ok).toBe(true);
 		const snapshots = harness.ctx.deps.leafOutcomeSnapshots.listByInstance(process.id);
@@ -398,28 +366,19 @@ describe("leaf outcome snapshot capture", () => {
 	});
 
 	it("captures a durable review-leaf outcome snapshot when review changes", async () => {
-		const harness = await createIntegrationHarness({
-			extensionCatalog: buildExtensionCatalogFromModules([captureReviewExtension]),
-		});
-		harnesses.push(harness);
-
-		const process = harness.ctx.deps.processes.create({
-			processId: "capture_review_process",
-			lifecycleStatus: "active",
-			selectedTurnId: captureReviewTurnId,
-			paramsJson: JSON.stringify({ prompt: "Review the current draft" }),
-			stateJson: baseStateJson("root-user", {
+		const { harness, process, complete } = await setupCapture(
+			captureReview,
+			"Review the current draft",
+			{
+				turnRecordId: "trn_review",
+				pathType: "leaf_branch",
+				forkPiEntryId: "assistant-primary",
+				startedAt: "2026-04-18T10:06:00.000Z",
+			},
+			baseStateJson("root-user", {
 				currentPrimaryPathLeaf: { entryId: "assistant-primary", turnRecordId: "trn_draft" },
 			}),
-		});
-		seedAcceptedLlmTurn(harness, {
-			instanceId: process.id,
-			turnRecordId: "trn_review",
-			turnId: captureReviewTurnId,
-			pathType: "leaf_branch",
-			forkPiEntryId: "assistant-primary",
-			startedAt: "2026-04-18T10:06:00.000Z",
-		});
+		);
 		await writeTreeFile(harness, process.id, [
 			{
 				id: "root-user",
@@ -444,19 +403,7 @@ describe("leaf outcome snapshot capture", () => {
 			},
 		]);
 
-		const result = await harness.ctx.deps.processEngine.recordTurnOutcome(process.id, {
-			instanceId: process.id,
-			turnRecordId: "trn_review",
-			turnId: captureReviewTurnId,
-			turnType: "llm",
-			outcome: "completed",
-			params: {},
-			pathType: "leaf_branch",
-			forkPiEntryId: "assistant-primary",
-			resultPiEntryId: "assistant-review",
-			turnResultMarkdown: null,
-			rootEntryId: "root-user",
-		});
+		const result = await complete("assistant-review", null);
 
 		expect(result.ok).toBe(true);
 		expect(harness.ctx.deps.leafOutcomeSnapshots.listByInstance(process.id)).toEqual([
@@ -476,26 +423,16 @@ describe("leaf outcome snapshot capture", () => {
 	});
 
 	it("prefers recorded payload markdown over different tree leaf fallback during capture", async () => {
-		const harness = await createIntegrationHarness({
-			extensionCatalog: buildExtensionCatalogFromModules([captureSuccessExtension]),
-		});
-		harnesses.push(harness);
-
-		const process = harness.ctx.deps.processes.create({
-			processId: "capture_success_process",
-			lifecycleStatus: "active",
-			selectedTurnId: captureSuccessTurnId,
-			paramsJson: JSON.stringify({ prompt: "Use the payload markdown" }),
-			stateJson: baseStateJson("root-user"),
-		});
-		seedAcceptedLlmTurn(harness, {
-			instanceId: process.id,
-			turnRecordId: "trn_missing",
-			turnId: captureSuccessTurnId,
-			pathType: "primary",
-			forkPiEntryId: "root-user",
-			startedAt: "2026-04-18T10:04:00.000Z",
-		});
+		const { harness, process, complete } = await setupCapture(
+			captureSuccess,
+			"Use the payload markdown",
+			{
+				turnRecordId: "trn_missing",
+				pathType: "primary",
+				forkPiEntryId: "root-user",
+				startedAt: "2026-04-18T10:04:00.000Z",
+			},
+		);
 		await writeTreeFile(harness, process.id, [
 			{
 				id: "root-user",
@@ -513,19 +450,10 @@ describe("leaf outcome snapshot capture", () => {
 			},
 		]);
 
-		const result = await harness.ctx.deps.processEngine.recordTurnOutcome(process.id, {
-			instanceId: process.id,
-			turnRecordId: "trn_missing",
-			turnId: captureSuccessTurnId,
-			turnType: "llm",
-			outcome: "completed",
-			params: {},
-			pathType: "primary",
-			forkPiEntryId: "root-user",
-			resultPiEntryId: "assistant-created",
-			turnResultMarkdown: "## Payload markdown\n\nCaptured from the accepted turn outcome.",
-			rootEntryId: "root-user",
-		});
+		const result = await complete(
+			"assistant-created",
+			"## Payload markdown\n\nCaptured from the accepted turn outcome.",
+		);
 
 		expect(result.ok).toBe(true);
 		expect(harness.ctx.deps.turnRecords.getById("trn_missing")).toEqual(
@@ -546,26 +474,16 @@ describe("leaf outcome snapshot capture", () => {
 	});
 
 	it("reuses an existing snapshot for the same selected leaf instead of recapturing it", async () => {
-		const harness = await createIntegrationHarness({
-			extensionCatalog: buildExtensionCatalogFromModules([captureSuccessExtension]),
-		});
-		harnesses.push(harness);
-
-		const process = harness.ctx.deps.processes.create({
-			processId: "capture_success_process",
-			lifecycleStatus: "active",
-			selectedTurnId: captureSuccessTurnId,
-			paramsJson: JSON.stringify({ prompt: "Reuse the captured leaf" }),
-			stateJson: baseStateJson("root-user"),
-		});
-		seedAcceptedLlmTurn(harness, {
-			instanceId: process.id,
-			turnRecordId: "trn_reuse",
-			turnId: captureSuccessTurnId,
-			pathType: "primary",
-			forkPiEntryId: "root-user",
-			startedAt: "2026-04-18T10:20:00.000Z",
-		});
+		const { harness, process, complete } = await setupCapture(
+			captureSuccess,
+			"Reuse the captured leaf",
+			{
+				turnRecordId: "trn_reuse",
+				pathType: "primary",
+				forkPiEntryId: "root-user",
+				startedAt: "2026-04-18T10:20:00.000Z",
+			},
+		);
 		await writeTreeFile(harness, process.id, [
 			{ id: "root-user", parentId: null, type: "user", timestamp: "2026-04-18T10:19:00.000Z" },
 			{
@@ -587,41 +505,15 @@ describe("leaf outcome snapshot capture", () => {
 			anchoredAt: "2026-04-18T10:21:00.000Z",
 		});
 
-		const result = await harness.ctx.deps.processEngine.recordTurnOutcome(process.id, {
-			instanceId: process.id,
-			turnRecordId: "trn_reuse",
-			turnId: captureSuccessTurnId,
-			turnType: "llm",
-			outcome: "completed",
-			params: {},
-			pathType: "primary",
-			forkPiEntryId: "root-user",
-			resultPiEntryId: "assistant-reuse",
-			turnResultMarkdown: "## New markdown",
-			rootEntryId: "root-user",
-		});
+		const result = await complete("assistant-reuse", "## New markdown");
 
 		expect(result.ok).toBe(true);
 		expect(harness.ctx.deps.leafOutcomeSnapshots.listByInstance(process.id)).toEqual([existing]);
 	});
 
 	it("persists a capture_error snapshot when leaf outcome capture throws", async () => {
-		const harness = await createIntegrationHarness({
-			extensionCatalog: buildExtensionCatalogFromModules([captureErrorExtension]),
-		});
-		harnesses.push(harness);
-
-		const process = harness.ctx.deps.processes.create({
-			processId: "capture_error_process",
-			lifecycleStatus: "active",
-			selectedTurnId: captureErrorTurnId,
-			paramsJson: JSON.stringify({ prompt: "Capture the leaf" }),
-			stateJson: baseStateJson("root-user"),
-		});
-		seedAcceptedLlmTurn(harness, {
-			instanceId: process.id,
+		const { harness, process, complete } = await setupCapture(captureError, "Capture the leaf", {
 			turnRecordId: "trn_capture",
-			turnId: captureErrorTurnId,
 			pathType: "primary",
 			forkPiEntryId: "root-user",
 			startedAt: "2026-04-18T10:10:00.000Z",
@@ -636,19 +528,7 @@ describe("leaf outcome snapshot capture", () => {
 			},
 		]);
 
-		const result = await harness.ctx.deps.processEngine.recordTurnOutcome(process.id, {
-			instanceId: process.id,
-			turnRecordId: "trn_capture",
-			turnId: captureErrorTurnId,
-			turnType: "llm",
-			outcome: "completed",
-			params: {},
-			pathType: "primary",
-			forkPiEntryId: "root-user",
-			resultPiEntryId: "assistant-capture",
-			turnResultMarkdown: "## Snapshot",
-			rootEntryId: "root-user",
-		});
+		const result = await complete("assistant-capture", "## Snapshot");
 
 		expect(result.ok).toBe(true);
 		expect(harness.ctx.deps.leafOutcomeSnapshots.listByInstance(process.id)).toEqual([

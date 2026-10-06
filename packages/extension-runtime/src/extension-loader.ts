@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { copiedUnknownRecordSchema as unknownRecordSchema } from "@leitwerk-dev/domain";
+import { copiedUnknownRecordSchema, orderDependencies } from "@leitwerk-dev/domain";
 import {
 	type CapabilityToken,
 	type CatalogExtensionAPI,
@@ -26,10 +26,12 @@ import { type LeitwerkRuntimeLane, resolveRuntimeLane } from "./runtime-lane.js"
 
 interface PackageJsonRecord {
 	name?: unknown;
+	version?: unknown;
 	workspaces?: unknown;
 	leitwerk?: {
 		extension?: unknown;
 		pi?: unknown;
+		skills?: unknown;
 	};
 }
 
@@ -39,16 +41,7 @@ interface LeitwerkConditionalExtensionEntryRecord {
 }
 
 /** @internal */
-export interface DiscoveredExtensionEntry {
-	/** @internal */
-	packageName: string;
-	/** @internal */
-	packageDir: string;
-	/** @internal */
-	entryPath: string;
-	/** @internal */
-	pi?: DiscoveredPiContribution;
-}
+export interface DiscoveredExtensionEntry extends Omit<LoadedExtensionModule, "module"> {}
 
 /** @internal */
 export interface DiscoveredPiContribution {
@@ -70,11 +63,15 @@ export interface LoadedExtensionModule {
 	/** @internal */
 	packageName: string;
 	/** @internal */
+	packageVersion?: string;
+	/** @internal */
 	packageDir: string;
 	/** @internal */
 	entryPath: string;
 	/** @internal */
 	pi?: DiscoveredPiContribution;
+	/** Package-contained generated skill-pack manifest. @internal */
+	skillPackPath?: string;
 	/** @public */
 	module: LeitwerkExtensionModule;
 }
@@ -135,8 +132,10 @@ const jiti = createJiti(import.meta.url);
 const optionalStringArraySchema = v.optional(v.array(v.string()));
 const resolvedExtensionEntrySchema = v.object({
 	packageName: v.string(),
+	packageVersion: v.optional(v.string()),
 	packageDir: v.string(),
 	entryPath: v.string(),
+	skillPackPath: v.optional(v.string()),
 	pi: v.optional(
 		v.object({
 			workerEntryPath: v.optional(v.string()),
@@ -150,12 +149,12 @@ const resolvedExtensionEntrySchema = v.object({
 });
 
 function isLeitwerkExtensionModule(value: unknown): value is LeitwerkExtensionModule {
-	const parsedModule = v.safeParse(unknownRecordSchema, value);
+	const parsedModule = v.safeParse(copiedUnknownRecordSchema, value);
 	if (!parsedModule.success) {
 		return false;
 	}
 	const module = parsedModule.output;
-	const parsedManifest = v.safeParse(unknownRecordSchema, module.manifest);
+	const parsedManifest = v.safeParse(copiedUnknownRecordSchema, module.manifest);
 	if (!parsedManifest.success) {
 		return false;
 	}
@@ -224,7 +223,7 @@ function resolveLaneAwareEntryPath(input: {
 	if (input.optional && input.value === undefined) {
 		return undefined;
 	}
-	const parsedEntry = v.safeParse(unknownRecordSchema, input.value);
+	const parsedEntry = v.safeParse(copiedUnknownRecordSchema, input.value);
 	if (!parsedEntry.success) {
 		throw new Error(
 			`Extension package '${input.packageName}' must declare ${input.label} as an object with source and import string paths`,
@@ -307,7 +306,7 @@ function resolvePiResourceDirectories(
 	if (resources === undefined) {
 		return { skillDirectories: [], promptDirectories: [] };
 	}
-	const parsed = v.safeParse(unknownRecordSchema, resources);
+	const parsed = v.safeParse(copiedUnknownRecordSchema, resources);
 	if (!parsed.success) {
 		throw new Error(`Extension package '${packageName}' leitwerk.pi.resources must be an object`);
 	}
@@ -344,7 +343,7 @@ function resolvePiContribution(
 	if (value === undefined) {
 		return undefined;
 	}
-	const parsed = v.safeParse(unknownRecordSchema, value);
+	const parsed = v.safeParse(copiedUnknownRecordSchema, value);
 	if (!parsed.success) {
 		throw new Error(`Extension package '${packageName}' leitwerk.pi must be an object`);
 	}
@@ -394,6 +393,13 @@ function resolvePackageDirFromSpecifier(startDir: string, source: string): strin
 	);
 }
 
+function resolveSkillPackPath(packageDir: string, value: unknown): string {
+	if (typeof value !== "string" || !value.trim()) {
+		throw new Error("leitwerk.skills must name a generated skill-pack manifest");
+	}
+	return assertPackageContainedPath(packageDir, value, "leitwerk.skills");
+}
+
 async function readExtensionEntryFromPackageJson(
 	packageJsonPath: string,
 	lane: LeitwerkRuntimeLane = resolveRuntimeLane(),
@@ -407,9 +413,14 @@ async function readExtensionEntryFromPackageJson(
 	}
 	return {
 		packageName: packageName.output,
+		...(typeof parsed.version === "string" ? { packageVersion: parsed.version } : {}),
 		packageDir,
 		entryPath: resolveExtensionEntryPath(packageDir, packageName.output, extensionPath, lane),
 		pi: resolvePiContribution(packageDir, packageName.output, parsed.leitwerk?.pi, lane),
+		skillPackPath:
+			parsed.leitwerk?.skills === undefined
+				? undefined
+				: resolveSkillPackPath(packageDir, parsed.leitwerk.skills),
 	};
 }
 
@@ -487,7 +498,7 @@ export function parseResolvedExtensionEntries(json: string): DiscoveredExtension
 		throw new Error("Resolved extension entries must be a JSON array");
 	}
 	return (parsed as unknown[]).map((value, index) => {
-		if (!v.safeParse(unknownRecordSchema, value).success) {
+		if (!v.safeParse(copiedUnknownRecordSchema, value).success) {
 			throw new Error(`Resolved extension entry at index ${index} is not an object`);
 		}
 		const entry = v.safeParse(resolvedExtensionEntrySchema, value);
@@ -505,7 +516,7 @@ export async function importExtensionModules(
 	const loaded: LoadedExtensionModule[] = [];
 	for (const entry of entries) {
 		const imported = (await jiti.import(entry.entryPath)) as unknown;
-		const importedRecord = v.safeParse(unknownRecordSchema, imported);
+		const importedRecord = v.safeParse(copiedUnknownRecordSchema, imported);
 		const candidate = isLeitwerkExtensionModule(imported)
 			? imported
 			: importedRecord.success && isLeitwerkExtensionModule(importedRecord.output.default)
@@ -516,9 +527,11 @@ export async function importExtensionModules(
 		}
 		loaded.push({
 			packageName: entry.packageName,
+			packageVersion: entry.packageVersion,
 			packageDir: entry.packageDir,
 			entryPath: entry.entryPath,
 			pi: entry.pi,
+			skillPackPath: entry.skillPackPath,
 			module: candidate,
 		});
 	}
@@ -528,7 +541,7 @@ export async function importExtensionModules(
 /** Loads one server-only Pi adapter declared by an extension package. @internal */
 export async function importPiServerAdapter(entryPath: string): Promise<PiServerAdapter> {
 	const imported = (await jiti.import(entryPath)) as unknown;
-	const importedRecord = v.safeParse(unknownRecordSchema, imported);
+	const importedRecord = v.safeParse(copiedUnknownRecordSchema, imported);
 	const candidate =
 		importedRecord.success && importedRecord.output.default !== undefined
 			? importedRecord.output.default
@@ -546,40 +559,18 @@ export async function importPiServerAdapter(entryPath: string): Promise<PiServer
 
 function sortByDependencies(modules: readonly LoadedExtensionModule[]): LoadedExtensionModule[] {
 	const byId = new Map(modules.map((loaded) => [loaded.module.manifest.id, loaded]));
-	const visited = new Set<string>();
-	const visiting = new Set<string>();
-	const ordered: LoadedExtensionModule[] = [];
-
-	function visit(id: string): void {
-		if (visited.has(id)) {
-			return;
-		}
-		if (visiting.has(id)) {
-			throw new Error(`Circular extension dependency detected involving '${id}'`);
-		}
-		const loaded = byId.get(id);
-		if (!loaded) {
-			throw new Error(`Unknown extension dependency '${id}'`);
-		}
-		visiting.add(id);
-		for (const dependencyId of loaded.module.manifest.requires ?? []) {
-			visit(dependencyId);
-		}
-		for (const dependencyId of loaded.module.manifest.optional ?? []) {
-			if (byId.has(dependencyId)) {
-				visit(dependencyId);
+	return orderDependencies(
+		byId.keys(),
+		function* (id) {
+			const loaded = byId.get(id);
+			if (!loaded) throw new Error(`Unknown extension dependency '${id}'`);
+			yield* loaded.module.manifest.requires ?? [];
+			for (const dependencyId of loaded.module.manifest.optional ?? []) {
+				if (byId.has(dependencyId)) yield dependencyId;
 			}
-		}
-		visiting.delete(id);
-		visited.add(id);
-		ordered.push(loaded);
-	}
-
-	for (const loaded of modules) {
-		visit(loaded.module.manifest.id);
-	}
-
-	return ordered;
+		},
+		(id) => `Circular extension dependency detected involving '${id}'`,
+	).map((id) => byId.get(id) as LoadedExtensionModule);
 }
 
 /** @internal */

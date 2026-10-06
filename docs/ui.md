@@ -273,6 +273,14 @@ the current tab. Cross-origin links have a visible external marker, accessible
 resource label and new-tab announcement, plus `rel="noopener noreferrer"`.
 Managed result images may open in a secured new tab without an external marker.
 
+## Skill catalog
+
+Installed skills can be selected at launch. Extension-owned entries identify their
+owning extension and expose adapted instructions, upstream provenance, and revision
+history. Their availability changes when the owning extension is updated or removed.
+Repository install, update, and removal actions cannot change extension-owned skills.
+Existing processes retain their pinned revisions. See [skill packs](skill-packs.md).
+
 ## Other surfaces
 
 - Watcher cards show purpose, enabled state, process, and target before configuration.

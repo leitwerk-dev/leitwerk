@@ -51,6 +51,7 @@ import {
 	parseSchema,
 	unknownRecordSchema,
 } from "./protocol.js";
+import type { SkillRevisionProvenance } from "./skill-pack.js";
 import type { ToolCallRendererDefinition } from "./tool-renderer-contract.js";
 import type { UsageCostSnapshot, UsageTokenCounts } from "./usage-snapshot.js";
 
@@ -964,10 +965,14 @@ export interface SkillCatalogItem {
 }
 
 /** @internal */
-export type SkillRegistrationKind = "configuration" | "catalog";
+export type SkillRegistrationKind = "configuration" | "catalog" | "extension";
 
 /** @internal */
 export interface InstalledSkillCatalogItem {
+	/** @internal */
+	ownerExtensionId?: string | null;
+	/** @internal */
+	provenance?: SkillRevisionProvenance | null;
 	/** @internal */
 	id: string;
 	/** @internal */
@@ -992,6 +997,8 @@ export interface InstalledSkillCatalogItem {
 
 /** @internal */
 export interface SkillRevisionSummary {
+	/** @internal */
+	provenance?: SkillRevisionProvenance | null;
 	/** @internal */
 	id: string;
 	/** @internal */

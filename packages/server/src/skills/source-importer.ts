@@ -3,6 +3,7 @@ import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import type { SkillRevisionProvenance } from "@leitwerk-dev/protocol";
 import {
 	createCanonicalPiResourceBundle,
 	type PiResourceBundle,
@@ -17,6 +18,8 @@ const FORBIDDEN_SKILL_NAMES = new Set([".git"]);
 
 /** @internal */
 export interface ImportedSkill {
+	/** Explicit extension provenance and dependencies. @internal */
+	provenance?: SkillRevisionProvenance;
 	/** @internal */
 	skillId: string;
 	/** @internal */
