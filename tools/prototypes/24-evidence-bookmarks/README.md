@@ -32,7 +32,9 @@ Production bookmarks would need migrated operator metadata, identity and prefere
 
 Biome, extracted inline JavaScript syntax, and Git diff checks passed. Real Chromium interactions completed all three scenarios with assertions on each step. Free play confirmed unsent note and review-outcome drafts survive updates and refused actions, unavailable sources cannot be marked checked, cached redacted source text is removed, original execution identity remains fixed, and the process lifecycle is unchanged.
 
-Desktop 1440px and mobile 390px full-page screenshots were opened and visually inspected. The mobile document width is 390px with no horizontal overflow; the browser error list was empty. The visual detector ran once in degraded regex mode because its HTML parser dependencies are unavailable; it returned no findings but did not evaluate computed contrast.
+Independent review found that outcome drafts needed bookmark identity. The fix stores each draft by bookmark: browser regression checks with two concerns verified switching restores the correct outcome, the second concern cannot use the first concern’s text, successful resolution clears only its own draft, and redaction/refusal preserves the other concern’s draft. All three original guides still pass.
+
+Refreshed desktop 1440px and mobile 390px full-page screenshots were opened and visually inspected. The mobile document width is 390px with no horizontal overflow; the browser error list was empty. The visual detector ran once in degraded regex mode because its HTML parser dependencies are unavailable; it returned no findings but did not evaluate computed contrast.
 
 Scoped helper validation applies. No application code, dependencies or runtime configuration changed, so local application `test:full` was not run.
 

@@ -22,7 +22,7 @@
 <script>
 const BookmarkModel=(()=>{
  const records=()=>[{id:'tr-41',label:'Plan v3',version:3,sections:[{id:'rollout',title:'Rollout scope',text:'Enable the new index in the EU region first. North America follows only after an operator reviews the rollout evidence.',available:true},{id:'validation',title:'Validation and limits',text:'The fixture integration suite passed for the EU sample. Production traffic and the North American region have not been verified.',available:true},{id:'recovery',title:'Recovery plan',text:'Keep the previous index available. If error rates rise, route reads back to it; data already written remains in place.',available:true}]}];
- const initial=()=>({records:records(),view:'tr-41',selected:'rollout',notes:[],draft:'Confirm that the first rollout stays in the EU region.',resolution:'',inspection:null,decision:1,lifecycle:'active',serial:1,notice:'Select an exact passage and save a concern to revisit at the next decision.',tone:'info',log:[]});
+ const initial=()=>({records:records(),view:'tr-41',selected:'rollout',notes:[],draft:'Confirm that the first rollout stays in the EU region.',resolutions:{},inspection:null,decision:1,lifecycle:'active',serial:1,notice:'Select an exact passage and save a concern to revisit at the next decision.',tone:'info',log:[]});
  const source=(s,n)=>s.records.find(r=>r.id===n.record)?.sections.find(p=>p.id===n.section);
  const available=(s,n)=>{const p=source(s,n);return Boolean(p?.available&&p.text===n.fingerprint);};
  function reduce(s,a){
@@ -30,7 +30,7 @@ const BookmarkModel=(()=>{
   const fail=t=>{ok=false;message=t;};
   if(a.type==='reset')return{state:initial(),ok:true};
   if(a.type==='draft'){n.draft=a.text;return{state:n,ok:true};}
-  if(a.type==='resolution'){n.resolution=a.text;return{state:n,ok:true};}
+  if(a.type==='resolution'){if(!n.inspection)return{state:s,ok:false};n.resolutions[n.inspection]=a.text;return{state:n,ok:true};}
   if(a.type==='view'){if(!n.records.some(r=>r.id===a.record))fail('That execution is unavailable.');else{n.view=a.record;n.selected=null;message='Reading selection changed. Your bookmark draft is preserved.';}}
   if(a.type==='select'){const r=n.records.find(r=>r.id===a.record);const p=r?.sections.find(p=>p.id===a.section);if(!p?.available)fail('Unavailable evidence cannot create a new bookmark.');else{n.view=r.id;n.selected=p.id;message=`Selected ${p.title} from ${r.label}.`;}}
   if(a.type==='save'){
@@ -52,8 +52,8 @@ const BookmarkModel=(()=>{
    if(!note)fail('Save a bookmark before simulating source redaction.');else{const p=source(n,note);if(!p?.available)fail('This source has already been redacted.');else{p.available=false;p.text='';for(const b of n.notes){if(b.record===note.record&&b.section===note.section){b.quote='';b.fingerprint='';if(b.status==='checked'){b.status='recheck';}}}message='Source redacted and cached quote removed. No newer result was substituted.';}}
   }
   if(a.type==='resolve'||a.type==='dismiss'){
-   const note=n.notes.find(b=>b.id===n.inspection);
-   if(!note)fail('Open a bookmark before recording its review outcome.');else if(!['open','recheck'].includes(note.status))fail('This concern is already closed. Reopen it before changing its outcome.');else if(!n.resolution.trim())fail('Add a review outcome before closing this concern.');else if(a.type==='resolve'&&!available(n,note))fail('The exact source is unavailable. It cannot be marked checked; retain it or dismiss with a reason.');else{note.status=a.type==='resolve'?'checked':'dismissed';note.outcome=n.resolution.trim();n.resolution='';message=a.type==='resolve'?'Concern marked checked by you. No process decision was submitted.':'Concern dismissed with your reason. Evidence remains unverified.';}
+   const note=n.notes.find(b=>b.id===n.inspection),reviewDraft=note?n.resolutions[note.id]||'':'';
+   if(!note)fail('Open a bookmark before recording its review outcome.');else if(!['open','recheck'].includes(note.status))fail('This concern is already closed. Reopen it before changing its outcome.');else if(!reviewDraft.trim())fail('Add a review outcome before closing this concern.');else if(a.type==='resolve'&&!available(n,note))fail('The exact source is unavailable. It cannot be marked checked; retain it or dismiss with a reason.');else{note.status=a.type==='resolve'?'checked':'dismissed';note.outcome=reviewDraft.trim();n.resolutions[note.id]='';message=a.type==='resolve'?'Concern marked checked by you. No process decision was submitted.':'Concern dismissed with your reason. Evidence remains unverified.';}
   }
   if(a.type==='reopen'){const note=n.notes.find(b=>b.id===a.id);if(!note)fail('Bookmark unavailable.');else{note.status='open';n.inspection=note.id;message='Concern reopened. Its previous outcome remains in review history.';}}
   if(message){n.notice=message;n.tone=ok?'info':'error';n.log.push({message,ok});}
@@ -79,7 +79,7 @@ function render(){
  $('document').innerHTML=record.sections.map(p=>`<article class="passage ${p.id===state.selected?'selected':''}" id="passage-${p.id}"><h3>${esc(p.title)}</h3><p>${p.available?esc(p.text):'Source redacted. Recorded content and cached quotes are unavailable.'}</p><p class="meta">${record.id} / ${p.id} · ${p.available?'Retained evidence':'Unavailable evidence'}</p><button type="button" data-select="${p.id}" ${p.available?'':'disabled'}>Bookmark this passage</button></article>`).join('');
  $('anchor-label').textContent=selected?`Selected: ${selected.title} · ${record.label}`:'No passage selected. Your unsent concern is retained.';
  if($('note-draft').value!==state.draft)$('note-draft').value=state.draft;
- if($('resolution-draft').value!==state.resolution)$('resolution-draft').value=state.resolution;
+ const reviewDraft=state.resolutions[state.inspection]||'';if($('resolution-draft').value!==reviewDraft)$('resolution-draft').value=reviewDraft;$('resolution-draft').disabled=!state.inspection;
  $('notes').innerHTML=state.notes.length?state.notes.map(n=>`<article class="note"><div class="status ${n.status==='checked'?'resolved':'open'}">${n.status==='checked'?'Checked by you':n.status==='dismissed'?'Dismissed · not verified':n.status==='recheck'?'Recheck · source changed':state.decision>=n.due?'Due at this decision':'Open · revisit next decision'}</div><p><strong>${esc(n.text)}</strong></p><p class="source-state">${esc(n.title)} · plan v${n.version} · ${n.record}<br>${BookmarkModel.available(state,n)?'Exact original source retained':'Original source unavailable; no substitute selected'}</p>${n.quote?`<blockquote>${esc(n.quote)}</blockquote>`:''}${n.outcome?`<p class="hint">Last review outcome: ${esc(n.outcome)}</p>`:''}<div class="actions"><button type="button" data-inspect="${n.id}">${state.inspection===n.id&&state.view===n.record&&state.selected===n.section?'Viewing original source':'Open original source'}</button>${['checked','dismissed'].includes(n.status)?`<button type="button" data-reopen="${n.id}">Reopen concern</button>`:''}</div></article>`).join(''):'<p class="empty">No saved concerns. Select a passage in the result to keep a question attached to it.</p>';
  const note=state.notes.find(n=>n.id===state.inspection);$('review-target').textContent=note?`For: ${note.text} · plan v${note.version}`:'Open a saved bookmark to select the concern being reviewed.';$('resolve').disabled=!note;$('dismiss').disabled=!note;
  $('tabs').innerHTML=scenarios.map((s,i)=>`<button type="button" data-scenario="${i}" aria-pressed="${i===scenario}">${esc(s.title)}</button>`).join('');
