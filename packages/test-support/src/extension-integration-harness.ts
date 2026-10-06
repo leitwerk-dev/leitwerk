@@ -28,7 +28,7 @@ import { createPersistentIntegrationFixture } from "./integration-harness.js";
 import { observe, type TestObservation } from "./observations.js";
 import { createProcessFixture, type ProcessFixtureOptions } from "./process-fixtures.js";
 import type { QuestionRequestFixture } from "./supported-question-fixtures.js";
-import { StubPiTreeHandleFactory } from "./worker-testing/stub-pi-tree-handle.js";
+import { formatBranchText, StubPiTreeHandleFactory } from "./worker-testing/stub-pi-tree-handle.js";
 
 /** Model-visible inputs for a scripted invocation. @public */
 export interface IntegrationPromptObservation {
@@ -495,16 +495,7 @@ export async function createExtensionIntegrationHarness(
 				const session = [...piFactory.sessions]
 					.reverse()
 					.find((session) => session.treeFile === input.treeFile);
-				const history =
-					session
-						?.getBranch()
-						.map((entry) => {
-							if (entry.type === "custom_message") return entry.content;
-							if (entry.type === "message" && entry.message) return entry.message.content;
-							return "";
-						})
-						.filter((value) => typeof value === "string")
-						.join("\n\n") ?? "";
+				const history = formatBranchText(session?.getBranch(), "");
 				const script = manual
 					? scripts.get(id)
 					: await options.script?.(

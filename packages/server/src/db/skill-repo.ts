@@ -209,6 +209,20 @@ function activateSkill(
 	return revisionId;
 }
 
+function reconcileSkills(
+	db: LeitwerkDb,
+	imported: readonly ImportedSkill[],
+	registrationKind: "configuration" | "extension",
+): void {
+	const timestamp = now();
+	const ids = imported.map((item) => item.skillId);
+	db.update(skills)
+		.set({ activeRevisionId: null, updatedAt: timestamp })
+		.where(and(eq(skills.registrationKind, registrationKind), notInArray(skills.id, ids)))
+		.run();
+	for (const item of imported) activateSkill(db, item, registrationKind, timestamp);
+}
+
 function catalogView(db: LeitwerkDb): {
 	/** @internal */
 	availableSkills: SkillCatalogItem[];
@@ -356,20 +370,7 @@ export function createSkillRepo(db: LeitwerkDb) {
 		},
 		/** @internal */
 		reconcile(imported: readonly ImportedSkill[]): void {
-			const timestamp = now();
-			db.update(skills)
-				.set({ activeRevisionId: null, updatedAt: timestamp })
-				.where(
-					and(
-						eq(skills.registrationKind, "configuration"),
-						notInArray(
-							skills.id,
-							imported.map((item) => item.skillId),
-						),
-					),
-				)
-				.run();
-			for (const item of imported) activateSkill(db, item, "configuration", timestamp);
+			reconcileSkills(db, imported, "configuration");
 		},
 		/** Reconcile all loaded extension packs in the caller's startup transaction. @internal */
 		reconcileExtensions(imported: readonly ImportedExtensionSkill[]): void {
@@ -392,14 +393,7 @@ export function createSkillRepo(db: LeitwerkDb) {
 					}
 				}
 			}
-			const timestamp = now();
-			db.update(skills)
-				.set({ activeRevisionId: null, updatedAt: timestamp })
-				.where(
-					and(eq(skills.registrationKind, "extension"), notInArray(skills.id, [...byId.keys()])),
-				)
-				.run();
-			for (const item of imported) activateSkill(db, item, "extension", timestamp);
+			reconcileSkills(db, imported, "extension");
 		},
 		/** @internal */
 		backfillDependencies(): void {

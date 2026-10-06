@@ -24,6 +24,7 @@ async function fixture() {
 		"---\nname: review\ndescription: Review architecture\n---\nOriginal instructions\n",
 	);
 	await writeFile(path.join(root, "upstream/skills/review/OLD.md"), "Old template\n");
+	await writeFile(path.join(root, "upstream/skills/review/image.bin"), Buffer.from([0, 1, 2]));
 	const args = ["--package", root];
 	return {
 		root,
@@ -38,14 +39,18 @@ describe("skill-pack maintenance", () => {
 	it("round-trips edited, added, and deleted resources through an offline reproducible build", async () => {
 		const f = await fixture();
 		await runSkillPackCli("skills:prepare", f.args);
+		await runSkillPackCli("skills:diff", f.args);
+		expect(await readFile(path.join(f.root, "patches/leitwerk.patch"), "utf8")).toBe("");
 		const adapted =
 			"---\nname: review\ndescription: Review architecture\n---\nRead [report](REPORT.md).\n";
 		await writeFile(path.join(f.work, "SKILL.md"), adapted);
 		await rm(path.join(f.work, "OLD.md"));
 		await writeFile(path.join(f.work, "REPORT.md"), "```mermaid\nflowchart LR\n A --> B\n```\n");
+		await writeFile(path.join(f.work, "image.bin"), Buffer.from([0, 9, 8]));
 		await runSkillPackCli("skills:diff", f.args);
 		await buildSkillPack(f.root);
 		expect(await readFile(path.join(f.output, "review/SKILL.md"), "utf8")).toBe(adapted);
+		expect(await readFile(path.join(f.output, "review/image.bin"))).toEqual(Buffer.from([0, 9, 8]));
 		expect(await readFile(path.join(f.output, "review/licenses/LICENSE"), "utf8")).toBe(
 			"Upstream attribution\n",
 		);

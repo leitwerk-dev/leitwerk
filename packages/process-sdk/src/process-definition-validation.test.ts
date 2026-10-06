@@ -4,6 +4,7 @@ import {
 	type DefinedProcessInput,
 	defineProcess,
 	humanTurn,
+	type LlmTurnDefinition,
 	llmTurn,
 	validateProcessDefinition,
 } from "./define-process.js";
@@ -24,6 +25,20 @@ function declaration(
 		initialState: () => ({}),
 		turns,
 	};
+}
+
+function llmDeclaration(
+	description: string,
+	overrides: Partial<LlmTurnDefinition<string, Data, Data>> = {},
+) {
+	return llmTurn<Data, Data>({
+		description,
+		availableTools: [],
+		branchType: "primary",
+		context: "fresh",
+		prompt: () => "Prompt",
+		...overrides,
+	});
 }
 
 function rejection(define: () => unknown): string {
@@ -55,12 +70,7 @@ describe.each([
 ])("$name process definitions", ({ define }) => {
 	it("collects independent declaration, routing, readiness, and product errors with context", () => {
 		const input = declaration({
-			invalid_parameter: llmTurn({
-				description: "Invalid parameter",
-				availableTools: [],
-				branchType: "primary",
-				context: "fresh",
-				prompt: () => "Prompt",
+			invalid_parameter: llmDeclaration("Invalid parameter", {
 				outcomes: {
 					done: {
 						description: "Done",
@@ -91,12 +101,7 @@ describe.each([
 					ungated: { id: "ungated", source: { kind: "ungated" }, to: "consumer" },
 				},
 			}),
-			consumer: llmTurn({
-				description: "Consumer",
-				availableTools: [],
-				branchType: "primary",
-				context: "fresh",
-				prompt: () => "Prompt",
+			consumer: llmDeclaration("Consumer", {
 				optionalConsumedProducts: ["missing-product"],
 				turnEnd: { outcome: "done", params: {}, complete: true },
 			}),
@@ -117,13 +122,7 @@ describe.each([
 
 	it("skips connectivity checks when a turn's completion declaration is invalid", () => {
 		const input = declaration({
-			start: llmTurn({
-				description: "No completion",
-				availableTools: [],
-				branchType: "primary",
-				context: "fresh",
-				prompt: () => "Prompt",
-			}),
+			start: llmDeclaration("No completion"),
 			done: humanTurn({
 				description: "Done",
 				actions: { finish: { label: "Finish", acceptanceState: "accepted", complete: true } },
@@ -136,12 +135,7 @@ describe.each([
 	});
 
 	it("rejects routing mutations that disconnect the declared happy path", () => {
-		const start = llmTurn<Data, Data>({
-			description: "Start",
-			availableTools: [],
-			branchType: "primary",
-			context: "fresh",
-			prompt: () => "Prompt",
+		const start = llmDeclaration("Start", {
 			turnEnd: { outcome: "ready", params: {}, to: "done" },
 		});
 		const input = declaration({
@@ -167,11 +161,7 @@ describe.each([
 			throw new Error("Author callback executed during validation");
 		};
 		const input = declaration({
-			mapped: llmTurn({
-				description: "Mapped",
-				availableTools: [],
-				branchType: "primary",
-				context: "fresh",
+			mapped: llmDeclaration("Mapped", {
 				prompt: unexpected,
 				waitFor: unexpected,
 				prepare: unexpected,

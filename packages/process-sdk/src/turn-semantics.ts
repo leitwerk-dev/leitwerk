@@ -16,7 +16,6 @@ import { validateMappedTurn } from "./mapped-turn.js";
 import { validatePiBuiltInToolArray } from "./pi-config.js";
 import { REQUIRED_MARKDOWN_RESULT_TURN_RESULT } from "./tool-renderers.js";
 import {
-	type OutcomeToolParameterSpec,
 	type ProcessActionPreviewDefinition,
 	type ProcessActionSchedulingDefinition,
 	RESERVED_INTEGRATION_TOOL_NAMES,
@@ -150,45 +149,36 @@ function validateOutcomeToolParameters<TParams = unknown, TState = unknown>(
 	for (const [outcome, outcomeSpec] of Object.entries(outcomes ?? {}) as Array<
 		[string, ProcessToolOutcomeSpec<TParams, TState>]
 	>) {
+		const outcomeContext = `${turnKindLabel} turn '${turnId}' outcome '${outcome}'`;
 		if (outcomeSpec.publishedProduct) {
 			errors.push(...validateProcessProductName(outcomeSpec.publishedProduct));
 			const parameterName = outcomeSpec.turnResultMarkdownParameter?.trim() ?? "";
 			if (!parameterName) {
 				errors.push(
-					`${turnKindLabel} turn '${turnId}' outcome '${outcome}' publishes product '${outcomeSpec.publishedProduct}' but does not declare a turn-result markdown parameter`,
+					`${outcomeContext} publishes product '${outcomeSpec.publishedProduct}' but does not declare a turn-result markdown parameter`,
 				);
 			} else if (!Object.hasOwn(outcomeSpec.parameters, parameterName)) {
 				errors.push(
-					`${turnKindLabel} turn '${turnId}' outcome '${outcome}' publishes product '${outcomeSpec.publishedProduct}' from missing parameter '${parameterName}'`,
+					`${outcomeContext} publishes product '${outcomeSpec.publishedProduct}' from missing parameter '${parameterName}'`,
 				);
 			}
 		}
-		for (const [paramName, paramSpec] of Object.entries(outcomeSpec.parameters) as Array<
-			[string, OutcomeToolParameterSpec]
-		>) {
-			if (paramSpec.minItems !== undefined && paramSpec.type !== "array") {
-				errors.push(
-					`${turnKindLabel} turn '${turnId}' outcome '${outcome}' parameter '${paramName}' uses minItems but is not an array`,
-				);
-			}
-			if (paramSpec.minimum !== undefined && paramSpec.type !== "number") {
-				errors.push(
-					`${turnKindLabel} turn '${turnId}' outcome '${outcome}' parameter '${paramName}' uses minimum but is not a number`,
-				);
-			}
-			if (paramSpec.items !== undefined && paramSpec.type !== "array") {
-				errors.push(
-					`${turnKindLabel} turn '${turnId}' outcome '${outcome}' parameter '${paramName}' declares array items but is not an array`,
-				);
+		for (const [paramName, paramSpec] of Object.entries(outcomeSpec.parameters)) {
+			const context = `${outcomeContext} parameter '${paramName}'`;
+			for (const [property, type, message] of [
+				["minItems", "array", "uses minItems but is not an array"],
+				["minimum", "number", "uses minimum but is not a number"],
+				["items", "array", "declares array items but is not an array"],
+			] as const) {
+				if (paramSpec[property] !== undefined && paramSpec.type !== type)
+					errors.push(`${context} ${message}`);
 			}
 			if (paramSpec.type === "array") {
 				if (!paramSpec.items) {
-					errors.push(
-						`${turnKindLabel} turn '${turnId}' outcome '${outcome}' parameter '${paramName}' is an array and must declare items`,
-					);
+					errors.push(`${context} is an array and must declare items`);
 				} else if (!isValidOutcomeToolArrayItemType(paramSpec.items.type)) {
 					errors.push(
-						`${turnKindLabel} turn '${turnId}' outcome '${outcome}' parameter '${paramName}' declares unsupported array item type '${String(paramSpec.items.type)}'`,
+						`${context} declares unsupported array item type '${String(paramSpec.items.type)}'`,
 					);
 				}
 			}
@@ -355,9 +345,7 @@ export function validateHumanTurnDefinition<TParams = unknown, TState = unknown>
 		errors.push(...validateProcessProductName(turnDef.reviewProduct));
 	}
 
-	const actionEntries = Object.entries(turnDef.actions) as Array<
-		[string, HumanTurnDefinition<TParams, TState>["actions"][string]]
-	>;
+	const actionEntries = Object.entries(turnDef.actions);
 	if (actionEntries.length === 0) {
 		errors.push(`Human turn '${turnId}' must declare at least one action`);
 	}
@@ -386,20 +374,13 @@ export function validateHumanTurnDefinition<TParams = unknown, TState = unknown>
 		if (trigger.id.trim() === "") {
 			errors.push(`Human turn '${turnId}' contains an external trigger with an empty id`);
 		}
-		if (actionId.trim() === "") {
-			errors.push(
-				`Human turn '${turnId}' external trigger '${trigger.id}' must declare a non-empty actionId`,
-			);
-		}
-		if (trigger.label.trim() === "") {
-			errors.push(
-				`Human turn '${turnId}' external trigger '${trigger.id}' must declare a non-empty label`,
-			);
-		}
-		if (trigger.description.trim() === "") {
-			errors.push(
-				`Human turn '${turnId}' external trigger '${trigger.id}' must declare a non-empty description`,
-			);
+		const context = `Human turn '${turnId}' external trigger '${trigger.id}'`;
+		for (const [field, value] of Object.entries({
+			actionId,
+			label: trigger.label,
+			description: trigger.description,
+		})) {
+			if (value.trim() === "") errors.push(`${context} must declare a non-empty ${field}`);
 		}
 	}
 

@@ -76,7 +76,9 @@ async function git(cwd: string, args: string[]): Promise<string> {
 		return (await exec("git", ["-C", cwd, ...args], { env: gitEnv, maxBuffer: 16 * 1024 * 1024 }))
 			.stdout;
 	} catch (error) {
-		const failure = error as Error & { stderr?: string };
+		const failure = error as Error & { stderr?: string; stdout: string; code?: number };
+		// A no-index diff exits with 1 when the trees differ.
+		if (args[0] === "diff" && failure.code === 1) return failure.stdout;
 		throw new Error(`Skill-pack git ${args[0]} failed: ${failure.stderr || failure.message}`, {
 			cause: error,
 		});
@@ -126,13 +128,8 @@ async function patchedCopy(root: string, destination: string): Promise<Buffer> {
 	if (!patch.length) return patch;
 	const patchPath = path.join(path.dirname(destination), "adaptation.patch");
 	await writeFile(patchPath, patch);
-	await git(destination, ["init", "--quiet"]);
-	try {
-		await git(destination, ["apply", "--check", patchPath]);
-		await git(destination, ["apply", patchPath]);
-	} finally {
-		await rm(path.join(destination, ".git"), { recursive: true, force: true });
-	}
+	await git(destination, ["apply", "--no-index", "--check", patchPath]);
+	await git(destination, ["apply", "--no-index", patchPath]);
 	await regularFiles(destination);
 	return patch;
 }
@@ -303,26 +300,19 @@ async function prepare(root: string, ref?: string): Promise<void> {
 async function diff(root: string): Promise<void> {
 	await recipeAt(root);
 	await withTemp(async (temp) => {
-		const repository = path.join(temp, "repository");
-		await copyTree(path.join(root, VENDOR), repository);
-		await git(repository, ["init", "--quiet"]);
-		await git(repository, ["add", "--force", "--all"]);
-		for (const name of await readdir(repository)) {
-			if (name !== ".git") await rm(path.join(repository, name), { recursive: true, force: true });
-		}
-		await copyTree(path.join(root, WORK), repository);
-		const added = (await git(repository, ["ls-files", "--others", "-z"]))
-			.split("\0")
-			.filter(Boolean);
-		if (added.length) await git(repository, ["add", "--force", "--intent-to-add", "--", ...added]);
-		const patch = await git(repository, [
+		await copyTree(path.join(root, VENDOR), path.join(temp, "a"));
+		await copyTree(path.join(root, WORK), path.join(temp, "b"));
+		const patch = await git(temp, [
 			"diff",
+			"--no-index",
 			"--binary",
 			"--no-ext-diff",
 			"--no-textconv",
 			"--no-renames",
-			"--src-prefix=a/",
-			"--dst-prefix=b/",
+			"--no-prefix",
+			"--",
+			"a",
+			"b",
 		]);
 		await mkdir(path.join(root, "patches"), { recursive: true });
 		await writeFile(path.join(root, PATCH), patch);

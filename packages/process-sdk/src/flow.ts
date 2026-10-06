@@ -434,7 +434,6 @@ export function createFlowPromptContext<
 	const productInput: Record<string, string> = {};
 	const required = new Set<string>(consumedProducts);
 	for (const productName of new Set([...required, ...optionalConsumedProducts])) {
-		if (!required.has(productName) && productName in productInput) continue;
 		const markdown = ctx.turnResultMarkdownByProduct?.[productName];
 		if (typeof markdown === "string" && markdown.trim() !== "") {
 			productInput[productName] = markdown;

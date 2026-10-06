@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { StubPiTreeHandle } from "./stub-pi-tree-handle.js";
+import { formatBranchText, StubPiTreeHandle } from "./stub-pi-tree-handle.js";
+
+it("preserves each caller's missing-message formatting", () => {
+	const entry = { id: "1", parentId: null, timestamp: "", type: "message" };
+	const entries = [entry, { ...entry, type: "custom_message", content: "text" }];
+	expect(formatBranchText(entries)).toBe("text");
+	expect(formatBranchText(entries, "")).toBe("\n\ntext");
+});
 
 describe("StubPiTreeHandle compaction", () => {
 	it("persists non-context compaction details", async () => {

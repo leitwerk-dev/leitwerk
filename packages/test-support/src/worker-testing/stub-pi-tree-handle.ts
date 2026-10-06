@@ -93,6 +93,25 @@ export type StubToolCallScriptResolver = (
 	context: StubToolCallScriptResolverContext,
 ) => StubToolCallScriptItem | undefined | Promise<StubToolCallScriptItem | undefined>;
 
+/** Formats textual branch entries without choosing a session. @internal */
+export function formatBranchText(
+	entries: readonly PiTreeEntry[] = [],
+	missingMessageText?: string,
+): string {
+	return entries
+		.map((entry) =>
+			entry.type === "custom_message"
+				? entry.content
+				: entry.type === "message"
+					? entry.message
+						? entry.message.content
+						: missingMessageText
+					: "",
+		)
+		.filter((value): value is string => typeof value === "string")
+		.join("\n\n");
+}
+
 function stringifyToolResult(result: unknown): string {
 	if (typeof result === "string") {
 		return result;

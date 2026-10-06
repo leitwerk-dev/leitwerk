@@ -1,3 +1,4 @@
+import { orderDependencies } from "@leitwerk-dev/domain";
 import * as v from "valibot";
 
 const nonEmpty = v.pipe(v.string(), v.minLength(1));
@@ -91,21 +92,16 @@ export function parseSkillPackManifest(input: unknown): SkillPackManifest {
 	if (byId.size !== manifest.skills.length) throw new Error("Duplicate skill ID in skill pack");
 	const directories = new Set(manifest.skills.map((skill) => skill.directory));
 	if (directories.size !== manifest.skills.length) throw new Error("Duplicate skill directory");
-	const visited = new Set<string>();
-	const visiting = new Set<string>();
-	const visit = (id: string): void => {
-		if (visited.has(id)) return;
-		if (visiting.has(id)) throw new Error(`Circular skill dependency at '${id}'`);
-		const entry = byId.get(id);
-		if (!entry) throw new Error(`Missing skill pack dependency '${id}'`);
-		if (new Set(entry.dependencies).size !== entry.dependencies.length) {
-			throw new Error(`Duplicate dependencies for skill '${id}'`);
-		}
-		visiting.add(id);
-		for (const dependency of entry.dependencies) visit(dependency);
-		visiting.delete(id);
-		visited.add(id);
-	};
-	for (const id of byId.keys()) visit(id);
+	orderDependencies(
+		byId.keys(),
+		(id) => {
+			const entry = byId.get(id);
+			if (!entry) throw new Error(`Missing skill pack dependency '${id}'`);
+			if (new Set(entry.dependencies).size !== entry.dependencies.length)
+				throw new Error(`Duplicate dependencies for skill '${id}'`);
+			return entry.dependencies;
+		},
+		(id) => `Circular skill dependency at '${id}'`,
+	);
 	return manifest;
 }

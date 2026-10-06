@@ -27,6 +27,7 @@ import {
 import { LocalGit } from "@leitwerk-dev/test-support/local-git";
 import {
 	createInProcessWorkerSpawn,
+	formatBranchText,
 	StubPiTreeHandleFactory,
 } from "@leitwerk-dev/test-support/worker-testing";
 import { expect } from "vitest";
@@ -100,19 +101,7 @@ export async function jiraFixture(
 	const pi = new StubPiTreeHandleFactory({
 		toolCallScriptResolver({ tools, promptText, workspaceRoot }) {
 			if (!workspaceRoot) throw new Error("Missing workspace root");
-			const treeText =
-				pi.sessions
-					.at(-1)
-					?.getBranch()
-					.map((entry) =>
-						entry.type === "custom_message"
-							? entry.content
-							: entry.type === "message"
-								? entry.message?.content
-								: "",
-					)
-					.filter((value): value is string => typeof value === "string")
-					.join("\n\n") ?? "";
+			const treeText = formatBranchText(pi.sessions.at(-1)?.getBranch());
 			promptText = `${treeText}\n${promptText}`;
 			const names = tools.map((tool) => tool.name);
 			prompts.push({ tools: names, prompt: promptText });

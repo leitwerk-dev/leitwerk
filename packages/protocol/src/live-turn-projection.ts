@@ -283,15 +283,17 @@ function createProjectionState(): LiveTurnProjectionState {
 	};
 }
 
-function snapshotLiveTurnProjection(projection: LiveTurnProjectionState): LiveTurnSnapshot {
+function snapshotProjection<T>(
+	projection: LiveTurnProjectionState,
+	presentTool: (tool: ProjectionToolCall) => T,
+) {
 	return {
 		assistant: { ...projection.assistant },
-		toolCalls: Array.from(projection.toolCallsById.values(), (toolCall) => {
-			const { restoredResult: _restoredResult, ...snapshot } = cloneToolCall(toolCall);
-			return snapshot;
-		}),
 		traceItems: projection.traceItems.map((item) => ({ ...item })),
 		usage: cloneUsageSnapshot(projection.usage),
+		toolCalls: Array.from(projection.toolCallsById.values(), (tool) =>
+			presentTool(cloneToolCall(tool)),
+		),
 	};
 }
 
@@ -382,37 +384,28 @@ function compareProcessEventsChronologically(left: ProcessEvent, right: ProcessE
 	return left.id.localeCompare(right.id);
 }
 
-function snapshotTurnTrace(
-	projection: LiveTurnProjectionState,
-	piInput: TurnTraceSnapshot["piInput"],
-): TurnTraceSnapshot {
+function snapshotToolTrace({
+	result,
+	restoredResult,
+	...tool
+}: ProjectionToolCall): TurnTraceToolCallSnapshot {
+	if (restoredResult) return { ...tool, ...restoredResult };
+	const record = result && typeof result === "object" ? (result as Record<string, unknown>) : null;
+	const resultText =
+		result == null
+			? null
+			: typeof result === "string"
+				? result
+				: record && "content" in record
+					? extractPiSessionMessageText(record.content)
+					: JSON.stringify(result, null, 2);
 	return {
-		assistant: { ...projection.assistant },
-		traceItems: projection.traceItems.map((item) => ({ ...item })),
-		usage: cloneUsageSnapshot(projection.usage),
-		piInput,
-		toolCalls: Array.from(projection.toolCallsById.values(), (toolCall) => {
-			const { result, restoredResult, ...tool } = cloneToolCall(toolCall);
-			if (restoredResult) return { ...tool, ...restoredResult };
-			const record =
-				result && typeof result === "object" ? (result as Record<string, unknown>) : null;
-			const resultText =
-				result == null
-					? null
-					: typeof result === "string"
-						? result
-						: record && "content" in record
-							? extractPiSessionMessageText(record.content)
-							: JSON.stringify(result, null, 2);
-			return {
-				...tool,
-				resultText,
-				truncated: isToolResultTruncated({
-					resultText,
-					resultDetails: record?.details,
-					resultValue: result,
-				}),
-			};
+		...tool,
+		resultText,
+		truncated: isToolResultTruncated({
+			resultText,
+			resultDetails: record?.details,
+			resultValue: result,
 		}),
 	};
 }
@@ -423,7 +416,10 @@ function traceProjection(
 ): TurnTraceProjection {
 	return {
 		apply: (event) => applyPiEventToLiveTurnProjection(state, event),
-		snapshot: (piInput = retainedPiInput) => snapshotTurnTrace(state, piInput),
+		snapshot: (piInput = retainedPiInput) => ({
+			...snapshotProjection(state, snapshotToolTrace),
+			piInput,
+		}),
 	};
 }
 
@@ -439,7 +435,8 @@ export function createLiveTurnProjection(events: readonly ProcessEvent[] = []): 
 	}
 	return {
 		...traceProjection(state),
-		rawSnapshot: () => snapshotLiveTurnProjection(state),
+		rawSnapshot: () =>
+			snapshotProjection(state, ({ restoredResult: _restoredResult, ...tool }) => tool),
 	};
 }
 

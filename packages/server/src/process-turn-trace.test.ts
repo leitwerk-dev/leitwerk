@@ -7,6 +7,16 @@ import {
 	buildTurnTracePreview,
 	buildTurnTracePreviewsFromSession,
 } from "./process-turn-trace.js";
+import { createTestTurnRecord } from "./test-helpers/process-model-fixtures.js";
+
+function messageEntry(
+	id: string,
+	parentId: string | null,
+	timestamp: string,
+	message: Record<string, unknown>,
+) {
+	return { type: "message", id, parentId, timestamp, message };
+}
 
 function jsonl(...entries: readonly Record<string, unknown>[]): string {
 	return `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`;
@@ -18,37 +28,26 @@ describe("process turn trace projection", () => {
 			tree: parsePiSessionTreeContent(
 				"trace-test",
 				jsonl(
-					{
-						type: "message",
-						id: "prompt",
-						parentId: null,
-						timestamp: "2026-01-01T00:00:01Z",
-						message: { role: "user", content: "Keep the prompt" },
-					},
-					{
-						type: "message",
-						id: "error",
-						parentId: "prompt",
-						timestamp: "2026-01-01T00:00:02Z",
-						message: {
-							role: "assistant",
-							content: [],
-							stopReason: "error",
-							errorMessage: "Initial failure",
-							usage: { input: 10, output: 2 },
-						},
-					},
+					messageEntry("prompt", null, "2026-01-01T00:00:01Z", {
+						role: "user",
+						content: "Keep the prompt",
+					}),
+					messageEntry("error", "prompt", "2026-01-01T00:00:02Z", {
+						role: "assistant",
+						content: [],
+						stopReason: "error",
+						errorMessage: "Initial failure",
+						usage: { input: 10, output: 2 },
+					}),
 				),
 			),
-			turnRecord: {
+			turnRecord: createTestTurnRecord({
 				id: "turn",
-				turnType: "llm",
 				status: "failed",
-				forkPiEntryId: null,
 				resultPiEntryId: null,
 				startedAt: "2026-01-01T00:00:00Z",
 				endedAt: "2026-01-01T00:00:05Z",
-			},
+			}),
 			events: [
 				{
 					id: "evt1",
@@ -88,54 +87,37 @@ describe("process turn trace projection", () => {
 			tree: parsePiSessionTreeContent(
 				"trace-test",
 				jsonl(
-					{
-						type: "message",
-						id: "prompt",
-						parentId: null,
-						timestamp: "2026-01-01T00:00:01Z",
-						message: { role: "user", content: "Keep the prompt" },
-					},
-					{
-						type: "message",
-						id: "partial",
-						parentId: "prompt",
-						timestamp: "2026-01-01T00:00:02Z",
-						message: {
-							role: "assistant",
-							content: [
-								{ type: "thinking", thinking: "First thought" },
-								{ type: "text", text: "First answer" },
-								{ type: "toolCall", id: "read", name: "read", arguments: { path: "README.md" } },
-							],
-						},
-					},
+					messageEntry("prompt", null, "2026-01-01T00:00:01Z", {
+						role: "user",
+						content: "Keep the prompt",
+					}),
+					messageEntry("partial", "prompt", "2026-01-01T00:00:02Z", {
+						role: "assistant",
+						content: [
+							{ type: "thinking", thinking: "First thought" },
+							{ type: "text", text: "First answer" },
+							{ type: "toolCall", id: "read", name: "read", arguments: { path: "README.md" } },
+						],
+					}),
 					...(kind === "richer tool result"
 						? [
-								{
-									type: "message",
-									id: "result",
-									parentId: "partial",
-									timestamp: "2026-01-01T00:00:04Z",
-									message: {
-										role: "toolResult",
-										toolCallId: "read",
-										toolName: "read",
-										content: [{ type: "text", text: "Complete contents and details" }],
-									},
-								},
+								messageEntry("result", "partial", "2026-01-01T00:00:04Z", {
+									role: "toolResult",
+									toolCallId: "read",
+									toolName: "read",
+									content: [{ type: "text", text: "Complete contents and details" }],
+								}),
 							]
 						: []),
 				),
 			),
-			turnRecord: {
+			turnRecord: createTestTurnRecord({
 				id: "turn",
-				turnType: "llm" as const,
-				status: "failed" as const,
-				forkPiEntryId: null,
+				status: "failed",
 				resultPiEntryId: null,
 				startedAt: "2026-01-01T00:00:00Z",
 				endedAt: "2026-01-01T00:00:05Z",
-			},
+			}),
 			events: [
 				{ eventType: "pi.stream.delta", data: { streamType: "thinking", text: "First thought" } },
 				{ eventType: "pi.stream.delta", data: { streamType: "text", text: "First answer" } },
@@ -192,7 +174,10 @@ describe("process turn trace projection", () => {
 		}
 	});
 
-	it.each(["succeeded", "failed"])("includes identified Pi inputs in %s turn details", (status) => {
+	it.each([
+		"succeeded",
+		"failed",
+	] as const)("includes identified Pi inputs in %s turn details", (status) => {
 		const tree = parsePiSessionTreeContent(
 			"identified-input",
 			jsonl(
@@ -230,26 +215,22 @@ describe("process turn trace projection", () => {
 				},
 				...(status === "succeeded"
 					? [
-							{
-								type: "message",
-								id: "answer",
-								parentId: "metadata",
-								timestamp: "2026-01-01T00:00:02.000Z",
-								message: { role: "assistant", content: "Done" },
-							},
+							messageEntry("answer", "metadata", "2026-01-01T00:00:02.000Z", {
+								role: "assistant",
+								content: "Done",
+							}),
 						]
 					: []),
 			),
 		);
-		const turnRecord = {
+		const turnRecord = createTestTurnRecord({
 			id: "trn_input",
-			turnType: "llm" as const,
 			forkPiEntryId: "prior",
 			resultPiEntryId: status === "succeeded" ? "answer" : null,
 			startedAt: "2026-01-01T00:00:01.000Z",
 			endedAt: "2026-01-01T00:00:03.000Z",
-			status: status as "succeeded" | "failed",
-		};
+			status,
+		});
 		const trace = buildTurnTraceFromSession({ tree, turnRecord });
 		expect(trace?.piInput?.fullPrompt).toBe("Plan the notebook update");
 		expect(trace?.piInput?.parts).toEqual([
@@ -265,66 +246,43 @@ describe("process turn trace projection", () => {
 		const tree = parsePiSessionTreeContent(
 			"trace-test",
 			jsonl(
-				{
-					type: "message",
-					id: "user-1",
-					parentId: null,
-					timestamp: "2026-01-01T00:00:01.000Z",
-					message: { role: "user", content: "Do the work" },
-				},
-				{
-					type: "message",
-					id: "user-2",
-					parentId: "user-1",
-					timestamp: "2026-01-01T00:00:01.500Z",
-					message: { role: "user", content: "Use the saved context" },
-				},
-				{
-					type: "message",
-					id: "assistant-1",
-					parentId: "user-2",
-					timestamp: "2026-01-01T00:00:02.000Z",
-					message: {
-						role: "assistant",
-						content: [
-							{ type: "thinking", thinking: "Inspect first.\n" },
-							{ type: "toolCall", id: "tool-1", name: "read", arguments: { path: "README.md" } },
-							{ type: "text", text: "Done." },
-							{ type: "thinking", thinking: "Check the result.\n" },
-							{ type: "toolCall", id: "tool-1", name: "duplicate", arguments: { ignored: true } },
-						],
-						usage: { input: 10, output: 5, cacheRead: 1, cacheWrite: 2, totalTokens: 18 },
-					},
-				},
-				{
-					type: "message",
-					id: "tool-result-1",
-					parentId: "assistant-1",
-					timestamp: "2026-01-01T00:00:03.000Z",
-					message: {
-						role: "toolResult",
-						toolCallId: "tool-1",
-						toolName: "read",
-						content: [{ type: "text", text: "file contents" }],
-						details: { path: "README.md", truncation: { truncated: true } },
-						isError: false,
-					},
-				},
+				messageEntry("user-1", null, "2026-01-01T00:00:01.000Z", {
+					role: "user",
+					content: "Do the work",
+				}),
+				messageEntry("user-2", "user-1", "2026-01-01T00:00:01.500Z", {
+					role: "user",
+					content: "Use the saved context",
+				}),
+				messageEntry("assistant-1", "user-2", "2026-01-01T00:00:02.000Z", {
+					role: "assistant",
+					content: [
+						{ type: "thinking", thinking: "Inspect first.\n" },
+						{ type: "toolCall", id: "tool-1", name: "read", arguments: { path: "README.md" } },
+						{ type: "text", text: "Done." },
+						{ type: "thinking", thinking: "Check the result.\n" },
+						{ type: "toolCall", id: "tool-1", name: "duplicate", arguments: { ignored: true } },
+					],
+					usage: { input: 10, output: 5, cacheRead: 1, cacheWrite: 2, totalTokens: 18 },
+				}),
+				messageEntry("tool-result-1", "assistant-1", "2026-01-01T00:00:03.000Z", {
+					role: "toolResult",
+					toolCallId: "tool-1",
+					toolName: "read",
+					content: [{ type: "text", text: "file contents" }],
+					details: { path: "README.md", truncation: { truncated: true } },
+					isError: false,
+				}),
 			),
 		);
 
-		const trace = buildTurnTraceFromSession({
-			tree,
-			turnRecord: {
-				id: "trn_1",
-				turnType: "llm",
-				forkPiEntryId: null,
-				resultPiEntryId: "tool-result-1",
-				startedAt: "2026-01-01T00:00:00.000Z",
-				endedAt: "2026-01-01T00:00:04.000Z",
-				status: "succeeded",
-			},
+		const turnRecord = createTestTurnRecord({
+			id: "trn_1",
+			resultPiEntryId: "tool-result-1",
+			startedAt: "2026-01-01T00:00:00.000Z",
+			endedAt: "2026-01-01T00:00:04.000Z",
 		});
+		const trace = buildTurnTraceFromSession({ tree, turnRecord });
 
 		expect(trace?.assistant.text).toBe("Done.");
 		expect(trace?.assistant.thinking).toBe("Inspect first.\nCheck the result.\n");
@@ -352,17 +310,7 @@ describe("process turn trace projection", () => {
 		expect(
 			buildTurnTracePreviewsFromSession({
 				tree,
-				turnRecords: [
-					{
-						id: "trn_1",
-						turnType: "llm",
-						forkPiEntryId: null,
-						resultPiEntryId: "tool-result-1",
-						startedAt: "2026-01-01T00:00:00.000Z",
-						endedAt: "2026-01-01T00:00:04.000Z",
-						status: "succeeded",
-					},
-				],
+				turnRecords: [turnRecord],
 			}).trn_1,
 		).toEqual(buildTurnTracePreview("trn_1", trace));
 	});
@@ -371,15 +319,13 @@ describe("process turn trace projection", () => {
 		const tree = parsePiSessionTreeContent("trace-test", "");
 		const trace = buildTurnTraceFromSession({
 			tree,
-			turnRecord: {
+			turnRecord: createTestTurnRecord({
 				id: "trn_operational",
-				turnType: "llm",
-				forkPiEntryId: null,
 				resultPiEntryId: null,
 				startedAt: "2026-01-01T00:00:00.000Z",
 				endedAt: "2026-01-01T00:00:04.000Z",
 				status: "failed",
-			},
+			}),
 			events: [
 				{
 					id: "evt_operational",
@@ -407,42 +353,31 @@ describe("process turn trace projection", () => {
 		const tree = parsePiSessionTreeContent(
 			"trace-test",
 			jsonl(
-				{
-					type: "message",
-					id: "user-1",
-					parentId: null,
-					timestamp: "2026-01-01T00:00:01.000Z",
-					message: { role: "user", content: "Do the work" },
-				},
-				{
-					type: "message",
-					id: "assistant-1",
-					parentId: "user-1",
-					timestamp: "2026-01-01T00:00:04.000Z",
-					message: {
-						role: "assistant",
-						stopReason: "error",
-						errorMessage: "Later provider failure",
-						content: [
-							{ type: "thinking", thinking: "Inspect first" },
-							{ type: "toolCall", id: "tool-1", name: "read", arguments: {} },
-						],
-					},
-				},
+				messageEntry("user-1", null, "2026-01-01T00:00:01.000Z", {
+					role: "user",
+					content: "Do the work",
+				}),
+				messageEntry("assistant-1", "user-1", "2026-01-01T00:00:04.000Z", {
+					role: "assistant",
+					stopReason: "error",
+					errorMessage: "Later provider failure",
+					content: [
+						{ type: "thinking", thinking: "Inspect first" },
+						{ type: "toolCall", id: "tool-1", name: "read", arguments: {} },
+					],
+				}),
 			),
 		);
 
 		const trace = buildTurnTraceFromSession({
 			tree,
-			turnRecord: {
+			turnRecord: createTestTurnRecord({
 				id: "trn_mixed",
-				turnType: "llm",
-				forkPiEntryId: null,
 				resultPiEntryId: "assistant-1",
 				startedAt: "2026-01-01T00:00:00.000Z",
 				endedAt: "2026-01-01T00:00:05.000Z",
 				status: "failed",
-			},
+			}),
 			events: [
 				{
 					id: "evt_earlier",
@@ -506,30 +441,22 @@ describe("process turn trace projection", () => {
 			const userTimestamp = new Date(Date.UTC(2026, 0, 1, 0, 0, index * 2)).toISOString();
 			const assistantTimestamp = new Date(Date.UTC(2026, 0, 1, 0, 0, index * 2 + 1)).toISOString();
 			entries.push(
-				{
-					type: "message",
-					id: userId,
-					parentId: previousAssistantId,
-					timestamp: userTimestamp,
-					message: { role: "user", content: `prompt ${index}` },
-				},
-				{
-					type: "message",
-					id: assistantId,
-					parentId: userId,
-					timestamp: assistantTimestamp,
-					message: { role: "assistant", content: `assistant ${index}` },
-				},
+				messageEntry(userId, previousAssistantId, userTimestamp, {
+					role: "user",
+					content: `prompt ${index}`,
+				}),
+				messageEntry(assistantId, userId, assistantTimestamp, {
+					role: "assistant",
+					content: `assistant ${index}`,
+				}),
 			);
-			return {
+			return createTestTurnRecord({
 				id: `trn_${index}`,
-				turnType: "llm" as const,
 				forkPiEntryId: previousAssistantId,
 				resultPiEntryId: assistantId,
 				startedAt: userTimestamp,
 				endedAt: assistantTimestamp,
-				status: "succeeded" as const,
-			};
+			});
 		});
 		const createTree = (treeEntries: Record<string, unknown>[]): ReadonlyPiSessionTree => ({
 			...createReadonlyEntryTree(treeEntries as unknown as PiSessionEntry[]),

@@ -172,21 +172,17 @@ describe("poem creator extension", () => {
 				!existsSync(poemReviewPath),
 		);
 		expect(afterRevision.turns.filter((turn) => turn.turnId === "draft_poem")).toHaveLength(2);
-		expect(afterRevision.turns.filter((turn) => turn.turnType === "external")).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({ turnId: "poem_review", status: "succeeded" }),
-			]),
+		expect(afterRevision.turns.filter((turn) => turn.turnType === "external")).toContainEqual(
+			expect.objectContaining({ turnId: "poem_review", status: "succeeded" }),
 		);
-		expect(afterRevision.annotations).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({
-					annotationType: "external_trigger",
-					payload: expect.objectContaining({
-						externalActionId: "poem_review_file",
-						armingId: "poem_review:poem_review_file",
-					}),
+		expect(afterRevision.annotations).toContainEqual(
+			expect.objectContaining({
+				annotationType: "external_trigger",
+				payload: expect.objectContaining({
+					externalActionId: "poem_review_file",
+					armingId: "poem_review:poem_review_file",
 				}),
-			]),
+			}),
 		);
 	});
 
@@ -343,15 +339,13 @@ describe("poem creator extension", () => {
 		});
 		const processDetailBody = processDetailResponse.json();
 		expect(processDetailResponse.statusCode).toBe(200);
-		expect(processDetailBody.toolRenderers).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({
-					toolName: "leave_feedback",
-					fields: [
-						expect.objectContaining({ kind: "plaintext", path: "message", source: "arguments" }),
-					],
-				}),
-			]),
+		expect(processDetailBody.toolRenderers).toContainEqual(
+			expect.objectContaining({
+				toolName: "leave_feedback",
+				fields: [
+					expect.objectContaining({ kind: "plaintext", path: "message", source: "arguments" }),
+				],
+			}),
 		);
 		expect(await processActions(poem, issuesHarness)).toEqual(
 			expect.arrayContaining([
@@ -385,14 +379,12 @@ describe("poem creator extension", () => {
 			pathType: "primary",
 			forkPiEntryId: acceptedReviewDrafts[0]?.resultPiEntryId,
 		});
-		expect(afterAcceptedReview.turns).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({
-					turnId: "poem_review_feedback",
-					turnType: "human",
-					status: "succeeded",
-				}),
-			]),
+		expect(afterAcceptedReview.turns).toContainEqual(
+			expect.objectContaining({
+				turnId: "poem_review_feedback",
+				turnType: "human",
+				status: "succeeded",
+			}),
 		);
 	});
 
@@ -417,14 +409,12 @@ describe("poem creator extension", () => {
 			pathType: "primary",
 			forkPiEntryId: draftTurnRecords[0]?.resultPiEntryId,
 		});
-		expect(rerun.turns).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({
-					turnId: "poem_review",
-					turnType: "human",
-					status: "succeeded",
-				}),
-			]),
+		expect(rerun.turns).toContainEqual(
+			expect.objectContaining({
+				turnId: "poem_review",
+				turnType: "human",
+				status: "succeeded",
+			}),
 		);
 	});
 

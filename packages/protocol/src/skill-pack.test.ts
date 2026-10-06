@@ -37,6 +37,11 @@ describe("skill pack contract", () => {
 		const missing = pack();
 		missing.skills.pop();
 		expect(() => parseSkillPackManifest(missing)).toThrow("Missing skill pack dependency");
+		const repeated = pack();
+		repeated.skills[0].dependencies = ["design", "design"];
+		expect(() => parseSkillPackManifest(repeated)).toThrow(
+			"Duplicate dependencies for skill 'review'",
+		);
 		const duplicate = pack();
 		duplicate.skills.push(duplicate.skills[0]);
 		expect(() => parseSkillPackManifest(duplicate)).toThrow("Duplicate skill ID");

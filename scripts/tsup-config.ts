@@ -12,3 +12,21 @@ export function workspaceBuild(overrides: Options = {}) {
 		...overrides,
 	});
 }
+
+/** Browser defaults for extension custom elements. @internal */
+export function extensionUiBuild(entry: Options["entry"]) {
+	return workspaceBuild({
+		entry,
+		outDir: "dist/ui",
+		dts: false,
+		silent: true,
+		bundle: true,
+		splitting: false,
+		platform: "browser",
+		target: "es2022",
+		noExternal: [/^@leitwerk-dev\/process-sdk/],
+		esbuildOptions(buildOptions) {
+			buildOptions.conditions = ["source", "browser"];
+		},
+	});
+}

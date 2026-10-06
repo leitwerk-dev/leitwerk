@@ -38,6 +38,7 @@ import {
 import { LocalGit } from "@leitwerk-dev/test-support/local-git";
 import {
 	createInProcessWorkerSpawn,
+	formatBranchText,
 	StubPiTreeHandleFactory,
 } from "@leitwerk-dev/test-support/worker-testing";
 import { describe, expect, it } from "vitest";
@@ -113,19 +114,7 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 	const pi = new StubPiTreeHandleFactory({
 		toolCallScriptResolver({ tools, promptText, sessionCwd, workspaceRoot, instanceId }) {
 			const names = tools.map((t) => t.name);
-			const treeText =
-				pi.sessions
-					.at(-1)
-					?.getBranch()
-					.map((entry) =>
-						entry.type === "custom_message"
-							? entry.content
-							: entry.type === "message"
-								? entry.message?.content
-								: "",
-					)
-					.filter((value): value is string => typeof value === "string")
-					.join("\n\n") ?? "";
+			const treeText = formatBranchText(pi.sessions.at(-1)?.getBranch());
 			const prompt = `${treeText}\n${promptText}`;
 			const response = model.respond(JSON.stringify({ tools: names, prompt }));
 			const cwd = sessionCwd ?? workspaceRoot;

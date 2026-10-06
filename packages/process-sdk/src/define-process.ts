@@ -798,29 +798,17 @@ function buildActionPreviewAndScheduling(
 	};
 }
 
-function mergeProcessEffectPlans<TState>(
-	left: ProcessEffectPlan<TState> | undefined,
-	right: ProcessEffectPlan<TState> | undefined,
-): ProcessEffectPlan<TState> | undefined {
-	if (!left) {
-		return right;
-	}
-	if (!right) {
-		return left;
-	}
+function withFormState<TState>(
+	effect: ProcessEffectPlan<TState> | undefined,
+	state: TState,
+): ProcessEffectPlan<TState> {
 	return {
-		...left,
-		...right,
-		...(left.processPatch || right.processPatch
-			? { processPatch: { ...(left.processPatch ?? {}), ...(right.processPatch ?? {}) } }
-			: {}),
-		...(left.broadcasts || right.broadcasts
-			? { broadcasts: [...(left.broadcasts ?? []), ...(right.broadcasts ?? [])] }
-			: {}),
-		...(left.emit || right.emit ? { emit: [...(left.emit ?? []), ...(right.emit ?? [])] } : {}),
-		...(left.queueInput || right.queueInput
-			? { queueInput: [...(left.queueInput ?? []), ...(right.queueInput ?? [])] }
-			: {}),
+		...effect,
+		state,
+		...(effect?.processPatch ? { processPatch: { ...effect.processPatch } } : {}),
+		...(effect?.broadcasts ? { broadcasts: [...effect.broadcasts] } : {}),
+		...(effect?.emit ? { emit: [...effect.emit] } : {}),
+		...(effect?.queueInput ? { queueInput: [...effect.queueInput] } : {}),
 	};
 }
 
@@ -973,26 +961,18 @@ function compileTurnOutcomeDefinitions<TParams, TState>(input: {
 		if (outcome.trim() === "") {
 			throw new Error(`Turn '${input.turnId}' declares an empty outcome id`);
 		}
-		const routing =
-			"branches" in spec
-				? {
-						routes: compileBranchRoutes({
-							branches: spec.branches,
-							knownTurnIds: input.knownTurnIds,
-							context: `Turn '${input.turnId}' outcome '${outcome}'`,
-						}),
-						choose: spec.choose,
-					}
-				: null;
-		const target = routing
-			? null
-			: buildOutcomeTransition(input.turnId, outcome, spec, input.knownTurnIds);
-		if (routing) {
-			routings.set(outcome, routing);
-			for (const route of Object.values(routing.routes)) {
+		if ("branches" in spec) {
+			const routes = compileBranchRoutes({
+				branches: spec.branches,
+				knownTurnIds: input.knownTurnIds,
+				context: `Turn '${input.turnId}' outcome '${outcome}'`,
+			});
+			routings.set(outcome, { routes, choose: spec.choose });
+			for (const route of Object.values(routes)) {
 				transitions.push({ ...route, outcome });
 			}
-		} else if (target) {
+		} else {
+			const target = buildOutcomeTransition(input.turnId, outcome, spec, input.knownTurnIds);
 			transitions.push({ ...target, outcome });
 		}
 		effects.set(outcome, spec.effect);
@@ -1030,12 +1010,7 @@ function compileMappedTurnTransitions<TParams, TState>(input: {
 	if (routing.kind === "static") {
 		const target = normalizeStaticRouteTarget(
 			`Mapped turn '${input.turnId}' collection`,
-			{
-				...(routing.to !== undefined ? { to: routing.to } : {}),
-				...(routing.lifecycleStatus !== undefined
-					? { lifecycleStatus: routing.lifecycleStatus }
-					: {}),
-			},
+			routing,
 			input.knownTurnIds,
 		);
 		return [{ ...target, trigger: mappedCollectTrigger() }];
@@ -1165,9 +1140,7 @@ function deriveHumanTurnActions<TParams, TState>(input: {
 	actions: readonly DerivedHumanTurnAction<TParams, TState>[];
 	transitions: readonly ProcessTurnTransition[];
 } {
-	const actionEntries = Object.entries(input.spec.actions) as Array<
-		[string, ProcessHumanTurnActionSpec<TParams, TState>]
-	>;
+	const actionEntries = Object.entries(input.spec.actions);
 	const derivedActions: DerivedHumanTurnAction<TParams, TState>[] = [];
 	const transitions: ProcessTurnTransition[] = [];
 	const actionIdByTrigger = new Map<string, string>();
@@ -1232,9 +1205,7 @@ function compileExternalActionTransitions<TParams, TState>(
 	},
 	actionIdByTrigger = new Map<string, string>(),
 ): readonly ProcessTurnTransition[] {
-	const entries = Object.entries(input.spec.externalActions ?? {}) as Array<
-		[string, ProcessHumanTurnExternalActionSpec<TParams, TState>]
-	>;
+	const entries = Object.entries(input.spec.externalActions ?? {});
 	return compileDeclarations(entries, ([externalActionId, actionSpec]) => {
 		if (actionSpec.publishInput) {
 			if (actionSpec.complete === true || actionSpec.lifecycleStatus !== undefined) {
@@ -1751,9 +1722,7 @@ function buildDefinedProcess<TParams, TState>(
 						inputValue,
 						state: effectResult?.state ?? ctx.state,
 					});
-					const result = formState
-						? mergeProcessEffectPlans(effectResult, { state: formState })
-						: effectResult;
+					const result = formState ? withFormState(effectResult, formState) : effectResult;
 					await applyProcessEffectPlan({
 						ctx,
 						result,
