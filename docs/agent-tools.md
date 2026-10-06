@@ -71,7 +71,7 @@ Automatic turns and LLM preparation use `ctx.callIntegrationTool(name, args)` wi
 the same authorization, replay, and cancellation rules.
 
 The wiki package registers its topic-bound tools through the same registry; see
-[wiki interfaces and contribution rules](../packages/wiki/README.md). Extensions own provider schemas,
+[wiki interfaces and contribution rules](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/wiki/README.md). Extensions own provider schemas,
 authorization policy, response validation, and provider-specific behavior.
 
 ### Tool approvals

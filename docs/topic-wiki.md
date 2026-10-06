@@ -1,6 +1,6 @@
 # Topic solution wikis
 
-[`@leitwerk-dev/wiki`](../packages/wiki/README.md) owns solution wiki storage,
+[`@leitwerk-dev/wiki`](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/wiki/README.md) owns solution wiki storage,
 tools, HTTP handlers, and browser views. The application supplies database,
 authentication, tool registration, and UI services. Process SDK exports contain
 no wiki-specific contracts.
@@ -16,6 +16,6 @@ immutable issue ID: subtasks share their direct parent's topic, and other
 epic-linked tickets share their epic's topic. Provider adapters validate retained
 bindings and refresh source requirements. Any process can use a topic without Jira.
 
-The [package reference](../packages/wiki/README.md) documents tool parameters,
+The [package reference](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/wiki/README.md) documents tool parameters,
 HTTP contracts, hosting, evidence status, revisions, deletion, and compatibility.
 Wiki content is untrusted evidence and never overrides process requirements.

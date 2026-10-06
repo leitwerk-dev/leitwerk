@@ -69,7 +69,7 @@ Model provider sets resolve before server setup. Each provider parses only its
 owner-supplied configuration fragment. See [extension-defined providers](models.md#extension-defined-providers).
 Browser result renderers use a separate [UI manifest](extension-ui.md).
 
-Shared solution wikis are owned by [`@leitwerk-dev/wiki`](../packages/wiki/README.md),
+Shared solution wikis are owned by [`@leitwerk-dev/wiki`](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/wiki/README.md),
 including their process bindings, tools, and contribution guidance. `.runtime({ repositoryCheckout: "on_demand" })`
 opts a process into [lazy full clones](process-workspace.md#2-repository-management).
 Use `repositoryCheckout: "none"` for server-tool-only repository inspection. It
@@ -582,7 +582,7 @@ policy lookups belong in the effect so routing does not repeat them.
 ### Integration maintenance
 
 Integrations may register server maintenance through a capability, independent of
-the selected turn. GitLab's [maintained-process helper](../extensions/gitlab/README.md#shared-mr-maintenance)
+the selected turn. GitLab's [maintained-process helper](https://github.com/leitwerk-dev/leitwerk/blob/main/extensions/gitlab/README.md#shared-mr-maintenance)
 provides MR observation, active/done labels, settled feedback and durable
 acknowledgements. Processes declare their bindings, existing external edges, repair
 policy and completion adapters. Polling does not add business turns or turn attempts.
