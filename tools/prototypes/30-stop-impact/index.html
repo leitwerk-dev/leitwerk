@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stop impact · Leitwerk prototype</title>
+<style>
+:root{color-scheme:light;--ink:#18212b;--muted:#4c5968;--blue:#2f61b7;--line:#d9dee5;--soft:#f7f8fa;--red:#a83a32;--amber:#825013;--green:#157a52;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink);background:#fff;font-size:15px;line-height:1.55}
+*{box-sizing:border-box}body{margin:0}button,input,textarea{font:inherit}button{min-height:44px;padding:9px 17px;border:1px solid var(--line);border-radius:24px;background:#fff;color:var(--ink);font-weight:600;cursor:pointer;line-height:1.4}button:hover{border-color:var(--blue);background:#f3f6fb}button:active{background:#e6ecf6}button:disabled{opacity:.55;cursor:default}button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid var(--blue);outline-offset:3px}button.primary{color:#fff;background:var(--ink);border-color:var(--ink)}button.danger{color:var(--red);border-color:#c99b96}button.danger.primary{color:#fff;background:var(--red);border-color:var(--red)}::selection{background:#e6ecf6}input,textarea{caret-color:var(--blue)}a{color:var(--blue);text-underline-offset:3px}p{margin:0 0 14px;max-width:72ch}h1,h2,h3{line-height:1.25;margin:0 0 12px}h1{font-size:30px;letter-spacing:-.02em}h2{font-size:21px}h3{font-size:16px}small,.caption{font-size:13px;color:var(--muted)}.muted{color:var(--muted)}header{border-bottom:1px solid var(--line);padding:18px 36px;display:flex;align-items:center;justify-content:space-between;gap:16px}.brand{font-weight:700;font-size:18px}.brand span{font-weight:400;color:var(--muted);margin-left:16px}main{max-width:1240px;margin:0 auto;padding:38px 36px 48px}.intro{margin-bottom:30px}.intro p{margin-bottom:0}.layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:38px}.work{min-width:0}.current{border-top:2px solid var(--ink);padding:23px 0 22px}.rowhead{display:flex;align-items:start;justify-content:space-between;gap:14px}.status{display:inline-block;border-radius:20px;padding:4px 10px;background:#eef2f7;font-size:13px;white-space:nowrap}.state{color:var(--blue);font-weight:650}.facts{display:flex;flex-wrap:wrap;gap:6px 24px;margin-top:16px;font-size:13px;color:var(--muted)}.facts strong{color:var(--ink);font-weight:600}.inventory{border-top:1px solid var(--line);padding-top:22px}.inventory h2{margin-bottom:6px}.effect{display:grid;grid-template-columns:136px minmax(0,1fr);gap:20px;padding:19px 0;border-bottom:1px solid var(--line)}.effect:last-child{border-bottom:0}.effect-label{font-weight:600;font-size:13px}.effect-label.unknown{color:var(--amber)}.effect-label.committed{color:var(--green)}.effect p{font-size:14px;margin:4px 0 0}.effect h3{margin:0;font-size:15px}.intervention{margin-top:16px;padding:23px;background:var(--soft);border:1px solid var(--line);border-radius:14px}.controls{display:flex;flex-wrap:wrap;gap:9px}.intervention .caption{margin-bottom:16px}.preview{border-top:1px solid var(--line);margin-top:22px;padding-top:21px}.preview h3{font-size:19px}.consequences{padding-left:20px;margin:12px 0 18px}.consequences li{margin:6px 0}.notice{padding:13px 15px;background:#fff4e5;color:#72430f;border:1px solid #ddc5a2;border-radius:9px;margin:14px 0;font-size:14px}.notice.error{background:#fff5f4;color:#7d2d27;border-color:#d7b6b2}.notice.info{background:#eaf0fa;color:#244c91;border-color:#c0cee3}label{display:block;font-weight:600;font-size:14px;margin-bottom:6px}textarea{width:100%;min-height:80px;resize:vertical;border:1px solid #aeb7c2;border-radius:9px;padding:10px 12px;background:#fff;color:var(--ink);margin-bottom:12px}.receipt{margin-top:24px;padding:22px 0;border-top:2px solid var(--ink)}.receipt h2{font-size:22px}.receipt dl{margin:18px 0;display:grid;grid-template-columns:140px 1fr;gap:7px 12px}.receipt dt{color:var(--muted)}.receipt dd{margin:0;overflow-wrap:anywhere}.receipt ul{padding-left:20px}.receipt li{margin:7px 0}.laboratory{background:var(--soft);padding:22px;border-radius:14px;align-self:start}.laboratory h2{font-size:18px}.laboratory p{font-size:14px}.tabs{display:grid;gap:7px;margin:16px 0}.tabs button{text-align:left;border-radius:9px;font-size:14px;font-weight:500}.tabs button[aria-selected=true]{background:#e6ecf6;border-color:var(--blue);color:#244c91}.guide{padding-top:16px;border-top:1px solid var(--line)}.guide .step{font-weight:600;color:var(--blue);margin-bottom:7px}.guide button{width:100%;margin:4px 0 12px}.fixture{margin-top:24px;padding-top:22px;border-top:1px solid var(--line)}.fixture .controls{display:grid;gap:8px}.fixture button{text-align:left;font-size:13px;border-radius:9px;font-weight:500}.fixture-state{font-size:13px;margin-top:13px;color:var(--muted)}.message{font-size:14px;min-height:25px;margin:18px 0 0;color:var(--blue)}footer{margin-top:32px;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:13px}.compact-note{margin-top:13px}.local-tag{font-size:13px;color:var(--muted)}
+@media(max-width:850px){header{padding:15px 20px}.brand span{display:none}main{padding:28px 20px 35px}.layout{grid-template-columns:1fr;gap:28px}.laboratory{order:2}.intro{margin-bottom:22px}h1{font-size:26px}.rowhead{flex-wrap:wrap}.effect{grid-template-columns:110px minmax(0,1fr);gap:14px}.intervention{padding:18px}.receipt dl{grid-template-columns:110px 1fr}}@media(max-width:420px){.effect{grid-template-columns:1fr;gap:5px}.controls button{flex:1 1 auto}.facts{gap:6px 16px}.local-tag{max-width:135px;text-align:right}.receipt dl{grid-template-columns:1fr;gap:2px}.receipt dd{margin-bottom:9px}}
+</style>
+</head>
+<body>
+<header><div class="brand">Leitwerk <span>Process supervision</span></div><span class="local-tag">Interactive prototype · 30</span></header>
+<main>
+<div class="intro"><h1>Know what stopping will leave behind</h1><p class="muted">Future proposal with synthetic, in-memory data. Can a short impact review make it clear that stopping work does not undo published changes?</p></div>
+<div class="layout">
+<div class="work">
+<section class="current" aria-labelledby="process-title"><div class="rowhead"><div><h2 id="process-title">Update deployment health checks</h2><p class="muted">Process #104 · platform / gateway</p></div><span class="status" id="lifecycle"></span></div><div id="current-operation"></div><div class="facts" id="facts"></div></section>
+<section class="inventory" aria-labelledby="inventory-title"><h2 id="inventory-title">What remains outside this turn</h2><p class="caption" id="inventory-summary"></p><div id="effects"></div></section>
+<section class="intervention" aria-labelledby="intervention-title"><h2 id="intervention-title">Intervene in current work</h2><p class="caption">Review the scope before confirming. Every action here is a local simulation.</p><div class="controls"><button type="button" id="review-stop" data-action="review-stop">Review stop this turn</button><button type="button" id="review-abort" class="danger" data-action="review-abort">Review abort process</button></div><div id="confirmation"></div></section>
+<div id="receipt"></div>
+<p class="message" id="message" role="status" aria-live="polite"></p>
+</div>
+<aside class="laboratory" aria-labelledby="lab-title"><h2 id="lab-title">Try the consequences</h2><p class="muted">Choose a guided case, or use the review controls and change the fixture below.</p><div class="tabs" role="tablist" aria-label="Guided scenarios"><button type="button" role="tab" id="scenario-stop" data-scenario="stop" aria-selected="false" aria-controls="guide">Stop, then wait for confirmation</button><button type="button" role="tab" id="scenario-race" data-scenario="race" aria-selected="false" aria-controls="guide">A write commits during review</button><button type="button" role="tab" id="scenario-refusal" data-scenario="refusal" aria-selected="false" aria-controls="guide">Worker disappears before stop</button></div><div class="guide" id="guide" role="tabpanel"></div><div class="fixture"><h3>Change the synthetic fixture</h3><p class="caption">These buttons stand in for outside events. They do not run commands against a service.</p><div class="controls"><button type="button" data-action="commit" id="fixture-commit">Receive write commitment</button><button type="button" data-action="ack" id="fixture-ack">Receive interruption confirmation</button><button type="button" data-action="lose-worker" id="fixture-worker">Make worker unavailable</button><button type="button" data-action="lose-supervisor" id="fixture-supervisor">Make supervisor unavailable</button><button type="button" data-action="restore" id="fixture-restore">Restore worker connection</button><button type="button" data-action="finish" id="fixture-finish">Complete process elsewhere</button></div><div class="fixture-state" id="fixture-state"></div><button type="button" id="reset" data-action="reset" style="margin-top:16px">Reset free play</button></div></aside>
+</div>
+<footer>Proposed impact projection and acceptance receipt. Recorded evidence is bounded; external systems remain authoritative. No production integration, storage, or external writes.</footer>
+</main>
+<script>
+// Pure model: no browser or DOM dependencies.
+const StopImpact = (() => {
+ const initial = () => ({ lifecycle:"active", turnStatus:"running", turnId:"publish_changes", turnRecordId:"turn-104-3", attempt:3, sequence:18, worker:true, supervisor:true, stopRequested:false, note:"", preview:null, receipt:null, error:null, guide:null, step:0, message:"Choose an intervention to review its impact.", effects:[
+ {id:"branch",name:"Feature branch pushed",detail:"platform/gateway · health-checks · commit 8d2a6c1",status:"committed",observed:16},
+ {id:"write",name:"Pull request creation",detail:"Request sent to Forgejo. The provider response has not been reconciled; a pull request may already exist.",status:"unknown",observed:18},
+ {id:"approval",name:"Release note approval",detail:"Awaiting a decision for turn-104-3. It is cancelled when this accepted turn ends.",status:"pending",observed:18},
+ {id:"derived",name:"Issue draft #109",detail:"Created earlier from a result. Its own review and ticket publication continue independently.",status:"independent",observed:17}
+ ]});
+ const capture = s => ({sequence:s.sequence,turnRecordId:s.turnRecordId,effects:structuredClone(s.effects)});
+ const result = (state,ok=true,code="ok") => ({state,ok,code});
+ function reduce(state,action) {
+  if(action==="reset")return result(initial());
+  const s=structuredClone(state);s.error=null;
+  const refuse=(code,message)=>{s.error={code,message};s.message=`Action refused: ${message}`;return result(s,false,code);};
+  if(action==="review-stop"||action==="review-abort"||action==="refresh"){
+   const kind=action==="refresh"?s.preview?.kind:action==="review-stop"?"stop":"abort";
+   if(!kind)return refuse("no_review","Choose an intervention first.");
+   s.preview={...capture(s),kind};s.message=`${kind==="stop"?"Turn stop":"Process abort"} review captured at evidence ${s.sequence}.`;
+  }else if(action==="cancel"){
+   s.preview=null;s.message="Review closed. No intervention was requested; your local note is retained.";
+  }else if(action==="commit"){
+   const write=s.effects.find(x=>x.id==="write");
+   if(write.status==="committed")return refuse("fixture_unchanged","The provider commitment is already recorded.");
+   s.sequence++;write.status="committed";write.name="Pull request #286 created";write.detail="platform/gateway · open in Forgejo. Stopping this process does not close or delete it.";write.observed=s.sequence;
+   s.message=`Provider commitment received at evidence ${s.sequence}. Open reviews keep their original snapshot.`;
+  }else if(action==="lose-worker"||action==="lose-supervisor"){
+   if(action==="lose-worker")s.worker=false;else s.supervisor=false;
+   s.sequence++;s.message=action==="lose-worker"?"Worker is unavailable. The recorded turn is still running; a missing worker is not proof of a stopped turn.":"Worker supervisor is unavailable. A turn stop cannot be accepted.";
+  }else if(action==="restore"){
+   s.worker=true;s.supervisor=true;s.sequence++;s.message="Synthetic connection restored. The draft and review boundary are unchanged.";
+  }else if(action==="finish"){
+   if(s.lifecycle==="completed"||s.lifecycle==="aborted")return refuse("fixture_unchanged","This process is already terminal.");
+   s.lifecycle="completed";s.turnStatus="completed";s.stopRequested=false;s.sequence++;
+   s.effects=s.effects.map(x=>x.id==="approval"?{...x,status:"cancelled",detail:"The accepted turn ended. This approval can no longer be decided.",observed:s.sequence}:x);
+   s.message="Synthetic completion arrived. A previously opened confirmation still needs current-state validation.";
+  }else if(action==="request"){
+   if(!s.preview)return refuse("no_review","Choose an intervention first.");
+   const kind=s.preview.kind;
+   const accepted=capture(s);
+   if(kind==="stop"){
+    if(!s.supervisor)return refuse("worker_supervisor_unavailable","Worker supervisor is not available.");
+    if(s.lifecycle!=="active"||s.turnStatus!=="running")return refuse("invalid_transition","This process has no running LLM turn to stop.");
+    if(!s.worker)return refuse("worker_unavailable","No active worker is available to stop this turn. Restore the connection or review abort process.");
+    if(s.stopRequested)return refuse("request_pending","An interruption request is already awaiting confirmation.");
+    s.stopRequested=true;
+   }else{
+    if(s.lifecycle==="completed"||s.lifecycle==="aborted")return refuse("invalid_transition","Process cannot be aborted in the current lifecycle status.");
+    s.lifecycle="aborted";s.turnStatus="aborted";s.stopRequested=false;
+    s.effects=s.effects.map(x=>x.id==="approval"?{...x,status:"cancelled",detail:"The accepted turn ended on process abort. This approval is cancelled.",observed:s.sequence+1}:x);
+   }
+   s.receipt={kind,reviewed:structuredClone(s.preview),accepted,note:s.note,interruptionConfirmed:false};
+   s.sequence++;s.preview=null;
+   s.message=kind==="stop"?"Stop request accepted. Execution may still be running until interruption is confirmed.":"Process aborted. Committed effects and the independent issue draft remain.";
+  }else if(action==="ack"){
+   if(!s.stopRequested)return refuse("fixture_no_request","There is no accepted interruption request awaiting confirmation.");
+   s.stopRequested=false;s.lifecycle="error";s.turnStatus="failed";s.sequence++;
+   s.effects=s.effects.map(x=>x.id==="approval"?{...x,status:"cancelled",detail:"Turn-104-3 ended after interruption. This approval is cancelled.",observed:s.sequence}:x);
+   if(s.receipt?.kind==="stop")s.receipt.interruptionConfirmed=true;
+   s.message="Interruption confirmed. The failed turn is parked for recovery; selected turn and attempt are unchanged.";
+  }
+  return result(s);
+ }
+ return {initial,reduce};
+})();
+const scenarios={
+ stop:{title:"Stop, then wait for confirmation",description:"Interrupt the active LLM turn, then distinguish an accepted request from the worker's final report.",steps:[{action:"review-stop",label:"Review this turn's impact",expect:"ok"},{action:"request",label:"Request stop this turn",expect:"ok"},{action:"ack",label:"Receive worker confirmation",expect:"ok"}],learning:"Turn stop parks the failed turn for recovery only after confirmation. The published branch remains; the write can still be uncertain."},
+ race:{title:"A write commits during review",description:"Keep the review open while the provider reports a committed write. The acceptance receipt must name that newer evidence.",steps:[{action:"review-abort",label:"Review abort process",expect:"ok"},{action:"commit",label:"Receive provider commitment",expect:"ok"},{action:"request",label:"Confirm abort with latest evidence",expect:"ok"}],learning:"The receipt preserves both boundaries: what was reviewed and what was known at acceptance. Pull request #286 remains open; issue draft #109 continues."},
+ refusal:{title:"Worker disappears before stop",description:"Open a review and write an optional note. Losing the worker must refuse the command without losing your draft.",steps:[{action:"review-stop",label:"Review stop this turn",expect:"ok"},{action:"lose-worker",label:"Make the worker unavailable",expect:"ok"},{action:"request",label:"Try stop and inspect refusal",expect:"worker_unavailable"}],learning:"The current command is refused as worker_unavailable. The process stays active and the note survives. Restore the connection or review abort process."}
+};
+let state=StopImpact.initial();
+const $=id=>document.getElementById(id);
+const escapeHtml=value=>String(value).replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[char]));
+const labels={committed:"Committed",unknown:"Uncertain write",pending:"Open approval",cancelled:"Approval cancelled",independent:"Independent process"};
+function dispatch(action){
+ const before=state;const outcome=StopImpact.reduce(state,action);state=outcome.state;
+ if(before.guide&&action!=="reset"){
+  const step=scenarios[before.guide].steps[before.step];
+  if(step&&step.action===action&&step.expect===outcome.code)state.step=before.step+1;
+ }
+ render();
+}
+function render(){
+ const s=state;const preview=s.preview;const stale=preview&&preview.sequence!==s.sequence;
+ $("lifecycle").textContent=`Lifecycle: ${s.lifecycle}`;
+ $("current-operation").innerHTML=`<div class="state">${s.stopRequested?"Interruption requested · awaiting confirmation":s.lifecycle==="error"?"Turn interrupted · parked for recovery":s.lifecycle==="aborted"?"Workflow ended by operator":s.lifecycle==="completed"?"Workflow completed elsewhere":"Publishing repository changes"}</div><p class="caption compact-note">${s.lifecycle==="active"?"This accepted LLM turn may still be executing. Published effects are recorded below.":"The retained record shows what happened. Remote changes need their own follow-up."}</p>`;
+ $("facts").innerHTML=`<span>Selected turn <strong>${s.turnId}</strong></span><span>Attempt <strong>${s.attempt}</strong></span><span>Turn record <strong>${s.turnRecordId}</strong></span><span>Turn status <strong>${s.turnStatus}</strong></span>`;
+ const committed=s.effects.filter(x=>x.status==="committed").length;const uncertain=s.effects.filter(x=>x.status==="unknown").length;
+ $("inventory-summary").textContent=`${committed} committed effect${committed===1?"":"s"} · ${uncertain} uncertain write${uncertain===1?"":"s"} · Latest recorded evidence ${s.sequence}. This is not a complete remote audit.`;
+ $("effects").innerHTML=s.effects.map(x=>`<article class="effect"><div class="effect-label ${x.status}">${labels[x.status]}</div><div><h3>${x.name}</h3><p>${x.detail}</p><p class="caption">Observed at evidence ${x.observed}</p></div></article>`).join("");
+ $("review-stop").disabled=s.lifecycle!=="active"||s.turnStatus!=="running"||s.stopRequested;
+ $("review-abort").disabled=s.lifecycle==="completed"||s.lifecycle==="aborted";
+ $("confirmation").innerHTML=preview?`<div class="preview"><h3>${preview.kind==="stop"?"Stop this turn?":"Abort this process?"}</h3><p class="caption">Review bound to ${preview.turnRecordId} · evidence ${preview.sequence}</p><ul class="consequences"><li>${preview.kind==="stop"?"Request interruption of this LLM turn. Recovery becomes available after its failure is recorded.":"End this workflow as aborted and cancel its open turn approvals. History remains available."}</li><li>Known committed effects: ${preview.effects.filter(x=>x.status==="committed").length}. These remain in the external system. ${preview.effects.some(x=>x.status==="unknown")?"The in-flight write may already be committed.":"No uncertain write is recorded in this snapshot."}</li><li>Issue draft #109 continues independently. No rollback is performed.</li></ul>${stale?`<div class="notice">Review is stale: evidence ${preview.sequence} was reviewed; current evidence is ${s.sequence}. Confirmation checks current availability and records the latest observed effects. <button type="button" data-action="refresh" id="refresh-review">Refresh impact review</button></div>`:""}<label for="note">Operator note <span class="muted">(local draft, optional)</span></label><textarea id="note" placeholder="What needs follow-up after stopping?">${escapeHtml(s.note)}</textarea>${s.error?`<div class="notice error" role="alert"><strong>Request refused · ${s.error.code}</strong><br>${s.error.message}<br>Your review and note are retained.</div>`:""}<div class="controls"><button type="button" class="${preview.kind==="abort"?"danger ":""}primary" data-action="request" id="confirm-action">${preview.kind==="stop"?"Request stop this turn":"Confirm abort process"}</button><button type="button" data-action="cancel" id="cancel-review">Close review</button></div></div>`:"";
+ const receipt=s.receipt;
+ $("receipt").innerHTML=receipt?`<section class="receipt" aria-labelledby="receipt-title"><h2 id="receipt-title">${receipt.kind==="stop"?receipt.interruptionConfirmed?"Turn interruption confirmed":"Stop request accepted":"Process abort receipt"}</h2><p>${receipt.kind==="stop"?(receipt.interruptionConfirmed?"The turn failed after operator interruption. Lifecycle is error, selected turn stays publish_changes, and attempt remains 3.":"This receipt confirms acceptance of the request. It does not yet confirm that execution has stopped."):"Lifecycle is aborted. Recorded history and external changes remain available."}</p><dl><dt>Reviewed</dt><dd>Evidence ${receipt.reviewed.sequence} · ${receipt.reviewed.turnRecordId}</dd><dt>At acceptance</dt><dd>Evidence ${receipt.accepted.sequence} · ${receipt.accepted.turnRecordId}</dd><dt>Operator note</dt><dd>${escapeHtml(receipt.note||"No note added.")}</dd></dl>${receipt.accepted.sequence!==receipt.reviewed.sequence?`<div class="notice info">Evidence changed after review. The acceptance snapshot below includes the latest observed results.</div>`:""}<h3>Effects recorded at acceptance</h3><ul>${receipt.accepted.effects.filter(x=>x.id!=="approval").map(x=>`<li><strong>${x.name}</strong> — ${labels[x.status].toLowerCase()}. ${x.status==="unknown"?"Reconcile with the provider; missing evidence does not mean cancelled.":x.status==="independent"?"Continues independently.":"Remains in the external system."}</li>`).join("")}</ul><p class="caption">The receipt is a fixed acceptance snapshot. New observations appear in the inventory above; they do not rewrite this evidence boundary.</p>${receipt.kind==="stop"&&!receipt.interruptionConfirmed&&s.stopRequested?'<button type="button" data-action="ack" id="receipt-ack">Simulate worker confirmation</button>':""}</section>`:"";
+ $("message").textContent=s.message;
+ for(const name of Object.keys(scenarios))$(`scenario-${name}`).setAttribute("aria-selected",String(s.guide===name));
+ const guide=s.guide?scenarios[s.guide]:null;
+ $("guide").innerHTML=guide?`<p class="step">${s.step===guide.steps.length?"Walkthrough complete":`Step ${s.step+1} of ${guide.steps.length}`}</p><p>${s.step===guide.steps.length?guide.learning:guide.description}</p>${s.step<guide.steps.length?`<button type="button" class="primary" id="guide-next" data-action="${guide.steps[s.step].action}">${guide.steps[s.step].label}</button>`:""}<p class="caption">A step advances only after its action succeeds or its expected refusal is observed.</p>`:'<p class="muted">Free play is ready. A guided case resets the fixture and starts a fresh draft.</p>';
+ $("fixture-state").textContent=`Worker: ${s.worker?"available":"unavailable"} · Supervisor: ${s.supervisor?"available":"unavailable"}`;
+ $("fixture-commit").disabled=!s.effects.some(x=>x.status==="unknown");
+ $("fixture-ack").disabled=!s.stopRequested;
+ $("fixture-worker").disabled=!s.worker;$("fixture-supervisor").disabled=!s.supervisor;
+ $("fixture-finish").disabled=s.lifecycle==="completed"||s.lifecycle==="aborted";
+}
+document.addEventListener("click",event=>{const button=event.target.closest("button");if(!button||button.disabled)return;if(button.dataset.scenario){state=StopImpact.initial();state.guide=button.dataset.scenario;state.message="Guided fixture loaded. Use the next step or the matching free-play action.";render();}else if(button.dataset.action)dispatch(button.dataset.action);});
+document.addEventListener("input",event=>{if(event.target.id==="note")state={...state,note:event.target.value};});
+render();
+</script>
+</body>
+</html>
