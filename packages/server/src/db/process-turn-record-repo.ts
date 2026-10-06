@@ -8,7 +8,7 @@ import type {
 	TurnId,
 	WorkerErrorClass,
 } from "@leitwerk-dev/domain";
-import { asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, notExists, sql } from "drizzle-orm";
 import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core";
 import type { LeitwerkDb } from "./database.js";
 import { generateId, mappedItemRef, now } from "./repo-helpers.js";
@@ -143,6 +143,49 @@ export function createProcessTurnRecordRepo(db: LeitwerkDb) {
 				.orderBy(asc(s.turnRecords.startedAt))
 				.all()
 				.map(rowToProcessTurnRecord);
+		},
+
+		/** Only absent summaries need repair; don't read every retained turn at startup. @internal */
+		listMissingSummaries(instanceId: string): ProcessTurnRecord[] {
+			return db
+				.select()
+				.from(s.turnRecords)
+				.where(
+					and(
+						eq(s.turnRecords.instanceId, instanceId),
+						notExists(
+							db
+								.select({ id: s.turnSummaries.turnRecordId })
+								.from(s.turnSummaries)
+								.where(eq(s.turnSummaries.turnRecordId, s.turnRecords.id)),
+						),
+					),
+				)
+				.all()
+				.map(rowToProcessTurnRecord);
+		},
+		/** A stable page, even when new turns arrive or timestamps tie. @internal */
+		listPage(
+			instanceId: string,
+			before?: Pick<ProcessTurnRecord, "startedAt" | "id">,
+			limit = 40,
+		): ProcessTurnRecord[] {
+			return db
+				.select()
+				.from(s.turnRecords)
+				.where(
+					and(
+						eq(s.turnRecords.instanceId, instanceId),
+						before
+							? sql`(${s.turnRecords.startedAt}, ${s.turnRecords.id}) < (${before.startedAt}, ${before.id})`
+							: undefined,
+					),
+				)
+				.orderBy(desc(s.turnRecords.startedAt), desc(s.turnRecords.id))
+				.limit(limit)
+				.all()
+				.map(rowToProcessTurnRecord)
+				.reverse();
 		},
 
 		/** @internal */

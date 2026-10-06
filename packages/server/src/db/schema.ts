@@ -486,6 +486,7 @@ export const processLeafOutcomeSnapshots = sqliteTable(
 		createdAt: text("created_at").notNull(),
 	},
 	(t) => [
+		index("idx_leaf_outcomes_anchored").on(t.instanceId, t.anchoredAt),
 		index("idx_leaf_outcome_snapshots_instance").on(t.instanceId),
 		index("idx_leaf_outcome_snapshots_instance_anchor").on(t.instanceId, t.anchoredAt),
 		uniqueIndex("uq_leaf_outcome_snapshots_instance_leaf").on(t.instanceId, t.leafEntryId),
@@ -522,6 +523,7 @@ export const turnRecords = sqliteTable(
 		mappedItemIndex: integer("mapped_item_index"),
 	},
 	(t) => [
+		index("idx_turn_records_page").on(t.instanceId, t.startedAt, t.id),
 		uniqueIndex("uq_turn_records_instance_id").on(t.instanceId, t.id),
 		uniqueIndex("uq_turn_records_turn_start_record").on(t.turnStartRecordId),
 		index("idx_turn_records_instance").on(t.instanceId),
@@ -630,6 +632,7 @@ export const turnAnnotations = sqliteTable(
 		updatedAt: text("updated_at").notNull(),
 	},
 	(t) => [
+		index("idx_turn_annotations_created").on(t.instanceId, t.createdAt),
 		index("idx_turn_annotations_instance").on(t.instanceId),
 		index("idx_turn_annotations_type").on(t.annotationType),
 		uniqueIndex("uq_turn_annotations_instance_key").on(t.instanceId, t.annotationKey),
@@ -660,6 +663,8 @@ export const workerLeases = sqliteTable(
 		readyAt: text("ready_at"),
 	},
 	(t) => [
+		index("idx_worker_leases_exited").on(t.instanceId, t.exitedAt),
+		index("idx_worker_leases_started").on(t.instanceId, t.startedAt),
 		uniqueIndex("uq_worker_leases_instance_id").on(t.instanceId, t.id),
 		index("idx_worker_leases_instance").on(t.instanceId),
 		index("idx_worker_leases_turn_start").on(t.turnStartRecordId),

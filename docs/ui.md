@@ -310,3 +310,9 @@ blocks and show a combined preview. Drafts survive validation errors and conflic
 A conflict displays the current value before the operator adopts its revision.
 Process inspection separates future scoped defaults from captured start history
 and links to repository settings. See [Scoped settings](scoped-settings.md).
+
+Process detail opens with the most recent 40 turns. **Load earlier steps** retrieves
+older history in stable pages without delaying process switching. Retained turns,
+worker starts and annotations remain available; the initial view and context map
+cover the loaded history. Usage totals cover the initial page while older history
+is expanded. Live refreshes retain loaded pages and keep current state authoritative.

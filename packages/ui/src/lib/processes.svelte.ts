@@ -22,6 +22,7 @@ import {
 import { upsertFutureExecutionSummary } from "./future-executions-logic.js";
 import { applyPrimaryPathFrame } from "./primary-path-detail.js";
 import { replayPrimaryPathFramesAfterSnapshot } from "./primary-path-replay.js";
+import { mergeProcessHistory } from "./process-history.js";
 import { buildProcessRowView, sortProcessRowViews } from "./process-row-view.js";
 import { classifyWsEvent, createRequestGuard, type WsAction } from "./processes-logic.js";
 
@@ -67,6 +68,32 @@ const pendingPrimaryPathFramesByInstanceId = new Map<
 const listGuard = createRequestGuard();
 const browseGuard = createRequestGuard();
 const detailGuard = createRequestGuard();
+const historyGuard = createRequestGuard();
+export const historyState = writable({ loading: false, error: null as string | null });
+
+export async function loadEarlierProcessHistory() {
+	const current = get(detailState).data;
+	const before = current?.timeline.history?.beforeTurnRecordId;
+	if (!current || !before || get(historyState).loading) return;
+	const generation = historyGuard.next();
+	historyState.set({ loading: true, error: null });
+	try {
+		const older = await fetchProcessDetail(current.process.id, before);
+		if (historyGuard.isStale(generation)) return;
+		detailState.update((state) =>
+			state.data?.process.id === current.process.id
+				? { ...state, data: mergeProcessHistory(state.data, older) }
+				: state,
+		);
+		historyState.set({ loading: false, error: null });
+	} catch (error) {
+		if (historyGuard.isStale(generation)) return;
+		historyState.set({
+			loading: false,
+			error: error instanceof Error ? error.message : "Couldn't load earlier steps",
+		});
+	}
+}
 
 function scheduleProcessesListReload(delayMs = PROCESS_BROWSE_WS_REFRESH_DELAY_MS) {
 	if (scheduledListReloadTimer) clearTimeout(scheduledListReloadTimer);
@@ -256,13 +283,20 @@ export async function loadProcessDetail(instanceId: string) {
 		const result = await fetchProcessDetail(instanceId);
 		if (detailGuard.isStale(gen)) return;
 		const loadedAtMs = Date.now();
+		const previous = get(detailState).data;
+		const retained =
+			previous?.process.id === instanceId &&
+			previous.timeline.history &&
+			previous.timeline.turns.some((turn) => turn.id === result.timeline.turns[0]?.id)
+				? mergeProcessHistory(result, previous)
+				: result;
 		const replayedPrimaryPath = replayPrimaryPathFramesAfterSnapshot(
 			result.primaryPath,
 			takePendingPrimaryPathFrames(instanceId),
 		);
 		detailState.set({
 			data: {
-				...result,
+				...retained,
 				primaryPath: replayedPrimaryPath,
 			},
 			loading: false,
@@ -291,6 +325,8 @@ function scheduleLoadProcessDetail(instanceId: string, delayMs = 120) {
 }
 
 export function clearDetail() {
+	historyGuard.invalidate();
+	historyState.set({ loading: false, error: null });
 	setCurrentDetailInstanceId(null);
 	clearPendingPrimaryPathFrames();
 	clearScheduledDetailReload();

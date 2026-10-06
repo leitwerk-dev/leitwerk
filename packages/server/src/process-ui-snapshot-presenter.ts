@@ -80,40 +80,6 @@ import { presentSessionTransferOperation } from "./session-transfer-service.js";
 import { buildStartupEvidence, presentProcessStartupSummary } from "./startup-evidence.js";
 import { normalizeTurnProgressLinks, normalizeTurnProgressReport } from "./turn-progress.js";
 
-const COMPACT_DETAIL_EVENT_TYPES = [
-	"worker_capacity_queued",
-	"turn_outcome_recorded",
-	"lifecycle_parked",
-	"worker_failed",
-	"external_trigger_listener_armed",
-	"external_source_armed",
-	"external_trigger_failed",
-	"external_source_failed",
-	"external_trigger_consumed",
-	"external_source_consumed",
-] as const;
-
-function sortEventsAscending(events: readonly ProcessEvent[]): ProcessEvent[] {
-	return [...events].sort((left, right) => {
-		const createdAtComparison = left.createdAt.localeCompare(right.createdAt);
-		return createdAtComparison !== 0 ? createdAtComparison : left.id.localeCompare(right.id);
-	});
-}
-
-function compactDetailEvents(
-	deps: Pick<RouteDeps, "events">,
-	instanceId: string,
-	turnRecords: readonly ProcessTurnRecord[],
-): ProcessEvent[] {
-	return sortEventsAscending([
-		...deps.events.listByInstanceEventTypes(instanceId, COMPACT_DETAIL_EVENT_TYPES, 1_000),
-		...turnRecords.flatMap((turn) => {
-			const event = deps.events.latestByTurnRecordEventType(instanceId, turn.id, "turn.progress");
-			return event ? [event] : [];
-		}),
-	]);
-}
-
 function compactPrimaryPathSnapshot(
 	snapshot: PrimaryPathSnapshot | PrimaryPathUiSnapshot,
 ): PrimaryPathUiSnapshot {
@@ -1247,7 +1213,10 @@ type ProcessUiSnapshotDeps = Pick<
 export class ProcessUiSnapshotAssembler {
 	constructor(private readonly deps: ProcessUiSnapshotDeps) {}
 
-	async assemble(instanceId: string): Promise<ProcessDetailUiSnapshotResponseBody | null> {
+	async assemble(
+		instanceId: string,
+		beforeTurnRecordId?: string,
+	): Promise<ProcessDetailUiSnapshotResponseBody | null> {
 		const process = this.deps.processes.getById(instanceId);
 		if (!process) {
 			return null;
@@ -1255,23 +1224,53 @@ export class ProcessUiSnapshotAssembler {
 		// Capture every synchronous durable read before yielding so one response cannot
 		// combine process/turn state from opposite sides of a concurrent mutation.
 		const projects = this.deps.projects.listByInstance(instanceId);
-		const turnRecords = this.deps.turnRecords.listByInstance(instanceId);
+		const before = beforeTurnRecordId ? this.deps.turnRecords.getById(beforeTurnRecordId) : null;
+		if (beforeTurnRecordId && before?.instanceId !== instanceId) return null;
+		const page = this.deps.turnRecords.listPage(instanceId, before ?? undefined, 41);
+		const hasMore = page.length > 40;
+		const turnRecords = hasMore ? page.slice(1) : page;
+		const turnRecordIds = turnRecords.map((turn) => turn.id);
+		const window = {
+			since: hasMore ? turnRecords[0]?.startedAt : undefined,
+			until: before?.startedAt,
+		};
 		const mapped = {
 			runs: this.deps.mappedRuns?.listByInstance(instanceId) ?? [],
 			items: this.deps.mappedRuns?.listItemsByInstance(instanceId) ?? [],
 		};
-		const events = compactDetailEvents(this.deps, instanceId, turnRecords);
-		const turnAnnotations = this.deps.turnAnnotations.listByInstance(instanceId);
+		const events = this.deps.events.listUiSnapshotEvents(instanceId, turnRecordIds);
+		const turnAnnotations = this.deps.turnAnnotations.listForTimeline(instanceId, window);
 		const inputs = this.deps.inputs.listByInstance(instanceId);
-		const leafOutcomeSnapshots = this.deps.leafOutcomeSnapshots.listByInstance(instanceId);
+		const leafOutcomeSnapshots = this.deps.leafOutcomeSnapshots.listByInstance(instanceId, window);
 		const questionRequests = this.deps.questionRequests.listByInstance(instanceId);
 		const toolApprovalRequests = this.deps.toolApprovalRequests.listByInstance(instanceId);
-		const workerLeases = this.deps.leases.listByInstance(instanceId);
-		const workerLease = workerLeases.find((lease) => lease.exitedAt === null) ?? null;
-		const startupTurnStarts = this.deps.turnStarts.listByInstance(instanceId);
+		const workerLeases = this.deps.leases.listByInstance(instanceId, window);
+		const workerLease = this.deps.leases.getByInstance(instanceId);
+		if (workerLease && !workerLeases.some((lease) => lease.id === workerLease.id)) {
+			workerLeases.push(workerLease);
+		}
+		const startupTurnStarts = this.deps.turnStarts.listByInstance(instanceId, window);
+		// A worker starts before its accepted turn. Keep boundary records even when
+		// their timestamps precede the oldest turn on this page.
+		for (const turn of turnRecords) {
+			if (
+				turn.turnStartRecordId &&
+				!startupTurnStarts.some((start) => start.id === turn.turnStartRecordId)
+			) {
+				const start = this.deps.turnStarts.getById(turn.turnStartRecordId);
+				if (start) startupTurnStarts.push(start);
+			}
+			if (
+				turn.acceptedWorkerLeaseId &&
+				!workerLeases.some((lease) => lease.id === turn.acceptedWorkerLeaseId)
+			) {
+				const lease = this.deps.leases.getById(turn.acceptedWorkerLeaseId);
+				if (lease) workerLeases.push(lease);
+			}
+		}
 		const selectedTurn = getSelectedTurnSummaryForProcess(this.deps, process);
 		const session = this.deps.turnSummaries.getSession(instanceId);
-		const summaries = this.deps.turnSummaries.listByInstance(instanceId);
+		const summaries = this.deps.turnSummaries.listByInstance(instanceId, turnRecordIds);
 		const currentTurnRecordId = resolveCurrentExecutionTurnRecordId(process, this.deps.turnStarts);
 		const activeRecord = turnRecords.find(
 			(turn) => turn.id === currentTurnRecordId && turn.status === "running",
@@ -1356,6 +1355,10 @@ export class ProcessUiSnapshotAssembler {
 					refreshedAt: annotation.payload.refreshedAt,
 				});
 		}
+		if (hasMore && projections.usageEstimate) {
+			projections.usageEstimate.isPartial = true;
+			projections.usageEstimate.historyLimited = true;
+		}
 		const runDetails = buildProcessRunDetailsView(this.deps, process, projects);
 		const navigation = presentProcessTurnNavigation({
 			graph: getProcessGraph(this.deps.processGraphs, process.processId),
@@ -1368,13 +1371,17 @@ export class ProcessUiSnapshotAssembler {
 
 		return {
 			...projections,
-			timeline: { ...projections.timeline, turns: navigation.turns },
+			timeline: {
+				...projections.timeline,
+				turns: navigation.turns,
+				history: { beforeTurnRecordId: hasMore ? turnRecords[0].id : null },
+			},
 			plannedNextTurn: navigation.plannedNextTurn,
 			instanceTree: presentProcessInstanceTree({
 				process,
 				turnRecords,
 				leases: workerLeases,
-				observations: this.deps.executionInspections.listContextFacts(instanceId),
+				observations: this.deps.executionInspections.listContextFacts(instanceId, turnRecordIds),
 				turnDetails: runDetails.turns,
 				currentPiEntryId: session?.leafId ?? null,
 			}),

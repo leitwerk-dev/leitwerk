@@ -4,6 +4,7 @@ import type {
 } from "@leitwerk-dev/domain";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { LeitwerkDb } from "./database.js";
+import { type HistoryWindow, historyWindow } from "./history-window.js";
 import { generateId, now, parseJsonRecord } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
@@ -82,11 +83,16 @@ export function createProcessLeafOutcomeSnapshotRepo(db: LeitwerkDb) {
 		},
 
 		/** @internal */
-		listByInstance(instanceId: string): ProcessLeafOutcomeSnapshot[] {
+		listByInstance(instanceId: string, window?: HistoryWindow): ProcessLeafOutcomeSnapshot[] {
 			return db
 				.select()
 				.from(s.processLeafOutcomeSnapshots)
-				.where(eq(s.processLeafOutcomeSnapshots.instanceId, instanceId))
+				.where(
+					and(
+						eq(s.processLeafOutcomeSnapshots.instanceId, instanceId),
+						historyWindow(s.processLeafOutcomeSnapshots.anchoredAt, window),
+					),
+				)
 				.orderBy(
 					asc(s.processLeafOutcomeSnapshots.anchoredAt),
 					asc(s.processLeafOutcomeSnapshots.createdAt),

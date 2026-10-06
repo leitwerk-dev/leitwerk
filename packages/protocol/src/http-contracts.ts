@@ -1376,6 +1376,11 @@ export interface ProcessExternalTriggerSignal {
 
 /** @internal */
 export interface ProcessTimelineSnapshot {
+	/** Older retained turns are read in bounded pages. Missing means an unpaged snapshot. @internal */
+	history?: {
+		/** Cursor for the next older page; null when the beginning is reached. @internal */
+		beforeTurnRecordId: string | null;
+	};
 	/** @internal */
 	prompt: {
 		/** @internal */
@@ -1498,6 +1503,8 @@ export interface CurrentProcessErrorSummary extends CurrentErrorSummary {
 
 /** @internal */
 export interface ProcessUsageEstimateSnapshot {
+	/** Totals cover the initial history page only. @internal */
+	historyLimited?: boolean;
 	/** @internal */
 	usage: TurnUsageSnapshot;
 	/** @internal */

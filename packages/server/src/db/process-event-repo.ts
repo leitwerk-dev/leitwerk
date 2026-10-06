@@ -40,6 +40,92 @@ export function createProcessEventRepo(db: LeitwerkDb) {
 			.all()
 			.map(rowToProcessEvent);
 	return {
+		/** Timeline facts without embedded process state or provider responses. @internal */
+		listUiSnapshotEvents(instanceId: string, turnRecordIds: readonly string[]): ProcessEvent[] {
+			const newestIds = (where: SQL | undefined, limit: number) =>
+				db
+					.select({ id: s.processEvents.id, sequence: s.processEvents.eventSequence })
+					.from(s.processEvents)
+					.where(where)
+					.orderBy(desc(s.processEvents.eventSequence))
+					.limit(limit)
+					.all();
+			// Select identities before loading payloads. Most candidates are discarded
+			// by the combined limit, and one provider response can be megabytes.
+			const candidates = [
+				"worker_capacity_queued",
+				"lifecycle_parked",
+				"worker_failed",
+				"external_trigger_listener_armed",
+				"external_source_armed",
+				"external_trigger_failed",
+				"external_source_failed",
+				"external_trigger_consumed",
+				"external_source_consumed",
+			].flatMap((eventType) =>
+				newestIds(
+					and(eq(s.processEvents.instanceId, instanceId), eq(s.processEvents.eventType, eventType)),
+					40,
+				),
+			);
+			candidates.sort((left, right) => right.sequence - left.sequence);
+			const selected = candidates.slice(0, 40);
+			for (const turnRecordId of turnRecordIds) {
+				for (const eventType of ["turn.progress", "turn_outcome_recorded"]) {
+					selected.push(
+						...newestIds(
+							and(
+								eq(s.processEvents.instanceId, instanceId),
+								eq(s.processEvents.turnRecordId, turnRecordId),
+								eq(s.processEvents.eventType, eventType),
+							),
+							1,
+						),
+					);
+				}
+			}
+			const ids = [...new Set(selected.map((event) => event.id))];
+			if (ids.length === 0) return [];
+			const data = s.processEvents.data;
+			return db
+				.select({
+					id: s.processEvents.id,
+					eventSequence: s.processEvents.eventSequence,
+					turnRecordId: s.processEvents.turnRecordId,
+					instanceId: s.processEvents.instanceId,
+					eventType: s.processEvents.eventType,
+					createdAt: s.processEvents.createdAt,
+					data: sql<string>`json_object(
+						'turnRecordId', json_extract(${data}, '$.turnRecordId'),
+						'turnId', json_extract(${data}, '$.turnId'),
+						'outcome', json_extract(${data}, '$.outcome'),
+						'params', json_object(
+							'summary', json_extract(${data}, '$.params.summary'),
+							'planMarkdown', json_extract(${data}, '$.params.planMarkdown'),
+							'reviewMarkdown', json_extract(${data}, '$.params.reviewMarkdown'),
+							'feedback', json_extract(${data}, '$.params.feedback')),
+						'report', json_extract(${data}, '$.report'),
+						'revision', json_extract(${data}, '$.revision'),
+						'startRecordId', json_extract(${data}, '$.startRecordId'),
+						'reason', json_extract(${data}, '$.reason'),
+						'message', json_extract(${data}, '$.message'),
+						'errorCode', json_extract(${data}, '$.errorCode'),
+						'errorClass', json_extract(${data}, '$.errorClass'),
+						'armingId', json_extract(${data}, '$.armingId'),
+						'trigger', json_extract(${data}, '$.trigger'),
+						'path', json_extract(${data}, '$.path'),
+						'pollInterval', json_extract(${data}, '$.pollInterval'),
+						'provider', json_object(
+							'path', json_extract(${data}, '$.provider.path'),
+							'pollInterval', json_extract(${data}, '$.provider.pollInterval'))
+					)`,
+				})
+				.from(s.processEvents)
+				.where(inArray(s.processEvents.id, ids))
+				.orderBy(asc(s.processEvents.createdAt), asc(s.processEvents.id))
+				.all()
+				.map(rowToProcessEvent);
+		},
 		/** @internal */
 		create(input: CreateProcessEventInput): ProcessEvent {
 			const id = generateId("evt");

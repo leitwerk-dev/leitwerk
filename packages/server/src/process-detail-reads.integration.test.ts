@@ -263,10 +263,11 @@ it("keeps current-turn page reads and bytes bounded with cold and warm readers; 
 			vi.spyOn(events, "listByTurnRecord"),
 			vi.spyOn(events, "listByInstanceSince"),
 			vi.spyOn(events, "listByInstanceTurnRecordEventTypes"),
+			vi.spyOn(events, "listByInstanceEventTypes"),
+			vi.spyOn(events, "latestByTurnRecordEventType"),
 		];
 		const summarySpy = vi.spyOn(deps.turnSummaries, "listByInstance");
-		const eventRowsSpy = vi.spyOn(events, "listByInstanceEventTypes");
-		const progressSpy = vi.spyOn(events, "latestByTurnRecordEventType");
+		const eventRowsSpy = vi.spyOn(events, "listUiSnapshotEvents");
 		const preparedReadSpy = vi.spyOn(db.$client, "prepare");
 		const assembler = new ProcessUiSnapshotAssembler({
 			...deps,
@@ -302,9 +303,7 @@ it("keeps current-turn page reads and bytes bounded with cold and warm readers; 
 			[turn.id],
 		]);
 		expect(eventRowsSpy.mock.results.map((result) => result.value.length)).toEqual([0, 0]);
-		expect(progressSpy.mock.results.map((result) => result.value)).toEqual([null, null]);
 		eventRowsSpy.mockRestore();
-		progressSpy.mockRestore();
 		summarySpy.mockRestore();
 		const snapshot = snapshots[0];
 		if (!snapshot) throw new Error("Expected process snapshot");
@@ -468,4 +467,148 @@ it("keeps context observations captured before session loading", async () => {
 		state: "recorded",
 		value: [],
 	});
+});
+
+it("pages long process histories without reading all turns, leases, annotations or summaries", async () => {
+	const { deps, db } = fixture;
+	const process = deps.processes.create({
+		processId: "ticket_issue_process",
+		selectedTurnId: "plan_review",
+		lifecycleStatus: "waiting",
+		stateJson: createStructuralStateJson(),
+	});
+	const ids: string[] = [];
+	const lease = deps.leases.create({
+		instanceId: process.id,
+		workerId: "long-lived",
+		state: "idle",
+	});
+	db.$client
+		.prepare("UPDATE worker_leases SET started_at = ? WHERE id = ?")
+		.run("2025-12-31T23:59:00.000Z", lease.id);
+	for (let i = 0; i < 121; i++) {
+		const startedAt = new Date(Date.UTC(2026, 0, 1, 0, 0, Math.floor(i / 3))).toISOString();
+		const turn = deps.turnRecords.create({
+			id: `trn_page_${String(i).padStart(4, "0")}`,
+			instanceId: process.id,
+			turnId: "plan_review",
+			turnType: "human",
+			status: "succeeded",
+			startedAt,
+			endedAt: startedAt,
+		});
+		ids.push(turn.id);
+		deps.events.create({
+			instanceId: process.id,
+			eventType: "turn.progress",
+			data: { turnRecordId: turn.id },
+		});
+		deps.turnAnnotations.create({
+			instanceId: process.id,
+			annotationType: "test",
+			createdAt: startedAt,
+			payload: { retained: "old data ".repeat(300) },
+		});
+	}
+
+	const allTurns = vi.spyOn(deps.turnRecords, "listByInstance");
+	const reads = vi.spyOn(db.$client, "prepare");
+	const assembler = new ProcessUiSnapshotAssembler(deps);
+	let page = await assembler.assemble(process.id);
+	expect(page?.timeline.turns).toHaveLength(40);
+	expect(page?.process.lifecycleStatus).toBe("waiting");
+	expect(page?.primaryPath.turnState.workerState).toBe("idle");
+	expect(page?.startup.workerStarts?.some((start) => start.workerLeaseId === lease.id)).toBe(true);
+	const firstBytes = JSON.stringify(page).length;
+	const seen = new Set(page?.timeline.turns.map((turn) => turn.id));
+	while (page?.timeline.history?.beforeTurnRecordId) {
+		page = await assembler.assemble(process.id, page.timeline.history.beforeTurnRecordId);
+		for (const turn of page?.timeline.turns ?? []) {
+			expect(seen.has(turn.id)).toBe(false);
+			seen.add(turn.id);
+		}
+	}
+	expect([...seen].sort()).toEqual(ids);
+	expect(allTurns).not.toHaveBeenCalled();
+	expect(firstBytes).toBeLessThan(120_000);
+	const queries = reads.mock.results.flatMap((result) =>
+		result.type === "return" && result.value.sourceSQL.startsWith("select")
+			? [result.value.expandedSQL]
+			: [],
+	);
+	reads.mockRestore();
+	for (const query of queries.filter(
+		(q) => q.includes('from "turn_records"') && q.includes("order by"),
+	)) {
+		expect(db.$client.prepare(`EXPLAIN QUERY PLAN ${query}`).all()).toEqual([
+			expect.objectContaining({ detail: expect.stringContaining("idx_turn_records_page") }),
+		]);
+	}
+	const other = deps.processes.create({ processId: "ticket_issue_process" });
+	expect(await assembler.assemble(other.id, ids[0])).toBeNull();
+});
+
+it("keeps timeline presentation while leaving large source payloads in diagnostic reads", async () => {
+	const { deps } = fixture;
+	const process = deps.processes.create({
+		processId: "ticket_issue_process",
+		selectedTurnId: "plan_review",
+		lifecycleStatus: "waiting",
+		stateJson: createStructuralStateJson(),
+	});
+	const turn = deps.turnRecords.create({
+		instanceId: process.id,
+		turnId: "plan_review",
+		turnType: "human",
+		status: "succeeded",
+	});
+	const source = "Large provider response ".repeat(50_000);
+	deps.events.create({
+		instanceId: process.id,
+		eventType: "turn_outcome_recorded",
+		data: {
+			turnRecordId: turn.id,
+			turnId: turn.turnId,
+			outcome: "approved",
+			params: { summary: "Review complete", feedback: "Ship it", state: { source } },
+		},
+	});
+	deps.events.create({
+		instanceId: process.id,
+		eventType: "external_source_armed",
+		data: {
+			armingId: "review-check",
+			provider: { path: "/review", pollInterval: "30s", response: source },
+		},
+	});
+	deps.turnAnnotations.create({
+		instanceId: process.id,
+		annotationType: "external_trigger",
+		references: [{ kind: "turn_record", turnRecordId: turn.id }],
+		payload: {
+			event: { source },
+			actionSource: "external",
+			eventDescription: { summary: "Review received", markdown: "Approved by reviewer" },
+		},
+	});
+	const events = deps.events.listUiSnapshotEvents(process.id, [turn.id]);
+	expect(JSON.stringify(events).length).toBeLessThan(3_000);
+	expect(events.find((event) => event.eventType === "external_source_armed")?.data).toMatchObject({
+		armingId: "review-check",
+		provider: { path: "/review", pollInterval: "30s" },
+	});
+	const snapshot = await new ProcessUiSnapshotAssembler(deps).assemble(process.id);
+	expect(snapshot?.timeline.turns.find((item) => item.id === turn.id)).toMatchObject({
+		outcome: "approved",
+		summary: "Review complete",
+		output: "Ship it",
+		actionSource: "external",
+	});
+	expect(JSON.stringify(deps.turnAnnotations.listForTimeline(process.id)).length).toBeLessThan(
+		1_000,
+	);
+	expect(deps.events.listByTurnRecord(process.id, turn.id)[0]?.data.params).toMatchObject({
+		state: { source },
+	});
+	expect(deps.turnAnnotations.listByInstance(process.id)[0]?.payload.event).toEqual({ source });
 });
