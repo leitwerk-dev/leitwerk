@@ -76,7 +76,18 @@ function reduce(state,action){
  default:return done('unknown','No action performed.');
  }
 }
-function guided(s){const spec=guideSpecs[s.guide],step=spec?.steps[s.step];if(!step)return s;const next=reduce(s,{type:step[0]});if(next.code===step[2])next.step++;return next;}
+function guided(s){
+ const spec=guideSpecs[s.guide],step=spec?.steps[s.step];if(!step)return s;
+ if(keyOf(s.pair)!==keyOf(spec.pair))return {...s,code:'guide-subject',message:`Guide refused: open ${spec.pair.map(id=>s.processes[id].id).join(' + ')} in that order to continue. All drafts are retained.`};
+ if(step[2]==='stale'&&(!s.guideReviewedSignature||s.reviews[keyOf(spec.pair)]?.signature!==s.guideReviewedSignature||signature(s)!==s.guideChangedSignature||signature(s)===s.guideReviewedSignature))return {...s,code:'guide-state',message:'Guide refused: this step needs the earlier guided review and its changed identities. Restart the case to restore that boundary; all drafts are retained until you restart.'};
+ const next=reduce(s,{type:step[0]});
+ if(next.code===step[2]){
+  if(step[0]==='review')next.guideReviewedSignature=signature(next);
+  if(step[0]==='change')next.guideChangedSignature=signature(next);
+  next.step++;
+ }
+ return next;
+}
 // DOM shell: render state and dispatch named actions only.
 let state=fixture();
 const escapeHtml=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -84,7 +95,7 @@ const button=(label,action,extra='')=>`<button type="button" data-action="${acti
 function chronicle(id,side){const p=state.processes[id];return `<article class="chronicle"><small>${side} process · ${escapeHtml(p.id)} · ${escapeHtml(p.component)}</small><h3>${escapeHtml(p.title)}</h3><span class="status">${escapeHtml(p.status)} · ${escapeHtml(p.turn)}</span><dl class="identity">${[['Ticket',p.ticket],['Repository',p.repo],['Work branch',p.branch],['External PR',p.pr?`${p.repo}/pulls/${p.pr}`:'Not recorded']].map(([label,value])=>`<div><dt>${label}</dt><dd>${p.available?escapeHtml(value):'Unavailable source'}</dd></div>`).join('')}</dl><div class="event"><small>Accepted execution · ${escapeHtml(p.record)}</small><div class="result">${escapeHtml(p.summary)}</div></div><p class="muted">${terminal(p)?'Terminal observation retained.':'Current selected turn remains in progress.'}</p>${p.queue.map((q,i)=>`<div class="receipt"><strong>Queued instruction ${i+1}</strong><p>${escapeHtml(q)}</p><small>Delivery not yet observed.</small></div>`).join('')}${side==='Right'?`${button('Open Chronicle controls','open')} ${state.controls[id]?`<div class="control"><label for="instruction">Instruction for ${escapeHtml(p.id)}</label><textarea id="instruction" data-draft="instruction" placeholder="Guide this process…">${escapeHtml(state.drafts[id]||'')}</textarea><p><small>Queue an instruction in this process only. This does not reverse committed writes.</small></p>${button('Queue instruction · simulation','send')}</div>`:''}`:''}</article>`;}
 function render(){
  const k=keyOf(state.pair),matched=matches(...state.pair.map(id=>state.processes[id])),all=pairs(state),review=state.reviews[k],ack=state.acks[k],sig=signature(state),missing=state.pair.some(id=>!state.processes[id].available),ended=state.pair.some(id=>terminal(state.processes[id])),spec=guideSpecs[state.guide],step=spec?.steps[state.step];
- const reviewed=review?.signature===sig;const feedbackError=['stale','empty','inactive','unavailable','unmatched','terminal','closed'].includes(state.code);
+ const reviewed=review?.signature===sig;const feedbackError=['stale','empty','inactive','unavailable','unmatched','terminal','closed','guide-subject','guide-state'].includes(state.code);
  document.querySelector('#app').innerHTML=`
  <section class="surface" aria-labelledby="overlap-heading"><div class="flex"><div><h2 id="overlap-heading">Exact identity overlaps</h2><p class="muted">${all.length} concurrent pairs in ${Object.keys(state.processes).length} synthetic processes. Shared write destinations receive attention; ticket-only matches stay quiet.</p></div>${button('Reset all demo state','reset')}</div>
  <table class="table"><thead><tr><th>Process pair</th><th>Recorded match</th><th>Operator signal</th><th>Inspect</th></tr></thead><tbody>${all.length?all.map(({pair,reasons})=>`<tr><td><strong>${pair.map(id=>escapeHtml(state.processes[id].id)).join(' + ')}</strong><small>${pair.map(id=>escapeHtml(state.processes[id].component)).join(' / ')}</small></td><td>${reasons.map(r=>`<div>${escapeHtml(r.label)}</div><small>${escapeHtml(r.value)}</small>`).join('')}</td><td><span class="${reasons.some(r=>r.kind!=='ticket')?'signal':''}">${strength(reasons)}</span><small>${state.acks[keyOf(pair)]?.signature===signature(state,pair)?'Acknowledged as intentional':state.acks[keyOf(pair)]?'Earlier acknowledgement is stale':'No current acknowledgement'}</small></td><td>${button('Compare',`pair-${pair.join('-')}`,`aria-label="Compare ${pair.map(id=>state.processes[id].id).join(' and ')}" aria-pressed="${keyOf(pair)===k}"`)}</td></tr>`).join(''):'<tr><td colspan="4">No exact overlap in the available concurrent identities. Unavailable sources remain unknown.</td></tr>'}</tbody></table>

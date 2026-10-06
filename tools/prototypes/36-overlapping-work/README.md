@@ -26,7 +26,7 @@ Outside-change controls change the right process's write destination, mark it co
 2. **Intentional components:** review the gateway/documentation pair, prepare a reason, and acknowledge intentional overlap. Both remain active, with separate branches and one shared ticket.
 3. **Changed after review:** review and prepare a reason, simulate a shared write destination, and try the earlier acknowledgement. It refuses stale consent and retains the reason. Review the changed identities, then explicitly acknowledge the current boundary.
 
-Each next-step button performs a real model action. The guide advances only when that action returns its expected success or, in the stale case, its specifically expected refusal.
+Each next-step button requires the guide’s ordered pair: P-204 + P-211 for Shared destination, or P-204 + P-208 for the other cases. Selecting another pair refuses before any guided action or progression and preserves every pair’s drafts. Return to the named pair to continue. The stale-refusal step also requires the guide’s earlier reviewed signature and its changed identities; another review cannot substitute for that boundary.
 
 ## Integration seams
 
@@ -49,7 +49,9 @@ Persistent acknowledgement reasons would be new server-owned operator metadata, 
 
 Browser validation exercised all three guides with actual clicks, including the exact stale-review refusal. Free play used typed reasons and instructions to check acknowledgement, queueing, preserved drafts across pair navigation and rejected actions, stale historical notes after reinspection, no-match source scoping, unavailable identity evidence, terminal-action refusal, and the empty overlap projection.
 
-Desktop (1440px) and mobile (390px) screenshots are in `screenshots/`. The page is inspected at both sizes, including horizontal overflow and browser error checks. Biome, inline JavaScript syntax, and whitespace checks apply to this standalone helper; application validation is outside this isolated scope. The Impeccable detector returned no regex findings but ran in degraded mode because HTML parser modules were unavailable. Computed contrast and CSS selector analysis were not provided by that detector.
+After the guide-subject fix, browser clicks completed all three guides again and attempted every step on the unrelated P-204 + P-219 pair. Every mismatch refused without mutation or progression, retaining both intended and unrelated drafts; only P-211 received the shared-destination instruction. The changed-review case also refused when a newer free-play review replaced its earlier guided boundary.
+
+Desktop (1440px) and mobile (390px) screenshots were refreshed and opened after the fix and are in `screenshots/`. The page is inspected at both sizes, including horizontal overflow and browser error checks. Biome, inline JavaScript syntax, and whitespace checks apply to this standalone helper; application validation is outside this isolated scope. The Impeccable detector returned no regex findings but ran in degraded mode because HTML parser modules were unavailable. Computed contrast and CSS selector analysis were not provided by that detector.
 
 The provisional rule is to surface shared write destinations for review and retain ticket-only matches as quiet relationships. An acknowledgement should name the exact boundary and remain visible when stale. This is a design hypothesis from synthetic interaction checks, not an operator study or evidence that the threshold is sufficient in production.
 
