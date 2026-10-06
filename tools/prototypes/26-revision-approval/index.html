@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Approve the revision I reviewed · Leitwerk prototype</title>
+<style>
+:root { color-scheme: light; --ink:#18212b; --muted:#4c5968; --line:#d9dee5; --blue:#2f61b7; --soft:#e6ecf6; --gray:#f7f8fa; --danger:#7d2d27; --warn:#81500e; font:15px/1.5 "Public Sans",ui-sans-serif,system-ui,sans-serif; color:var(--ink); background:white; }
+* { box-sizing:border-box; }
+body { margin:0; }
+::selection { background:var(--soft); color:var(--ink); }
+button,textarea { font:inherit; }
+button { min-height:44px; padding:9px 15px; border:1px solid #aeb7c2; border-radius:7px; color:var(--ink); background:white; cursor:pointer; }
+button:hover { background:#f2f4f7; border-color:var(--muted); }
+button:disabled { color:#63707e; background:#f2f4f7; border-color:var(--line); cursor:not-allowed; }
+button.primary { background:var(--blue); color:white; border-color:var(--blue); }
+button.primary:hover { background:#264f96; }
+button.primary:disabled { background:#e6ecf6; color:#4c5968; border-color:#d9dee5; }
+:focus-visible { outline:3px solid var(--blue); outline-offset:3px; }
+textarea { width:100%; min-height:105px; border:1px solid #aeb7c2; border-radius:6px; padding:12px; color:var(--ink); background:white; resize:vertical; caret-color:var(--blue); }
+textarea::placeholder { color:#596675; }
+h1,h2,h3,p { margin:0; }
+h1 { font-size:28px; line-height:1.2; font-weight:700; }
+h2 { font-size:20px; line-height:1.3; }
+h3 { font-size:16px; line-height:1.4; }
+p { max-width:74ch; }
+small,.muted { color:var(--muted); }
+small { font-size:13px; }
+.shell { border-bottom:1px solid var(--line); background:var(--gray); padding:16px max(24px,calc((100% - 1184px)/2)); display:flex; align-items:center; justify-content:space-between; gap:20px; }
+.brand { font-size:18px; font-weight:700; }
+main { max-width:1232px; margin:auto; padding:32px 24px 48px; }
+.intro { margin-bottom:26px; }
+.intro p { margin-top:10px; color:var(--muted); }
+.intro .question { color:var(--ink); }
+.workspace { display:grid; grid-template-columns:minmax(0,1fr) 310px; gap:32px; align-items:start; }
+.document { border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+.document-header { padding:20px 24px; background:var(--gray); border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:start; gap:16px; }
+.document-header p { margin-top:5px; }
+.version { white-space:nowrap; font-weight:650; color:var(--blue); }
+.reading { padding:24px; }
+.reading h3 { margin:24px 0 8px; }
+.reading ol { padding-left:21px; margin:8px 0 20px; }
+.reading li { padding-left:3px; margin-bottom:9px; }
+.fact { display:grid; grid-template-columns:115px 1fr; gap:12px; padding:10px 0; border-top:1px solid var(--line); }
+.fact span { color:var(--muted); }
+.status { margin-top:14px; padding:12px 14px; background:var(--gray); border:1px solid var(--line); border-radius:6px; }
+.status.warning { color:var(--warn); background:#fffaf1; border-color:#ded1bb; }
+.status.error { color:var(--danger); background:#fdf4f3; border-color:#e2c4c1; }
+.status.success { background:#f0f8f4; color:#146445; border-color:#c6ded2; }
+.status strong { display:block; margin-bottom:3px; }
+.actions { display:flex; flex-wrap:wrap; gap:10px; margin-top:16px; }
+.decision { padding:24px; background:#f5f8fc; border-top:1px solid var(--line); }
+.decision p { margin:7px 0 16px; }
+label { display:block; margin:16px 0 6px; font-weight:600; }
+aside { padding-top:3px; }
+aside h2 { font-size:18px; }
+.receipt { margin-top:16px; border-top:1px solid var(--line); }
+dl { margin:0; }
+.receipt div { padding:12px 0; border-bottom:1px solid var(--line); }
+dt { color:var(--muted); font-size:13px; margin-bottom:4px; }
+dd { margin:0; overflow-wrap:anywhere; }
+.audit { margin-top:26px; }
+.audit ol { padding-left:20px; font-size:14px; }
+.audit li { margin:10px 0; }
+.compare { padding:24px; border-top:1px solid var(--line); background:white; }
+.compare p { margin:8px 0 16px; }
+.compare-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; border-top:1px solid var(--line); }
+.compare-col { min-width:0; padding-top:15px; }
+.compare-col h3 { margin-bottom:12px; }
+.change { margin-bottom:17px; }
+.change dt { font-weight:650; }
+.changed { color:var(--blue); }
+.compact-list { padding-left:19px; margin:6px 0 0; }
+.lab { margin-top:32px; padding-top:25px; border-top:1px solid var(--line); }
+.lab > p { margin:6px 0 16px; color:var(--muted); }
+.lab-head { display:flex; justify-content:space-between; align-items:center; gap:20px; }
+.tabs { display:flex; flex-wrap:wrap; gap:8px; margin:16px 0; }
+.tabs button[aria-pressed="true"] { background:var(--soft); border-color:var(--blue); color:var(--blue); }
+.walkthrough { padding:18px 20px; background:var(--gray); border:1px solid var(--line); border-radius:8px; }
+.walkthrough p { margin-top:6px; }
+.step-list { margin:12px 0; padding-left:22px; }
+.step-list li { padding:3px 0; color:var(--muted); }
+.step-list li.current { color:var(--ink); font-weight:650; }
+.freeplay { margin-top:23px; }
+.freeplay h3 { margin-bottom:4px; }
+footer { padding-top:28px; color:var(--muted); font-size:13px; }
+[hidden] { display:none; }
+@media(max-width:800px) { .workspace { grid-template-columns:minmax(0,1fr); gap:24px; } aside { border-top:1px solid var(--line); padding-top:22px; } .receipt { display:grid; grid-template-columns:1fr 1fr; column-gap:20px; } .audit { margin-top:22px; } }
+@media(max-width:540px) { main { padding:24px 16px 32px; } .shell { padding:14px 16px; } .shell small { max-width:140px; text-align:right; } h1 { font-size:25px; } .document-header,.reading,.decision,.compare { padding:18px; } .document-header { gap:10px; } .document-header h2 { font-size:18px; } .fact { grid-template-columns:1fr; gap:3px; } .compare-grid { gap:14px; } .compare-col h3 { font-size:15px; } .compare dd { font-size:14px; overflow-wrap:anywhere; } .receipt { grid-template-columns:1fr; } .lab-head { align-items:start; } .tabs button { flex:1 1 auto; } .walkthrough { padding:16px; } }
+</style>
+</head>
+<body>
+<!-- THESIS: An approval belongs to the document and conditions a person reviewed.
+OWN-WORLD: Leitwerk quiet white document, gray supporting rows, operational blue, native controls.
+STORY: Read a plan, retain a decision draft, compare exact changes, adopt and approve a bounded revision.
+FIRST VIEWPORT: A readable plan with its prepared decision below; a narrow reviewed receipt alongside.
+FORM: Assigned result-reading composition, no concept seed needed for this precise prototype.
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance. Inherited DESIGN.md is unchanged. -->
+<header class="shell"><div class="brand">Leitwerk</div><small>Operator experiment · 26</small></header>
+<main>
+<header class="intro"><h1>Approve the revision I reviewed</h1><p>Future proposal · Synthetic data · Changes stay in this browser and reset on reload.</p><p class="question">Can you spot which changes invalidate a prepared decision without rereading unchanged evidence?</p></header>
+<div class="workspace">
+<div class="document">
+<header class="document-header"><div><h2>Make report exports resumable</h2><p class="muted">Repository change · Atlas reporting</p></div><span class="version" id="version"></span></header>
+<article class="reading" aria-label="Plan being read">
+<p id="summary"></p>
+<h3>Proposed implementation</h3><ol id="steps"></ol>
+<div class="fact"><span>Destination</span><strong id="destination"></strong></div>
+<div class="fact"><span>Next action</span><strong id="next-action"></strong></div>
+<div class="fact"><span>Condition</span><div id="condition"></div></div>
+<div id="reading-status" class="status"></div>
+<div class="actions"><button type="button" id="review" class="primary">I reviewed these conditions</button></div>
+</article>
+<section class="compare" id="comparison" hidden aria-label="Changed conditions">
+<h2>Review changed conditions</h2><p id="compare-description"></p><div class="compare-grid" id="compare-grid"></div>
+<div class="status" id="compare-status"></div>
+<div class="actions"><button type="button" id="adopt" class="primary">Use these reviewed conditions</button><button type="button" id="refresh-compare">Refresh comparison</button></div>
+</section>
+<section class="decision" aria-labelledby="decision-title"><h2 id="decision-title">Your prepared decision</h2><p id="decision-description"></p>
+<label for="draft">Private review note</label><textarea id="draft" placeholder="Keep anything you want to check before approving."></textarea><small>This local note survives changes and refusals. It is not an instruction to the process.</small>
+<div class="actions"><button type="button" id="approve" class="primary">Approve plan</button><button type="button" id="compare-button">Review changed conditions</button></div>
+<div id="message" role="status" aria-live="polite" class="status"></div>
+</section>
+</div>
+<aside aria-label="Reviewed receipt and current state"><h2>Your review receipt</h2><p class="muted">The boundary your approval would use.</p><dl class="receipt" id="receipt"></dl><div class="audit"><h2>Observed activity</h2><ol id="activity"></ol></div></aside>
+</div>
+<section class="lab" aria-label="Prototype controls"><div class="lab-head"><h2>Try the decision model</h2><button type="button" id="reset">Reset free play</button></div><p>Guided steps perform the same actions as the controls above. Fixture controls simulate other activity; acceptance is deliberately paused so you can try a race.</p>
+<div class="tabs" aria-label="Guided scenarios"><button type="button" data-scenario="happy" aria-pressed="false">1. Reviewed approval</button><button type="button" data-scenario="changed" aria-pressed="false">2. Changed conditions</button><button type="button" data-scenario="race" aria-pressed="false">3. A colleague acts first</button></div>
+<div class="walkthrough" id="walkthrough"><h3>Free play</h3><p>Read the plan, mark it reviewed, write a note and approve. Then accept the pending request below. Try changing conditions between any two actions.</p></div>
+<div class="freeplay"><h3>Simulate external activity</h3><p class="muted">These buttons only alter synthetic fixtures.</p><div class="actions"><button type="button" data-action="plan">Publish next plan</button><button type="button" data-action="destination">Change destination</button><button type="button" data-action="condition">Change action condition</button><button type="button" data-action="unrelated">Receive an unrelated update</button><button type="button" data-action="colleague">Colleague approves first</button><button type="button" data-action="unavailable">Remove retained plan evidence</button></div></div>
+<div class="freeplay"><h3>Simulate acceptance</h3><p class="muted">Acceptance checks the original request against current conditions. A rejected request keeps your note.</p><div class="actions"><button type="button" data-action="send">Attempt prepared approval</button><button type="button" id="accept" data-action="accept">Accept pending request</button></div></div>
+</section>
+<footer>Standalone experiment. A production version needs a server-checked reviewed-artifact precondition. Existing planRevision alone does not express every condition shown here. No worker, external publication or durable approval is performed.</footer>
+</main>
+<script>
+// Pure decision model. Browser rendering and event handlers are below it.
+const ApprovalModel = (() => {
+  const copy = (value) => structuredClone(value);
+  const conditions = (context) => JSON.stringify({
+    artifact: context.artifact,
+    destination: context.destination,
+    action: context.action,
+    selectedTurnId: context.selectedTurnId,
+    available: context.available,
+    retained: context.retained,
+  });
+  const matches = (a,b) => !!a && !!b && conditions(a) === conditions(b);
+  const initial = () => {
+    const context = {
+      artifact: { version:1, turnRecordId:"plan-turn-17", entryId:"plan-result-17", summary:"Resume interrupted CSV exports from the last completed page, without duplicating rows.", steps:["Persist a cursor after each completed export page.", "Resume an interrupted job from its last saved cursor.", "Verify interrupted and resumed exports contain each row once."] },
+      destination:"atlas/reporting · main",
+      action:{ id:"approve_plan", label:"Approve plan", next:"Implementation", condition:"Implement the reviewed plan in the reporting repository.", version:1 },
+      selectedTurnId:"plan_decision", available:true, retained:true,
+    };
+    return { live:context, reading:copy(context), reviewed:null, comparison:null, draft:"", pending:null, accepted:null, unrelated:0, log:["Plan 1 is ready for review."], last:{code:"ready",text:"No approval has been sent."} };
+  };
+  const result = (s, code, text) => ({ ...s, last:{code,text}, log:[...s.log,text] });
+  function reduce(state,event) {
+    const s = copy(state);
+    if(event.type === "draft") return {...s,draft:event.value};
+    if(event.type === "review") {
+      if(!s.live.retained || !s.live.available || !matches(s.reading,s.live)) return result(s,"refused","These reading conditions are no longer current. Review changed conditions; your note is kept.");
+      s.reviewed = copy(s.reading);
+      return result(s,"reviewed",`Plan ${s.reviewed.artifact.version} and its destination and action conditions are marked reviewed.`);
+    }
+    if(event.type === "compare") {
+      s.comparison = { before:copy(s.reviewed || s.reading), after:copy(s.live) };
+      return result(s,"compared","Comparison captured. Only explicitly adopting these conditions changes your review receipt.");
+    }
+    if(event.type === "adopt") {
+      if(!s.comparison || !matches(s.comparison.after,s.live)) return result(s,"refused","Conditions changed again while you compared. Refresh the comparison; your note is kept.");
+      if(!s.live.retained || !s.live.available) return result(s,"refused","This approval is unavailable. Your old review receipt and note are kept.");
+      s.reviewed = copy(s.comparison.after);
+      s.reading = copy(s.comparison.after);
+      s.comparison = null;
+      return result(s,"adopted",`Plan ${s.reviewed.artifact.version} and the displayed conditions are now your reviewed boundary. Your note is kept.`);
+    }
+    if(event.type === "send") {
+      if(s.pending) return result(s,"refused","An approval request is already pending. Accept it in the simulator to observe the outcome.");
+      if(!s.reviewed) return result(s,"refused","Read and mark the conditions reviewed before approving. Your note is kept.");
+      if(!s.live.retained || !s.live.available || !matches(s.reviewed,s.live)) return result(s,"refused","Prepared approval refused: the reviewed conditions are no longer current. No approval was applied. Your note is kept.");
+      s.pending = { reviewed:copy(s.reviewed) };
+      return result(s,"pending",`Approval for Plan ${s.reviewed.artifact.version} sent. Awaiting simulated acceptance.`);
+    }
+    if(event.type === "accept") {
+      if(!s.pending) return result(s,"refused","There is no pending approval to accept.");
+      const request = s.pending;
+      s.pending = null;
+      if(!s.live.available) return result(s,"refused","Approval refused at acceptance: a colleague already took this action. Implementation is selected; your note is kept.");
+      if(!s.live.retained || !matches(request.reviewed,s.live)) return result(s,"refused","Approval refused at acceptance: conditions changed after submission. No approval was applied. Your note is kept.");
+      s.accepted = copy(request.reviewed);
+      s.live.available = false;
+      s.live.selectedTurnId = "implement";
+      return result(s,"accepted",`Plan ${request.reviewed.artifact.version} approved for ${request.reviewed.destination}. Implementation is selected; worker start is not simulated.`);
+    }
+    if(event.type === "unrelated") {
+      s.unrelated += 1;
+      return result(s,"updated","An unrelated activity update arrived. Your reviewed conditions and note still apply.");
+    }
+    if(!s.live.available) return result(s,"refused","The approval action is no longer available. Reset to explore another decision.");
+    if(event.type === "plan") {
+      const version = s.live.artifact.version + 1;
+      s.live.artifact = { ...s.live.artifact, version, turnRecordId:`plan-turn-${16+version}`, entryId:`plan-result-${16+version}`, steps:[...s.live.artifact.steps,`Require an export checksum before resuming (plan ${version}).`] };
+      return result(s,"changed",`Plan ${version} published. Your reading copy and review receipt have not changed.`);
+    }
+    if(event.type === "destination") {
+      s.live.destination = s.live.destination.endsWith("main") ? "atlas/reporting · release/2026-10" : "atlas/reporting · main";
+      s.live.action.version += 1;
+      return result(s,"changed","Destination changed. The same approval action is still offered, but the old consent cannot apply.");
+    }
+    if(event.type === "condition") {
+      s.live.action.version += 1;
+      s.live.action.condition = s.live.action.condition.startsWith("Implement") ? "Add an export-format compatibility review before implementation." : "Implement the reviewed plan in the reporting repository.";
+      return result(s,"changed","Action conditions changed while the plan stayed the same. Review the difference before approving.");
+    }
+    if(event.type === "unavailable") {
+      s.live.retained = false;
+      return result(s,"changed","The current plan evidence is unavailable. The old reading copy is retained locally and cannot authorize approval.");
+    }
+    if(event.type === "colleague") {
+      s.live.available = false;
+      s.live.selectedTurnId = "implement";
+      return result(s,"changed","A colleague approved the current plan. Implementation is selected; your note remains private.");
+    }
+    return s;
+  }
+  return {initial,reduce,matches};
+})();
+
+const scenarios = {
+  happy:{title:"A reviewed approval",description:"A routine update arrives while you prepare a note. It must not invalidate unchanged review conditions.",steps:[
+    ["Mark Plan 1 reviewed",{type:"review"},"reviewed"],
+    ["Prepare a private note",{type:"draft",value:"Checked resume behavior and row uniqueness."},"draft"],
+    ["Receive an unrelated update",{type:"unrelated"},"updated"],
+    ["Send the reviewed approval",{type:"send"},"pending"],
+    ["Accept the request",{type:"accept"},"accepted"],
+  ]},
+  changed:{title:"The same action, different conditions",description:"A newer plan and a different destination invalidate consent. Comparing is not adopting; the old request must still be refused.",steps:[
+    ["Mark Plan 1 reviewed",{type:"review"},"reviewed"],
+    ["Prepare a private note",{type:"draft",value:"Check that the selected branch is suitable for release."},"draft"],
+    ["Publish Plan 2",{type:"plan"},"changed"],
+    ["Change the destination",{type:"destination"},"changed"],
+    ["Observe refusal of the old approval",{type:"send"},"refused"],
+    ["Compare changed conditions",{type:"compare"},"compared"],
+    ["Adopt the compared conditions",{type:"adopt"},"adopted"],
+    ["Send approval for Plan 2",{type:"send"},"pending"],
+    ["Accept the new request",{type:"accept"},"accepted"],
+  ]},
+  race:{title:"A colleague acts before acceptance",description:"The request is valid when sent. Another operator acts first, so acceptance must refuse it without losing your private note.",steps:[
+    ["Mark Plan 1 reviewed",{type:"review"},"reviewed"],
+    ["Prepare a private note",{type:"draft",value:"Follow up on export compatibility after review."},"draft"],
+    ["Send the reviewed approval",{type:"send"},"pending"],
+    ["Let the colleague approve first",{type:"colleague"},"changed"],
+    ["Observe refusal at acceptance",{type:"accept"},"refused"],
+  ]},
+};
+let state = ApprovalModel.initial();
+let walkthrough = null;
+const $ = (id) => document.getElementById(id);
+const escapeHtml = (value) => String(value).replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
+const field = (label,value) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`;
+const contextFields = (context,other) => {
+  const row = (label,value,changed) => `<div class="change${changed ? " changed" : ""}"><dt>${escapeHtml(label)}${changed ? " · changed" : ""}</dt><dd>${escapeHtml(value)}</dd></div>`;
+  return row("Plan",`Plan ${context.artifact.version}`,context.artifact.entryId!==other.artifact.entryId)
+    + `<div class="change"><dt>Proposed implementation</dt><dd><ol class="compact-list">${context.artifact.steps.map((step)=>`<li class="${other.artifact.steps.includes(step)?"":"changed"}">${escapeHtml(step)}</li>`).join("")}</ol></dd></div>`
+    + row("Destination",context.destination,context.destination!==other.destination)
+    + row("Next action",context.available?`${context.action.label} → ${context.action.next}`:"Approval unavailable · Implementation selected",context.available!==other.available)
+    + row("Action condition",context.action.condition,context.action.condition!==other.action.condition)
+    + row("Evidence",context.retained?"Retained":"Unavailable",context.retained!==other.retained);
+};
+function render() {
+  const live = state.live;
+  const reading = state.reading;
+  const current = ApprovalModel.matches(state.reviewed,live);
+  const staleReading = !ApprovalModel.matches(reading,live);
+  $("version").textContent = `Plan ${reading.artifact.version}`;
+  $("summary").textContent = reading.artifact.summary;
+  $("steps").innerHTML = reading.artifact.steps.map((s)=>`<li>${escapeHtml(s)}</li>`).join("");
+  $("destination").textContent = reading.destination;
+  $("next-action").textContent = `${reading.action.label} → ${reading.action.next}`;
+  $("condition").textContent = reading.action.condition;
+  $("reading-status").className = `status${staleReading ? " warning" : ""}`;
+  $("reading-status").innerHTML = staleReading
+    ? `<strong>Historical reading copy</strong>${escapeHtml(!live.retained?"Current plan evidence is unavailable.":!live.available?"Approval has already been taken.":`Current conditions changed; Plan ${live.artifact.version} is now offered.`)} This copy stays visible for comparison.`
+    : `<strong>${state.reviewed?"Reviewed conditions are current":"Ready for your review"}</strong>Read the plan, destination and next action together.`;
+  $("review").disabled = staleReading || !!state.reviewed || !!state.pending;
+  $("review").textContent = state.reviewed ? `Plan ${state.reviewed.artifact.version} marked reviewed` : "I reviewed these conditions";
+  $("decision-description").textContent = state.accepted ? `Your approval used Plan ${state.accepted.artifact.version} and its exact reviewed conditions.` : state.pending ? `Approval sent for Plan ${state.pending.reviewed.artifact.version}. Acceptance is still pending.` : !live.available ? "Approval is no longer available. Your private note remains editable." : !state.reviewed ? "Mark the conditions reviewed before preparing an approval." : current ? `Approval will use Plan ${state.reviewed.artifact.version}, ${state.reviewed.destination}, and the action condition above.` : `Your receipt still belongs to Plan ${state.reviewed.artifact.version}. Review changed conditions before approving.`;
+  if($("draft").value !== state.draft) $("draft").value = state.draft;
+  $("approve").textContent = state.pending ? "Approval pending" : state.accepted ? "Approval accepted" : `Approve Plan ${state.reviewed?.artifact.version || reading.artifact.version}`;
+  $("approve").hidden = !!state.reviewed && !current && live.available && !state.pending;
+  $("approve").disabled = !state.reviewed || !current || !!state.pending || !live.available;
+  $("compare-button").hidden = !staleReading && (!state.reviewed || current);
+  $("compare-button").className = current?"":"primary";
+  $("message").textContent = state.last.text;
+  $("message").className = `status${state.last.code==="refused"?" error":state.last.code==="accepted"?" success":""}`;
+  $("accept").disabled = !state.pending;
+  $("receipt").innerHTML = field("Reviewed plan",state.reviewed?`Plan ${state.reviewed.artifact.version}`:"Nothing marked reviewed")
+    + field("Reviewed destination",state.reviewed?.destination || "Not reviewed")
+    + field("Review status",state.accepted?"Applied to the accepted approval":!state.reviewed?"Review needed":current?"Current":!live.available?"Historical · action taken":"Stale · conditions changed")
+    + field("Current process position",live.available?"Review Plan · active":"Implementation selected · active")
+    + field("Current plan",`Plan ${live.artifact.version} · ${live.retained?"evidence retained":"evidence unavailable"}`)
+    + field("Pending request",state.pending?`Plan ${state.pending.reviewed.artifact.version} · acceptance pending`:"None")
+    + field("Your accepted approval",state.accepted?`Plan ${state.accepted.artifact.version} · ${state.accepted.destination}`:"None")
+    + field("Unrelated updates received",state.unrelated);
+  $("activity").innerHTML = state.log.slice(-4).map((line)=>`<li>${escapeHtml(line)}</li>`).join("");
+  $("comparison").hidden = !state.comparison;
+  if(state.comparison) {
+    const {before,after} = state.comparison;
+    const fresh = ApprovalModel.matches(after,live);
+    $("compare-description").textContent = "Your receipt stays on the left until you explicitly adopt the conditions on the right. Unchanged implementation steps remain visible for context.";
+    $("compare-grid").innerHTML = `<div class="compare-col"><h3>${state.reviewed?"Previously reviewed":"Reading copy"}</h3><dl>${contextFields(before,after)}</dl></div><div class="compare-col"><h3>Captured current conditions</h3><dl>${contextFields(after,before)}</dl></div>`;
+    $("compare-status").className = `status${fresh && after.available && after.retained?"":" warning"}`;
+    $("compare-status").textContent = !fresh?"This comparison is now stale. Refresh it before adopting anything.":!after.retained?"Plan evidence is unavailable. Approval stays blocked; your draft is kept.":!after.available?"The action has already been taken. Your old receipt and private note stay available.":"Comparison is current. Adopting it records your review; it does not submit approval.";
+    $("adopt").disabled = !fresh || !after.available || !after.retained || !!state.pending;
+  }
+  for(const button of document.querySelectorAll("[data-scenario]")) button.setAttribute("aria-pressed",String(walkthrough?.id===button.dataset.scenario));
+  if(walkthrough) {
+    const scenario = scenarios[walkthrough.id];
+    const done = walkthrough.step === scenario.steps.length;
+    $("walkthrough").innerHTML = `<h3>${escapeHtml(scenario.title)}</h3><p>${escapeHtml(scenario.description)}</p><ol class="step-list">${scenario.steps.map((step,i)=>`<li class="${i===walkthrough.step?"current":""}">${i<walkthrough.step?"Done · ":""}${escapeHtml(step[0])}</li>`).join("")}</ol>${done?`<strong>Scenario complete · ${scenario.steps.length} expected outcomes observed.</strong>`:`<button type="button" id="step" class="primary">${escapeHtml(scenario.steps[walkthrough.step][0])}</button>`}${walkthrough.error?`<p>${escapeHtml(walkthrough.error)}</p>`:""}`;
+  } else {
+    $("walkthrough").innerHTML = '<h3>Free play</h3><p>Read the plan, mark it reviewed, write a note and approve. Then accept the pending request below. Try changing conditions between any two actions.</p>';
+  }
+}
+function dispatch(event) { state = ApprovalModel.reduce(state,event); render(); }
+$("draft").addEventListener("input",(event)=>{state=ApprovalModel.reduce(state,{type:"draft",value:event.target.value});});
+$("review").addEventListener("click",()=>dispatch({type:"review"}));
+$("approve").addEventListener("click",()=>dispatch({type:"send"}));
+$("compare-button").addEventListener("click",()=>{dispatch({type:"compare"});$("comparison").scrollIntoView({block:"start"});});
+$("refresh-compare").addEventListener("click",()=>dispatch({type:"compare"}));
+$("adopt").addEventListener("click",()=>dispatch({type:"adopt"}));
+$("reset").addEventListener("click",()=>{state=ApprovalModel.initial();walkthrough=null;render();});
+for(const button of document.querySelectorAll("[data-action]")) button.addEventListener("click",()=>dispatch({type:button.dataset.action}));
+for(const button of document.querySelectorAll("[data-scenario]")) button.addEventListener("click",()=>{state=ApprovalModel.initial();walkthrough={id:button.dataset.scenario,step:0,error:null};render();});
+$("walkthrough").addEventListener("click",(event)=>{
+  if(event.target.id !== "step" || !walkthrough) return;
+  const [,action,expected] = scenarios[walkthrough.id].steps[walkthrough.step];
+  state=ApprovalModel.reduce(state,action);
+  const observedOutcome = action.type === "draft" ? state.draft === action.value : state.last.code === expected;
+  const index = walkthrough.step;
+  const expectedVersion = walkthrough.id === "changed" && index >= 2 ? 2 : 1;
+  const expectedDestination = walkthrough.id === "changed" && index >= 3 ? "atlas/reporting · release/2026-10" : "atlas/reporting · main";
+  const expectedNote = scenarios[walkthrough.id].steps[1][1].value;
+  const observed = observedOutcome && state.live.artifact.version === expectedVersion
+    && state.live.destination === expectedDestination
+    && (index < 1 || state.draft === expectedNote)
+    && (expected !== "refused" || (!state.accepted && !state.pending))
+    && (walkthrough.id !== "race" || index < 3 || !state.live.available);
+  if(observed) {walkthrough.step+=1;walkthrough.error=null;} else walkthrough.error="That expected outcome did not occur. Reset this scenario or resolve the changed state before continuing.";
+  render();
+});
+render();
+</script>
+</body>
+</html>
