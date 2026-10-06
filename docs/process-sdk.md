@@ -69,10 +69,13 @@ Model provider sets resolve before server setup. Each provider parses only its
 owner-supplied configuration fragment. See [extension-defined providers](models.md#extension-defined-providers).
 Browser result renderers use a separate [UI manifest](extension-ui.md).
 
-The internal `topicWikiCapability` provides server-owned, revision-checked
-[topic solution wikis](topic-wiki.md). Extensions bind tools to a process topic;
-workers never access the store directly. `.runtime({ repositoryCheckout: "on_demand" })`
+Shared solution wikis are owned by [`@leitwerk-dev/wiki`](../packages/wiki/README.md),
+including their process bindings, tools, and contribution guidance. `.runtime({ repositoryCheckout: "on_demand" })`
 opts a process into [lazy full clones](process-workspace.md#2-repository-management).
+Use `repositoryCheckout: "none"` for server-tool-only repository inspection. It
+retains project bindings but skips clone preparation on startup and resume, and
+never exposes `checkout_repository`. Declare `.tools()` and only read-only
+integration tools when local commands and writes must be unavailable.
 
 ## Turn types
 
@@ -372,6 +375,9 @@ The server bounds concurrent checks, checks again after 30 seconds, and times ou
 each read after 30 seconds. `RetryableWaitError` keeps the process waiting with a
 persisted diagnostic and exponential backoff capped at five minutes. Other errors
 park the process in error until an explicit retry. Retry checks readiness again.
+Scheduling-only readiness writes (check revision, due time and retry counters)
+preserve the process's activity timestamp and list position. Business state,
+admission, lifecycle changes and new or recovered diagnostics advance it.
 Restart retains the pending check and due time. Late results cannot override Stop,
 a different selected turn, changed params/state, or changed project bindings.
 
@@ -389,8 +395,8 @@ deduplication. See [Watchers](watchers.md).
 
 ### External actions
 
-An external action advances an existing process while a human or automatic turn
-remains selected and waiting:
+An external action advances an existing process while a human, waiting LLM or
+automatic turn remains selected and waiting:
 
 ```ts
 const review = flow
@@ -405,7 +411,9 @@ const review = flow
 
 An automatic outcome can `.wait()` without introducing a synthetic wait turn.
 External actions arm while the selected turn is durably waiting, including in a
-readiness check. They are inactive while the handler runs. They may wake readiness
+readiness check. Waiting LLM turns support the same `.externalAction(...)` builder;
+their fixed routes appear in the graph and selected-turn action projection. They
+are inactive while the handler runs. They may wake readiness
 for the same or another worker turn, select a human turn, complete, or abort.
 Use `.when(...)` to require any published facts needed by the source resolver;
 readiness can wait before the first execution has produced those facts.
@@ -450,7 +458,11 @@ Providers may call `externalSources.observe` with the captured subscription
 `links`, `observedAt`, and opaque `subject` and `revision`. They never fire transitions.
 Timestamps must be valid; HTTP(S) links need unique IDs and must not contain
 credentials. Rejected reports preserve the last known facts. See
-[subscription generations](watchers.md#subscription-generations).
+[subscription generations](watchers.md#subscription-generations). A server provider may
+also stage codec-validated business `state` with an observation. The generation
+fences that state write without selecting a turn or allocating a worker. Include
+its state and project bindings in the source resolver when they affect freshness;
+unchanged observations should omit state writes.
 
 ## Ticket creation adapters
 
@@ -566,3 +578,17 @@ validation, and launcher contracts.
 State-routed LLM outcomes evaluate their effect first, then choose a declared branch
 using the returned state. The state update and selected transition persist together;
 policy lookups belong in the effect so routing does not repeat them.
+
+### Integration maintenance
+
+Integrations may register server maintenance through a capability, independent of
+the selected turn. GitLab's [maintained-process helper](../extensions/gitlab/README.md#shared-mr-maintenance)
+provides MR observation, active/done labels, settled feedback and durable
+acknowledgements. Processes declare their bindings, existing external edges, repair
+policy and completion adapters. Polling does not add business turns or turn attempts.
+Changed work returns to publication; a no-change result resumes observation.
+
+Background reads commit against their process and project snapshots under server
+coordination. Ordinary observations retain the selected turn and its execution.
+Ownership loss supersedes in-flight work before returning to an existing gated turn
+or ending the process; stale worker outcomes cannot restore the prior state.

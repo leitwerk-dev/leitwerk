@@ -31,7 +31,11 @@ test.use({
 	browserServerOptions: {
 		tempPrefix: "leitwerk-settings-groups-",
 		createExtensionCatalog: () =>
-			buildExtensionCatalogFromModules([coding, jira, componentSettings]),
+			buildExtensionCatalogFromModules([
+				coding,
+				{ manifest: jira.manifest, scopedSettings: jira.scopedSettings },
+				componentSettings,
+			]),
 	},
 });
 

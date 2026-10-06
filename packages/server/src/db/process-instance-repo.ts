@@ -74,6 +74,12 @@ export interface ProcessOverviewWindowQuery extends ProcessOverviewQuery {
 	sortDirection: "asc" | "desc";
 }
 
+/** Internal persistence policy; never part of a process patch. @internal */
+export interface UpdateProcessInstanceOptions {
+	/** Scheduling-only writes retain process activity time. @internal */
+	preserveUpdatedAt?: boolean;
+}
+
 /** @public */
 export interface UpdateProcessInstanceInput extends ProcessCustomizableFields {
 	/** @internal */
@@ -362,10 +368,14 @@ export function createProcessInstanceRepo(db: LeitwerkDb) {
 		},
 
 		/** @public */
-		update(id: string, input: UpdateProcessInstanceInput): ProcessInstance | null {
+		update(
+			id: string,
+			input: UpdateProcessInstanceInput,
+			options: UpdateProcessInstanceOptions = {},
+		): ProcessInstance | null {
 			const ts = now();
 			const setValues: SQLiteUpdateSetSource<typeof s.processInstances> = {
-				updatedAt: ts,
+				...(options.preserveUpdatedAt ? {} : { updatedAt: ts }),
 				defaultModelProfileId: input.defaultModelProfileId,
 				initialDefaultModelProfileId: input.initialDefaultModelProfileId,
 				selectedTurnId: input.selectedTurnId,

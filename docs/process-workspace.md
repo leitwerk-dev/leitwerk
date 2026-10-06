@@ -71,6 +71,14 @@ repositories do not block readiness. A failed requested checkout fails that tool
 The returned HEAD describes the local checkout, not necessarily today's remote head.
 Agents must read newly materialized repository instructions before inspection.
 
+Processes can use `.runtime({ repositoryCheckout: "none" })` to retain repository
+bindings solely for server integration-tool authorization. Startup and resume
+create the workspace directory without preparing, validating, repairing, or
+aggregating repositories. `checkout_repository` is absent. Existing workspace,
+manifest, and tree storage remains intact. This mode does not itself remove
+local tools or server mutation tools; the process must authorize only the tools
+its turns need.
+
 A process may opt into development-tool preparation. The worker then runs stock `mise install`
 and `mise ls --current --json` sequentially at each repository root in repository-key order. It
 does not scan nested directories, generate mise configuration, interpret ecosystem files, or

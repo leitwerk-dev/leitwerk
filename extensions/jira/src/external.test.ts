@@ -8,7 +8,10 @@ import { expect, it, vi } from "vitest";
 import type { JiraClientLike, JiraIssue } from "./client.js";
 import { setupJiraIntegration } from "./index.js";
 
-it("keeps approval on unavailable or repointed sources and correlates bypass to the current plan", async () => {
+it.each([
+	"use-leitwerk",
+	"use-leitwerk-beta",
+])("keeps %s approval on unavailable or repointed sources and correlates bypass to the current plan", async (triggerLabel) => {
 	let time = 0;
 	let unavailable = true;
 	let baseUrl = "https://jira.test/context";
@@ -16,7 +19,14 @@ it("keeps approval on unavailable or repointed sources and correlates bypass to 
 		id: "bypass_plan",
 		instanceId: "process",
 		generation: "one",
-		resolved: { profile: "team", baseUrl, issueId: "501", planRevision: 2, mode: "plan_bypass" },
+		resolved: {
+			triggerLabel,
+			profile: "team",
+			baseUrl,
+			issueId: "501",
+			planRevision: 2,
+			mode: "plan_bypass",
+		},
 	};
 	const issue: JiraIssue = {
 		id: "501",
@@ -26,7 +36,7 @@ it("keeps approval on unavailable or repointed sources and correlates bypass to 
 			description: null,
 			components: [],
 			project: { id: "100", key: "APP", name: "App" },
-			labels: ["use-leitwerk", "leitwerk-skip-plan-decision"],
+			labels: [triggerLabel, "leitwerk-skip-plan-decision"],
 			status: { statusCategory: { key: "new" } },
 		},
 	};

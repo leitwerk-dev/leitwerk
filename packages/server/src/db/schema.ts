@@ -1,3 +1,7 @@
+import { wikiTopics } from "@leitwerk-dev/wiki/server";
+
+export { wikiPages, wikiRevisions, wikiTopics } from "@leitwerk-dev/wiki/server";
+
 import {
 	type MappedItem,
 	type MappedRunStatus,
@@ -15,28 +19,6 @@ import {
 	text,
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
-
-export const wikiTopics = sqliteTable("wiki_topics", {
-	id: text("id").primaryKey(),
-	key: text("key").notNull(),
-	data: text("data").notNull(),
-});
-
-export const wikiPages = sqliteTable("wiki_pages", {
-	id: text("id").primaryKey(),
-	topicId: text("topic_id")
-		.notNull()
-		.references(() => wikiTopics.id),
-	data: text("data").notNull(),
-});
-
-export const wikiRevisions = sqliteTable("wiki_revisions", {
-	id: text("id").primaryKey(),
-	pageId: text("page_id")
-		.notNull()
-		.references(() => wikiPages.id),
-	data: text("data").notNull(),
-});
 
 export const topicPublications = sqliteTable(
 	"topic_publications",

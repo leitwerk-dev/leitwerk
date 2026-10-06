@@ -64,6 +64,20 @@ export function registerSettingsRoutes(
 	app.get<{ Querystring: { subjectId?: string } }>("/api/settings/preview", async (request) =>
 		settings.preview(request.query.subjectId ?? "instance"),
 	);
+	app.get<{ Querystring: { subjectId: string; key: string; search?: string } }>(
+		"/api/settings/choices",
+		async (request) => {
+			if (!request.query.subjectId || !request.query.key)
+				throw new SettingsError("Provide subjectId and key", 400);
+			return {
+				choices: await settings.choices(
+					request.query.subjectId,
+					request.query.key,
+					request.query.search,
+				),
+			};
+		},
+	);
 	app.post("/api/settings/preview", async (request) => {
 		return settings.previewDraft(normalizedChange(request));
 	});

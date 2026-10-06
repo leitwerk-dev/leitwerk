@@ -14,6 +14,8 @@ import { createGitLabIssueDiscovery } from "./issue-watcher.js";
 export interface GitLabDeliveryObservation extends GitLabObservation {
 	/** @public */
 	projectKey?: string;
+	/** Target ancestry suppresses stale conflict/rebase reports after publication. @public */
+	targetIntegrated?: boolean;
 
 	/** @public */
 	observationKey?: string;

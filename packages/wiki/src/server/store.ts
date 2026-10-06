@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
-import type { TopicPublication, WikiPage, WikiTopic } from "@leitwerk-dev/domain";
-import type { TopicWikiStore } from "@leitwerk-dev/process-sdk";
 import { eq } from "drizzle-orm";
-import type { LeitwerkDb } from "./database.js";
-import { topicPublications, wikiPages, wikiRevisions, wikiTopics } from "./schema.js";
+import type { drizzle } from "drizzle-orm/node-sqlite";
+import type { WikiPage, WikiTopic } from "../model.js";
+import type { TopicWikiStore } from "../store.js";
+import { wikiPages, wikiRevisions, wikiTopics } from "./schema.js";
 
 function digest(value: string): string {
 	return createHash("sha256").update(value).digest("hex");
@@ -11,7 +11,7 @@ function digest(value: string): string {
 
 /** @internal */
 export function createTopicWikiRepo(
-	db: LeitwerkDb,
+	db: ReturnType<typeof drizzle>,
 	changed: (topicId: string) => void = () => {},
 ): TopicWikiStore {
 	function rawPage(topicId: string, pageId: string): WikiPage | null {
@@ -33,6 +33,31 @@ export function createTopicWikiRepo(
 			.values({ id: `${id}:${page.revision}`, pageId: id, data })
 			.run();
 	}
+	function storeTopic(topic: WikiTopic): void {
+		db.insert(wikiTopics)
+			.values({ id: topic.id, key: topic.key, data: JSON.stringify(topic) })
+			.onConflictDoUpdate({ target: wikiTopics.id, set: { data: JSON.stringify(topic) } })
+			.run();
+	}
+	function bumpTopic(topicId: string): void {
+		const topic = store.getTopic(topicId);
+		if (!topic) throw new Error("Unknown wiki topic");
+		storeTopic({ ...topic, revision: (topic.revision ?? 1) + 1 });
+	}
+	function tombstone(current: WikiPage, actor: string, turnRecordId = ""): WikiPage {
+		return {
+			...current,
+			markdown: "",
+			applicability: "",
+			evidence: [],
+			deleted: true,
+			revision: current.revision + 1,
+			updatedAt: new Date().toISOString(),
+			instanceId: actor,
+			turnRecordId,
+			updatedBy: undefined,
+		};
+	}
 	function invalidateDependents(topicId: string, pageId: string, updatedAt: string): void {
 		for (const page of store.listPages(topicId))
 			if (page.links.includes(pageId))
@@ -46,28 +71,35 @@ export function createTopicWikiRepo(
 	const store: TopicWikiStore = {
 		ensureTopic(input) {
 			const id = digest(input.key);
-			const topic = { ...input, id };
-			if (JSON.stringify(store.getTopic(id)) === JSON.stringify(topic)) return topic;
-			db.insert(wikiTopics)
-				.values({ id, key: input.key, data: JSON.stringify(topic) })
-				.onConflictDoUpdate({ target: wikiTopics.id, set: { data: JSON.stringify(topic) } })
-				.run();
+			const current = store.getTopic(id);
+			if (current?.deleted) return current;
+			const topic = { ...input, id, revision: current?.revision ?? 1, deleted: false };
+			if (JSON.stringify(current) === JSON.stringify(topic)) return topic;
+			if (current) topic.revision++;
+			storeTopic(topic);
 			changed(id);
 			return topic;
 		},
 		getTopic(id) {
 			const row = db.select().from(wikiTopics).where(eq(wikiTopics.id, id)).get();
-			return row ? JSON.parse(row.data) : null;
+			if (!row) return null;
+			const topic = JSON.parse(row.data) as WikiTopic;
+			return { ...topic, revision: topic.revision ?? 1, deleted: topic.deleted ?? false };
 		},
 		listTopics() {
 			return db
 				.select()
 				.from(wikiTopics)
 				.all()
-				.map((row) => JSON.parse(row.data) as WikiTopic);
+				.map((row) => {
+					const topic = JSON.parse(row.data) as WikiTopic;
+					return { ...topic, revision: topic.revision ?? 1, deleted: topic.deleted ?? false };
+				})
+				.filter((topic) => !topic.deleted);
 		},
 		listPages(topicId) {
 			const topic = store.getTopic(topicId);
+			if (!topic || topic.deleted) return [];
 			const pages = db
 				.select()
 				.from(wikiPages)
@@ -115,7 +147,8 @@ export function createTopicWikiRepo(
 				const current = rawPage(input.topicId, input.id);
 				if (current?.deleted || (current?.revision ?? 0) !== expectedRevision)
 					throw new Error("Wiki revision conflict or deleted page; refresh before editing");
-				if (!store.getTopic(input.topicId)) throw new Error("Unknown wiki topic");
+				const topic = store.getTopic(input.topicId);
+				if (!topic || topic.deleted) throw new Error("Wiki group unavailable or deleted");
 				for (const link of input.links)
 					if (!store.readPage(input.topicId, link) || link === input.id)
 						throw new Error("Wiki links must reference another current page in this topic");
@@ -127,82 +160,41 @@ export function createTopicWikiRepo(
 				};
 				storePage(next);
 				if (current) invalidateDependents(input.topicId, input.id, next.updatedAt);
+				bumpTopic(input.topicId);
 				return next;
 			});
 			changed(input.topicId);
 			return page;
 		},
-		deletePage(topicId, pageId, expectedRevision, actor) {
+		deletePage(topicId, pageId, expectedRevision, actor, turnRecordId) {
 			db.transaction(() => {
 				const current = rawPage(topicId, pageId);
 				if (!current || current.deleted || current.revision !== expectedRevision)
 					throw new Error("Wiki revision conflict; refresh before deleting");
-				storePage({
-					...current,
-					markdown: "",
-					applicability: "",
-					evidence: [],
-					deleted: true,
-					revision: current.revision + 1,
-					updatedAt: new Date().toISOString(),
-					instanceId: actor,
-					turnRecordId: "",
-				});
+				storePage(tombstone(current, actor, turnRecordId));
 				invalidateDependents(topicId, pageId, new Date().toISOString());
+				bumpTopic(topicId);
 			});
 			changed(topicId);
 		},
-		publication(key) {
-			const row = db.select().from(topicPublications).where(eq(topicPublications.key, key)).get();
-			return row ? JSON.parse(row.data) : null;
-		},
-		publicationByExternalId(externalId) {
-			const row = db
-				.select()
-				.from(topicPublications)
-				.where(eq(topicPublications.externalId, externalId))
-				.get();
-			return row ? JSON.parse(row.data) : null;
-		},
-		reservePublication(input) {
-			return (
-				Number(
-					db
-						.insert(topicPublications)
-						.values({
-							key: input.key,
-							topicId: input.topicId,
-							externalId: null,
-							data: JSON.stringify(input),
-						})
-						.onConflictDoNothing()
-						.run().changes,
-				) === 1
-			);
-		},
-		finishPublication(key, externalId, url) {
-			const current = store.publication(key);
-			if (!current || (current.externalId && current.externalId !== externalId))
-				throw new Error("Publication receipt conflict");
-			const receipt: TopicPublication = { ...current, externalId, url };
-			db.update(topicPublications)
-				.set({ externalId, data: JSON.stringify(receipt) })
-				.where(eq(topicPublications.key, key))
-				.run();
-		},
-		releaseRejectedPublication(key) {
-			const current = store.publication(key);
-			if (current?.externalId) throw new Error("Cannot release a published ticket");
-			db.delete(topicPublications).where(eq(topicPublications.key, key)).run();
-		},
-		markPublicationTriggered(key) {
-			const current = store.publication(key);
-			if (!current?.externalId)
-				throw new Error("Ticket receipt is required before triggering changes");
-			db.update(topicPublications)
-				.set({ data: JSON.stringify({ ...current, triggered: true }) })
-				.where(eq(topicPublications.key, key))
-				.run();
+		deleteTopic(topicId, expectedRevision, actor, turnRecordId) {
+			db.transaction(() => {
+				const topic = store.getTopic(topicId);
+				if (!topic || topic.deleted || topic.revision !== expectedRevision)
+					throw new Error("Wiki group revision conflict; refresh before deleting");
+				const pages = db.select().from(wikiPages).where(eq(wikiPages.topicId, topicId)).all();
+				for (const row of pages) {
+					const page = JSON.parse(row.data) as WikiPage;
+					if (!page.deleted) storePage(tombstone(page, actor, turnRecordId));
+				}
+				storeTopic({
+					...topic,
+					deleted: true,
+					revision: expectedRevision + 1,
+					deletion: { actor, turnRecordId: turnRecordId ?? "", at: new Date().toISOString() },
+				});
+			});
+			changed(topicId);
 		},
 	};
 	return store;

@@ -2,6 +2,8 @@
 
 LLM turns may [wait for server-side readiness](process-sdk.md#readiness-before-a-worker-starts).
 Prompt and preparation remain on the same turn; no worker starts before readiness.
+A waiting LLM turn may also declare `.externalAction(...)` with fixed routes to a
+gated worker turn or a terminal outcome. Subscriptions arm only while it is waiting.
 
 An active LLM turn uses two server paths:
 

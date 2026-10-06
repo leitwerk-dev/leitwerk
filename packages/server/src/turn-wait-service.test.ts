@@ -197,6 +197,32 @@ describe("server-owned turn readiness", () => {
 		expect(s.counts()).toEqual([0, 0, 0, 0]);
 	});
 
+	it.each([
+		"automatic",
+		"llm",
+	] as const)("preserves activity time when %s readiness only reschedules", async (kind) => {
+		const predicate = vi.fn(() => false);
+		const s = setup(predicate, kind);
+		expect(await s.start()).toMatchObject({
+			ok: true,
+			process: { lifecycleStatus: "waiting", currentExecution: null },
+		});
+		const service = s.service();
+		const timestamp = "2000-01-01T00:00:00.000Z";
+		s.deps.db.$client
+			.prepare("UPDATE process_instances SET updated_at = ? WHERE id = ?")
+			.run(timestamp, s.process.id);
+		const revision = pendingTurnWait(s.read())?.revision ?? 0;
+		for (let i = 0; i < 10; i++) {
+			await service.poll();
+			s.advance();
+		}
+		expect(predicate).toHaveBeenCalledTimes(10);
+		expect(s.read().updatedAt).toBe(timestamp);
+		expect(pendingTurnWait(s.read())?.revision).toBe(revision + 10);
+		expect(s.counts()).toEqual([0, 0, 0, 0]);
+	});
+
 	it("completes a closed external subject without a worker", async () => {
 		const s = setup((process) => process.complete());
 		await s.start();
@@ -247,15 +273,47 @@ describe("server-owned turn readiness", () => {
 			message: "Provider unavailable",
 		});
 		expect(s.read().lifecycleStatus).toBe("waiting");
+		const timestamp = "2000-01-01T00:00:00.000Z";
+		s.deps.db.$client
+			.prepare("UPDATE process_instances SET updated_at = ? WHERE id = ?")
+			.run(timestamp, s.process.id);
 		const recovered = s.service();
 		await recovered.poll();
 		s.advance(200);
 		await recovered.poll();
 		expect(predicate).toHaveBeenCalledTimes(2);
+		expect(s.read().updatedAt).toBe(timestamp);
 		expect(s.counts()).toEqual([0, 0, 0, 0]);
 		expect(
 			s.deps.events.listByInstance(s.process.id).filter((e) => e.eventType === "turn_wait_failed"),
 		).toHaveLength(1);
+	});
+
+	it("advances activity for new and recovered diagnostics, but preserves repeated backoff", async () => {
+		let unavailable = true;
+		const s = setup(() => {
+			if (unavailable) throw new RetryableWaitError("Provider unavailable");
+			return false;
+		});
+		await s.start();
+		const service = s.service();
+		const old = "2000-01-01T00:00:00.000Z";
+		const age = () =>
+			s.deps.db.$client
+				.prepare("UPDATE process_instances SET updated_at = ? WHERE id = ?")
+				.run(old, s.process.id);
+		age();
+		await service.poll();
+		expect(s.read().updatedAt).not.toBe(old);
+		age();
+		s.advance(200);
+		await service.poll();
+		expect(s.read().updatedAt).toBe(old);
+		unavailable = false;
+		s.advance(400);
+		await service.poll();
+		expect(s.read().updatedAt).not.toBe(old);
+		expect(s.counts()).toEqual([0, 0, 0, 0]);
 	});
 
 	it("parks a broken predicate with diagnostics until an explicit retry checks it again", async () => {

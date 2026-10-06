@@ -9,6 +9,8 @@ export interface GitLabProfile {
 	/** @internal */
 	token: string;
 	/** @internal */
+	ignoredCommentUsers?: readonly string[];
+	/** @internal */
 	gitIdentity?: {
 		/** @internal */
 		name: string;
@@ -349,12 +351,23 @@ export function parseGitLabProfiles(raw: unknown): Map<string, GitLabProfile> {
 		profiles.set(name, {
 			baseUrl,
 			token,
+			ignoredCommentUsers: parseIgnoredCommentUsers(item.ignored_comment_users),
 			...(identity
 				? { gitIdentity: { name: String(identity.name), email: String(identity.email) } }
 				: {}),
 		});
 	}
 	return profiles;
+}
+
+function parseIgnoredCommentUsers(raw: unknown): string[] {
+	if (raw === undefined) return [];
+	if (!Array.isArray(raw) || raw.some((user) => typeof user !== "string"))
+		throw new Error("GitLab ignored_comment_users must be a list of usernames");
+	const users = raw.map((user: string) => user.trim().replace(/^@/, "").toLowerCase());
+	if (users.some((user) => !/^[a-z0-9_.-]+$/.test(user)))
+		throw new Error("GitLab ignored_comment_users requires nonempty GitLab usernames");
+	return [...new Set(users)];
 }
 const projectPath = (id: number | string) => `/projects/${encodeURIComponent(id)}`;
 const mrPath = (id: number, iid: number) => `${projectPath(id)}/merge_requests/${iid}`;
@@ -365,6 +378,7 @@ export class GitLabClient {
 	/** @public */
 	readonly baseUrl: string;
 	readonly #profile: GitLabProfile;
+	readonly #ignoredCommentUsers: ReadonlySet<string>;
 	readonly #fetch: typeof fetch;
 	readonly #sleep: (ms: number) => Promise<unknown>;
 	/** @internal */
@@ -383,6 +397,7 @@ export class GitLabClient {
 		if (!profile.token || /[\r\n\0]/.test(profile.token))
 			throw new Error("GitLab requires a valid token");
 		this.#profile = profile;
+		this.#ignoredCommentUsers = new Set(parseIgnoredCommentUsers(profile.ignoredCommentUsers));
 		this.baseUrl = profile.baseUrl;
 		this.#fetch = options.fetch ?? fetch;
 		this.#sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
@@ -587,6 +602,19 @@ export class GitLabClient {
 	listProjects(signal?: AbortSignal): Promise<GitLabProject[]> {
 		return this.pages("/projects?archived=false", signal);
 	}
+	/** Read at most one page of matching repositories. @internal */
+	searchProjects(search: string, signal?: AbortSignal): Promise<GitLabProject[]> {
+		const query = new URLSearchParams({
+			archived: "false",
+			search,
+			search_namespaces: "true",
+			per_page: "100",
+			page: "1",
+			order_by: "path",
+			sort: "asc",
+		});
+		return this.request(`/projects?${query}`, signal);
+	}
 	/** @internal */
 	listRepositoryTree(
 		id: number,
@@ -629,6 +657,71 @@ export class GitLabClient {
 			signal,
 		);
 	}
+	/** Project-scoped basic blob search at a full commit, one page per request. @internal */
+	async searchRepositoryCode(
+		id: number,
+		ref: string,
+		search: string,
+		page = 1,
+		perPage = 20,
+		signal?: AbortSignal,
+	): Promise<{
+		/** @internal */ revision: string;
+		/** @internal */ results: {
+			/** @internal */ path: string;
+			/** @internal */ snippet: string;
+			/** @internal */ startLine: number;
+		}[];
+		/** @internal */ page: number;
+		/** @internal */ nextPage: number | null;
+	}> {
+		if (!/^[a-f0-9]{40,64}$/i.test(ref)) throw new Error("Code search requires a full commit ID");
+		if (!search.trim()) throw new Error("Code search requires a search term");
+		if (
+			!Number.isSafeInteger(page) ||
+			page < 1 ||
+			!Number.isSafeInteger(perPage) ||
+			perPage < 1 ||
+			perPage > 100
+		)
+			throw new Error("Invalid GitLab search pagination");
+		const query = new URLSearchParams({
+			scope: "blobs",
+			search_type: "basic",
+			ref,
+			search,
+			page: String(page),
+			per_page: String(perPage),
+		});
+		const response = await this.response(`${projectPath(id)}/search?${query}`, signal);
+		const rows = await this.json<{ path: string; data: string; startline: number }[]>(response);
+		if (
+			!Array.isArray(rows) ||
+			rows.some(
+				(row) =>
+					!row ||
+					typeof row.path !== "string" ||
+					typeof row.data !== "string" ||
+					!Number.isSafeInteger(row.startline),
+			)
+		)
+			throw new Error("Invalid GitLab code search response");
+		const next = response.headers.get("x-next-page");
+		const nextPage =
+			next === "" || (next === null && rows.length < perPage)
+				? null
+				: next === null
+					? page + 1
+					: Number(next);
+		if (nextPage !== null && (!Number.isSafeInteger(nextPage) || nextPage <= page))
+			throw new Error("Invalid GitLab pagination");
+		return {
+			revision: ref,
+			results: rows.map((row) => ({ path: row.path, snippet: row.data, startLine: row.startline })),
+			page,
+			nextPage,
+		};
+	}
 	/** @internal */
 	getGroup(id: number | string, signal?: AbortSignal): Promise<GitLabGroup> {
 		return this.request(`/groups/${encodeURIComponent(id)}`, signal);
@@ -655,6 +748,26 @@ export class GitLabClient {
 	getMergeRequest(id: number, iid: number, signal?: AbortSignal): Promise<GitLabMergeRequest> {
 		return this.request(mrPath(id, iid), signal);
 	}
+	/** Read every label transition, including changes between watcher polls. @public */
+	listMergeRequestLabelEvents(
+		id: number,
+		iid: number,
+		signal?: AbortSignal,
+	): Promise<GitLabLabelEvent[]> {
+		return this.pages(`${mrPath(id, iid)}/resource_label_events`, signal);
+	}
+	/** Apply label deltas without replacing unrelated labels. @public */
+	updateMergeRequestLabels(
+		id: number,
+		iid: number,
+		patch: {
+			/** @public */ add_labels?: string;
+			/** @public */ remove_labels?: string;
+		},
+		signal?: AbortSignal,
+	): Promise<GitLabMergeRequest> {
+		return this.request(mrPath(id, iid), signal, patch, "PUT");
+	}
 	/** @public */
 	getChanges(id: number, iid: number, signal?: AbortSignal): Promise<GitLabDiff[]> {
 		return this.pages(`${mrPath(id, iid)}/diffs`, signal);
@@ -669,6 +782,12 @@ export class GitLabClient {
 	/** @internal */
 	getCommit(id: number, sha: string, signal?: AbortSignal): Promise<GitLabCommit> {
 		return this.request(`${projectPath(id)}/repository/commits/${encodeURIComponent(sha)}`, signal);
+	}
+	/** Find shared ancestry without cloning a repository. @public */
+	getMergeBase(id: number, refs: readonly string[], signal?: AbortSignal): Promise<GitLabCommit> {
+		const query = new URLSearchParams();
+		for (const ref of refs) query.append("refs[]", ref);
+		return this.request(`${projectPath(id)}/repository/merge_base?${query}`, signal);
 	}
 	/** @internal */
 	listMergeRequestPipelines(
@@ -796,6 +915,7 @@ export class GitLabClient {
 					note.system ||
 					note.resolved ||
 					note.author.bot ||
+					this.#ignoredCommentUsers.has(note.author.username.toLowerCase()) ||
 					/<!-- leitwerk:gitlab:[a-f0-9]{64} -->/.test(note.body) ||
 					!note.body.trim() ||
 					!Number.isFinite(Date.parse(note.created_at))
@@ -888,6 +1008,20 @@ export class GitLabClient {
 	}
 }
 /** @public */
+export interface GitLabLabelEvent {
+	/** Monotonically increasing GitLab resource-label event identity. @public */
+	id: number;
+	/** @public */
+	action: "add" | "remove";
+	/** @public */
+	created_at: string;
+	/** Deleted labels may have no name. @public */
+	label: {
+		/** @public */
+		name: string;
+	} | null;
+}
+/** @public */
 export type GitLabClientLike = Pick<
 	GitLabClient,
 	| "listIssues"
@@ -913,6 +1047,8 @@ export type GitLabClientLike = Pick<
 	| "getGroup"
 	| "getJobTrace"
 	| "getMergeRequest"
+	| "listMergeRequestLabelEvents"
+	| "updateMergeRequestLabels"
 	| "getPipeline"
 	| "getProject"
 	| "listBranchPipelines"
@@ -925,11 +1061,17 @@ export type GitLabClientLike = Pick<
 	| "listNoteReactions"
 	| "listNotes"
 	| "listProjects"
+	| "searchProjects"
 	| "replyToDiscussion"
 	| "resolveDiscussion"
 	| "resolveGitIdentity"
 > &
-	Partial<Pick<GitLabClient, "listRepositoryTree" | "getRepositoryFile">>;
+	Partial<
+		Pick<
+			GitLabClient,
+			"listRepositoryTree" | "getRepositoryFile" | "getMergeBase" | "searchRepositoryCode"
+		>
+	>;
 
 /** A pending current pipeline supersedes every older result. Synthetic merges must contain this source head. */
 /** @public */

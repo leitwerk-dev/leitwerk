@@ -234,7 +234,8 @@ function listExternalTriggers(
 	}
 	if (
 		!isHumanTurnDefinition(turnDef) &&
-		(!isAutomaticTurnDefinition(turnDef) || ctx.process.lifecycleStatus !== "waiting")
+		(!(isAutomaticTurnDefinition(turnDef) || turnDef.kind === "llm") ||
+			ctx.process.lifecycleStatus !== "waiting")
 	)
 		return [];
 	const triggers = isHumanTurnDefinition(turnDef)

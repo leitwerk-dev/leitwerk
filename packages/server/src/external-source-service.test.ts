@@ -136,23 +136,32 @@ function createWaitingProcess(deps: ReturnType<typeof createTestDeps>) {
 }
 
 describe("ExternalSourceService", () => {
-	it("treats repeated observations as readiness wakeups without starts, leases or turn records", async () => {
+	it.each([
+		"automatic",
+		"llm",
+	] as const)("treats %s external events as readiness wakeups without starts, leases or turn records", async (kind) => {
 		const predicate = vi.fn(() => false);
+		const turn =
+			kind === "automatic"
+				? flow
+						.automatic("work")
+						.description("Work")
+						.waitFor(predicate)
+						.run(() => ({ outcome: "done", params: {} }))
+						.outcome("done", (o) => o.description("Wait").wait())
+				: flow
+						.llm("work")
+						.description("Work")
+						.waitFor(predicate)
+						.prompt("Work")
+						.outcomeTool("done", (o) => o.description("Done").complete());
 		const definition = flow
 			.process("observed_worker")
 			.displayName("Observed worker")
 			.entry("work")
 			.codecs({ params: stateCodec, state: stateCodec })
 			.initialState(() => ({}))
-			.turn(
-				flow
-					.automatic("work")
-					.description("Work")
-					.waitFor(predicate)
-					.run(() => ({ outcome: "done", params: {} }))
-					.outcome("done", (o) => o.description("Wait").wait())
-					.externalAction("changed", source(), (edge) => edge.to("work")),
-			)
+			.turn(turn.externalAction("changed", source(), (edge) => edge.label("Fix MR").to("work")))
 			.define();
 		const deps = createTestDeps();
 		const processGraphs = createProcessGraphRegistry([definition]);
@@ -185,6 +194,14 @@ describe("ExternalSourceService", () => {
 		});
 		expect(await commands.startProcess(process.id, "work")).toMatchObject({ ok: true });
 		await service.reconcileAllArmings();
+		expect(service.listArmed("example.file.presence")).toHaveLength(1);
+		expect(
+			registry.getSelectedTurnSummary(
+				definition.id,
+				deps.processes.getById(process.id) ?? process,
+				[],
+			)?.externalTriggers,
+		).toEqual([expect.objectContaining({ label: "Fix MR", externalActionId: "changed" })]);
 		for (let i = 0; i < 25; i++) {
 			expect(
 				await service.fire({
@@ -749,4 +766,53 @@ it("rejects a captured event after its subscription changes without queuing it",
 			})
 		).ok,
 	).toBe(true);
+});
+
+it("commits observation business state without selecting a turn and fences stale updates", async () => {
+	const { deps, service } = createHarness({
+		fileDoneSource: source({
+			resolve: ({ state, projects, process }) => ({
+				state,
+				projects,
+				revision: process.planRevision,
+			}),
+		}),
+	});
+	if (!service.observe) throw new Error("Observation service missing");
+	const process = createWaitingProcess(deps);
+	const armed = service.listArmed("example.file.presence")[0];
+	const identity = {
+		instanceId: process.id,
+		armingId: armed.id,
+		generation: armed.generation ?? "missing",
+	};
+	const observation = {
+		summary: "CI green",
+		observedAt: "2026-10-06T10:00:00Z",
+		subject: "mr",
+		revision: "a",
+	};
+	expect(
+		await service.observe({ ...identity, observation, state: { status: "CI green" } }),
+	).toMatchObject({ ok: true });
+	expect(deps.processes.getById(process.id)).toMatchObject({
+		selectedTurnId: "review",
+		lifecycleStatus: "waiting",
+		stateJson: '{"status":"CI green"}',
+	});
+	expect(deps.turnRecords.listByInstance(process.id)).toHaveLength(0);
+	expect(
+		await service.observe({ ...identity, observation, state: { status: "stale" } }),
+	).toMatchObject({ ok: false });
+	const current = service.listArmed("example.file.presence")[0];
+	deps.processes.update(process.id, { lifecycleStatus: "aborted" });
+	expect(
+		await service.observe({
+			...identity,
+			generation: current.generation ?? "missing",
+			observation,
+			state: { status: "stopped" },
+		}),
+	).toMatchObject({ ok: false });
+	expect(deps.processes.getById(process.id)?.stateJson).toBe('{"status":"CI green"}');
 });

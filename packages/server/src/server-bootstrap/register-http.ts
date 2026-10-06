@@ -1,7 +1,8 @@
+import { registerTopicWikiRoutes } from "@leitwerk-dev/wiki/server";
 import type { FastifyInstance } from "fastify";
 import { registerApiTokenAudit } from "../auth/api-token-audit.js";
 import type { AuthService } from "../auth/auth-service.js";
-import { requireApiActor } from "../auth/fastify-auth.js";
+import { actorForRequest, requireApiActor } from "../auth/fastify-auth.js";
 import { registerAuthRoutes } from "../auth/routes.js";
 import type { ExtensionUiCatalog } from "../extension-ui/catalog.js";
 import type { IntegrationToolRegistry } from "../integration-tool-registry.js";
@@ -14,7 +15,6 @@ import { registerResultImageRoutes } from "../routes/result-images.js";
 import { registerSettingsRoutes } from "../routes/settings.js";
 import { registerSkillRoutes } from "../routes/skills.js";
 import { registerTicketCreationRoutes } from "../routes/ticket-creation.js";
-import { registerTopicWikiRoutes } from "../routes/topic-wiki.js";
 import { registerUiRendererRoutes } from "../routes/ui-renderers.js";
 import { registerWatcherRoutes } from "../routes/watchers.js";
 import { healthBody } from "./register-websocket.js";
@@ -76,7 +76,8 @@ export function registerHttp(input: {
 		store: input.resultImages,
 	});
 	registerProcessRoutes(input.app, input.deps);
-	if (input.deps.topicWiki) registerTopicWikiRoutes(input.app, input.deps.topicWiki);
+	if (input.deps.topicWiki)
+		registerTopicWikiRoutes(input.app, input.deps.topicWiki, actorForRequest);
 	if (input.deps.scopedSettingsService)
 		registerSettingsRoutes(input.app, input.deps.scopedSettingsService, input.deps);
 	registerWatcherRoutes(input.app, { processWatchers: input.processWatcherService });

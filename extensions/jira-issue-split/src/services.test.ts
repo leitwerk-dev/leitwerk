@@ -7,22 +7,27 @@ import {
 	JiraRequestError,
 	jiraEpicRevision,
 	jiraIssueExternalId,
+	jiraWikiSource,
 } from "@leitwerk-dev/jira";
-import {
-	type LocalJiraSplitAdapter as LocalJiraAdapter,
-	registerJiraWikiTools,
-} from "@leitwerk-dev/jira/testing";
+import type { LocalJiraSplitAdapter as LocalJiraAdapter } from "@leitwerk-dev/jira/testing";
 import { createJiraGitLabLauncher } from "@leitwerk-dev/jira-gitlab-change";
-import {
-	createCapabilityAccessor,
-	type IntegrationToolExecutionContext,
-	type ScopedSettingsResolver,
-	topicWikiCapability,
+import type {
+	IntegrationToolExecutionContext,
+	ScopedSettingsResolver,
 } from "@leitwerk-dev/process-sdk";
 import { createTestDeps } from "@leitwerk-dev/server/testing";
 import { createToolCollector } from "@leitwerk-dev/test-support";
+import { createWikiIntegration } from "@leitwerk-dev/wiki/integration";
+import { registerWikiTools } from "@leitwerk-dev/wiki/server";
 import { expect, it, onTestFinished } from "vitest";
-import { initialSplitState, parseDraft, splitParamsCodec } from "./model.js";
+import {
+	batchMarkdown,
+	initialSplitState,
+	parseDraft,
+	splitParamsCodec,
+	splitStateCodec,
+	splitTicketDescription,
+} from "./model.js";
 import {
 	componentMapping,
 	launchSplit,
@@ -38,7 +43,7 @@ async function fixture(
 	sourceType = "Epic",
 	configureJira: (jira: LocalJiraAdapter) => void = () => {},
 ) {
-	const root = mkdtempSync(join(tmpdir(), "epic-split-"));
+	const root = mkdtempSync(join(tmpdir(), "issue-split-"));
 	let deps = createTestDeps({ sqlitePath: join(root, "state.sqlite") });
 	onTestFinished(() => {
 		deps.db.$client.close();
@@ -65,7 +70,7 @@ async function fixture(
 		ssh: { profiles: () => ["team"], preflight: async () => ({ ok: true }) },
 		settings,
 		wiki: deps.topicWiki,
-		serverBaseUrl: "https://leitwerk.test",
+		publications: deps.publications,
 	};
 	const launch = await launchSplit(services, {
 		jiraProfile: "team",
@@ -154,6 +159,7 @@ async function fixture(
 			deps.db.$client.close();
 			deps = createTestDeps({ sqlitePath: join(root, "state.sqlite") });
 			services.wiki = deps.topicWiki;
+			services.publications = deps.publications;
 		},
 	};
 }
@@ -238,7 +244,9 @@ it.each([
 	await expect(test.publish()).rejects.toThrow("cannot be selected for child tickets");
 	expect(test.jira.creations).toHaveLength(0);
 	expect(
-		test.services.wiki.publication(splitPublicationKey(test.params, test.params.repositories[0])),
+		test.services.publications.publication(
+			splitPublicationKey(test.params, test.params.repositories[0]),
+		),
 	).toBeNull();
 });
 
@@ -285,14 +293,14 @@ it("reconciles legacy epic publication bindings and snapshots without another PO
 		labels: [`leitwerk-split-${key}`],
 		customfield_100: "APP-10",
 	});
-	test.services.wiki.reservePublication({
+	test.services.publications.reservePublication({
 		key,
 		topicId: test.params.topicId,
 		binding: { ...repository, gitlabProfile: "team", sshProfile: "team", epicId: "10" },
 		externalId: null,
 		url: null,
 	});
-	test.services.wiki.finishPublication(
+	test.services.publications.finishPublication(
 		key,
 		jiraIssueExternalId(test.jira.baseUrl, created.id),
 		`${test.jira.baseUrl}/browse/${created.key}`,
@@ -327,7 +335,7 @@ it("creates one untriggered ticket with components, exact routing, and shared ep
 		issuetype: { id: "Story" },
 	});
 	expect(test.jira.creations[0].description).toContain(
-		`https://leitwerk.test/wiki/${test.params.topicId}`,
+		`Source issue: [APP-10|${test.params.jiraBaseUrl}/browse/APP-10]`,
 	);
 	expect((await test.jira.getIssue(result.receipt.id)).fields.labels).not.toContain("use-leitwerk");
 	await test.publish();
@@ -348,6 +356,61 @@ it("creates one untriggered ticket with components, exact routing, and shared ep
 	test.gitlab.state.projects[0].default_branch = "main";
 	test.mappings.splice(0, 1);
 	await expect(test.launchChild(result.receipt.id)).rejects.toThrow("binding");
+});
+
+it.each([
+	"Epic",
+	"Story",
+])("publishes a normal %s child description with readable links", async (sourceType) => {
+	const test = await fixture(sourceType);
+	const draft = test.state.drafts[0];
+	draft.description =
+		"## Change\n\nUpdate README.md to use the shared sections.\n\n## Acceptance criteria\n\n- Include Setup, Development, and Validation.";
+	const preview = batchMarkdown(test.params, test.state);
+	expect(preview).toContain(
+		splitTicketDescription(test.params, test.params.repositories[0], draft),
+	);
+	expect(preview).toContain(draft.evidence);
+	expect(preview).toContain(draft.revision);
+	await test.publish();
+	const fields = test.jira.creations[0];
+	expect(fields.description).toBe(
+		`h2. Change\n\nUpdate README.md to use the shared sections.\n\nh2. Acceptance criteria\n\n* Include Setup, Development, and Validation.\n\nRepository: [team/one|${test.params.repositories[0].origin}/team/one]\n\nSource issue: [APP-10|${test.params.jiraBaseUrl}/browse/APP-10]`,
+	);
+	expect(fields.description).not.toContain(draft.revision);
+	expect(fields.description).not.toContain(draft.evidence);
+	expect(fields.description).not.toContain(test.params.topicId);
+	expect(fields.labels).toContain(
+		`leitwerk-split-${splitPublicationKey(test.params, test.params.repositories[0])}`,
+	);
+});
+
+it.each([
+	"repo_1",
+	"citeturn1file0",
+	"a".repeat(40),
+])("keeps legacy drafts readable and blocks contaminated publication: %s", async (reference) => {
+	const test = await fixture();
+	const draft = test.state.drafts[0];
+	const clean = draft.description;
+	draft.description += `\n\nReference: ${reference}`;
+	expect(
+		splitStateCodec.parse(JSON.parse(JSON.stringify(test.state))).drafts[0].description,
+	).toContain(reference);
+	const prepared = (await test.tool("jira_split_prepare")) as {
+		drafts: { blocked: string | null }[];
+	};
+	expect(prepared.drafts[0].blocked).toContain("Revise the ticket");
+	await expect(test.publish()).rejects.toThrow("Revise the ticket");
+	expect(test.jira.creations).toHaveLength(0);
+	expect(
+		test.services.publications.publication(
+			splitPublicationKey(test.params, test.params.repositories[0]),
+		),
+	).toBeNull();
+	draft.description = clean;
+	await test.publish();
+	expect(test.jira.creations).toHaveLength(1);
 });
 
 it.each([
@@ -407,8 +470,9 @@ it.each([
 		};
 	const store = test.services.wiki;
 	const collector = createToolCollector();
-	collector.api.get = createCapabilityAccessor([{ token: topicWikiCapability, value: store }]).get;
-	registerJiraWikiTools(collector.api, test.services.jira);
+	const wiki = createWikiIntegration(store);
+	wiki.registerProcessSource(test.process.processId, jiraWikiSource(wiki, test.services.jira));
+	registerWikiTools(collector.api, wiki);
 	const call = (name: string, processId: string, args: Record<string, unknown>) =>
 		collector.tools.get(name)!.execute(
 			{

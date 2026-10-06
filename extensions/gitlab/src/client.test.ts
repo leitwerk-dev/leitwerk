@@ -37,6 +37,28 @@ const pipeline = (id: number, status: string, sha = "head"): GitLabPipeline => (
 	web_url: `https://forge.test/pipelines/${id}`,
 });
 describe("GitLab boundary", () => {
+	it("paginates MR label history and updates only the requested label deltas", async () => {
+		const requests: { url: URL; init?: RequestInit }[] = [];
+		const client = new GitLabClient(profile, {
+			fetch: async (url, init) => {
+				const parsed = new URL(String(url));
+				requests.push({ url: parsed, init });
+				if (init?.method === "PUT") return Response.json(mr);
+				expect(parsed.pathname).toBe("/api/v4/projects/7/merge_requests/1/resource_label_events");
+				return Response.json([{ id: requests.length }], {
+					headers: { "x-next-page": requests.length === 1 ? "2" : "" },
+				});
+			},
+		});
+		expect(await client.listMergeRequestLabelEvents(7, 1)).toEqual([{ id: 1 }, { id: 2 }]);
+		expect(requests[1].url.searchParams.get("page")).toBe("2");
+		await client.updateMergeRequestLabels(7, 1, { add_labels: "active", remove_labels: "done" });
+		expect(requests[2].url.pathname).toBe("/api/v4/projects/7/merge_requests/1");
+		expect(JSON.parse(String(requests[2].init?.body))).toEqual({
+			add_labels: "active",
+			remove_labels: "done",
+		});
+	});
 	it("creates issues with the v4 payload and can reconcile closed issues without changing watcher discovery", async () => {
 		const requests: { url: URL; init?: RequestInit }[] = [];
 		const client = new GitLabClient(profile, {
@@ -244,7 +266,7 @@ describe("GitLab boundary", () => {
 		expect(posts).toBe(1);
 		expect(discussions[0]?.notes[0]?.body).toContain("<!-- leitwerk:gitlab:");
 	});
-	it("reads paginated conversation and inline feedback while excluding bot and system notes", async () => {
+	it("reads paginated conversation and inline feedback while excluding bot, system and configured authors", async () => {
 		const note = (id: number, extra = {}) => ({
 			id,
 			body: `comment ${id}`,
@@ -263,8 +285,13 @@ describe("GitLab boundary", () => {
 					{
 						id: "inline",
 						notes: [
+							note(10, {
+								author: { username: "SonarQube" },
+								position: { new_path: "code.ts", new_line: 2 },
+							}),
 							note(7, { position: { new_path: "settings.gradle.kts", new_line: 1 } }),
 							note(8),
+							note(11, { body: "Question for @sonarqube" }),
 						],
 					},
 				]);
@@ -274,6 +301,7 @@ describe("GitLab boundary", () => {
 						id: "general",
 						notes: [
 							note(1),
+							note(12, { author: { username: "sonarqube" } }),
 							note(2, { system: true }),
 							note(3, { author: { username: "leitwerk" } }),
 							note(4, { author: { username: "automation", bot: true } }),
@@ -289,16 +317,54 @@ describe("GitLab boundary", () => {
 				{ headers: { "x-next-page": "2" } },
 			);
 		});
-		const feedback = await new GitLabClient(profile, {
-			fetch: request as typeof fetch,
-		}).listMergeRequestFeedback(7, 1);
-		expect(feedback.map((item) => item.id)).toEqual([1, 3, 7, 8]);
+		const feedback = await new GitLabClient(
+			{ ...profile, ignoredCommentUsers: [" @SONARQUBE "] },
+			{
+				fetch: request as typeof fetch,
+			},
+		).listMergeRequestFeedback(7, 1);
+		expect(feedback.map((item) => item.id)).toEqual([1, 3, 7, 8, 11]);
 		expect(feedback[3]).toMatchObject({
 			discussionId: "inline",
-			path: "settings.gradle.kts",
-			line: 1,
+			path: "code.ts",
+			line: 2,
 			author: "reviewer",
 		});
+		expect(feedback[2]).toMatchObject({ path: "settings.gradle.kts", line: 1 });
+	});
+	it("normalizes ignored users per profile and defaults to no exclusions", () => {
+		const profiles = parseGitLabProfiles({
+			profiles: {
+				filtered: {
+					base_url: profile.baseUrl,
+					token: profile.token,
+					ignored_comment_users: [" @SonarQube ", "sonarqube", "review-bot"],
+				},
+				ordinary: { base_url: profile.baseUrl, token: profile.token },
+			},
+		});
+		expect(profiles.get("filtered")?.ignoredCommentUsers).toEqual(["sonarqube", "review-bot"]);
+		expect(profiles.get("ordinary")?.ignoredCommentUsers).toEqual([]);
+	});
+	it.each([
+		"sonarqube",
+		[1],
+		[""],
+		["@"],
+		["two users"],
+		["@@sonarqube"],
+	])("rejects malformed ignored users %j", (ignored) => {
+		expect(() =>
+			parseGitLabProfiles({
+				profiles: {
+					example: {
+						base_url: profile.baseUrl,
+						token: profile.token,
+						ignored_comment_users: ignored,
+					},
+				},
+			}),
+		).toThrow("ignored_comment_users");
 	});
 	it("encodes nested project/group paths, follows pagination and keeps the token in the request header", async () => {
 		const calls: string[] = [];

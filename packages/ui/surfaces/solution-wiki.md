@@ -1,24 +1,32 @@
 # Solution wiki surface
 
 Mode: Operate / Read. Implemented at `/wiki`, `/wiki/:topicId`, and
-`/wiki/:topicId/:pageId` in [WikiPage.svelte](../src/pages/WikiPage.svelte).
+`/wiki/:topicId/:pageId` in [WikiPage.svelte](../../wiki/src/ui/WikiPage.svelte).
 The surface follows the existing [design system](../DESIGN.md) and
 [product principles](../PRODUCT.md).
 
+The views and editor are owned by `@leitwerk-dev/wiki/ui`; the application supplies
+routing, authenticated requests, shared presentation, and realtime notifications.
+
 ## Purpose and direction
 
-Operators browse shared solutions and lessons scoped to an epic, check whether
-guidance applies, inspect its evidence and origin, and remove obsolete entries.
+Operators browse shared solutions scoped to a topic, check whether
+guidance applies, inspect its evidence and origin, edit solutions, and remove obsolete
+entries or entire wiki groups.
 The introduction asks readers to check cited evidence before applying guidance.
 Solution wikis is available in global navigation; associated processes link to
-their wiki. Topic navigation provides All solution wikis and Open epic.
+their wiki. Topic navigation provides All solution wikis and Open topic source.
+
+Contributions contain reusable solutions beyond the current ticket and shared
+source requirement. Progress reports and repeated instructions do not qualify.
 
 ## Composition
 
 Use Public Sans, the chronicle palette, existing spacing tokens, and shared
 `ui-button` controls. The centered white page has a maximum width of 1200px.
 The shared page header presents the topic title, explanatory copy, and Refresh.
-The top-level index is a flat list of topic links separated by thin dividers.
+The top-level index is a flat list of topic links separated by thin dividers, with
+Delete group beside each title. Inside a group, Delete wiki group sits beside Refresh.
 
 A topic uses two columns: an entry index between 220px and 280px wide and a
 reader capped at 75ch. Find an entry searches titles, applicability, and entry
@@ -44,6 +52,14 @@ path, revision, and observation. A Contributing process link and source turn
 identify the origin. Related entries link within the topic; a missing related
 entry explains that dependent guidance needs review.
 
+Edit entry replaces the reader with a labeled inline form for title, applicability,
+Markdown, evidence status, repository evidence, and related entries. Evidence rows
+use native inputs; repository and path share a row on desktop and stack on mobile.
+Preview entry text opens a sanitized Markdown preview. Save changes creates a revision;
+Cancel editing returns to the reader. User edits show attribution beneath provenance.
+Live topic updates preserve the draft. A changed or deleted entry disables Save changes
+and offers Reload latest entry, explaining that reload replaces the draft.
+
 Show revision history loads history beneath the entry actions. Each revision
 uses a native disclosure with its revision number and timestamp in the summary
 and its saved Markdown inside. History remains part of the reading flow.
@@ -53,8 +69,8 @@ and its saved Markdown inside. History remains part of the reading flow.
 - Initial loading uses an announced “Loading solution wiki…” message. Refresh
   reports “Refreshing…” while pending. Index and topic request failures show an
   alert with Try again. The empty index appears only after a successful load;
-  it explains how a process can share findings with a topic.
-- An empty topic says “No shared findings yet.” An unmatched filter says
+  it explains how a process can share solutions with a topic.
+- An empty topic says “No shared solutions yet.” An unmatched filter says
   “No entries match these filters.” With no selected entry, the reader explains
   what to select; an unavailable entry directs readers back to the index.
 - A history failure stays beside the history action with Retry history. The
@@ -67,6 +83,10 @@ and its saved Markdown inside. History remains part of the reading flow.
   revision conflict instead offers Refresh entry before deleting, requiring
   fresh entry data before another confirmation. Successful deletion returns to
   the topic index. History and deletion feedback clear when selection changes.
+- Group deletion opens an inline confirmation naming the group and explicitly
+  including all entries. It explains that processes and published tickets remain.
+  A conflict offers Refresh group before deleting and requires a new confirmation.
+  Successful deletion removes the group from the index and returns to All solution wikis.
 
 Refresh, relevant wiki updates, and a restored connection reload the current
 index or topic.

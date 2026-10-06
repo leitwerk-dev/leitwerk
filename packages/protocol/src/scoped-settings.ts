@@ -20,6 +20,13 @@ export interface SettingMetadata {
 		group: string;
 		/** @public */
 		control: "text" | "textarea" | "select" | "model" | "number" | "checkbox" | "multiselect";
+		/** Load multi-select choices only after the operator enters a query. @public */
+		search?: {
+			/** Minimum trimmed query length. @public */
+			minimumLength: number;
+			/** @public */
+			placeholder?: string;
+		};
 	};
 }
 
@@ -39,6 +46,8 @@ export interface SettingFieldView extends SettingMetadata {
 	owner: string;
 	/** @internal */
 	choices: readonly SettingChoice[];
+	/** Dynamic options load separately from effective values. @internal */
+	choicesDeferred?: boolean;
 	/** @internal */
 	effective: ResolvedSetting | null;
 	/** @internal */

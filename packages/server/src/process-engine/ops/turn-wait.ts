@@ -118,6 +118,10 @@ export const ResolveTurnWait = defineOperation<"resolve_turn_wait", ResolveTurnW
 				message: message ?? "Waiting condition recovered",
 				data: { turnId: wait.turnId, retryable: input.result === "retry", safeSummary: message },
 			});
+		writes.preserveUpdatedAt =
+			input.result !== "error" &&
+			message === wait.message &&
+			writes.changedFields.every((field) => field === "metadata");
 		return accept({ writes });
 	},
 });

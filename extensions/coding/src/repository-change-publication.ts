@@ -1,9 +1,11 @@
 import { asUnknownRecord } from "@leitwerk-dev/domain";
 import {
 	type AutomaticOutcomeBuilder,
+	type ExtensionProcessDefinition,
 	type ExternalActionSource,
 	type FlowAutomaticRunContext,
 	flow,
+	type ServerExtensionAPI,
 } from "@leitwerk-dev/process-sdk";
 import {
 	commitAndPushWorkBranch,
@@ -155,6 +157,19 @@ export interface PublicationSource<P> {
 
 /** @public */
 export interface RepositoryChangePublicationAdapter<P extends PublicationParams> {
+	/** Optional server maintenance uses existing business turns and adds no worker positions. @public */
+	maintenance?: {
+		/** @public */ source: ExternalActionSource<
+			P,
+			RepositoryChangeState,
+			PublicationMaintenanceEvent
+		>;
+		/** @public */ ownershipTool: string;
+		/** @public */ register(
+			api: ServerExtensionAPI,
+			process: ExtensionProcessDefinition<P, RepositoryChangeState>,
+		): void;
+	};
 	/** @public */
 	namespace: string;
 	/** Reconcile a single-repository no-change outcome. @public */
@@ -256,6 +271,20 @@ export interface RepositoryChangePublicationAdapter<P extends PublicationParams>
 }
 
 /** @public */
+export interface PublicationMaintenanceEvent {
+	/** @public */
+	state: RepositoryChangeState;
+}
+
+/** @public */
+export interface FeedbackDeliveryResult {
+	/** @public */
+	published: boolean;
+	/** @public */
+	summary: string;
+}
+
+/** @public */
 export type PublicationFeedbackId = {
 	/** @public */
 	kind: "conversation" | "review" | "inline";
@@ -278,6 +307,8 @@ type AdjustmentInvocation = {
 
 /** @public */
 export interface DeliveryState {
+	/** Feedback delivery retained until the server acknowledges the batch. @public */
+	feedbackResult?: FeedbackDeliveryResult | null;
 	/** @public */
 	stage: "not_started" | "branch_published" | "pull_request_ready" | "awaiting";
 
@@ -293,6 +324,7 @@ export interface DeliveryState {
 
 /** @public */
 export interface PublicationState {
+	/** Maintenance was stopped for this MR; it remains open and contributes a partial result. @public */ stopped?: boolean;
 	/** Repository had no change at first publication. @public */ noChanges?: boolean;
 
 	/** @public */
@@ -303,6 +335,8 @@ export interface PublicationState {
 
 	/** @public */
 	repairReason?: "feedback" | "ci" | "rebase";
+	/** Staged repair retained when another maintained MR interrupts the worker. @public */
+	repairPending?: boolean;
 
 	/** @public */
 	headSha: string | null;
@@ -539,12 +573,15 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 	) => patchPublicationState(state, namespace(state), patch);
 	async function commitWorkBranch(ctx: PublicationContext<P>, commitMessage: string) {
 		const repo = ctx.repo.get("repo");
+		const gitIdentity = await adapter.identity(ctx);
+		if (adapter.maintenance)
+			await ctx.callIntegrationTool(adapter.maintenance.ownershipTool, { projectKey: repo.key });
 		return commitAndPushWorkBranch({
 			repoPath: repo.fsPath,
 			projectKey: repo.key,
 			workBranch: repo.workBranch,
 			commitMessage,
-			gitIdentity: await adapter.identity(ctx),
+			gitIdentity,
 		});
 	}
 	const runRepository = async (ctx: PublicationContext<P>) => {
@@ -565,6 +602,7 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 			outcome,
 			params: { nextState: patchRemote(ctx.state, current) },
 		});
+		if (current.stopped) return result("aborted");
 		if (current.pendingEvidence) {
 			const evidence = current.pendingEvidence;
 			const needsOperator = evidence.kind === "failure" && current.ciRecoveryCycles >= 3;
@@ -625,6 +663,10 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 			const adjustment = current.delivery.adjustment;
 			if (adjustment.publishRequired || adjustment.origin === "rebase") {
 				ctx.reportProgress(deliveryProgress(current, adapter.label, "publish_adjustment"));
+				if (adapter.maintenance)
+					await ctx.callIntegrationTool(adapter.maintenance.ownershipTool, {
+						projectKey: ctx.repo.get("repo").key,
+					});
 				const published =
 					adjustment.origin === "rebase"
 						? publishRebase(rebaseInput(ctx))
@@ -637,17 +679,28 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 				update({ headSha: published.headSha, pipeline: null });
 			}
 			if (adjustment.origin === "rebase") await adapter.afterRebase(ctx, current);
-			if (adjustment.origin === "feedback") {
+			if (adjustment.origin === "feedback" && !adapter.maintenance) {
 				ctx.reportProgress(deliveryProgress(current, adapter.label, "reply_feedback"));
 				await adapter.reply(ctx, current);
 			}
 			update({
-				...(adjustment.origin === "feedback" ? { feedbackIds: [] } : {}),
-				delivery: { adjustment: null },
+				...(adjustment.origin === "feedback" && !adapter.maintenance ? { feedbackIds: [] } : {}),
+				...(adjustment.origin === "rebase" ? { conflict: null } : {}),
+				delivery: {
+					adjustment: null,
+					...(adjustment.origin === "feedback" && adapter.maintenance
+						? {
+								feedbackResult: {
+									published: adjustment.publishRequired,
+									summary: "Review adjustment published",
+								},
+							}
+						: {}),
+				},
 			});
 		}
 
-		if (current.feedbackIds.length > 0) {
+		if (current.feedbackIds.length > 0 && !adapter.maintenance) {
 			ctx.reportProgress(deliveryProgress(current, adapter.label, "reply_feedback"));
 			await adapter.acknowledge(ctx, current);
 			return result("feedback_ready");
@@ -666,6 +719,18 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 				: [state];
 			return states.some((state) => {
 				const current = remote(state);
+				if (adapter.maintenance)
+					return (
+						!current.stopped &&
+						!current.noChanges &&
+						!current.delivery.terminalPullRequest &&
+						(current.delivery.stage !== "awaiting" ||
+							!!(
+								current.delivery.adjustment &&
+								(current.delivery.adjustment.publishRequired ||
+									current.delivery.adjustment.origin === "rebase")
+							))
+					);
 				return (
 					current.delivery.stage !== "awaiting" ||
 					!!current.pendingEvidence ||
@@ -684,13 +749,17 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 			const results = () =>
 				repositories.map(({ key }) => ({ key, current: remote(select(state, key)) }));
 			const finished = () =>
-				results().every(({ current }) => current.noChanges || current.delivery.terminalPullRequest);
+				results().every(
+					({ current }) =>
+						current.stopped || current.noChanges || current.delivery.terminalPullRequest,
+				);
 			// Terminal facts take precedence over cancellation, including after interrupted publication.
 			const reconcileTerminals = async () => {
 				for (const { key } of repositories) {
 					state = select(state, key);
 					const current = remote(state);
-					if (current.delivery.terminalPullRequest || current.noChanges) continue;
+					if (current.stopped || current.delivery.terminalPullRequest || current.noChanges)
+						continue;
 					const terminal = await adapter.observeTerminal?.(
 						repositoryContext({ ...ctx, state }),
 						current,
@@ -707,7 +776,12 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 			let cancelled = false;
 			for (const { key } of repositories) {
 				state = select(state, key);
-				if (remote(state).noChanges || remote(state).delivery.terminalPullRequest) continue;
+				if (
+					remote(state).stopped ||
+					remote(state).noChanges ||
+					remote(state).delivery.terminalPullRequest
+				)
+					continue;
 				if (await adapter.sourceCancelled?.({ ...ctx, state })) {
 					await reconcileTerminals();
 					cancelled = !finished();
@@ -740,21 +814,25 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 			.state(({ event }) => event.params.nextState as RepositoryChangeState);
 	delivery
 		.outcome("awaiting", (o) => outcome(o, "Delivery is waiting for external evidence").wait())
-		.outcome("feedback_ready", (o) =>
-			outcome(o, "Pull request feedback is acknowledged and ready for revision").to(ids.feedback),
-		)
 		.outcome("completed", (o) => outcome(o, "Merged pull request was reconciled").complete())
 		.outcome("aborted", (o) =>
 			outcome(o, "Closed pull request was reconciled").lifecycleStatus("aborted"),
 		);
-	for (const [name, target] of [
-		["ci_ready", ids.ciRepair],
-		["conflict_ready", ids.feedback],
-		["operator_action", ids.operator],
-	] as const) {
+	if (!adapter.maintenance)
+		delivery.outcome("feedback_ready", (o) =>
+			outcome(o, "Pull request feedback is acknowledged and ready for revision").to(ids.feedback),
+		);
+	for (const [name, target] of adapter.maintenance
+		? []
+		: ([
+				["ci_ready", ids.ciRepair],
+				["conflict_ready", ids.feedback],
+				["operator_action", ids.operator],
+			] as const)) {
 		delivery.outcome(name, (o) => outcome(o, "Route observed delivery evidence").to(target));
 	}
 	for (const source of adapter.sources) {
+		if (adapter.maintenance && source.kind === "observation") continue;
 		const attach = (id: string, operator: boolean) =>
 			delivery.externalAction(id, source.source, (external) => {
 				external
@@ -804,6 +882,20 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 		attach(source.id, false);
 		if (source.kind === "failure") attach(source.operatorId ?? `${source.id}_operator`, true);
 	}
+	if (adapter.maintenance) {
+		for (const [id, target] of [
+			["feedback", ids.feedback],
+			["conflict", ids.feedback],
+			["ci", ids.ciRepair],
+			["operator", ids.operator],
+		] as const)
+			delivery.externalAction(`maintenance_${id}`, adapter.maintenance.source, (action) =>
+				action
+					.label("Maintain MR")
+					.to(target)
+					.effect(({ event }) => ({ state: event.state })),
+			);
+	}
 	publication.turn(delivery);
 	function rebaseInput(ctx: {
 		state: RepositoryChangeState;
@@ -839,6 +931,7 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 			.waitFor(({ state }) => {
 				const current = remote(state);
 				return (
+					!current.stopped &&
 					!current.delivery.terminalPullRequest &&
 					(kind === "feedback"
 						? current.feedbackIds.length > 0 || !!current.conflict
@@ -864,26 +957,63 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 					.resultSummary()
 					.description(description)
 					.to(ids.deliver)
-					.state(({ ctx }) =>
+					.state(({ ctx, event }) =>
 						patchRemote(ctx.state, {
-							delivery: { adjustment: { origin: repairReason(ctx.state, kind), publishRequired } },
+							repairPending: false,
+							delivery: {
+								adjustment: { origin: repairReason(ctx.state, kind), publishRequired },
+								...(!publishRequired &&
+								adapter.maintenance &&
+								repairReason(ctx.state, kind) !== "rebase"
+									? {
+											feedbackResult: {
+												published: false,
+												summary: String(
+													event.params.resultSummary ?? "No repository change was required",
+												),
+											},
+										}
+									: {}),
+							},
 						}),
 					),
 			);
 		}
-		return turn.outcomeTool("cannot_repair", (tool) =>
-			tool.description("The adjustment requires operator action").to(ids.operator),
-		);
+		return turn.outcomeTool("cannot_repair", (tool) => {
+			const outcome = tool.description("The adjustment requires operator action").to(ids.operator);
+			return adapter.maintenance
+				? outcome.state(({ ctx }) => patchRemote(ctx.state, { repairPending: false }))
+				: outcome;
+		});
 	}
 
 	publication.turn(revisionTurn(ids.feedback, "feedback"));
 	publication.turn(revisionTurn(ids.ciRepair, "ci"));
+	const maintenanceSource = adapter.maintenance?.source;
 	publication.turn({
 		id: ids.operator,
 		definition: {
 			kind: "human",
 			description: "Repository repair needs operator action",
 			operatorAttention: "required",
+			...(maintenanceSource
+				? {
+						externalActions: Object.fromEntries(
+							(["feedback", "conflict"] as const).map((id) => [
+								`maintenance_${id}`,
+								{
+									id: `maintenance_${id}`,
+									source: maintenanceSource,
+									to: ids.feedback,
+									label: "Maintain MR",
+									effect: ({ event }: { event: unknown }) => ({
+										state: (event as { state: RepositoryChangeState }).state,
+									}),
+								},
+							]),
+						),
+					}
+				: {}),
 			actions: {
 				retry_repair: {
 					label: "Retry repair",
@@ -901,6 +1031,7 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 					to: ids.deliver,
 					effect: ({ ctx }) => ({
 						state: patchRemote(ctx.state, {
+							repairPending: false,
 							feedbackIds: [],
 							delivery: { adjustment: null },
 						}),

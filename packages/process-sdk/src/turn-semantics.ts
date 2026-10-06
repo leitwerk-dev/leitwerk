@@ -319,6 +319,9 @@ export function validateLlmTurnDefinition<
 
 	errors.push(...validateOutcomeToolParameters("LLM", turnId, declaredOutcomes));
 	errors.push(...validateMappedTurn(turnId, turnDef));
+	errors.push(...validateExternalActions("LLM", turnId, turnDef.externalActions));
+	if (Object.keys(turnDef.externalActions ?? {}).length && !turnDef.waitFor)
+		errors.push(`LLM turn '${turnId}' external actions require .waitFor(...)`);
 
 	return errors;
 }
@@ -333,6 +336,53 @@ export function validateAutomaticTurnDefinition<
 		...validateOutcomeTurnResultContract("Automatic", turnId, turnDef.outcomes, turnDef.turnEnd),
 		...validateOutcomeToolParameters("Automatic", turnId, turnDef.outcomes),
 	];
+}
+
+function validateExternalActions<TParams, TState>(
+	kind: string,
+	turnId: string,
+	actions: HumanTurnDefinition<TParams, TState>["externalActions"],
+): string[] {
+	const errors: string[] = [];
+	for (const [externalActionId, externalAction] of Object.entries(actions ?? {})) {
+		if (externalActionId.trim() === "") {
+			errors.push(`${kind} turn '${turnId}' contains an external action with an empty id`);
+		}
+		if (externalAction.id !== externalActionId) {
+			errors.push(
+				`${kind} turn '${turnId}' external action '${externalActionId}' has mismatched id '${externalAction.id}'`,
+			);
+		}
+		if (externalAction.source.kind.trim() === "") {
+			errors.push(
+				`${kind} turn '${turnId}' external action '${externalActionId}' must declare a non-empty source kind`,
+			);
+		}
+		const targetCount =
+			(externalAction.to !== undefined ? 1 : 0) +
+			(externalAction.complete === true ? 1 : 0) +
+			(externalAction.lifecycleStatus !== undefined ? 1 : 0);
+		if (targetCount !== 1) {
+			errors.push(
+				`${kind} turn '${turnId}' external action '${externalActionId}' must declare exactly one target`,
+			);
+		}
+		if (externalAction.publishInput) {
+			errors.push(...validateProcessProductName(externalAction.publishInput.productName));
+			if (externalAction.publishInput.inputField.trim() === "") {
+				errors.push(
+					`${kind} turn '${turnId}' external action '${externalActionId}' publishInput must declare a non-empty inputField`,
+				);
+			}
+			if (externalAction.complete === true || externalAction.lifecycleStatus !== undefined) {
+				errors.push(
+					`${kind} turn '${turnId}' external action '${externalActionId}' cannot publish input on a terminal route`,
+				);
+			}
+		}
+	}
+
+	return errors;
 }
 
 /** Intrinsic metadata checked before action derivation, which also validates routing. @internal */

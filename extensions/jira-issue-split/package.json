@@ -1,5 +1,5 @@
 {
-	"name": "@leitwerk-dev/jira-epic-split",
+	"name": "@leitwerk-dev/jira-issue-split",
 	"version": "0.3.1",
 	"type": "module",
 	"leitwerk": {
@@ -26,7 +26,9 @@
 		"@leitwerk-dev/gitlab": "0.3.1",
 		"@leitwerk-dev/git-ssh": "0.3.1",
 		"@leitwerk-dev/jira-gitlab-change": "0.3.1",
-		"@leitwerk-dev/watcher-utils": "0.3.1"
+		"@leitwerk-dev/watcher-utils": "0.3.1",
+		"@leitwerk-dev/wiki": "0.3.1",
+		"@leitwerk-dev/external-writes": "0.3.1"
 	},
 	"devDependencies": {
 		"@leitwerk-dev/server": "0.3.1",
@@ -51,6 +53,6 @@
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
-		"directory": "extensions/jira-epic-split"
+		"directory": "extensions/jira-issue-split"
 	}
 }

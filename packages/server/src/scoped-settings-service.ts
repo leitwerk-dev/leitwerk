@@ -106,6 +106,8 @@ export interface ScopedSettingsService extends ScopedSettingsResolver {
 	/** @internal */
 	preview(subjectId: string, draft?: SettingsDraft): Promise<SettingsPreview>;
 	/** @internal */
+	choices(subjectId: string, key: string, search?: string): Promise<SettingFieldView["choices"]>;
+	/** @internal */
 	write(change: SettingsChange): SettingsOverride;
 	/** @internal */
 	listScopes(): SettingsScopesResponse;
@@ -140,6 +142,12 @@ export function createScopedSettingsService(input: {
 		["repository", { id: "repository", label: "Repository" }],
 	]);
 	const discoveries = new Map<string, Array<() => Promise<readonly SettingsSubjectInput[]>>>();
+	const subjectFilters = new Map<
+		string,
+		Array<
+			NonNullable<Parameters<ScopedSettingsResolver["registerDiscovery"]>[2]>["includesSubject"]
+		>
+	>();
 	for (const loaded of catalog.modules) {
 		const owner = loaded.module.manifest.id;
 		const declarations = loaded.module.scopedSettings;
@@ -494,10 +502,16 @@ export function createScopedSettingsService(input: {
 			try {
 				inherited = resolveDefinition(definition, context, undefined, subject.id);
 				effective = resolveDefinition(definition, context, draft);
-				choices =
-					definition.form.control === "model"
-						? (input.modelChoices?.() ?? [])
-						: ((await definition.choices?.(context)) ?? []);
+				if (definition.form.control === "model") choices = input.modelChoices?.() ?? [];
+				else if (definition.choiceLabel) {
+					const label = definition.choiceLabel;
+					const values = Array.isArray(effective.value)
+						? effective.value.filter((value): value is string => typeof value === "string")
+						: typeof effective.value === "string"
+							? [effective.value]
+							: [];
+					choices = values.map((value) => ({ value, label: label(value) }));
+				}
 				if (definition.form.control === "model" && effective.value !== null) {
 					const selected = choices.find((choice) => choice.value === effective?.value);
 					if (selected?.disabledReason)
@@ -509,6 +523,9 @@ export function createScopedSettingsService(input: {
 			fields.push({
 				...definitionView(owner, definition),
 				choices,
+				...(definition.choices && definition.form.control !== "model"
+					? { choicesDeferred: true }
+					: {}),
 				inherited,
 				effective,
 				override: repos.scopedSettings.getOverride(subject.id, definition.key),
@@ -522,6 +539,22 @@ export function createScopedSettingsService(input: {
 				.listOverrides(subjectId)
 				.filter((row) => !row.reset && !definitions.has(row.key)),
 		};
+	}
+	async function choices(subjectId: string, key: string, search = "") {
+		const subject = requireSubject(subjectId);
+		const definition = requireDefinition(key);
+		if (!definition.scopes.includes(subject.scopeType))
+			throw new SettingsError(`'${key}' does not apply to ${subject.scopeType}`);
+		if (definition.form.control === "model") return input.modelChoices?.() ?? [];
+		if (search.trim().length < (definition.form.search?.minimumLength ?? 0)) return [];
+		const context = contextForSubject(subject);
+		const value = resolveDefinition(definition, context).value;
+		const values = Array.isArray(value)
+			? value.filter((entry): entry is string => typeof entry === "string")
+			: typeof value === "string"
+				? [value]
+				: [];
+		return (await definition.choices?.(context, { search, values })) ?? [];
 	}
 	function validateWrite({
 		subjectId,
@@ -566,14 +599,29 @@ export function createScopedSettingsService(input: {
 				.filter((row) => !row.reset && !definitions.has(row.key))
 				.map((row) => row.subjectId),
 		);
+		const subjects = repos.scopedSettings.listSubjects();
+		const byId = new Map(subjects.map((subject) => [subject.id, subject]));
 		return {
 			scopes: [...scopes.values()],
-			subjects: repos.scopedSettings.listSubjects().map((subject) => ({
-				...subject,
-				active: scopes.has(subject.scopeType),
-				hasSettings:
-					scopesWithFields.has(subject.scopeType) || subjectsWithInactiveOverrides.has(subject.id),
-			})),
+			subjects: subjects
+				.filter((subject) => {
+					const filters = subjectFilters.get(subject.scopeType);
+					if (!filters) return true;
+					const context = Object.fromEntries(
+						Object.entries(subject.context).flatMap(([scope, id]) => {
+							const parent = byId.get(id);
+							return parent ? [[scope, parent]] : [];
+						}),
+					);
+					return filters.some((includes) => !includes || includes(subject, context));
+				})
+				.map((subject) => ({
+					...subject,
+					active: scopes.has(subject.scopeType),
+					hasSettings:
+						scopesWithFields.has(subject.scopeType) ||
+						subjectsWithInactiveOverrides.has(subject.id),
+				})),
 		};
 	}
 	function discoverLocal() {
@@ -594,13 +642,18 @@ export function createScopedSettingsService(input: {
 		resolve: (definition, context) =>
 			resolveDefinition(requireDefinition(definition.key) as typeof definition, context),
 		discover,
-		registerDiscovery(scopeType, discoverer) {
+		registerDiscovery(scopeType, discoverer, options) {
 			if (!scopes.has(scopeType)) throw new SettingsError(`Unknown scope '${scopeType}'`);
 			discoveries.set(scopeType, [...(discoveries.get(scopeType) ?? []), discoverer]);
+			subjectFilters.set(scopeType, [
+				...(subjectFilters.get(scopeType) ?? []),
+				options?.includesSubject,
+			]);
 		},
 		capture,
 		modelDefault,
 		preview,
+		choices,
 		write,
 		listScopes,
 		forProcess,

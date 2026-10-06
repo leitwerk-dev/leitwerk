@@ -10,6 +10,8 @@ import {
 } from "@leitwerk-dev/coding/repository-change-publication";
 import type { GitLabMergeRequest } from "./client.js";
 import type { GitLabDeliveryObservation, GitLabSourceConfig } from "./external.js";
+import { gitlabMaintenanceSource } from "./maintenance.js";
+import { registerGitLabPublicationMaintenance } from "./publication-maintenance.js";
 
 /** @public */
 export interface GitLabPublicationParams extends PublicationParams {
@@ -101,7 +103,7 @@ export function gitlabPublicationEvidenceForRequest(
 			reviewCursor: 0,
 			inlineCursor: 0,
 		};
-	if (event.pipeline && ["failed", "canceled"].includes(event.pipeline.status))
+	if (event.pipeline?.status === "failed")
 		return { kind: "failure", pipeline: { ...event.pipeline, number: event.pipeline.id }, ...key };
 	return { kind: "observed", ...key };
 }
@@ -136,7 +138,12 @@ export function createGitLabPublicationAdapter<P extends GitLabPublicationParams
 			writeKey: `gitlab:${ctx.process.id}:${pr ? `${pr.merged ? "merged" : "closed"}-mr-comment` : "no-changes-comment"}`,
 		});
 	}
-	return {
+	const adapter: RepositoryChangePublicationAdapter<P> = {
+		maintenance: {
+			source: gitlabMaintenanceSource(),
+			ownershipTool: "gitlab_assert_maintenance",
+			register: (api, process) => registerGitLabPublicationMaintenance(api, process, adapter),
+		},
 		namespace,
 		label: "GitLab MR",
 		ids: {
@@ -148,6 +155,7 @@ export function createGitLabPublicationAdapter<P extends GitLabPublicationParams
 		sources,
 		tools: {
 			delivery: [
+				"gitlab_assert_maintenance",
 				"gitlab_ensure_merge_request",
 				"gitlab_observe_merge_request",
 				"gitlab_comment",
@@ -219,4 +227,5 @@ export function createGitLabPublicationAdapter<P extends GitLabPublicationParams
 				: `Diagnose GitLab pipeline ${current.pipeline?.number} for head ${current.headSha}. Read gitlab_list_failed_jobs with pipelineId and bounded gitlab_get_job_trace before making repository repairs. Call changes_ready to publish, no_changes with a justified diagnosis, or cannot_repair when operator action is needed.`;
 		},
 	};
+	return adapter;
 }

@@ -50,6 +50,7 @@ export {
 	type ProcessLaunchPlanServiceLike,
 	type ProcessModelSelectionPreviewResultLike,
 	type ProcessModelSelectionServiceLike,
+	type ProcessObservationUpdate,
 	type ProcessProjectRepoLike,
 	type ProcessQuestionServiceLike,
 	type ProcessWatcherServiceLike,
@@ -331,7 +332,6 @@ export {
 	REQUIRED_MARKDOWN_RESULT_TURN_RESULT,
 	validateToolCallRendererDefinition,
 } from "./tool-renderers.js";
-export { type TopicWikiStore, topicWikiCapability, wikiInstructions } from "./topic-wiki.js";
 export {
 	assertValidLlmTurnDefinition,
 	createRootBranchReviewTurn,

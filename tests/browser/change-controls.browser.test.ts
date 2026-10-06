@@ -2,7 +2,8 @@ import { mkdirSync } from "node:fs";
 import coding from "@leitwerk-dev/coding";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import { gitSshIntegration } from "@leitwerk-dev/git-ssh";
-import { type GitLabIntegration, gitlabIntegration } from "@leitwerk-dev/gitlab";
+import type { GitLabIntegration } from "@leitwerk-dev/gitlab";
+import { setupGitLabIntegration } from "@leitwerk-dev/gitlab/testing";
 import { createGitLabRepoChange } from "@leitwerk-dev/gitlab-repo-change";
 import type { LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
 import { expect, expectNoPageOverflow, test } from "./fixtures.js";
@@ -47,15 +48,17 @@ test.use({
 				{
 					manifest: { id: "gitlab", version: "1.0.0" },
 					setupServer(api) {
-						api.provide(gitlabIntegration, {
+						setupGitLabIntegration(api, {
 							profiles: () => ["team"],
 							client: () => ({
+								baseUrl: "https://gitlab.test",
 								listProjects: async () => [
 									{
 										id: 1,
 										path_with_namespace: "team/service",
 										default_branch: "main",
 										web_url: "https://gitlab.test/team/service",
+										http_url_to_repo: "https://gitlab.test/team/service.git",
 										ssh_url_to_repo: "git@gitlab.test:team/service.git",
 									},
 								],

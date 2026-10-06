@@ -19,11 +19,20 @@ test("Jira scene discovery deduplicates launches and publishes both mapped repos
 	await f.wait(process.id, "deliver_change", "waiting");
 	const state = await waitForValue(
 		async () => (await f.context.app.inject("/__local/state")).json(),
-		(state) => state.gitlab.mrs.length === 2 && state.jira.comments["501"]?.length === 2,
+		(state) =>
+			state.gitlab.mrs.length === 2 &&
+			state.jira.remoteLinks["501"]?.length === 3 &&
+			state.jira.issues[0].fields.status.name === "In Review",
 		12000,
 	);
 	expect(state.gitlab.mrs).toHaveLength(2);
-	expect(state.jira.comments["501"]).toHaveLength(2);
+	expect(state.jira.comments["501"] ?? []).toEqual([]);
+	expect(
+		state.jira.remoteLinks["501"].map((link: { object: { url: string } }) => link.object.url),
+	).toEqual([
+		`${f.context.config.server.base_url}/processes/${process.id}`,
+		...state.gitlab.mrs.map((mr: { web_url: string }) => mr.web_url),
+	]);
 	for (const mr of state.gitlab.mrs) {
 		const response = await f.context.app.inject(new URL(mr.web_url).pathname);
 		expect(response.statusCode).toBe(200);

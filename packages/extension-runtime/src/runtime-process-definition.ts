@@ -37,7 +37,7 @@ export interface ResolvedWorkerProcess<TParams = unknown, TState = unknown> {
 		/** @internal */
 		readonly developmentTools: boolean;
 		/** @internal */
-		readonly repositoryCheckout?: "eager" | "on_demand";
+		readonly repositoryCheckout?: "eager" | "on_demand" | "none";
 		/** @internal */
 		readonly docker: boolean;
 	};

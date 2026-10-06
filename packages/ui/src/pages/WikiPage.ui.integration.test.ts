@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { WikiPage, WikiTopic } from "@leitwerk-dev/domain";
+import type { WikiPage, WikiTopic } from "@leitwerk-dev/wiki";
 import { mount, unmount } from "svelte";
 import { afterEach, expect, it, vi } from "vitest";
 import { notifyWikiUpdated } from "../lib/wiki.js";
@@ -13,6 +13,7 @@ const topic: WikiTopic = {
 	title: "APP-10: Standardize READMEs",
 	url: "https://tracker.test/APP-10",
 	sourceRevision: "current",
+	revision: 3,
 };
 const page: WikiPage = {
 	id: "template",
@@ -49,15 +50,24 @@ async function fixture(
 		conflict?: boolean;
 		failure?: boolean;
 		historyFailure?: boolean;
+		editFailure?: boolean;
+		groupDeleted?: boolean;
 		index?: boolean;
 	} = {},
 ) {
 	let pages = [page];
-	const requests: { path: string; method: string }[] = [];
+	let groups = [topic];
+	const requests: { path: string; method: string; body?: Record<string, unknown> }[] = [];
 	vi.stubGlobal("fetch", async (input: string, init?: RequestInit) => {
-		requests.push({ path: String(input), method: init?.method ?? "GET" });
+		requests.push({
+			path: String(input),
+			method: init?.method ?? "GET",
+			...(init?.body ? { body: JSON.parse(String(init.body)) } : {}),
+		});
 		if (options.failure)
 			return Response.json({ error: "Wiki unavailable. Try again." }, { status: 503 });
+		if (options.groupDeleted && !input.endsWith("/topics"))
+			return Response.json({ error: "Wiki group unavailable or deleted" }, { status: 404 });
 		if (options.historyFailure && input.endsWith("/history"))
 			return Response.json({ error: "History unavailable" }, { status: 503 });
 		if (init?.method === "DELETE") {
@@ -67,13 +77,26 @@ async function fixture(
 					{ status: 409 },
 				);
 			pages = [];
+			if (!input.includes("/pages/")) groups = [];
 			return Response.json({ deleted: true });
+		}
+		if (init?.method === "PUT") {
+			if (options.editFailure) return Response.json({ error: "Save unavailable" }, { status: 503 });
+			if (options.conflict)
+				return Response.json(
+					{ error: "Wiki revision conflict; refresh before editing" },
+					{ status: 409 },
+				);
+			const { expectedRevision, ...content } = JSON.parse(String(init.body));
+			const saved = { ...pages[0], ...content, revision: expectedRevision + 1 };
+			pages = [saved];
+			return Response.json({ page: saved });
 		}
 		return Response.json(
 			input.endsWith("/history")
 				? { revisions: [page] }
 				: input.endsWith("/topics")
-					? { topics: [topic] }
+					? { topics: groups }
 					: { topic, pages },
 		);
 	});
@@ -97,6 +120,9 @@ async function fixture(
 		setPages(value: WikiPage[]) {
 			pages = value;
 		},
+		setGroup(value: WikiTopic) {
+			groups = [value];
+		},
 	};
 }
 
@@ -113,6 +139,132 @@ it("renders scoped evidence, sanitized guidance, navigation, and filtering", asy
 	await vi.waitFor(() =>
 		expect(test.target.textContent).toContain("No entries match these filters"),
 	);
+});
+
+it("edits entry content with its read revision and keeps evidence in the saved entry", async () => {
+	const test = await fixture();
+	test.button("Edit entry").click();
+	await vi.waitFor(() => expect(test.target.querySelector("#wiki-edit-title")).not.toBeNull());
+	const title = test.target.querySelector<HTMLInputElement>("#wiki-edit-title")!;
+	title.value = "Corrected README sections";
+	title.dispatchEvent(new Event("input", { bubbles: true }));
+	const markdown = test.target.querySelector<HTMLTextAreaElement>("#wiki-edit-markdown")!;
+	markdown.value = "Use **Setup**, Validation and Troubleshooting.";
+	markdown.dispatchEvent(new Event("input", { bubbles: true }));
+	expect(test.target.querySelector("form")?.checkValidity()).toBe(true);
+	test.button("Save changes").click();
+	await vi.waitFor(() => expect(test.target.textContent).toContain("Entry saved."));
+	expect(test.target.textContent).toContain("Revision 3");
+	expect(test.target.querySelector("#wiki-edit-title")).toBeNull();
+	expect(test.requests.find((request) => request.method === "PUT")).toMatchObject({
+		body: {
+			title: "Corrected README sections",
+			markdown: markdown.value,
+			expectedRevision: 2,
+			evidence: page.evidence,
+		},
+	});
+});
+
+it("keeps editing drafts on save failure and topic updates, then reloads deliberately after a conflict", async () => {
+	const options = { editFailure: true };
+	const test = await fixture(options);
+	test.button("Edit entry").click();
+	await vi.waitFor(() => expect(test.target.querySelector("#wiki-edit-markdown")).not.toBeNull());
+	const input = test.target.querySelector<HTMLTextAreaElement>("#wiki-edit-markdown")!;
+	input.value = "My unsaved correction";
+	input.dispatchEvent(new Event("input", { bubbles: true }));
+	test.button("Save changes").click();
+	await vi.waitFor(() => expect(test.target.textContent).toContain("Save unavailable"));
+	expect(input.value).toBe("My unsaved correction");
+	test.setPages([{ ...page, revision: 3, markdown: "Concurrent agent edit" }]);
+	notifyWikiUpdated(topic.id);
+	await vi.waitFor(() => expect(test.target.textContent).toContain("Your draft has been kept"));
+	expect(input.value).toBe("My unsaved correction");
+	expect(test.button("Save changes").disabled).toBe(true);
+	test.button("Reload latest entry").click();
+	await vi.waitFor(() =>
+		expect(test.target.querySelector<HTMLTextAreaElement>("#wiki-edit-markdown")!.value).toBe(
+			"Concurrent agent edit",
+		),
+	);
+	expect(test.button("Save changes").disabled).toBe(false);
+	test.button("Cancel editing").click();
+	await vi.waitFor(() => expect(test.target.querySelector("form")).toBeNull());
+});
+
+it("deletes a complete group from the index only after explicit confirmation", async () => {
+	const test = await fixture({ index: true });
+	test.button("Delete group…").click();
+	await vi.waitFor(() => expect(test.target.textContent).toContain("and all its entries?"));
+	expect(test.requests.some((request) => request.method === "DELETE")).toBe(false);
+	test.button("Cancel").click();
+	await vi.waitFor(() => expect(test.button("Delete group and all entries")).toBeUndefined());
+	test.button("Delete group…").click();
+	await vi.waitFor(() => expect(test.button("Delete group and all entries")).toBeTruthy());
+	test.button("Delete group and all entries").click();
+	await vi.waitFor(() => expect(test.target.textContent).toContain("No solution wikis yet"));
+	expect(test.requests.find((request) => request.method === "DELETE")?.path).toBe(
+		`/api/wiki/topics/${topic.id}?revision=3`,
+	);
+});
+
+it.each([
+	true,
+	false,
+])("moves focus into group deletion and returns to its trigger on cancel (index: %s)", async (index) => {
+	const test = await fixture({ index });
+	const trigger = test.button(index ? "Delete group…" : "Delete wiki group…");
+	trigger.focus();
+	trigger.click();
+	await vi.waitFor(() =>
+		expect(document.activeElement).toBe(
+			test.target.querySelector('[aria-label="Confirm wiki group deletion"] h2'),
+		),
+	);
+	test.button("Cancel").click();
+	await vi.waitFor(() => expect(document.activeElement).toBe(trigger));
+	expect(test.target.querySelector('[aria-label="Confirm wiki group deletion"]')).toBeNull();
+	expect(test.requests.some((request) => request.method === "DELETE")).toBe(false);
+});
+
+it("clears removed group content on a live update while preserving an open draft", async () => {
+	const options = { groupDeleted: false };
+	const test = await fixture(options);
+	test.button("Edit entry").click();
+	await vi.waitFor(() => expect(test.target.querySelector("#wiki-edit-markdown")).not.toBeNull());
+	options.groupDeleted = true;
+	notifyWikiUpdated(topic.id);
+	await vi.waitFor(() => expect(test.target.textContent).toContain("group unavailable or deleted"));
+	expect(test.target.querySelector<HTMLTextAreaElement>("#wiki-edit-markdown")?.value).toBe(
+		page.markdown,
+	);
+	expect(test.button("Save changes").disabled).toBe(true);
+	test.button("Cancel editing").click();
+	await vi.waitFor(() => expect(test.target.querySelector("article")).toBeNull());
+	expect(test.target.textContent).not.toContain(page.title);
+});
+
+it("requires a fresh group confirmation when an entry changed before deletion", async () => {
+	const options = { index: true, conflict: true };
+	const test = await fixture(options);
+	test.button("Delete group…").click();
+	await vi.waitFor(() => expect(test.button("Delete group and all entries")).toBeTruthy());
+	test.button("Delete group and all entries").click();
+	await vi.waitFor(() => expect(test.button("Refresh group before deleting")).toBeTruthy());
+	test.setGroup({ ...topic, revision: 4 });
+	test.button("Refresh group before deleting").click();
+	await vi.waitFor(() =>
+		expect(test.target.querySelector('[aria-label="Confirm wiki group deletion"]')).toBeNull(),
+	);
+	options.conflict = false;
+	test.button("Delete group…").click();
+	await vi.waitFor(() => expect(test.button("Delete group and all entries")).toBeTruthy());
+	test.button("Delete group and all entries").click();
+	await vi.waitFor(() => expect(test.target.textContent).toContain("No solution wikis yet"));
+	expect(
+		test.requests.filter((request) => request.method === "DELETE").map((request) => request.path),
+	).toEqual([`/api/wiki/topics/${topic.id}?revision=3`, `/api/wiki/topics/${topic.id}?revision=4`]);
 });
 
 it("confirms deletion with a revision and clears stale history on refresh", async () => {
@@ -144,7 +296,7 @@ it("keeps a conflicting deletion visible and refreshes on a topic invalidation",
 	);
 	test.setPages([]);
 	notifyWikiUpdated(topic.id);
-	await vi.waitFor(() => expect(test.target.textContent).toContain("No shared findings yet"));
+	await vi.waitFor(() => expect(test.target.textContent).toContain("No shared solutions yet"));
 });
 
 it("requires a fresh confirmation after a deletion conflict", async () => {

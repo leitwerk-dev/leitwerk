@@ -393,6 +393,8 @@ export interface LlmTurnDefinition<
 	description: string;
 	/** Server-side entry condition, evaluated before worker allocation. @public */
 	waitFor?: TurnWaitPredicate<TParams, TState>;
+	/** External events armed while this LLM turn is selected and waiting. @public */
+	externalActions?: Record<string, ProcessHumanTurnExternalActionSpec<TParams, TState>>;
 	/** Code-defined model policy purpose. Purpose selections cannot be overridden per launch/action. @internal */
 	modelPurpose?: LlmModelPurpose;
 	/** Extension-defined scoped settings consumed by this turn. @public */
@@ -1503,7 +1505,7 @@ function compileProcessDefinition<TParams, TState>(
 			const external =
 				turnSpec.kind === "external"
 					? turnSpec.transitions
-					: turnSpec.kind === "human" || turnSpec.kind === "automatic"
+					: turnSpec.kind === "human" || turnSpec.kind === "automatic" || turnSpec.kind === "llm"
 						? Object.values(turnSpec.externalActions ?? {})
 						: [];
 			for (const route of external) {
@@ -1516,13 +1518,22 @@ function compileProcessDefinition<TParams, TState>(
 					);
 				}
 			}
+			const externalTransitions =
+				(turnSpec.kind === "llm" || turnSpec.kind === "automatic") && turnSpec.externalActions
+					? compileExternalActionTransitions({
+							turnId,
+							spec: turnSpec,
+							knownTurnIds,
+							turnDefinitionsById,
+						})
+					: [];
 			if (turnSpec.kind === "llm" && turnSpec.forEach) {
 				turns.set(
 					turnId,
-					createProcessTurnBinding(
-						turnSpec,
-						compileMappedTurnTransitions({ turnId, spec: turnSpec, knownTurnIds }),
-					),
+					createProcessTurnBinding(turnSpec, [
+						...compileMappedTurnTransitions({ turnId, spec: turnSpec, knownTurnIds }),
+						...externalTransitions,
+					]),
 				);
 				executableTurns.set(turnId, {
 					spec: turnSpec,
@@ -1538,15 +1549,6 @@ function compileProcessDefinition<TParams, TState>(
 					turnEnd: turnSpec.turnEnd,
 					knownTurnIds,
 				});
-				const externalTransitions =
-					turnSpec.kind === "automatic" && turnSpec.externalActions
-						? compileExternalActionTransitions({
-								turnId,
-								spec: turnSpec,
-								knownTurnIds,
-								turnDefinitionsById,
-							})
-						: [];
 				turns.set(
 					turnId,
 					createProcessTurnBinding(turnSpec, [...transitions, ...externalTransitions]),

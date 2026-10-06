@@ -82,7 +82,7 @@ function processStatusMark(status: ProcessLifecycleStatus): string {
 
 	{#snippet actions()}
 		{#if typeof wikiTopicId === "string"}
-			<a class="ui-button" href={`/wiki/${encodeURIComponent(wikiTopicId)}`} onclick={(event) => followLink(event, `/wiki/${encodeURIComponent(wikiTopicId)}`)}>Epic wiki</a>
+			<a class="ui-button" href={`/wiki/${encodeURIComponent(wikiTopicId)}`} onclick={(event) => followLink(event, `/wiki/${encodeURIComponent(wikiTopicId)}`)}>Solution wiki</a>
 		{/if}
 		{#if status}
 			<span

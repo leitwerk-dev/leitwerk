@@ -22,6 +22,7 @@ import {
 	UpdateSemanticRefs,
 	WorkerFailure,
 } from "./ops/index.js";
+import { ApplyProcessObservation } from "./ops/process-observation.js";
 import { RetryTurnWait } from "./ops/turn-wait.js";
 import { createEngineRunner } from "./runner.js";
 import { pendingTurnWait } from "./turn-wait-state.js";
@@ -94,6 +95,9 @@ export function createProcessEngine(deps: ProcessEngineDeps): ProcessEngine {
 
 	engine = {
 		run,
+		applyProcessObservation(instanceId, input) {
+			return run(ApplyProcessObservation, { instanceId, ...input });
+		},
 
 		getDeferredProcessActivationSnapshots({ instanceId, processId, projectKey }) {
 			const processes = instanceId

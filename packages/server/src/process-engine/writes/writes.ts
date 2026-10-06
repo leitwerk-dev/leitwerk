@@ -194,6 +194,8 @@ const METADATA_KEY_GROUPS = {
 
 /** @internal */
 export interface Writes {
+	/** Internal scheduling writes do not count as process activity. @internal */
+	preserveUpdatedAt?: boolean;
 	/** A fenced, successful server-side wait check. Never supplied by extensions. @internal */
 	waitForAdmission?: string;
 	/** @internal */
@@ -248,6 +250,7 @@ export type WriteBuildResult = Writes | WriteBuildFailure;
 
 export function createWrites(init: Partial<Writes> = {}): Writes {
 	return {
+		...(init.preserveUpdatedAt ? { preserveUpdatedAt: true } : {}),
 		...(init.waitForAdmission ? { waitForAdmission: init.waitForAdmission } : {}),
 		processPatch: init.processPatch ?? {},
 		changedFields: [...(init.changedFields ?? [])],

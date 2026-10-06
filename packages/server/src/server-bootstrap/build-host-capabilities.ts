@@ -13,10 +13,11 @@ import {
 	type ProgrammaticLaunchRequestLike,
 	type ProvidedCapability,
 	type RegisteredProcessWatcherLike,
-	topicWikiCapability,
 } from "@leitwerk-dev/process-sdk";
+import { createWikiIntegration, topicWikiCapability } from "@leitwerk-dev/wiki/integration";
 import type { LeitwerkConfig } from "../config/index.js";
 import type { RepositoryBundle } from "../db/repositories.js";
+import type { IntegrationToolRegistry } from "../integration-tool-registry.js";
 import type { LaunchCoordinator } from "../launch-coordinator.js";
 import type { ProcessEngine } from "../process-engine/types.js";
 import type { ProjectMutationService } from "../project-mutation-service.js";
@@ -29,6 +30,7 @@ export function buildHostCapabilities(input: {
 	baseDeps: RepositoryBundle & { broadcaster: Broadcaster };
 	projectMutations: ProjectMutationService;
 	commands: ProcessEngine;
+	integrationTools: IntegrationToolRegistry;
 	getSupervisor: () => WorkerSupervisor | undefined;
 	listVisibleActionsForProcess: (instanceId: string) => readonly ProcessActionSummaryLike[];
 	launcherService: unknown;
@@ -46,10 +48,47 @@ export function buildHostCapabilities(input: {
 	preProvidedCapabilities?: readonly ProvidedCapability[];
 }) {
 	const hostCapabilities = createCapabilityAccessor([
-		{ token: topicWikiCapability, value: input.baseDeps.topicWiki },
+		{ token: topicWikiCapability, value: createWikiIntegration(input.baseDeps.topicWiki) },
 		{
 			token: coreHostCapabilities.serverSetup,
 			value: {
+				async callIntegrationTool(
+					expected: import("@leitwerk-dev/domain").ProcessInstance,
+					projectKey: string,
+					name: string,
+					args: Record<string, unknown>,
+					signal: AbortSignal,
+				) {
+					const process = input.baseDeps.processes.getById(expected.id);
+					if (
+						!process ||
+						process.lifecycleStatus !== expected.lifecycleStatus ||
+						process.selectedTurnId !== expected.selectedTurnId ||
+						process.paramsJson !== expected.paramsJson ||
+						process.stateJson !== expected.stateJson ||
+						process.planRevision !== expected.planRevision
+					)
+						throw new Error("Process changed before maintenance delivery");
+					const projects = input.baseDeps.projects.listByInstance(process.id);
+					const project = projects.find((candidate) => candidate.key === projectKey);
+					const turn = input.baseDeps.turnRecords.listByInstance(process.id).at(-1);
+					if (!project || !turn)
+						throw new Error(
+							"Maintenance delivery requires a bound project and publication history",
+						);
+					return input.integrationTools.executeServer(
+						name,
+						{ ...args, projectKey },
+						{
+							process,
+							projects,
+							project,
+							turn,
+							idempotencyKey: `maintenance:${process.id}:${projectKey}:${name}`,
+						},
+						signal,
+					);
+				},
 				get serverBaseUrl() {
 					return input.config.server.base_url;
 				},
@@ -58,6 +97,7 @@ export function buildHostCapabilities(input: {
 				},
 				components: input.config.components,
 				externalWrites: input.baseDeps.externalWrites,
+				publications: input.baseDeps.publications,
 				processes: input.baseDeps.processes,
 				projects: input.projectMutations,
 				events: input.baseDeps.events,

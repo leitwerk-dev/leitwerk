@@ -2,16 +2,25 @@ import { type Actor, ADMIN_ACTOR } from "@leitwerk-dev/domain";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { AuthService } from "./auth-service.js";
 
+/** @internal */
 export interface TokenAuditContext {
+	/** @internal */
 	operation: string;
+	/** @internal */
 	tokenId?: string;
+	/** @internal */
 	actor?: Actor;
+	/** @internal */
 	ownerKind?: "user" | "anonymous";
+	/** @internal */
 	count?: number;
 }
 declare module "fastify" {
+	/** @internal */
 	interface FastifyRequest {
+		/** @internal */
 		actor?: Actor;
+		/** @internal */
 		tokenAudit?: TokenAuditContext;
 	}
 }
@@ -57,9 +66,13 @@ export function authenticateRequest(auth: AuthService, request: FastifyRequest):
 	const result = auth.apiTokens.resolve(match[1]);
 	if (result.token) {
 		request.tokenAudit = {
+			/** @internal */
 			operation: "bearer_request",
+			/** @internal */
 			tokenId: result.token.id,
+			/** @internal */
 			actor: result.token.owner.actor,
+			/** @internal */
 			ownerKind: result.token.owner.kind,
 		};
 	}

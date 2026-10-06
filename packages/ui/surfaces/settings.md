@@ -24,6 +24,14 @@ Save override is the blue confirming action, with Cancel beside it. Use inherite
 
 Validation and request errors stay inline and preserve the draft. A revision conflict displays the current saved value with the retained draft and requires Keep draft and use latest revision before saving again. Loading and empty scopes explain their state. Inactive saved settings remain visible with their value and revision and explain that their owning extensions must be installed to edit them.
 
+Remote options load separately from effective values. The editor remains open and
+usable during option discovery, announces Loading options, and offers Retry options
+after a failure. Searches retain checked choices and discard stale responses.
+Search-only fields display saved selections and a search prompt; opening the page
+or editor does not fetch options. Queries below the declared minimum make no
+request. Matching requests are debounced and announce Searching; failed searches
+offer Retry search without losing checked entries.
+
 ## Process inspection
 
 The inspector's Inputs & configuration section links to Instance and repository settings. Keep Defaults for future steps separate from Captured settings, with native disclosures for each step and its instruction blocks. Show contributing sources and recorded revisions with the values. For multiple repositories, expose the primary-repository selector and its save action, and explain how unbound model defaults resolve. Background refreshes preserve the selected draft. A binding conflict shows the current saved binding and requires Keep selection and use latest binding before retrying; successful saves announce the result.
