@@ -14,6 +14,8 @@ The human checklist closes when each deliverable has a current handoff or owned 
 
 Three guided cases exercise a partial handoff with an appropriately refused early close, a destination changing while a handoff draft is open, and missing evidence that requires an explicit owner. Free play can finish the entire closeout, add later validation observations and recheck stale receipts. Selection changes and rejected submissions preserve per-deliverable drafts.
 
+Each item-scoped guide step requires its named deliverable. The stale-API case requires an earlier API inspection and a changed observation; completion requires a current API receipt.
+
 ## Integration seams and proposed contracts
 
 - `packages/ui/src/chronicle/components/ChronicleTerminalSummary.svelte`: the current terminal summary is the natural entry into closeout, while retaining its existing lifecycle meaning.
