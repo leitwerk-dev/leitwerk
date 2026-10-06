@@ -16,6 +16,8 @@ This differs from workspace readiness and completion closeout. It accounts for t
 
 Free play supports expired grants/deadlines, duplicate acknowledgements, stale note inspection, later server turns and refused actions. Claiming combines stable-boundary waiting, idle-worker removal and scanning into one synthetic step; the fixture starts waiting. A later manual server turn is refused while export is pending. Stream completion is a server observation, not proof that the client imported successfully. Acknowledgement reports import only; later local work uses local configuration and is outside this process.
 
+Primary actions and guide controls retain readable white labels on a dark blue hover background.
+
 ## Existing seams and proposed additions
 
 - `packages/server/src/session-transfer-service.ts`: `snapshotManifest` constructs export context; `presentSessionTransferOperation` exposes phase and manual-turn blocking; stream completion records compressed bytes and a digest before `awaiting_ack`; `acknowledge` and `cancelForWeb` preserve the existing phase rules.
