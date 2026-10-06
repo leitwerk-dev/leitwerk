@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Check the request before approving · Leitwerk prototype</title>
+<style>
+:root{font-family:"Public Sans",ui-sans-serif,system-ui,sans-serif;color:#18212b;background:#fff;font-size:15px;line-height:1.55;--blue:#2f61b7;--line:#d9dee5;--muted:#4c5968}*{box-sizing:border-box}body{margin:0}button,input,textarea,select{font:inherit}button{min-height:44px;padding:9px 16px;border:1px solid var(--line);border-radius:24px;background:#fff;color:#18212b;cursor:pointer;font-weight:600}button:hover:not(:disabled){border-color:var(--blue);background:#f2f5fa}button:disabled{opacity:.55;cursor:not-allowed}button.primary{background:#18212b;color:white;border-color:#18212b}button.selected{border-color:var(--blue);color:#214b93;background:#e6ecf6}button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:3px solid var(--blue);outline-offset:3px}::selection{background:#e6ecf6;color:#18212b}textarea,input{width:100%;padding:10px 12px;border:1px solid #aeb7c2;border-radius:10px;background:#fff;color:#18212b;caret-color:var(--blue)}textarea{resize:vertical;min-height:84px}textarea::placeholder{color:var(--muted)}a{color:var(--blue);text-underline-offset:3px}h1,h2,h3,p{margin:0}h1{font-size:30px;line-height:1.2;letter-spacing:-.02em;max-width:26ch}h2{font-size:20px;line-height:1.3}h3{font-size:16px}p{max-width:74ch}header{border-bottom:1px solid var(--line);padding:16px 32px;display:flex;align-items:center;justify-content:space-between;background:#f7f8fa}header strong{font-size:18px}.subtle{color:var(--muted)}main{max-width:1280px;margin:0 auto;padding:36px 32px 60px}.intro{display:flex;justify-content:space-between;gap:24px;align-items:start}.intro p{margin-top:14px;max-width:85ch}.intro .reset{flex-shrink:0}.process{display:flex;gap:12px;flex-wrap:wrap;align-items:baseline;margin-top:28px;padding-bottom:14px;border-bottom:1px solid var(--line)}.state{padding:3px 9px;background:#f2f4f7;border-radius:6px;font-size:13px}.request{padding:22px 0 26px}.request p{margin-top:8px;max-width:95ch}.workspace{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:40px;align-items:start}.section-head{display:flex;justify-content:space-between;gap:16px;align-items:baseline;margin-bottom:12px}.section-head p{font-size:13px}.criteria-list{margin:0;padding:0;list-style:none;border-top:1px solid var(--line)}.criterion{width:100%;border:0;border-bottom:1px solid var(--line);border-radius:0;padding:16px 12px;display:grid;grid-template-columns:1fr auto;text-align:left;gap:12px;align-items:center;font-weight:500}.criterion.selected{background:#e6ecf6;color:#18212b;border-color:var(--line)}.criterion small{display:block;font-size:13px;color:var(--muted);margin-top:4px}.criterion .verdict{font-size:13px;font-weight:650;max-width:110px;text-align:right}.review-editor{margin-top:22px}.field{display:block;margin:16px 0 6px;font-weight:600}.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}.status-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:14px 0}.status-actions button{padding:8px 10px}.help{font-size:13px;color:var(--muted);margin-top:8px}.linked{margin-top:14px;background:#f7f8fa;padding:12px;border-radius:8px;font-size:14px}.linked button{margin-top:8px}.evidence{background:#f7f8fa;padding:22px 24px;border-radius:10px}.evidence-nav{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}.evidence-nav button{font-size:13px}.document{background:#fff;border:1px solid var(--line);padding:24px;border-radius:8px;min-height:275px}.document h3{font-size:21px;margin:18px 0 10px}.document p{margin:10px 0}.source-id{font-size:12px;color:var(--muted);overflow-wrap:anywhere}.evidence .primary{margin-top:16px}.notice{padding:13px 16px;background:#f2f4f7;border-radius:8px;margin:22px 0;min-height:49px}.notice.error{background:#fff2ed;color:#7d2d27}.review-summary{padding-top:20px;margin-top:22px;border-top:1px solid var(--line)}.decision{margin-top:30px;padding:24px;background:#e6ecf6;border-radius:10px}.decision .row{margin-top:14px}.decision h2{margin-bottom:8px}.history{margin-top:32px}.history details{padding:14px 0;border-bottom:1px solid var(--line)}summary{cursor:pointer;font-weight:600;min-height:44px;padding-top:9px}.history ul{margin:10px 0;padding-left:22px}.history li{margin:8px 0}.lab{border-top:1px solid var(--line);margin-top:38px;padding-top:26px}.lab .row{margin:16px 0}.scenario{padding:20px;background:#f7f8fa;border-radius:10px}.scenario p{margin:8px 0 14px}.scenario button{margin-top:5px}.footer-note{margin-top:24px;font-size:13px;color:var(--muted)}.simulation{margin-top:18px}.simulation p{margin-bottom:12px}.empty{color:var(--muted);padding:14px 0}.status-line{font-weight:600;margin-bottom:8px}.request-tag{font-size:13px;color:var(--muted);margin-left:8px}.criteria-confirm{margin-top:14px}input,textarea,button{scroll-margin:24px}#evidence-pane{scroll-margin:20px}*{scrollbar-color:#aeb7c2 #f2f4f7} @media(max-width:720px){header{padding:14px 20px}.prototype-label{font-size:13px}main{padding:26px 20px 40px}.intro{display:block}h1{font-size:27px}.intro .reset{margin-top:18px}.workspace{display:flex;flex-direction:column;gap:24px}.workspace>section{width:100%}.evidence{padding:18px 16px}.document{padding:18px}.decision{padding:20px 16px}.section-head{display:block}.section-head p{margin-top:5px}.criterion{padding:15px 8px;gap:10px}.criterion .verdict{max-width:95px}.process{margin-top:22px}.request{padding-top:20px}.lab .row button{width:100%}.decision .row button{width:100%}.request-tag{display:block;margin:3px 0 0}.source-id{font-size:13px}}
+</style>
+</head>
+<body>
+<header><strong>Leitwerk</strong><span class="subtle prototype-label">Operator experiment 29</span></header>
+<main>
+<div class="intro"><div><h1>Check the request before approving</h1><p class="subtle">Can a compact acceptance checklist improve a decision without becoming a second task tracker?</p><p class="help">Future proposal · Synthetic data · New criteria and evidence metadata contract. Everything stays in this browser’s memory; process actions below are simulations.</p></div><button class="reset" type="button" data-action="reset">Reset free play</button></div>
+<div class="process"><strong>Weekly job history export</strong><span id="process-state" class="state"></span><span class="subtle">Plan revision 2 · result plan-042</span></div>
+<section class="request" aria-labelledby="request-title"><h2 id="request-title">Original request <span class="request-tag">Retained launch input · unchanged</span></h2><p>“Plan a CSV export for weekly job history. Include timestamps and job outcomes, explain who can download it, and cover a 90-day export. Implementation starts only after my approval.”</p></section>
+<div class="workspace">
+<section aria-labelledby="criteria-title"><div class="section-head"><h2 id="criteria-title">Acceptance criteria</h2><p id="criteria-count"></p></div><ul id="criteria-list" class="criteria-list"></ul><div id="confirm-area"></div><div id="editor" class="review-editor"></div></section>
+<section id="evidence-pane" class="evidence" aria-labelledby="evidence-title"><h2 id="evidence-title">Read the actual evidence</h2><p class="help">Retained plan result · Select a section, then link what you read.</p><div id="evidence-nav" class="evidence-nav"></div><div id="evidence-content"></div><button type="button" class="primary" data-action="link">Link this section to selected criterion</button><p class="help">Linking records the source and wording version. It does not mark a criterion satisfied.</p><div class="review-summary"><h3>Review boundary</h3><p id="boundary" class="help"></p><p class="help">No evidence of 90-day feasibility is retained. A successful plan turn does not verify that requirement.</p></div></section>
+</div>
+<div id="message" class="notice" role="status" aria-live="polite"></div>
+<section class="decision" aria-labelledby="decision-title"><h2 id="decision-title">Your decision on this plan</h2><p id="readiness"></p><p class="help">The owning process controls offered actions. This fixture’s proposed policy requires a current review snapshot with every criterion satisfied or explicitly waived before approval.</p><label class="field" for="revision-notes">Revision notes draft</label><textarea id="revision-notes" placeholder="Add context for a requested revision. Unresolved criteria will be included when you send."></textarea><div class="row"><button type="button" data-action="snapshot">Save review snapshot</button><button type="button" class="primary" data-action="approve">Simulate approve plan</button><button type="button" data-action="revision">Simulate request revision</button></div><p id="snapshot-state" class="help"></p></section>
+<section class="history" aria-labelledby="history-title"><h2 id="history-title">Review history</h2><div id="history"></div></section>
+<section class="lab" aria-labelledby="lab-title"><h2 id="lab-title">Try the difficult cases</h2><p class="help">Each walkthrough loads a fresh fixture. The button performs the described action; a refused step advances only when the expected refusal occurs.</p><div class="row" id="scenarios"></div><div id="scenario" class="scenario"></div><details class="simulation"><summary>Free-play fixture changes</summary><p class="help">These change the synthetic world, not a real process. Unsent wording and notes stay intact.</p><div class="row"><button type="button" data-action="remove">Remove displayed source from retention</button><button type="button" data-action="availability">Toggle offered process actions</button></div></details></section>
+<p class="footer-note">This is a review of requested outcomes before an offered decision. It does not close a process, publish a result, or turn operator notes into new workflow permissions.</p>
+</main>
+<script>
+// Pure model: all state changes pass through reduce; no DOM or side effects.
+const evidenceFixtures = [
+ {id:"csv-layout",title:"CSV layout",record:"plan-042",anchor:"csv-layout",body:"The CSV will contain job_name, started_at, finished_at and outcome. Timestamps use UTC ISO 8601. Outcome preserves succeeded, failed and cancelled jobs; no failed jobs are filtered out.",detail:"Validation proposed: compare the export with a seeded weekly job history, including a failed run and a run crossing midnight."},
+ {id:"access-limits",title:"Access and limits",record:"plan-042",anchor:"access-and-limits",body:"Downloads use the same signed-in application access as the job history page. The download endpoint checks the existing session before reading history. A download has no separate per-process permissions.",detail:"The first implementation covers a seven-day range. The 90-day query cost and file size have not been measured; that requirement remains unresolved."}
+];
+const initial = () => ({confirmed:false,selected:0,source:0,available:true,turn:"plan_decision",lifecycle:"active",epoch:0,notes:"",criteria:[
+ {id:"fields",text:"The plan specifies timestamps and all job outcomes in the CSV.",version:1,status:"unknown",evidence:null,reason:"",stale:false},
+ {id:"access",text:"The plan explains who can download the export.",version:1,status:"unknown",evidence:null,reason:"",stale:false},
+ {id:"range",text:"The plan covers a 90-day export and its feasibility.",version:1,status:"unknown",evidence:null,reason:"",stale:false}
+],drafts:{},sources:evidenceFixtures.map(e=>({...e,retained:true})),history:[],snapshot:null,message:"Confirm the drafted criteria against the original request, then read and link the evidence.",error:false});
+const labels={unknown:"Not verified",satisfied:"Satisfied",needs:"Needs work",waived:"Waived"};
+const effective=(s,c)=>c.stale?"Needs review":c.status==="waived"&&c.reason.trim()?"Waived":c.evidence&&!s.sources.find(e=>e.id===c.evidence.id)?.retained?"Source unavailable":labels[c.status];
+const resolved=(s,c)=>!c.stale&&(c.status==="waived"&&Boolean(c.reason.trim())||c.status==="satisfied"&&c.evidence?.version===c.version&&s.sources.find(e=>e.id===c.evidence.id)?.retained);
+const copyReview=s=>s.criteria.map(c=>({...structuredClone(c),effective:effective(s,c)}));
+const draftFor=(s,c)=>s.drafts[c.id]||{text:c.text,reason:c.reason};
+const pendingWording=s=>s.criteria.some(c=>draftFor(s,c).text.trim()!==c.text);
+function reduce(previous,action){
+ const s=structuredClone(previous);s.error=false;s.refusalCode=null;const c=s.criteria[s.selected];
+ const refuse=(message,refusalCode="other")=>({state:{...s,error:true,message,refusalCode},ok:false});
+ const accept=message=>({state:{...s,message},ok:true});
+ const changed=()=>{s.epoch+=1;};
+ if(action.type==="draft"){s.drafts[c.id]={...draftFor(s,c),[action.field]:action.value};return {state:s,ok:true};}
+ if(action.type==="notes"){s.notes=action.value;return {state:s,ok:true};}
+ if(action.type==="select"){s.selected=action.index;return accept("Selected criterion. Your unsaved wording and notes are kept.");}
+ if(action.type==="source"){s.source=action.index;return accept("Reading the retained source. Inspection alone changes no review verdict.");}
+ if(["confirm","snapshot","approve","revision"].includes(action.type)&&pendingWording(s))return refuse("Unsaved criterion wording is not part of this review. Save the new version or restore the saved wording before deciding. Your drafts are kept.","unsaved-wording");
+ if(action.type==="restore"){s.drafts[c.id]={...draftFor(s,c),text:c.text};return accept("Restored saved wording. Your assessment note draft is kept.");}
+ if(action.type==="confirm"){if(s.confirmed)return refuse("These criteria are already confirmed. Edit a criterion to record a new version.");s.confirmed=true;changed();return accept("You confirmed these three criteria against the original request. None is verified yet.");}
+ if(action.type==="edit"){
+  const text=draftFor(s,c).text.trim();if(!text)return refuse("Enter criterion wording before saving. Your draft is kept.");if(text===c.text)return refuse("The wording is unchanged. Edit it to create a new version.");
+  s.history.push({kind:"Previous wording",criteria:[{...structuredClone(c),effective:effective(s,c)}],message:"Preserved when the wording changed. This earlier review is not applied to the new version."});
+  c.text=text;c.version+=1;c.stale=true;c.status="unknown";c.reason="";s.drafts[c.id]={text,reason:""};changed();return accept("Saved new wording. Previous evidence is stale; link and assess it again, or record a new waiver. Earlier snapshots keep their original wording.");
+ }
+ if(action.type==="link"){
+  if(!s.confirmed)return refuse("Confirm the drafted criteria before linking evidence.");const source=s.sources[s.source];if(!source.retained)return refuse("This source is unavailable. It cannot be linked as current evidence.");
+  c.evidence={id:source.id,record:source.record,anchor:source.anchor,quote:source.body,version:c.version};c.status="unknown";c.stale=false;c.reason="";changed();return accept("Linked the exact retained section to this wording version. Choose your assessment after reading it.");
+ }
+ if(action.type==="mark"){
+  if(!s.confirmed)return refuse("Confirm the drafted criteria before recording an assessment.");
+  const reason=draftFor(s,c).reason.trim();
+  if(action.status==="satisfied"&&(!c.evidence||c.evidence.version!==c.version||c.stale))return refuse("Link retained evidence for the current wording before marking Satisfied. Prior evidence is stale or missing.","stale-evidence");
+  if(action.status==="satisfied"&&!s.sources.find(e=>e.id===c.evidence.id)?.retained)return refuse("The linked source is unavailable. Use Not verified, Needs work, or a reasoned waiver.","unavailable-source");
+  if(action.status==="waived"&&!reason)return refuse("A waiver needs a reason. Enter why you accept this gap; your draft is kept.","missing-waiver-reason");
+  c.status=action.status;c.reason=reason;c.stale=false;changed();return accept(`${labels[c.status]} recorded for criterion version ${c.version}. This assessment does not change the process turn.`);
+ }
+ if(action.type==="remove"){
+  const source=s.sources[s.source];if(!source.retained)return refuse("This source is already unavailable.");source.retained=false;changed();return accept("Source removed in the fixture. Linked evidence now shows Source unavailable; historical snapshots keep their original record.");
+ }
+ if(action.type==="availability"){s.available=!s.available;return accept(s.available?"The fixture offers process actions again. Review evidence is unchanged.":"The process no longer offers these actions. All unsent drafts are kept.");}
+ if(action.type==="snapshot"){
+  if(!s.confirmed)return refuse("Confirm the criteria before saving a review snapshot.");
+  s.snapshot={epoch:s.epoch,record:"plan-042",criteria:copyReview(s),ready:s.criteria.every(criterion=>resolved(s,criterion))};
+  s.history.push({kind:"Review snapshot",criteria:copyReview(s),message:"Assessment only. The process stayed at its current turn."});return accept("Saved a review snapshot with the exact criterion wording and evidence. The business turn is unchanged.");
+ }
+ if(action.type==="approve"||action.type==="revision"){
+  if(!s.available||s.turn!=="plan_decision")return refuse("The process no longer offers this action. Your draft is kept; inspect its current turn.");
+  if(action.type==="approve"){
+   if(!s.confirmed||!s.snapshot||s.snapshot.epoch!==s.epoch)return refuse("Approval refused by the fixture policy: save a current review snapshot first. Changed wording or evidence invalidates an earlier snapshot.","stale-snapshot");
+   if(!s.criteria.every(criterion=>resolved(s,criterion)))return refuse("Approval refused by the fixture policy: a criterion still needs work, review, or verification. Resolve it or record a reasoned waiver.");
+   s.history.push({kind:"Simulated plan approval",criteria:structuredClone(s.snapshot.criteria),message:"Approved plan-042 using the saved review. This decision remains bound to these exact criterion versions."});s.turn="implement";s.available=false;
+   return accept("Simulated approval accepted. The process selected Implementation; no worker has started and no attempt was created.");
+  }
+  if(!s.confirmed)return refuse("Confirm criteria before including them in revision notes.");
+  const unresolved=s.criteria.filter(criterion=>!resolved(s,criterion));
+  const notes=[s.notes.trim(),...unresolved.map(criterion=>`${criterion.text} [${effective(s,criterion)}]${criterion.reason?` — ${criterion.reason}`:""}`)].filter(Boolean).join("\n");
+  if(!notes)return refuse("Add revision notes or mark a criterion Needs work before requesting a revision.");
+  s.history.push({kind:"Simulated revision request",criteria:copyReview(s),message:notes});s.turn="plan";s.available=false;
+  return accept("Simulated revision requested with your notes and unresolved criteria. Draft retained; no new worker attempt has been accepted.");
+ }
+ return refuse("No matching action.");
+}
+const scenarios=[
+ {name:"A justified approval",description:"Two criteria have retained evidence. The 90-day requirement needs an explicit scope waiver before this fixture will approve.",steps:[
+ {label:"Confirm the three criteria",actions:[{type:"confirm"}]},
+ {label:"Link CSV layout and mark Satisfied",actions:[{type:"source",index:0},{type:"link"},{type:"mark",status:"satisfied"}]},
+ {label:"Check access and mark Satisfied",actions:[{type:"select",index:1},{type:"source",index:1},{type:"link"},{type:"mark",status:"satisfied"}]},
+ {label:"Waive 90 days with an explicit reason",actions:[{type:"select",index:2},{type:"draft",field:"reason",value:"Accept a seven-day first release. A 90-day export needs a separate feasibility decision."},{type:"mark",status:"waived"}]},
+ {label:"Save the exact review snapshot",actions:[{type:"snapshot"}]},
+ {label:"Simulate approve plan",actions:[{type:"approve"}]}
+ ]},
+ {name:"Wording changes mid-review",description:"An earlier assessment cannot prove a stricter criterion. The old snapshot remains readable while the new wording needs fresh review.",steps:[
+ {label:"Confirm, verify CSV fields, and snapshot",actions:[{type:"confirm"},{type:"link"},{type:"mark",status:"satisfied"},{type:"snapshot"}]},
+ {label:"Change the criterion to require timezone offsets",actions:[{type:"draft",field:"text",value:"The plan specifies timestamps with the original timezone offset and all job outcomes."},{type:"edit"}]},
+ {label:"Try Satisfied with stale evidence (refused)",actions:[{type:"mark",status:"satisfied"}],refusalCode:"stale-evidence"},
+ {label:"Try approval with the old snapshot (refused)",actions:[{type:"approve"}],refusalCode:"stale-snapshot"},
+ {label:"Mark Needs work and request a revision",actions:[{type:"draft",field:"reason",value:"UTC-only timestamps do not preserve the original offset."},{type:"mark",status:"needs"},{type:"revision"}]}
+ ]},
+ {name:"Missing evidence and waiver",description:"A retained source disappears. No successful turn or empty waiver can replace the missing evidence, and your draft survives a rejected action.",steps:[
+ {label:"Confirm, link and assess CSV fields",actions:[{type:"confirm"},{type:"link"},{type:"mark",status:"satisfied"}]},
+ {label:"Draft a note and remove the source",actions:[{type:"notes",value:"Keep the failed-job coverage explicit in the revised plan."},{type:"remove"}]},
+ {label:"Try Satisfied without its source (refused)",actions:[{type:"mark",status:"satisfied"}],refusalCode:"unavailable-source"},
+ {label:"Try a waiver without a reason (refused)",actions:[{type:"mark",status:"waived"}],refusalCode:"missing-waiver-reason"},
+ {label:"Mark Not verified and request a revision",actions:[{type:"mark",status:"unknown"},{type:"revision"}]}
+ ]}
+];
+// DOM shell. Draft input is stored without rerendering, preserving cursor position.
+let state=initial(),scenarioIndex=-1,stepIndex=0;
+const $=id=>document.getElementById(id);
+const escapeHtml=value=>String(value).replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[char]);
+function render(){
+ const c=state.criteria[state.selected],draft=draftFor(state,c),source=state.sources[state.source];
+ $("process-state").textContent=`${state.turn==="plan_decision"?"Review plan":state.turn==="implement"?"Implementation selected":"Plan revision selected"} · ${state.lifecycle}`;
+ $("criteria-count").textContent=`${state.criteria.filter(item=>resolved(state,item)).length} of ${state.criteria.length} satisfied or waived`;
+ $("criteria-list").innerHTML=state.criteria.map((item,index)=>`<li><button type="button" class="criterion ${index===state.selected?"selected":""}" data-action="select" data-index="${index}" aria-pressed="${index===state.selected}"><span>${escapeHtml(item.text)}<small>Criterion ${index+1} · wording v${item.version}${state.confirmed?" · confirmed":" · draft"}</small></span><span class="verdict">${escapeHtml(effective(state,item))}</span></button></li>`).join("");
+ $("confirm-area").innerHTML=state.confirmed?'<p class="help">Criteria confirmed by you. Saving edited wording records a new version.</p>':'<button type="button" class="criteria-confirm primary" data-action="confirm">Confirm these criteria from the request</button><p class="help">Suggested extraction only. Edit any wording before confirming.</p>';
+ $("editor").innerHTML=`<h3>Review criterion ${state.selected+1}</h3><label class="field" for="criterion-text">Criterion wording</label><textarea id="criterion-text">${escapeHtml(draft.text)}</textarea><div class="row"><button type="button" data-action="edit">Save new wording version</button><button type="button" data-action="restore">Restore saved wording</button></div><p class="help">Only saved wording enters a review. Save or restore a wording draft before deciding.</p><div class="linked">${c.evidence?`<strong>${escapeHtml(effective(state,c))}</strong><br>Linked to ${escapeHtml(c.evidence.record)} / ${escapeHtml(c.evidence.anchor)} for wording v${c.evidence.version}${c.evidence.version!==c.version?" · Stale evidence":""}<br><button type="button" data-action="inspect">Inspect linked evidence</button>`:'No linked evidence. Read a retained section and link it here.'}</div><label class="field" for="reason">Assessment note or waiver reason</label><textarea id="reason" placeholder="A waiver must explain why this gap is accepted.">${escapeHtml(draft.reason)}</textarea><div class="status-actions">${Object.entries(labels).map(([key,label])=>`<button type="button" class="${c.status===key&&!c.stale?"selected":""}" data-action="mark" data-status="${key}">${label}</button>`).join("")}</div><p class="help">Satisfied needs a current, retained evidence link. A waiver needs your reason. Neither claims that implementation has passed.</p>`;
+ $("evidence-nav").innerHTML=state.sources.map((e,index)=>`<button type="button" class="${index===state.source?"selected":""}" data-action="source" data-index="${index}" aria-pressed="${index===state.source}">${escapeHtml(e.title)}</button>`).join("");
+ $("evidence-content").innerHTML=`<article class="document"><p class="source-id">${escapeHtml(source.record)} · #${escapeHtml(source.anchor)} · ${source.retained?"Retained result":"Source unavailable"}</p><h3>${escapeHtml(source.title)}</h3>${source.retained?`<p>${escapeHtml(source.body)}</p><p>${escapeHtml(source.detail)}</p>`:'<p>This exact result section is no longer retained. Its identity remains visible; another section cannot silently replace it.</p><p>Use a different retained source, mark Not verified, or explicitly waive the gap.</p>'}</article>`;
+ $("boundary").textContent=`Current wording: ${state.criteria.map((item,index)=>`${index+1} at v${item.version}`).join(", ")}. Evidence belongs to plan-042, plan revision 2.`;
+ $("message").textContent=state.message;$("message").className=`notice ${state.error?"error":""}`;
+ const unresolved=state.criteria.filter(item=>!resolved(state,item));
+ $("readiness").textContent=unresolved.length?`${unresolved.length} ${unresolved.length===1?"criterion needs":"criteria need"} an assessment, fresh evidence, or an explicit waiver.`:"Every confirmed criterion is satisfied or explicitly waived. Save the review before approval.";
+ $("revision-notes").value=state.notes;
+ $("snapshot-state").textContent=state.snapshot?`Saved snapshot: ${state.snapshot.epoch===state.epoch?"current":"out of date"} · ${state.snapshot.criteria.filter(item=>item.status==="satisfied"||item.status==="waived").length} of ${state.criteria.length} recorded as satisfied or waived. Actions ${state.available&&state.turn==="plan_decision"?"offered by this fixture":"no longer offered"}.`:"No review snapshot saved. Notes and assessments alone do not advance the process.";
+ $("history").innerHTML=state.history.length?state.history.map((entry,index)=>`<details><summary>${index+1}. ${escapeHtml(entry.kind)} · ${entry.criteria.length} ${entry.criteria.length===1?"criterion":"criteria"}</summary><p>${escapeHtml(entry.message).replace(/\n/g,"<br>")}</p><ul>${entry.criteria.map(item=>`<li><strong>v${item.version} · ${escapeHtml(item.effective)}</strong> — ${escapeHtml(item.text)}${item.reason?`<br>Reason: ${escapeHtml(item.reason)}`:""}${item.evidence?`<br>Source at review: ${escapeHtml(item.evidence.record)} / ${escapeHtml(item.evidence.anchor)} · linked for v${item.evidence.version}`:""}</li>`).join("")}</ul></details>`).join(""):'<p class="empty">No review recorded yet. Snapshots and earlier wording will appear here.</p>';
+ $("scenarios").innerHTML=scenarios.map((item,index)=>`<button type="button" class="${index===scenarioIndex?"selected":""}" data-action="scenario" data-index="${index}" aria-pressed="${index===scenarioIndex}">${escapeHtml(item.name)}</button>`).join("");
+ if(scenarioIndex<0)$("scenario").innerHTML='<h3>Free play</h3><p>Confirm the criteria, link and assess evidence, edit wording, or try a process action. Use Reset free play to start again.</p>';
+ else {const scenario=scenarios[scenarioIndex],step=scenario.steps[stepIndex];$("scenario").innerHTML=`<h3>${escapeHtml(scenario.name)}</h3><p>${escapeHtml(scenario.description)}</p>${step?`<p class="status-line">Step ${stepIndex+1} of ${scenario.steps.length}</p><button type="button" class="primary" data-action="next">${escapeHtml(step.label)}</button>`:'<p class="status-line">Walkthrough complete. Inspect the result above, or keep exploring in free play.</p>'}`;}
+}
+function dispatch(action){const result=reduce(state,action);state=result.state;return result.ok;}
+document.addEventListener("input",event=>{if(event.target.id==="revision-notes")dispatch({type:"notes",value:event.target.value});if(event.target.id==="criterion-text")dispatch({type:"draft",field:"text",value:event.target.value});if(event.target.id==="reason")dispatch({type:"draft",field:"reason",value:event.target.value});});
+document.addEventListener("click",event=>{
+ const button=event.target.closest("button[data-action]");if(!button)return;const action=button.dataset.action;
+ if(action==="reset"){state=initial();scenarioIndex=-1;stepIndex=0;}
+ else if(action==="scenario"){state=initial();scenarioIndex=Number(button.dataset.index);stepIndex=0;}
+ else if(action==="next"){
+  const step=scenarios[scenarioIndex]?.steps[stepIndex];if(!step)return;let ok=true;for(const item of step.actions){ok=dispatch(item);if(!ok)break;}if((ok&&!step.refusalCode)||(!ok&&state.refusalCode===step.refusalCode))stepIndex+=1;
+ }
+ else if(action==="inspect"){const pointer=state.criteria[state.selected].evidence;if(pointer)dispatch({type:"source",index:state.sources.findIndex(e=>e.id===pointer.id)});}
+ else dispatch({type:action,index:Number(button.dataset.index),status:button.dataset.status});
+ render();if(action==="inspect")$("evidence-pane").scrollIntoView({block:"start"});
+});
+render();
+</script>
+</body>
+</html>
