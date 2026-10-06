@@ -1,0 +1,1114 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<title>Operator work desk · Leitwerk prototype</title>
+		<style>
+		:root {
+			color-scheme: light;
+			--ink: #18212b;
+			--muted: #4c5968;
+			--blue: #2f61b7;
+			--line: #d9dee5;
+			--gray: #f7f8fa;
+			--soft: #e6ecf6;
+			--danger: #a83a32;
+			font-family: "Public Sans", ui-sans-serif, system-ui, sans-serif;
+			color: var(--ink);
+			background: white;
+			font-size: 15px;
+			line-height: 1.5;
+		}
+		* {
+			box-sizing: border-box;
+		}
+		body {
+			margin: 0;
+		}
+		button,
+		input,
+		select {
+			font: inherit;
+			color: inherit;
+		}
+		button {
+			cursor: pointer;
+			min-height: 44px;
+			padding: 9px 16px;
+			border: 1px solid var(--line);
+			border-radius: 24px;
+			background: white;
+			font-weight: 600;
+		}
+		button:hover {
+			border-color: var(--blue);
+			background: var(--gray);
+		}
+		button:disabled {
+			cursor: default;
+			opacity: 0.55;
+		}
+		button.primary {
+			background: var(--blue);
+			color: white;
+			border-color: var(--blue);
+		}
+		:focus-visible {
+			outline: 3px solid var(--blue);
+			outline-offset: 3px;
+		}
+		::selection {
+			background: var(--soft);
+			color: var(--ink);
+		}
+		input,
+		select {
+			min-height: 44px;
+			width: 100%;
+			padding: 9px 12px;
+			border: 1px solid #aeb7c2;
+			border-radius: 6px;
+			background: white;
+			caret-color: var(--blue);
+		}
+		label {
+			display: block;
+			font-weight: 600;
+		}
+		label span {
+			display: block;
+			margin-bottom: 5px;
+		}
+		h1 {
+			font-size: 30px;
+			line-height: 1.2;
+			margin: 0 0 12px;
+		}
+		h2 {
+			font-size: 21px;
+			line-height: 1.3;
+			margin: 0;
+		}
+		h3 {
+			font-size: 17px;
+			margin: 0 0 10px;
+		}
+		p {
+			margin: 8px 0 14px;
+			max-width: 72ch;
+		}
+		.muted {
+			color: var(--muted);
+		}
+		small {
+			font-size: 13px;
+		}
+		.shell {
+			min-height: 100vh;
+			display: grid;
+			grid-template-columns: 188px minmax(0, 1fr);
+		}
+		.nav {
+			background: var(--gray);
+			padding: 28px 20px;
+			border-right: 1px solid var(--line);
+		}
+		.wordmark {
+			font-size: 23px;
+			font-weight: 750;
+			margin-bottom: 44px;
+			letter-spacing: -0.02em;
+		}
+		.nav p {
+			margin: 22px 8px 8px;
+			font-size: 13px;
+		}
+		.nav .nav-label {
+			display: block;
+			padding: 11px 10px;
+		}
+		.nav .chosen {
+			background: var(--soft);
+			border-radius: 5px;
+			font-weight: 650;
+			color: var(--blue);
+		}
+		.nav footer {
+			margin-top: 80px;
+			border-top: 1px solid var(--line);
+			padding-top: 18px;
+			color: var(--muted);
+			font-size: 13px;
+		}
+		main {
+			padding: 36px 40px;
+			max-width: 1450px;
+			width: 100%;
+			margin: auto;
+		}
+		.intro {
+			margin-bottom: 28px;
+		}
+		.intro p {
+			color: var(--muted);
+		}
+		.intro .question {
+			color: var(--ink);
+		}
+		.heading-row {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			gap: 16px;
+		}
+		.wrap {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 8px;
+			align-items: center;
+		}
+		.desk-header {
+			border-top: 1px solid var(--line);
+			padding: 22px 0 16px;
+		}
+		.scope {
+			margin: 8px 0 0;
+			color: var(--muted);
+		}
+		.scope strong {
+			color: var(--ink);
+			font-weight: 500;
+		}
+		.live-line {
+			margin: 0;
+			padding: 12px 14px;
+			background: var(--gray);
+			border: 1px solid var(--line);
+			border-radius: 4px;
+			font-size: 14px;
+		}
+		.live-line.stale {
+			color: #7d2d27;
+			background: #fff4f2;
+		}
+		.workspace {
+			display: grid;
+			grid-template-columns: minmax(290px, 0.9fr) minmax(380px, 1.1fr);
+			gap: 32px;
+			margin-top: 22px;
+			align-items: start;
+		}
+		.section-heading {
+			margin-bottom: 12px;
+		}
+		.process-list {
+			list-style: none;
+			margin: 0;
+			padding: 0;
+			border-top: 1px solid var(--line);
+		}
+		.process-row {
+			border-bottom: 1px solid var(--line);
+		}
+		.row-button {
+			width: 100%;
+			border: 0;
+			border-radius: 0;
+			background: white;
+			padding: 17px 12px;
+			display: grid;
+			grid-template-columns: 28px minmax(0, 1fr);
+			gap: 8px;
+			text-align: left;
+			font-weight: 400;
+			min-height: 102px;
+		}
+		.row-button[aria-pressed="true"] {
+			background: var(--soft);
+		}
+		.slot {
+			font-variant-numeric: tabular-nums;
+			font-size: 13px;
+			color: var(--muted);
+			padding-top: 3px;
+		}
+		.row-title {
+			display: block;
+			font-size: 16px;
+			font-weight: 620;
+			margin-bottom: 3px;
+		}
+		.row-meta,
+		.membership {
+			display: block;
+			font-size: 13px;
+			color: var(--muted);
+		}
+		.membership {
+			margin-top: 4px;
+		}
+		.membership.changed {
+			color: #875012;
+			font-weight: 600;
+		}
+		.reader {
+			min-width: 0;
+			border-top: 2px solid var(--ink);
+			padding: 20px 0;
+		}
+		.reader h2 {
+			font-size: 24px;
+			margin: 12px 0 8px;
+		}
+		.reader .identity {
+			margin: 0;
+			font-size: 13px;
+			color: var(--muted);
+		}
+		.reader-state {
+			display: flex;
+			justify-content: space-between;
+			gap: 12px;
+			margin: 14px 0 22px;
+			padding-bottom: 18px;
+			border-bottom: 1px solid var(--line);
+			color: var(--muted);
+			font-size: 14px;
+		}
+		.result {
+			background: #f5f8fd;
+			padding: 20px;
+			border-radius: 5px;
+			margin: 20px 0;
+		}
+		.result p:last-child {
+			margin-bottom: 0;
+		}
+		.reader-actions {
+			margin-top: 20px;
+			padding-top: 18px;
+			border-top: 1px solid var(--line);
+		}
+		.reader-actions button {
+			margin: 0 5px 8px 0;
+		}
+		.notice {
+			padding: 12px 14px;
+			border: 1px solid var(--line);
+			background: var(--gray);
+			margin: 16px 0;
+			border-radius: 4px;
+		}
+		.notice.error {
+			color: #7d2d27;
+			border-color: #d8aaa5;
+			background: #fff4f2;
+		}
+		.tray {
+			margin-top: 24px;
+		}
+		.tray h3 {
+			margin-bottom: 5px;
+		}
+		.tray-item {
+			padding: 14px 0;
+			border-top: 1px solid var(--line);
+		}
+		.tray-item strong {
+			display: block;
+			margin-bottom: 4px;
+		}
+		.tray-item .wrap {
+			margin-top: 10px;
+		}
+		.empty {
+			color: var(--muted);
+			padding: 14px 0;
+			font-size: 14px;
+		}
+		.editor {
+			background: var(--gray);
+			padding: 20px;
+			margin: 0 0 18px;
+			border: 1px solid var(--line);
+			border-radius: 5px;
+		}
+		.editor-fields {
+			display: grid;
+			grid-template-columns: 1fr 1fr 1fr;
+			gap: 18px;
+			margin-bottom: 16px;
+		}
+		.lab {
+			margin-top: 36px;
+			border-top: 1px solid var(--line);
+			padding-top: 24px;
+		}
+		.tabs {
+			margin: 12px 0 16px;
+		}
+		.tabs button[aria-pressed="true"] {
+			color: var(--blue);
+			background: var(--soft);
+			border-color: var(--blue);
+		}
+		.walkthrough {
+			background: var(--gray);
+			border-radius: 5px;
+			padding: 18px;
+			margin: 16px 0;
+		}
+		.walkthrough p {
+			margin: 5px 0 12px;
+		}
+		.simulator {
+			margin-top: 18px;
+		}
+		summary {
+			cursor: pointer;
+			min-height: 44px;
+			padding: 10px 0;
+			font-weight: 600;
+		}
+		.simulator .wrap {
+			padding: 10px 0;
+		}
+		.event-log {
+			font-size: 13px;
+			color: var(--muted);
+			padding-left: 21px;
+			margin: 18px 0 0;
+		}
+		.event-log li {
+			margin: 4px 0;
+		}
+		.chronicle-entry {
+			border-bottom: 1px solid var(--line);
+			padding: 15px 0;
+		}
+		.chronicle-entry small {
+			color: var(--muted);
+		}
+		.chronicle-entry p {
+			margin-bottom: 0;
+		}
+		.footnote {
+			font-size: 13px;
+			color: var(--muted);
+			margin-top: 30px;
+		}
+		[hidden] {
+			display: none;
+		}
+		@media (max-width: 1100px) {
+			.shell {
+				grid-template-columns: 150px minmax(0, 1fr);
+			}
+			main {
+				padding: 28px 24px;
+			}
+			.workspace {
+				gap: 22px;
+				grid-template-columns: minmax(250px, 0.9fr) minmax(300px, 1.1fr);
+			}
+			.nav {
+				padding: 24px 12px;
+			}
+		}
+		@media (max-width: 800px) {
+			.shell {
+				display: block;
+			}
+			.nav {
+				padding: 12px 20px;
+				border-right: 0;
+				border-bottom: 1px solid var(--line);
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+			}
+			.wordmark {
+				font-size: 20px;
+				margin: 0;
+			}
+			.nav nav,
+			.nav footer {
+				display: none;
+			}
+			.nav::after {
+				content: "Work desks";
+				font-size: 14px;
+				color: var(--muted);
+			}
+			main {
+				padding: 25px 20px;
+			}
+			.workspace {
+				grid-template-columns: 1fr;
+				gap: 24px;
+			}
+			.editor-fields {
+				grid-template-columns: 1fr;
+			}
+			.reader {
+				padding-top: 18px;
+			}
+			h1 {
+				font-size: 28px;
+			}
+			.heading-row {
+				align-items: flex-start;
+			}
+			.row-button {
+				min-height: 96px;
+			}
+			.reader-state {
+				flex-wrap: wrap;
+			}
+			.result {
+				padding: 16px;
+			}
+			.wrap button {
+				flex-grow: 1;
+			}
+			.lab {
+				margin-top: 24px;
+			}
+		}
+		</style>
+	</head>
+	<body>
+		<div class="shell">
+			<aside class="nav" aria-label="Leitwerk navigation">
+				<div class="wordmark">Leitwerk</div>
+				<nav aria-label="Prototype location">
+					<p>Supervise</p>
+					<span class="nav-label">Current processes</span
+					><span class="nav-label chosen">Work desks</span>
+					<p>Browse</p>
+					<span class="nav-label">All processes</span>
+				</nav>
+				<footer>Operator prototype<br>Synthetic release workspace</footer>
+			</aside>
+			<main>
+				<header class="intro">
+					<h1>Operator work desk</h1>
+					<p>Future proposal · Synthetic, in-memory data. Refreshing this file resets the desk.</p>
+					<p class="question">Can a stable desk keep your place as the work around it changes?</p>
+				</header>
+				<section aria-labelledby="desk-name">
+					<div class="desk-header">
+						<div class="heading-row">
+							<h2 id="desk-name"></h2>
+							<button type="button" id="edit-desk">Edit desk</button>
+						</div>
+						<p class="scope" id="scope"></p>
+					</div>
+					<div class="editor" id="editor" hidden>
+						<h3>Name and membership rule</h3>
+						<p class="muted">
+							Saving stages new matches. It keeps every existing slot, including pins.
+						</p>
+						<div class="editor-fields">
+							<label><span>Desk name</span><input id="name-draft" maxlength="60"></label
+							><label
+								><span>Process status</span
+								><select id="rule-draft">
+									<option value="running">Running</option>
+									<option value="needs_attention">Needs attention</option>
+									<option value="all">All statuses</option>
+								</select></label
+							><label
+								><span>Title contains</span>
+								<input id="query-draft" placeholder="Any title" maxlength="80"></label
+							>
+						</div>
+						<div class="wrap">
+							<button type="button" class="primary" id="save-desk">Save desk</button
+							><button type="button" id="cancel-edit">Discard edits</button>
+						</div>
+					</div>
+					<p id="freshness" class="live-line"></p>
+					<p id="feedback" role="status" class="notice" hidden></p>
+					<div class="workspace">
+						<section aria-labelledby="slots-heading">
+							<div class="heading-row section-heading">
+								<h3 id="slots-heading">Your fixed positions</h3>
+								<small id="slot-count" class="muted"></small>
+							</div>
+							<ol class="process-list" id="process-list"></ol>
+							<div class="tray" aria-labelledby="tray-heading">
+								<h3 id="tray-heading">Additions to review</h3>
+								<p class="muted">
+									<small>New matches enter here. Admit them when you are ready.</small>
+								</p>
+								<div id="tray"></div>
+							</div>
+							<details class="simulator">
+								<summary>Pin a process outside the rule</summary>
+								<label><span>Process</span><select id="pin-choice"></select></label
+								><button type="button" id="pin-process" style="margin-top:10px">
+									Pin to end of desk
+								</button>
+							</details>
+							<details class="simulator" id="excluded-section">
+								<summary id="excluded-summary"></summary>
+								<div id="excluded"></div>
+							</details>
+						</section>
+						<section
+							class="reader"
+							id="reader"
+							aria-label="Selected process reading pane"
+						></section>
+					</div>
+				</section>
+				<section class="lab" aria-labelledby="lab-title">
+					<div class="heading-row">
+						<h2 id="lab-title">Try the desk</h2>
+						<button type="button" id="reset">Reset all</button>
+					</div>
+					<div class="wrap tabs" aria-label="Guided scenarios">
+						<button type="button" data-scenario="steady" aria-pressed="false">
+							1. Follow a release
+						</button><button type="button" data-scenario="deleted" aria-pressed="false">
+							2. A process disappears
+						</button><button type="button" data-scenario="stale" aria-pressed="false">
+							3. An outdated desk
+						</button><button type="button" id="free-play">Free play</button>
+					</div>
+					<div class="walkthrough" id="walkthrough" hidden></div>
+					<details class="simulator" open>
+						<summary>Simulate live changes</summary>
+						<p class="muted">
+							<small
+								>These controls change only the fixture. Desk actions never start, stop or complete
+								real work.</small
+							>
+						</p>
+						<div class="wrap">
+							<button type="button" id="simulate-change">
+								Complete gateway + add API client work
+							</button><button type="button" id="simulate-delete">Delete selected process</button
+							><button type="button" id="simulate-stale">Disconnect updates</button
+							><button type="button" id="refresh">Refresh observations</button>
+						</div>
+					</details>
+					<ol class="event-log" id="event-log" aria-label="Desk event history"></ol>
+				</section>
+				<p class="footnote">
+					This experiment stores desk preferences only for this page session. The reading pane
+					models a Chronicle destination; production actions stay on the existing process page.
+				</p>
+			</main>
+		</div>
+		<script>
+		// Pure membership model: live observations never reorder desk slots.
+		const DeskModel = (() => {
+			const fixtures = () => ({
+				"P-731": {
+					id: "P-731",
+					title: "Gateway timeout safeguard",
+					type: "Repository change",
+					status: "active",
+					turn: "Implement change",
+					detail:
+						"Implementation is running against the recorded plan. The last retained result defines a bounded retry budget for gateway requests.",
+					result:
+						"Use the existing request deadline as the upper bound. Preserve the request identity across retries and report exhausted retries to the caller.",
+					rev: 1,
+				},
+				"P-732": {
+					id: "P-732",
+					title: "Prepare release notes",
+					type: "Prompt",
+					status: "active",
+					turn: "Write release notes",
+					detail: "The agent is drafting the release note from the supplied change list.",
+					result:
+						"The release includes the gateway timeout safeguard and the migration preparation. Final wording has not been recorded yet.",
+					rev: 1,
+				},
+				"P-733": {
+					id: "P-733",
+					title: "Verify deployment smoke",
+					type: "Kubernetes smoke",
+					status: "active",
+					turn: "Inspect rollout",
+					detail:
+						"The accepted execution is checking the synthetic rollout. No final outcome has been recorded.",
+					result:
+						"The latest observation found the target deployment. Readiness checks are still in progress; this is not proof of successful rollout.",
+					rev: 1,
+				},
+				"P-734": {
+					id: "P-734",
+					title: "Review migration plan",
+					type: "Repository change",
+					status: "waiting",
+					turn: "Plan decision",
+					detail: "The plan is ready for an individual operator decision in the Chronicle.",
+					result:
+						"Introduce the new schema in a separate migration, back up file-backed storage and verify that retained process data survives. No approval has been recorded.",
+					rev: 1,
+				},
+				"P-736": {
+					id: "P-736",
+					title: "Archive release documentation",
+					type: "Prompt",
+					status: "completed",
+					turn: "Complete",
+					detail: "The synthetic documentation process is completed.",
+					result:
+						"A release documentation summary was recorded. External delivery has not been independently verified.",
+					rev: 1,
+				},
+			});
+			const initial = () => ({
+				name: "Release watch",
+				rule: "running",
+				query: "",
+				slots: [
+					{ id: "P-731", number: 1, pinned: false },
+					{ id: "P-732", number: 2, pinned: false },
+					{ id: "P-733", number: 3, pinned: false },
+					{ id: "P-734", number: 4, pinned: true },
+				],
+				nextSlot: 5,
+				excluded: [],
+				processes: fixtures(),
+				selected: "P-731",
+				view: "preview",
+				online: true,
+				editing: false,
+				draft: { name: "Release watch", rule: "running", query: "" },
+				removePending: null,
+				notice: "",
+				error: false,
+				log: ["Desk opened with three rule matches and one explicit pin."],
+				scenario: null,
+				step: 0,
+			});
+			const status = (p) =>
+				p.deleted
+					? "Deleted"
+					: {
+							active: "Running",
+							waiting: "Needs attention",
+							error: "Error",
+							completed: "Completed",
+							aborted: "Aborted",
+						}[p.status];
+			const matches = (s, p) =>
+				!p.deleted &&
+				(s.rule === "all" ||
+					(s.rule === "running"
+						? p.status === "active"
+						: ["waiting", "error"].includes(p.status))) &&
+				p.title.toLowerCase().includes(s.query.toLowerCase().trim());
+			const additions = (s) =>
+				Object.values(s.processes).filter(
+					(p) =>
+						matches(s, p) &&
+						!s.slots.some((slot) => slot.id === p.id) &&
+						!s.excluded.includes(p.id),
+				);
+			const reduce = (previous, action) => {
+				const s = structuredClone(previous);
+				let ok = true,
+					message = "";
+				const reject = (text) => {
+					ok = false;
+					message = text;
+				};
+				const p = s.processes[action.id || s.selected];
+				switch (action.type) {
+					case "draft":
+						s.draft[action.key] = action.value;
+						return { state: s, ok };
+					case "edit":
+						s.editing = true;
+						break;
+					case "cancel-edit":
+						s.editing = false;
+						s.draft = { name: s.name, rule: s.rule, query: s.query };
+						message = "Edits discarded.";
+						break;
+					case "save":
+						if (!s.draft.name.trim()) {
+							reject("Give this desk a name. Your rule and title draft are still here.");
+							break;
+						}
+						s.name = s.draft.name.trim();
+						s.rule = s.draft.rule;
+						s.query = s.draft.query.trim();
+						s.editing = false;
+						message =
+							"Desk saved for this page session. Existing positions stay fixed; new matches await admission.";
+						break;
+					case "select":
+						s.selected = action.id;
+						s.view = "preview";
+						s.removePending = null;
+						break;
+					case "open":
+						if (!p || p.deleted) {
+							reject(
+								"Chronicle unavailable: this process was deleted. Its desk slot remains until you remove it.",
+							);
+							break;
+						}
+						s.view = "chronicle";
+						message = `Opened the synthetic Chronicle for ${p.id}. Return keeps its desk position.`;
+						break;
+					case "back":
+						s.view = "preview";
+						message = "Returned to the same desk position.";
+						break;
+					case "change":
+						s.processes["P-731"] = {
+							...s.processes["P-731"],
+							status: "completed",
+							turn: "Complete",
+							rev: 2,
+							detail:
+								"The synthetic process completed. The desk still holds its original position.",
+							result:
+								"The gateway timeout change has a recorded completion result. This fixture does not independently establish deployment or human acceptance.",
+						};
+						s.processes["P-735"] = {
+							id: "P-735",
+							title: "Refresh API clients",
+							type: "Repository change",
+							status: "active",
+							turn: "Implement change",
+							detail:
+								"A new synthetic process now matches the desk rule. It is not admitted until you choose Add to desk.",
+							result:
+								"The supplied API schema changed. The current accepted execution is updating the client declarations.",
+							rev: 1,
+						};
+						message =
+							"Gateway completed in position 1. API client work was discovered; membership is staged.";
+						break;
+					case "delete":
+						if (!p || p.deleted) {
+							reject("That process is already unavailable. Its desk position remains visible.");
+							break;
+						}
+						p.deleted = true;
+						p.rev += 1;
+						s.view = "preview";
+						message = `Simulated deletion of ${p.id}. The slot retains its identity; its Chronicle is unavailable.`;
+						break;
+					case "disconnect":
+						s.online = false;
+						message =
+							"Live observations disconnected. All displayed process evidence is now marked stale.";
+						break;
+					case "refresh":
+						s.online = true;
+						message = "Current fixture observations refreshed. Existing positions are unchanged.";
+						break;
+					case "admit":
+						if (!s.online) {
+							reject(
+								"Cannot admit from stale observations. Refresh observations, then try again. Desk edits are preserved.",
+							);
+							break;
+						}
+						if (!additions(s).some((item) => item.id === action.id)) {
+							reject(
+								"This process is no longer an available rule match. Refresh or choose an explicit pin.",
+							);
+							break;
+						}
+						s.slots.push({ id: action.id, number: s.nextSlot++, pinned: false });
+						message = `${action.id} added at the end. Earlier positions did not move.`;
+						break;
+					case "pin":
+						if (!p || p.deleted) {
+							reject("Cannot pin a deleted process. Choose an available process.");
+							break;
+						}
+						if (s.slots.some((slot) => slot.id === p.id)) {
+							reject("That process already has a desk position.");
+							break;
+						}
+						s.excluded = s.excluded.filter((id) => id !== p.id);
+						s.slots.push({ id: p.id, number: s.nextSlot++, pinned: true });
+						message = `${p.id} explicitly pinned to the end, independent of the membership rule.`;
+						break;
+					case "toggle-pin": {
+						const slot = s.slots.find((slot) => slot.id === s.selected);
+						if (slot) {
+							slot.pinned = !slot.pinned;
+							message = slot.pinned
+								? "Process pinned. Rule changes will not change your intent to keep it."
+								: "Pin removed. The current slot stays until you explicitly remove it.";
+						}
+						break;
+					}
+					case "request-remove":
+						s.removePending = s.selected;
+						break;
+					case "cancel-remove":
+						s.removePending = null;
+						break;
+					case "remove":
+						if (s.removePending !== s.selected) {
+							reject("Select Remove from desk and confirm the exact process first.");
+							break;
+						}
+						s.slots = s.slots.filter((slot) => slot.id !== s.selected);
+						s.excluded.push(s.selected);
+						message = `${s.selected} removed from this desk only. It will stay excluded until you reconsider it.`;
+						s.selected = s.slots[0]?.id ?? null;
+						s.removePending = null;
+						s.view = "preview";
+						break;
+					case "exclude":
+						s.excluded.push(action.id);
+						message = `${action.id} excluded from this desk. Reconsider it below the additions tray.`;
+						break;
+					case "reconsider":
+						s.excluded = s.excluded.filter((id) => id !== action.id);
+						message =
+							"Exclusion removed. An available rule match will return to the additions tray.";
+						break;
+					default:
+						reject("Unknown action.");
+				}
+				s.notice = message;
+				s.error = !ok;
+				if (message) s.log.push(message);
+				return { state: s, ok };
+			};
+			return { initial, reduce, matches, additions, status };
+		})();
+		</script>
+		<script>
+		const $ = (id) => document.getElementById(id);
+		const escapeHtml = (value) =>
+			String(value).replace(
+				/[&<>"']/g,
+				(c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+			);
+		const scenarios = {
+			steady: {
+				title: "Follow a release without losing your place",
+				description:
+					"Inspect the gateway process, return, then observe a completion and a new match. Admit the newcomer explicitly.",
+				steps: [
+					["Open gateway Chronicle", { type: "open" }],
+					["Return to desk", { type: "back" }],
+					["Simulate completion and new work", { type: "change" }],
+					["Admit API client work", { type: "admit", id: "P-735" }],
+				],
+				done: "Complete. Gateway remains in position 1; API client work was appended in position 5.",
+			},
+			deleted: {
+				title: "Keep a deleted process visible until reviewed",
+				description:
+					"A selected process disappears from the server. Keep its identity visible, show an honest unavailable state, and remove it deliberately.",
+				steps: [
+					["Select release notes", { type: "select", id: "P-732" }],
+					["Simulate its deletion", { type: "delete" }],
+					["Try opening its Chronicle", { type: "open" }, false, "Chronicle unavailable:"],
+					["Review removal", { type: "request-remove" }],
+					["Confirm removal from desk", { type: "remove" }],
+				],
+				done: "Complete. The deleted slot was removed only after confirmation. Remaining position numbers are unchanged.",
+			},
+			stale: {
+				title: "Reject admission from an outdated desk",
+				description:
+					"New work arrives before the connection drops. A stale view must stay labeled when inspected and must not silently admit an outdated match.",
+				steps: [
+					["Discover API client work", { type: "change" }],
+					["Disconnect live observations", { type: "disconnect" }],
+					[
+						"Try to admit while stale",
+						{ type: "admit", id: "P-735" },
+						false,
+						"Cannot admit from stale observations.",
+					],
+					["Inspect the completed gateway", { type: "open" }],
+					["Return with stale label intact", { type: "back" }],
+					["Refresh current observations", { type: "refresh" }],
+					["Admit the verified match", { type: "admit", id: "P-735" }],
+				],
+				done: "Complete. Refusal kept membership intact; explicit refresh allowed admission. Inspecting evidence never cleared its stale label.",
+			},
+		};
+		let state = DeskModel.initial();
+		function dispatch(action) {
+			const result = DeskModel.reduce(state, action);
+			state = result.state;
+			render();
+			return result.ok;
+		}
+		function button(text, action, id = "", primary = false) {
+			return `<button type="button" data-action="${action}" data-id="${id}" ${primary ? 'class="primary"' : ""}>${text}</button>`;
+		}
+		function render() {
+			$("desk-name").textContent = state.name;
+			$("scope").innerHTML =
+				`<strong>${{ running: "Running processes", needs_attention: "Processes needing attention", all: "All process statuses" }[state.rule]}</strong>${state.query ? ` · title contains “${escapeHtml(state.query)}”` : ""} · explicit pins stay in scope`;
+			$("editor").hidden = !state.editing;
+			for (const key of ["name", "rule", "query"])
+				if ($(`${key}-draft`).value !== state.draft[key])
+					$(`${key}-draft`).value = state.draft[key];
+			$("freshness").className = `live-line${state.online ? "" : " stale"}`;
+			$("freshness").textContent = state.online
+				? "Current synthetic observations · Live state updates in place. Only you change membership."
+				: "Stale observations · Updates disconnected. Evidence and membership candidates may have changed. Refresh before admitting.";
+			$("feedback").hidden = !state.notice;
+			$("feedback").textContent = state.notice;
+			$("feedback").className = `notice${state.error ? " error" : ""}`;
+			$("slot-count").textContent = `${state.slots.length} occupied`;
+			$("process-list").innerHTML =
+				state.slots
+					.map((slot) => {
+						const p = state.processes[slot.id];
+						const match = DeskModel.matches(state, p);
+						return `<li class="process-row"><button type="button" class="row-button" data-action="select" data-id="${p.id}" aria-pressed="${state.selected === p.id}"><span class="slot">${String(slot.number).padStart(2, "0")}</span><span><span class="row-title">${escapeHtml(p.title)}</span><span class="row-meta">${p.id} · ${DeskModel.status(p)}${state.online ? "" : " · Stale"}</span><span class="membership${p.deleted || (!match && !slot.pinned) ? " changed" : ""}">${p.deleted ? "Unavailable · slot retained" : slot.pinned ? "Explicitly pinned" : match ? p.turn : "No longer matches · slot retained"}</span></span></button></li>`;
+					})
+					.join("") ||
+				'<li class="empty">This desk is empty. Admit a rule match or pin a process to give it a position.</li>';
+			const additions = DeskModel.additions(state);
+			$("tray").innerHTML =
+				additions
+					.map(
+						(p) =>
+							`<div class="tray-item"><strong>${escapeHtml(p.title)}</strong><small class="muted">${p.id} · ${DeskModel.status(p)} · ${state.online ? "Matches your rule" : "Stale candidate"}</small><div class="wrap">${button("Add to desk", "admit", p.id, true)}${button("Exclude", "exclude", p.id)}</div></div>`,
+					)
+					.join("") ||
+				'<p class="empty">No new matches waiting. Existing positions stay where you left them.</p>';
+			const oldPin = $("pin-choice").value;
+			$("pin-choice").innerHTML = Object.values(state.processes)
+				.filter((p) => !p.deleted && !state.slots.some((slot) => slot.id === p.id))
+				.map(
+					(p) => `<option value="${p.id}">${escapeHtml(p.title)} · ${DeskModel.status(p)}</option>`,
+				)
+				.join("");
+			if ([...$("pin-choice").options].some((option) => option.value === oldPin))
+				$("pin-choice").value = oldPin;
+			$("pin-process").disabled = !$("pin-choice").options.length;
+			$("excluded-summary").textContent = `Excluded from this desk (${state.excluded.length})`;
+			$("excluded").innerHTML =
+				state.excluded
+					.map(
+						(id) =>
+							`<div class="tray-item"><strong>${escapeHtml(state.processes[id].title)}</strong>${button("Reconsider", "reconsider", id)}</div>`,
+					)
+					.join("") ||
+				'<p class="empty">Nothing excluded. Removed entries stay here until reconsidered.</p>';
+			renderReader();
+			document.querySelectorAll("[data-scenario]").forEach((el) => {
+				el.setAttribute("aria-pressed", String(el.dataset.scenario === state.scenario));
+			});
+			$("walkthrough").hidden = !state.scenario;
+			if (state.scenario) {
+				const scenario = scenarios[state.scenario];
+				const step = scenario.steps[state.step];
+				$("walkthrough").innerHTML =
+					`<h3>${scenario.title}</h3><p>${step ? scenario.description : scenario.done}</p>${step ? `<small class="muted">Step ${state.step + 1} of ${scenario.steps.length}</small><div style="margin-top:10px">${button(step[0], "guide", "", true)}</div>` : "<strong>Walkthrough complete</strong>"}`;
+			}
+			$("event-log").innerHTML = state.log
+				.slice(-4)
+				.map((entry) => `<li>${escapeHtml(entry)}</li>`)
+				.join("");
+		}
+		function renderReader() {
+			const p = state.processes[state.selected];
+			const slot = state.slots.find((item) => item.id === state.selected);
+			if (!p || !slot) {
+				$("reader").innerHTML =
+					'<h2>Select a desk process</h2><p class="muted">Its retained context will appear here. The desk has no selected process.</p>';
+				return;
+			}
+			const stale = state.online
+				? ""
+				: '<div class="notice error">Stale evidence · Current state has not been refreshed. Opening this view does not refresh it.</div>';
+			const mismatch = !DeskModel.matches(state, p) && !slot.pinned && !p.deleted;
+			const body = p.deleted
+				? '<div class="notice error"><h3>Chronicle unavailable</h3><p>This process was deleted in the synthetic server state. Its title and position are kept as desk metadata. No retained result is shown as current evidence.</p></div>'
+				: `${stale}<p>${escapeHtml(p.detail)}</p><div class="result"><h3>${state.view === "chronicle" ? "Retained result" : "Latest recorded context"}</h3><p>${escapeHtml(p.result)}</p></div>${state.view === "chronicle" ? `<div class="chronicle-entry"><small>Recorded start · ${p.id}</small><p>The process was created from its supplied inputs.</p></div><div class="chronicle-entry"><small>Accepted execution · observation ${p.rev}</small><p>${p.status === "completed" ? "Completion was recorded." : p.status === "waiting" ? "The recorded plan awaits a process-defined action." : "Work was accepted. A final outcome has not been recorded."}</p></div><p class="muted"><small>Modeled destination: /processes/${p.id}. Production decisions use that page’s canonical controls.</small></p>` : ""}`;
+			$("reader").innerHTML =
+				`<p class="identity">Position ${String(slot.number).padStart(2, "0")} · ${p.id} · ${state.view === "chronicle" ? "Synthetic Chronicle" : "Process context"}</p><h2>${escapeHtml(p.title)}</h2><div class="reader-state"><span>${DeskModel.status(p)} · ${p.deleted ? "Record unavailable" : escapeHtml(p.turn)}</span><span>${escapeHtml(p.type)}</span></div>${mismatch ? `<div class="notice">No longer matches this desk’s rule. This is still your position until you remove it.</div>` : ""}${body}<div class="reader-actions">${state.view === "chronicle" ? button("Return to desk", "back") : button("Open Chronicle", "open", "", !p.deleted)}${button(slot.pinned ? "Unpin process" : "Keep as explicit pin", "toggle-pin")}${button("Remove from desk", "request-remove")}</div>${state.removePending === p.id ? `<div class="notice"><strong>Remove ${p.id} from this desk?</strong><p>This removes only the desk position and records an exclusion. It does not delete or stop the process.</p><div class="wrap">${button("Confirm removal", "remove", "", true)}${button("Keep position", "cancel-remove")}</div></div>` : ""}`;
+		}
+		document.addEventListener("click", (event) => {
+			const target = event.target.closest("button");
+			if (!target) return;
+			if (target.dataset.scenario) {
+				state = DeskModel.initial();
+				state.scenario = target.dataset.scenario;
+				render();
+				return;
+			}
+			if (target.dataset.action === "guide") {
+				const step = scenarios[state.scenario].steps[state.step];
+				const requiredId = state.scenario === "deleted" ? "P-732" : "P-731";
+				if (
+					["open", "back", "delete", "request-remove", "remove"].includes(step[1].type) &&
+					state.selected !== requiredId
+				) {
+					state = {
+						...state,
+						notice: `Select ${requiredId} in its desk position before continuing this step. Your drafts are preserved.`,
+						error: true,
+					};
+					render();
+					return;
+				}
+				const result = DeskModel.reduce(state, step[1]);
+				state = result.state;
+				if (result.ok === (step[2] ?? true) && (!step[3] || state.notice.startsWith(step[3])))
+					state.step += 1;
+				render();
+				return;
+			}
+			if (target.dataset.action) {
+				const action = target.dataset.action;
+				dispatch({ type: action, id: target.dataset.id || undefined });
+				if (innerWidth <= 800 && action === "select")
+					$("reader").scrollIntoView({ block: "start" });
+				if (action === "back")
+					document
+						.querySelector(`.row-button[data-id="${state.selected}"]`)
+						?.focus({ preventScroll: innerWidth > 800 });
+				return;
+			}
+			const actions = {
+				"edit-desk": "edit",
+				"save-desk": "save",
+				"cancel-edit": "cancel-edit",
+				"simulate-change": "change",
+				"simulate-delete": "delete",
+				"simulate-stale": "disconnect",
+				refresh: "refresh",
+			};
+			if (actions[target.id]) dispatch({ type: actions[target.id] });
+			if (target.id === "pin-process") dispatch({ type: "pin", id: $("pin-choice").value });
+			if (target.id === "free-play") {
+				state.scenario = null;
+				render();
+			}
+			if (target.id === "reset") {
+				state = DeskModel.initial();
+				document.querySelectorAll(".workspace details").forEach((element) => {
+					element.open = false;
+				});
+				render();
+			}
+		});
+		for (const key of ["name", "rule", "query"])
+			$(`${key}-draft`).addEventListener("input", (event) => {
+				state = DeskModel.reduce(state, { type: "draft", key, value: event.target.value }).state;
+			});
+		render();
+		</script>
+	</body>
+</html>
