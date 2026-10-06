@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Evidence bookmarks · Leitwerk prototype</title>
+<style>
+:root{font:15px/1.55 ui-sans-serif,system-ui,sans-serif;color:#18212b;background:#fff;--blue:#2f61b7;--line:#d9dee5;--muted:#4c5968}*{box-sizing:border-box}body{margin:0}::selection{background:#d8e5fa}button,input,textarea,select{font:inherit;color:inherit;caret-color:var(--blue)}button,select{min-height:44px;border:1px solid #aeb7c2;border-radius:8px;padding:9px 13px;background:#fff}button{cursor:pointer}button:hover{background:#edf2fa}button:disabled{opacity:.55;cursor:default}button.primary{background:var(--blue);color:white;border-color:var(--blue)}button[aria-pressed=true]{background:#e6ecf6;border-color:var(--blue)}:focus-visible{outline:3px solid var(--blue);outline-offset:3px}header{padding:30px max(24px,calc((100vw - 1190px)/2));background:#f7f8fa;border-bottom:1px solid var(--line)}h1{font-size:30px;line-height:1.2;margin:0 0 12px;letter-spacing:-.025em}h2{font-size:20px;line-height:1.35;margin:0 0 12px}h3{font-size:17px;margin:0 0 7px}p{margin:8px 0 14px}.intro{max-width:76ch}.muted,.hint{color:var(--muted)}.hint{font-size:13px}.prototype{margin:0;font-size:13px;color:var(--muted)}main{max-width:1238px;margin:auto;padding:24px 24px 44px}.summary{display:flex;justify-content:space-between;gap:20px;flex-wrap:wrap;padding-bottom:16px;border-bottom:1px solid var(--line)}.summary p{margin:0}.layout{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(315px,1fr);gap:36px;margin-top:26px}.document-head{display:flex;align-items:start;justify-content:space-between;gap:15px;flex-wrap:wrap}.document-head label{display:grid;gap:5px;font-size:13px}.passage{padding:20px 0;border-bottom:1px solid var(--line);scroll-margin-top:18px}.passage.selected{background:#eef3fb;margin:0 -14px;padding:20px 14px;border-radius:8px}.passage p{max-width:70ch}.passage button{font-size:14px}.meta{font-size:12px;color:var(--muted);overflow-wrap:anywhere}.notice{background:#eef3fb;padding:14px 16px;margin:20px 0;min-height:52px}.notice.error{background:#fbeeea;color:#7d2d27}.notebook{background:#f7f8fa;padding:20px;border:1px solid var(--line);border-radius:12px;align-self:start}.notebook label,.resolve label{display:block;font-weight:600;margin-bottom:6px}textarea,input{width:100%;border:1px solid #aeb7c2;border-radius:7px;padding:10px;background:white}textarea{min-height:92px;resize:vertical}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.note{padding:18px 0;border-top:1px solid var(--line)}.note:first-child{margin-top:20px}.note p{overflow-wrap:anywhere;margin:8px 0}.status{font-size:13px;font-weight:650}.open{color:#79531a}.resolved{color:#126440}.note blockquote{margin:10px 0;padding:10px;background:#fff;font-size:14px;border:1px solid var(--line);border-radius:6px}.source-state{font-size:13px;color:var(--muted)}.resolve{margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}.resolve p{font-size:13px}.simulation{border-top:1px solid var(--line);padding-top:24px;margin-top:30px}.simulation p{max-width:78ch}.guided{background:#f7f8fa;border:1px solid var(--line);padding:20px;border-radius:10px;margin-top:18px}.tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}.steps{margin:15px 0;padding-left:24px}.steps li{padding:5px 0}.steps .done{color:#126440}.audit{font-size:13px;max-height:180px;overflow:auto;padding-left:20px}.audit li{padding:4px 0}.empty{padding:16px 0;color:var(--muted)}footer{border-top:1px solid var(--line);margin-top:30px;padding-top:16px;font-size:13px;color:var(--muted)}@media(max-width:820px){.layout{grid-template-columns:1fr;gap:26px}.notebook{padding:18px}}@media(max-width:480px){header{padding:23px 18px}main{padding:20px 16px 32px}h1{font-size:27px}.summary{gap:10px}.document-head label{width:100%}.tabs button{width:100%;text-align:left}.guided{padding:16px}.actions button{flex:1}.passage.selected{margin:0;padding:18px 12px}.notebook{padding:16px}}
+</style>
+</head>
+<body>
+<header><h1>Evidence bookmarks</h1><p class="intro">Keep a review concern attached to the exact passage that raised it. Can a personal reminder survive a new result without quietly moving to different evidence?</p><p class="prototype">Leitwerk operator experiment · synthetic data · proposed feature · changes stay in this page</p></header>
+<main>
+<div class="summary"><p><strong>Regional rollout · OPS-248</strong><br><span class="hint" id="process-state"></span></p><button type="button" id="reset">Reset experiment</button></div>
+<div id="notice" class="notice" role="status" aria-live="polite"></div>
+<div class="layout">
+<section aria-labelledby="result-heading"><div class="document-head"><div><h2 id="result-heading">Recorded result</h2><p id="record-label" class="hint"></p></div><label for="record-select">Read an execution<select id="record-select"></select></label></div><div id="document"></div></section>
+<aside class="notebook" aria-labelledby="notes-heading"><h2 id="notes-heading">My review concerns</h2><p class="hint">Private review metadata in this simulation. These notes do not send instructions, approve work, or change the process.</p><p id="anchor-label" class="hint"></p><label for="note-draft">What needs another look?</label><textarea id="note-draft" aria-describedby="draft-hint"></textarea><p class="hint" id="draft-hint">Choose a passage, then save a concern for the next decision. Unsent text survives live updates.</p><div class="actions"><button type="button" id="save" class="primary">Save bookmark</button></div><div id="notes"></div><div class="resolve" id="resolution"><label for="resolution-draft">Review outcome</label><p id="review-target" class="hint"></p><input id="resolution-draft" placeholder="What did you verify or decide?"><p>Inspect the exact retained source before marking it checked. Dismissing a concern records your reason without claiming that its evidence was verified.</p><div class="actions"><button type="button" id="resolve">Mark inspected concern checked</button><button type="button" id="dismiss">Dismiss with reason</button></div></div></aside>
+</div>
+<section class="simulation" aria-labelledby="simulation-heading"><h2 id="simulation-heading">Change the situation</h2><p class="muted">These fixture controls simulate events from the process. A later result can reuse a heading; a bookmark still belongs to its original execution. Redaction also removes the cached source quote.</p><div class="actions"><button type="button" id="publish">Receive result v4</button><button type="button" id="decision">Reach next human decision</button><button type="button" id="redact">Redact bookmarked source</button></div><div class="guided"><h3>Try the awkward cases</h3><div id="tabs" class="tabs" aria-label="Guided scenarios"></div><p id="scenario-description"></p><ol id="steps" class="steps"></ol><button type="button" id="next-step" class="primary"></button></div><details><summary>Review activity and model boundaries</summary><p class="hint">Process lifecycle stays active. Bookmarks retain execution identity, exact passage identity, source content fingerprint, status and review outcome. The text comparison stands in for a production content hash.</p><ol id="audit" class="audit"></ol></details></section>
+<footer>Open this HTML file directly to explore. Reload discards all state. A production feature would need migrated operator metadata, actor-scoped visibility, stable content anchors and explicit retention/redaction rules. Existing process actions remain in the Chronicle.</footer>
+</main>
+<script>
+const BookmarkModel=(()=>{
+ const records=()=>[{id:'tr-41',label:'Plan v3',version:3,sections:[{id:'rollout',title:'Rollout scope',text:'Enable the new index in the EU region first. North America follows only after an operator reviews the rollout evidence.',available:true},{id:'validation',title:'Validation and limits',text:'The fixture integration suite passed for the EU sample. Production traffic and the North American region have not been verified.',available:true},{id:'recovery',title:'Recovery plan',text:'Keep the previous index available. If error rates rise, route reads back to it; data already written remains in place.',available:true}]}];
+ const initial=()=>({records:records(),view:'tr-41',selected:'rollout',notes:[],draft:'Confirm that the first rollout stays in the EU region.',resolution:'',inspection:null,decision:1,lifecycle:'active',serial:1,notice:'Select an exact passage and save a concern to revisit at the next decision.',tone:'info',log:[]});
+ const source=(s,n)=>s.records.find(r=>r.id===n.record)?.sections.find(p=>p.id===n.section);
+ const available=(s,n)=>{const p=source(s,n);return Boolean(p?.available&&p.text===n.fingerprint);};
+ function reduce(s,a){
+  const n=structuredClone(s);let ok=true;let message='';
+  const fail=t=>{ok=false;message=t;};
+  if(a.type==='reset')return{state:initial(),ok:true};
+  if(a.type==='draft'){n.draft=a.text;return{state:n,ok:true};}
+  if(a.type==='resolution'){n.resolution=a.text;return{state:n,ok:true};}
+  if(a.type==='view'){if(!n.records.some(r=>r.id===a.record))fail('That execution is unavailable.');else{n.view=a.record;n.selected=null;message='Reading selection changed. Your bookmark draft is preserved.';}}
+  if(a.type==='select'){const r=n.records.find(r=>r.id===a.record);const p=r?.sections.find(p=>p.id===a.section);if(!p?.available)fail('Unavailable evidence cannot create a new bookmark.');else{n.view=r.id;n.selected=p.id;message=`Selected ${p.title} from ${r.label}.`;}}
+  if(a.type==='save'){
+   const r=n.records.find(r=>r.id===n.view),p=r?.sections.find(p=>p.id===n.selected);
+   if(!p?.available)fail('Choose an available passage before saving.');else if(!n.draft.trim())fail('Write the concern first. Your draft is still here.');else{
+    n.notes.push({id:`note-${n.serial++}`,record:r.id,version:r.version,section:p.id,title:p.title,quote:p.text,fingerprint:p.text,text:n.draft.trim(),due:n.decision+1,status:'open',outcome:''});n.draft='';message='Bookmark saved for the next decision. No instructions were sent to the process.';
+   }
+  }
+  if(a.type==='publish'){
+   if(n.records.some(r=>r.id==='tr-42'))fail('Result v4 has already arrived.');else{n.records.push({id:'tr-42',label:'Plan v4',version:4,sections:[{id:'rollout',title:'Rollout scope',text:'Enable the new index in EU and North America together after reviewing the capacity report.',available:true},{id:'validation',title:'Validation and limits',text:'A larger fixture set passed. Live production traffic has still not been verified.',available:true},{id:'recovery',title:'Recovery plan',text:'The previous index remains available for read rollback. Already committed data is retained.',available:true}]});message='Result v4 arrived. Existing bookmarks still point to v3; nothing was automatically checked.';}
+  }
+  if(a.type==='decision'){n.decision++;message=`Decision ${n.decision} is available. Open concerns are reminders, not an approval gate.`;}
+  if(a.type==='inspect'){
+   const note=n.notes.find(b=>b.id===a.id);
+   if(!note)fail('Select an existing bookmark.');else{n.inspection=note.id;n.view=note.record;n.selected=note.section;message=available(n,note)?`Opened the exact ${note.title} passage in plan v${note.version}. A newer result does not replace it.`:'The original source is unavailable. The anchor and concern remain; a similarly named newer section is not substituted.';}
+  }
+  if(a.type==='redact'){
+   const note=n.notes.find(b=>b.id===(a.id||n.inspection))||n.notes[0];
+   if(!note)fail('Save a bookmark before simulating source redaction.');else{const p=source(n,note);if(!p?.available)fail('This source has already been redacted.');else{p.available=false;p.text='';for(const b of n.notes){if(b.record===note.record&&b.section===note.section){b.quote='';b.fingerprint='';if(b.status==='checked'){b.status='recheck';}}}message='Source redacted and cached quote removed. No newer result was substituted.';}}
+  }
+  if(a.type==='resolve'||a.type==='dismiss'){
+   const note=n.notes.find(b=>b.id===n.inspection);
+   if(!note)fail('Open a bookmark before recording its review outcome.');else if(!['open','recheck'].includes(note.status))fail('This concern is already closed. Reopen it before changing its outcome.');else if(!n.resolution.trim())fail('Add a review outcome before closing this concern.');else if(a.type==='resolve'&&!available(n,note))fail('The exact source is unavailable. It cannot be marked checked; retain it or dismiss with a reason.');else{note.status=a.type==='resolve'?'checked':'dismissed';note.outcome=n.resolution.trim();n.resolution='';message=a.type==='resolve'?'Concern marked checked by you. No process decision was submitted.':'Concern dismissed with your reason. Evidence remains unverified.';}
+  }
+  if(a.type==='reopen'){const note=n.notes.find(b=>b.id===a.id);if(!note)fail('Bookmark unavailable.');else{note.status='open';n.inspection=note.id;message='Concern reopened. Its previous outcome remains in review history.';}}
+  if(message){n.notice=message;n.tone=ok?'info':'error';n.log.push({message,ok});}
+  return{state:n,ok};
+ }
+ return{initial,reduce,source,available};
+})();
+const scenarios=[
+ {title:'Carry a concern forward',description:'A new result arrives while a saved concern is waiting for the next decision. Inspect the original passage before recording your review.',steps:[['Save the rollout concern',{type:'save'}],['Receive plan v4',{type:'publish'}],['Reach the next decision',{type:'decision'}],['Inspect the original source',{type:'inspect',id:'note-1'}],['Record what you checked',{type:'resolution',text:'Original plan limits the first rollout to EU; v4 expansion needs a separate decision.'}],['Mark the concern checked',{type:'resolve'}]]},
+ {title:'Source becomes unavailable',description:'A source is redacted after bookmarking. Checking unavailable evidence must be refused; a reasoned dismissal remains an honest option.',steps:[['Save a concern',{type:'save'}],['Redact its source',{type:'redact'}],['Open the retained anchor',{type:'inspect',id:'note-1'}],['Record a follow-up reason',{type:'resolution',text:'Escalated for a fresh source; original evidence remains unavailable.'}],['Try to mark missing evidence checked',{type:'resolve'},false,'exact source is unavailable'],['Dismiss without claiming verification',{type:'dismiss'}]]},
+ {title:'Same heading, different evidence',description:'A newer result has the same heading with a changed rollout scope. An unsent note must survive, and an existing bookmark must return to its original execution.',steps:[['Save the original concern',{type:'save'}],['Start another unsent note',{type:'draft',text:'Keep this unsent question while comparing the revised scope.'}],['Receive plan v4',{type:'publish'}],['Read the newer execution',{type:'view',record:'tr-42'}],['Follow the saved bookmark',{type:'inspect',id:'note-1'}]]}
+];
+let state=BookmarkModel.initial(),scenario=0,step=0;
+const $=id=>document.getElementById(id);
+const esc=v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function act(action){const result=BookmarkModel.reduce(state,action);state=result.state;render();return result.ok;}
+function render(){
+ const record=state.records.find(r=>r.id===state.view),selected=record.sections.find(p=>p.id===state.selected);
+ $('process-state').textContent=`Lifecycle: ${state.lifecycle} · Human decision ${state.decision} · ${state.notes.filter(n=>['open','recheck'].includes(n.status)).length} open concerns`;
+ $('notice').textContent=state.notice;$('notice').className=`notice ${state.tone==='error'?'error':''}`;
+ $('record-select').innerHTML=state.records.map(r=>`<option value="${r.id}" ${r.id===state.view?'selected':''}>${esc(r.label)} · ${r.id}</option>`).join('');
+ $('record-label').textContent=`${record.label} · execution ${record.id}${record.version<Math.max(...state.records.map(r=>r.version))?' · historical result':''}`;
+ $('document').innerHTML=record.sections.map(p=>`<article class="passage ${p.id===state.selected?'selected':''}" id="passage-${p.id}"><h3>${esc(p.title)}</h3><p>${p.available?esc(p.text):'Source redacted. Recorded content and cached quotes are unavailable.'}</p><p class="meta">${record.id} / ${p.id} · ${p.available?'Retained evidence':'Unavailable evidence'}</p><button type="button" data-select="${p.id}" ${p.available?'':'disabled'}>Bookmark this passage</button></article>`).join('');
+ $('anchor-label').textContent=selected?`Selected: ${selected.title} · ${record.label}`:'No passage selected. Your unsent concern is retained.';
+ if($('note-draft').value!==state.draft)$('note-draft').value=state.draft;
+ if($('resolution-draft').value!==state.resolution)$('resolution-draft').value=state.resolution;
+ $('notes').innerHTML=state.notes.length?state.notes.map(n=>`<article class="note"><div class="status ${n.status==='checked'?'resolved':'open'}">${n.status==='checked'?'Checked by you':n.status==='dismissed'?'Dismissed · not verified':n.status==='recheck'?'Recheck · source changed':state.decision>=n.due?'Due at this decision':'Open · revisit next decision'}</div><p><strong>${esc(n.text)}</strong></p><p class="source-state">${esc(n.title)} · plan v${n.version} · ${n.record}<br>${BookmarkModel.available(state,n)?'Exact original source retained':'Original source unavailable; no substitute selected'}</p>${n.quote?`<blockquote>${esc(n.quote)}</blockquote>`:''}${n.outcome?`<p class="hint">Last review outcome: ${esc(n.outcome)}</p>`:''}<div class="actions"><button type="button" data-inspect="${n.id}">${state.inspection===n.id&&state.view===n.record&&state.selected===n.section?'Viewing original source':'Open original source'}</button>${['checked','dismissed'].includes(n.status)?`<button type="button" data-reopen="${n.id}">Reopen concern</button>`:''}</div></article>`).join(''):'<p class="empty">No saved concerns. Select a passage in the result to keep a question attached to it.</p>';
+ const note=state.notes.find(n=>n.id===state.inspection);$('review-target').textContent=note?`For: ${note.text} · plan v${note.version}`:'Open a saved bookmark to select the concern being reviewed.';$('resolve').disabled=!note;$('dismiss').disabled=!note;
+ $('tabs').innerHTML=scenarios.map((s,i)=>`<button type="button" data-scenario="${i}" aria-pressed="${i===scenario}">${esc(s.title)}</button>`).join('');
+ $('scenario-description').textContent=scenarios[scenario].description;
+ $('steps').innerHTML=scenarios[scenario].steps.map((s,i)=>`<li class="${i<step?'done':''}">${i<step?'Done: ':i===step?'Next: ':''}${esc(s[0])}</li>`).join('');
+ $('next-step').textContent=step<scenarios[scenario].steps.length?scenarios[scenario].steps[step][0]:'Scenario complete';$('next-step').disabled=step>=scenarios[scenario].steps.length;
+ $('audit').innerHTML=state.log.map(l=>`<li>${l.ok?'Observed: ':'Refused: '}${esc(l.message)}</li>`).join('')||'<li>No activity yet.</li>';
+}
+$('reset').onclick=()=>{step=0;act({type:'reset'});};
+$('record-select').onchange=e=>act({type:'view',record:e.target.value});
+$('note-draft').oninput=e=>{state=BookmarkModel.reduce(state,{type:'draft',text:e.target.value}).state;};
+$('resolution-draft').oninput=e=>{state=BookmarkModel.reduce(state,{type:'resolution',text:e.target.value}).state;};
+$('save').onclick=()=>act({type:'save'});$('publish').onclick=()=>act({type:'publish'});$('decision').onclick=()=>act({type:'decision'});$('redact').onclick=()=>act({type:'redact'});$('resolve').onclick=()=>act({type:'resolve'});$('dismiss').onclick=()=>act({type:'dismiss'});
+$('document').onclick=e=>{if(e.target.dataset.select)act({type:'select',record:state.view,section:e.target.dataset.select});};
+$('notes').onclick=e=>{if(e.target.dataset.inspect)act({type:'inspect',id:e.target.dataset.inspect});if(e.target.dataset.reopen)act({type:'reopen',id:e.target.dataset.reopen});};
+$('tabs').onclick=e=>{if(e.target.dataset.scenario!==undefined){scenario=Number(e.target.dataset.scenario);step=0;act({type:'reset'});}};
+$('next-step').onclick=()=>{const s=scenarios[scenario].steps[step];if(!s)return;const ok=act(s[1]);if(ok===(s[2]!==false)&&(!s[3]||state.notice.includes(s[3])))step++;render();};
+render();
+</script>
+</body></html>
