@@ -258,6 +258,8 @@ async function runCommand(input: {
 	input.signal?.addEventListener("abort", killGroup, { once: true });
 	try {
 		const result = await child;
+		// Execa can settle before the group timer fires; still terminate surviving descendants.
+		if (input.signal?.aborted || result.isCanceled || result.timedOut) killGroup();
 		const diagnostics = `${stdout}\n${stderr}`.trim();
 		if (input.signal?.aborted || result.isCanceled) {
 			throw new DevelopmentToolPreparationError(
