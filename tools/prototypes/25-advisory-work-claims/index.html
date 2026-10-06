@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Who is handling this? · Leitwerk prototype</title>
+<style>
+:root{font-family:"Public Sans",ui-sans-serif,system-ui,sans-serif;color:#18212b;background:#fff;font-size:16px;line-height:1.55;--ink:#18212b;--muted:#4c5968;--line:#d9dee5;--blue:#2f61b7;--soft:#f7f8fa}*{box-sizing:border-box}body{margin:0}button,input,textarea,select{font:inherit}button{min-height:44px;padding:9px 16px;border:1px solid var(--line);border-radius:24px;background:#fff;color:var(--ink);cursor:pointer;font-weight:600}button:hover{border-color:var(--blue);background:#f2f5fa}button:disabled{cursor:default;color:#687483;background:#f2f4f7}button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:3px solid var(--blue);outline-offset:3px}.primary{background:var(--ink);color:#fff}.primary:hover{background:#2e3b4a;color:#fff}.quiet{background:transparent}.selected{border-color:var(--blue);color:var(--blue);background:#e6ecf6}::selection{background:#dce7fa}input,textarea,select{caret-color:var(--blue);border:1px solid #aeb7c2;border-radius:10px;padding:10px 12px;max-width:100%;background:#fff;color:var(--ink)}textarea{width:100%;min-height:114px;resize:vertical}input{width:100%}label{display:block;font-weight:600;margin-bottom:7px}h1,h2,h3,p{margin:0}h1{font-size:30px;line-height:1.2;letter-spacing:-.025em}h2{font-size:22px;line-height:1.3}h3{font-size:17px;line-height:1.4}p{max-width:72ch}small,.small{font-size:14px;color:var(--muted)}.muted{color:var(--muted)}.shell{max-width:1320px;margin:auto;padding:0 36px}.brand{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:20px 0;border-bottom:1px solid var(--line);font-size:17px}.brand strong{font-weight:750}.brand span{font-size:14px;color:var(--muted)}header{padding:34px 0 26px}header p{margin-top:12px;color:var(--muted)}.question{color:var(--ink);font-size:17px}.layout{display:grid;grid-template-columns:minmax(0,1fr) 345px;border-top:1px solid var(--line);gap:36px}.work{min-width:0;padding:28px 0}.side{min-width:0;border-left:1px solid var(--line);padding:28px 0 24px 28px;background:#fff}.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.space{justify-content:space-between}.gap{margin-top:16px}.gap-lg{margin-top:26px}.subtle{padding:16px;background:var(--soft);border-radius:10px}.status{display:inline-block;border:1px solid var(--line);border-radius:20px;padding:3px 11px;font-size:14px;font-weight:600}.status.blue{color:#244c91;background:#e6ecf6;border-color:#bfcee6}.rule{border-top:1px solid var(--line);margin-top:24px;padding-top:24px}.people{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin:18px 0}.person p{font-size:14px;color:var(--muted);margin-top:3px}.person strong{font-size:16px}.coordination{padding:20px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin-top:24px}.coordination .summary{font-size:18px;font-weight:650;margin-top:14px}.hint{font-size:14px;color:var(--muted);margin-top:8px}.answer{margin-top:25px;padding:22px;background:#f0f4fb;border-radius:10px}.answer p{margin-top:9px}.notice{margin-top:18px;padding:14px 16px;border:1px solid #bfcee6;background:#f0f4fb;border-radius:9px}.notice.error{background:#fff5f3;border-color:#d6aaa6;color:#7d2d27}.notice:empty{display:none}.receipt{white-space:pre-wrap;overflow-wrap:anywhere}.timeline{list-style:none;padding:0;margin:15px 0 0}.timeline li{padding:12px 0;border-bottom:1px solid var(--line);font-size:14px}.timeline time{font-variant-numeric:tabular-nums;color:var(--muted);display:block;font-size:13px}.side h3{margin-top:24px}.side h3:first-child{margin-top:0}.side select{width:100%}.side .row button{flex:1;padding:8px 12px}.truth{display:grid;grid-template-columns:1fr;gap:6px;font-size:14px;margin:16px 0}.truth div{display:flex;justify-content:space-between;gap:12px}.truth dt{color:var(--muted)}.truth dd{margin:0;text-align:right;font-weight:600}.walkthrough{padding:25px 0 36px;border-top:1px solid var(--line)}.tabs{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0}.steps{display:flex;gap:24px;align-items:flex-start;justify-content:space-between;padding:20px;background:var(--soft);border-radius:10px}.steps p{margin-top:5px}.steps button{flex-shrink:0;max-width:340px}.stepcount{margin-top:9px;font-size:14px;color:var(--muted)}footer{border-top:1px solid var(--line);padding:20px 0 30px;font-size:14px;color:var(--muted)}[hidden]{display:none}
+@media(max-width:900px){.layout{grid-template-columns:minmax(0,1fr) 285px;gap:24px}.side{padding-left:22px}.shell{padding:0 24px}}
+@media(max-width:700px){.shell{padding:0 18px}.brand{padding:16px 0;align-items:flex-start}.brand span{max-width:140px;text-align:right}header{padding:26px 0 24px}h1{font-size:27px}.layout{display:block}.work{padding-top:22px}.side{border-left:0;border-top:1px solid var(--line);padding:24px 0}.people{gap:14px}.answer{padding:18px}.row button{max-width:100%}.steps{display:block}.steps button{margin-top:16px;width:100%;max-width:100%}.tabs button{flex:1;min-width:140px}.coordination{padding:18px 0}footer{padding-bottom:24px}}
+</style>
+</head>
+<body>
+<div class="shell">
+<nav class="brand" aria-label="Prototype identity"><strong>Leitwerk</strong><span>Operator experiments · 25</span></nav>
+<header><h1>Who is handling this?</h1><p class="question">Can a small signal prevent duplicated effort without a sleeping browser holding up the work?</p><p class="small">Future proposal · synthetic, in-memory data. Explore a shared decision with two simulated operators. Nothing is sent to a server.</p></header>
+<div class="layout">
+<main class="work">
+<div class="row space"><h2>Prepare the release</h2><span class="status" id="decision-status"></span></div>
+<p class="muted gap">Repository change · release-tools · Current turn: Prepare release</p>
+<section class="gap-lg" aria-labelledby="question-heading"><h3 id="question-heading">Include the legacy connector in this release?</h3><p class="gap">The connector passes its existing checks, but its migration guide still references the old configuration. I can include it now with a documented limitation, or leave it for the next release.</p><p class="hint">This is a question inside the active turn. An accepted answer resumes that turn.</p></section>
+<section class="coordination" aria-labelledby="coord-heading"><div class="row space"><h3 id="coord-heading">Working together</h3><span class="small" id="clock"></span></div><div id="people" class="people"></div><p class="summary" id="claim-summary"></p><p class="hint" id="claim-detail"></p><p class="hint">Handling is advisory. Any operator can still answer after a fresh decision check.</p><div class="row gap"><button type="button" id="claim">I am handling this</button><button type="button" id="release">Release my claim</button><button type="button" id="refresh">Review latest coordination</button></div><div class="gap"><label for="status-note">My coordination status</label><input id="status-note" maxlength="120" placeholder="For example: checking the migration guide"><div class="row gap"><button type="button" id="save-note">Share status</button><span class="small">Visible to the other operator; never sent to the agent.</span></div></div><div id="resume-warning" class="notice" role="status"></div></section>
+<section class="answer" aria-labelledby="answer-heading"><h3 id="answer-heading">Your answer</h3><p id="answer-context" class="small"></p><div class="gap"><label for="draft">Guidance for the agent</label><textarea id="draft" placeholder="Explain which option to take and why."></textarea></div><div class="row gap"><button type="button" id="submit" class="primary">Check decision &amp; send answer</button><span class="small">Your local draft stays until reset.</span></div><div id="receipt" class="notice receipt"></div></section>
+<div id="feedback" class="notice" role="status" aria-live="polite"></div>
+</main>
+<aside class="side" aria-label="Second operator simulator">
+<h3>Second operator simulator</h3><p class="small gap">These controls change the synthetic fixture. Switch browsers to try either operator’s own draft.</p><div class="gap"><label for="operator">Viewing this page as</label><select id="operator"><option value="nora">Nora · you</option><option value="sam">Sam · colleague</option></select></div>
+<div class="row gap"><button type="button" id="sleep">Put browser to sleep</button><button type="button" id="resume">Resume browser</button></div><div class="row gap"><button type="button" id="advance">Advance 6 minutes</button></div><div class="row gap"><button type="button" id="colleague-claim">Sam starts handling</button><button type="button" id="colleague-submit">Sam sends answer</button></div><div class="row gap"><button type="button" id="identity">Try anonymous mode</button></div>
+<h3>Actual process state</h3><dl class="truth" id="truth"></dl><p class="small">Claim changes leave business state alone. The clock advances only when you choose it; claims last 5 simulated minutes.</p>
+<h3>Coordination timeline</h3><ol class="timeline" id="timeline"></ol>
+<div class="gap-lg"><button type="button" id="reset">Reset free play</button></div>
+</aside>
+</div>
+<section class="walkthrough" aria-labelledby="walkthrough-heading"><div class="row space"><h2 id="walkthrough-heading">Try the awkward moments</h2><span class="small">Each walkthrough resets the fixture.</span></div><div class="tabs" role="group" aria-label="Guided scenarios"><button type="button" data-scenario="together">Work together</button><button type="button" data-scenario="takeover">A browser falls asleep</button><button type="button" data-scenario="race">Someone answers first</button></div><div id="scenario" class="steps"></div></section>
+<footer>Viewing means a browser is present. Handling means a person has said they are working on it. Submitted means the decision accepted an answer. None of these grants permissions.</footer>
+</div>
+<script>
+// Pure model: deterministic simulated time, authoritative decision, advisory claim,
+// and separate browser snapshots/drafts. No DOM or network belongs here.
+const Model = (() => {
+ const names = {nora:"Nora",sam:"Sam"};
+ const client = () => ({online:true,lastSeen:0,draft:"",noteDraft:"",snapshot:null,seen:0,warning:""});
+ const initial = () => ({now:0,active:"nora",anonymous:false,seq:0,claim:null,decision:{id:"release-scope-7",revision:1,open:true,answer:null},clients:{nora:client(),sam:client()},timeline:[],feedback:{code:"ready",text:"Both operators are viewing. Neither has claimed the question.",ok:true},scenario:null});
+ const alive = (s,c=s.claim) => c!==null && c.expires>s.now;
+ const name = (s,id) => s.anonymous?"Anonymous browser":names[id];
+ function reduce(previous,a) {
+  const s=structuredClone(previous), who=a.actor??s.active, c=s.clients[who];
+  const result=(code,text,ok=true)=>{s.feedback={code,text,ok};return s;};
+  const event=(text)=>{s.timeline.unshift({at:s.now,text});};
+  const sync=()=>{for(const browser of Object.values(s.clients)){if(browser.online){browser.snapshot=structuredClone(s.claim);browser.seen=s.seq;}}};
+  const change=()=>{s.seq++;sync();};
+  const guard=()=>!c.online?"This browser is asleep. Resume it before sending anything.":null;
+  switch(a.type){
+   case "DRAFT":c.draft=a.value;return s;
+   case "NOTE_DRAFT":c.noteDraft=a.value;return s;
+   case "SWITCH":s.active=a.value;return result("switched",`Now viewing ${name(s,a.value)}’s browser. Each browser keeps its own draft.`);
+   case "CLAIM":{
+    const blocked=guard();if(blocked)return result("asleep",blocked,false);
+    if(s.anonymous)return result("anonymous","Handling is unavailable in anonymous mode: these browsers cannot reliably identify different people. Answers remain available.",false);
+    if(!s.decision.open)return result("closed","This question already has an answer. There is no remaining decision to claim.",false);
+    if(alive(s)&&s.claim.owner!==who)return result("occupied",`${names[s.claim.owner]} is already handling this. Their live advisory claim stays visible; you can still send your own answer.`,false);
+    const prior=s.claim;const takeover=prior&&prior.owner!==who&&!alive(s);
+    s.claim={owner:who,expires:s.now+5,note:prior?.owner===who?prior.note:"",version:s.seq+1};c.lastSeen=s.now;change();
+    event(takeover?`${names[who]} took over ${names[prior.owner]}’s expired claim.`:`${names[who]} ${prior?.owner===who&&alive(previous)?"renewed the claim":"started handling"}.`);
+    return result(takeover?"taken_over":"claimed",`${names[who]} is handling this until ${time(s.now+5)}. The question is still open.`);
+   }
+   case "RELEASE":{
+    const blocked=guard();if(blocked)return result("asleep",blocked,false);
+    if(!s.claim||s.claim.owner!==who)return result("not_owner","You have no claim to release. Your draft is unchanged.",false);
+    s.claim=null;change();event(`${names[who]} released the claim.`);return result("released","Claim released. The decision and your draft are unchanged.");
+   }
+   case "NOTE":{
+    const blocked=guard();if(blocked)return result("asleep",blocked,false);
+    if(s.anonymous||!alive(s)||s.claim.owner!==who)return result("not_handling","Share a status after claiming the question. Your status draft has been kept.",false);
+    if(!c.noteDraft.trim())return result("empty_note","Write a short coordination status before sharing it.",false);
+    s.claim.note=c.noteDraft.trim();change();event(`${names[who]} shared: ${s.claim.note}`);return result("noted","Status shared with your colleague. No guidance was sent to the agent.");
+   }
+   case "SLEEP":c.online=false;event(`${name(s,who)}’s browser went to sleep.`);return result("sleeping","This browser has stopped receiving updates. Its claim will expire without renewal.");
+   case "ADVANCE":{
+    const was=alive(s);s.now+=6;
+    if(was&&!alive(s)){event(`${names[s.claim.owner]}’s claim expired. The decision is still ${s.decision.open?"open":"answered"}.`);change();}
+    return result("advanced","Six simulated minutes passed. Expired presence is not proof that somebody stopped reading.");
+   }
+   case "RESUME":{
+    const missed=c.seen!==s.seq;c.online=true;c.lastSeen=s.now;c.snapshot=structuredClone(s.claim);
+    if(missed)c.warning="Coordination changed while this browser was asleep. Your draft has been kept. Review the latest handling status before continuing.";
+    else if(s.claim?.owner===who&&!alive(s))c.warning="Your claim expired while this browser was asleep. It has not been renewed. Your draft has been kept.";
+    return result("resumed",c.warning||"Browser resumed. Nothing was submitted or claimed automatically.");
+   }
+   case "REFRESH":{
+    const blocked=guard();if(blocked)return result("asleep",blocked,false);
+    c.snapshot=structuredClone(s.claim);c.seen=s.seq;c.warning="";c.lastSeen=s.now;
+    return result("reviewed",s.decision.open?"Latest coordination reviewed. The question is still open; your draft is unchanged.":"Latest coordination reviewed. The question is already answered; your unsent draft remains available.");
+   }
+   case "SUBMIT":{
+    const blocked=guard();if(blocked)return result("asleep",blocked,false);
+    // Decision validation is authoritative. Deliberately do not check claim ownership.
+    if(!s.decision.open)return result("already_answered",`Answer not sent: ${s.decision.answer.actorLabel} already answered this question. Your draft is still here to copy.`,false);
+    if(a.revision!==s.decision.revision)return result("stale_decision","Answer not sent: the question changed. Review its current version. Your draft is kept.",false);
+    if(!c.draft.trim())return result("empty_answer","Write an answer first. Claiming alone never sends guidance.",false);
+    s.decision.open=false;s.decision.answer={actor:who,actorLabel:name(s,who),text:c.draft.trim(),at:s.now};s.claim=null;change();
+    event(`${name(s,who)} submitted an accepted answer. Handling cleared.`);
+    return result("submitted",`Answer accepted from ${name(s,who)}. The active turn resumes; no new turn attempt is created.`);
+   }
+   case "IDENTITY":s.anonymous=!s.anonymous;s.claim=null;change();event(`Identity fixture changed to ${s.anonymous?"anonymous":"signed-in"} mode; advisory claims cleared.`);return result("identity",s.anonymous?"Anonymous mode: distinct people cannot be established. Named presence and handling are unavailable.":"Signed-in fixture restored. Nora and Sam can coordinate again.");
+   default:return s;
+  }
+ }
+ function time(minutes){return `${String(9+Math.floor((40+minutes)/60)).padStart(2,"0")}:${String((40+minutes)%60).padStart(2,"0")}`;}
+ return {initial,reduce,alive,time,names,name};
+})();
+const scenarios={
+ together:{title:"Work together",description:"Claim the question, share what you are checking, then send guidance. A status update never answers the question.",steps:[
+  {label:"Nora starts handling",action:{type:"CLAIM",actor:"nora"},expect:"claimed"},
+  {label:"Share: checking the migration guide",setup:{type:"NOTE_DRAFT",value:"Checking the migration guide",actor:"nora"},action:{type:"NOTE",actor:"nora"},expect:"noted"},
+  {label:"Send Nora’s answer",setup:{type:"DRAFT",value:"Leave the legacy connector for the next release. Finish the migration guide first.",actor:"nora"},action:{type:"SUBMIT",actor:"nora",revision:1},expect:"submitted"}
+ ]},
+ takeover:{title:"A browser falls asleep",description:"Nora’s claim expires. Sam takes over. Nora returns with her draft intact and sees the changed coordination.",steps:[
+  {label:"Nora claims and prepares a draft",setup:{type:"DRAFT",actor:"nora",value:"I am checking whether the migration guide can ship separately."},action:{type:"CLAIM",actor:"nora"},expect:"claimed"},
+  {label:"Put Nora’s browser to sleep",action:{type:"SLEEP",actor:"nora"},expect:"sleeping"},
+  {label:"Let 6 minutes pass",action:{type:"ADVANCE"},expect:"advanced"},
+  {label:"Sam takes over the expired claim",action:{type:"CLAIM",actor:"sam"},expect:"taken_over"},
+  {label:"Resume Nora’s browser",action:{type:"RESUME",actor:"nora"},expect:"resumed"},
+  {label:"Try to reclaim Sam’s live claim",action:{type:"CLAIM",actor:"nora"},expect:"occupied"},
+  {label:"Review the latest coordination",action:{type:"REFRESH",actor:"nora"},expect:"reviewed"}
+ ]},
+ race:{title:"Someone answers first",description:"Nora is handling the question, but Sam can still submit. Nora’s later answer is refused by the actual decision state, and her draft survives.",steps:[
+  {label:"Nora claims and drafts an answer",setup:{type:"DRAFT",actor:"nora",value:"Include the connector with a clear migration warning."},action:{type:"CLAIM",actor:"nora"},expect:"claimed"},
+  {label:"Sam sends despite Nora’s claim",setup:{type:"DRAFT",actor:"sam",value:"Defer the connector until the migration guide is corrected."},action:{type:"SUBMIT",actor:"sam",revision:1},expect:"submitted"},
+  {label:"Try to send Nora’s older draft",action:{type:"SUBMIT",actor:"nora",revision:1},expect:"already_answered"}
+ ]}
+};
+let state=Model.initial();
+const $=id=>document.getElementById(id);
+const escapeHtml=value=>String(value).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;").replaceAll('"',"&quot;");
+function dispatch(action){state=Model.reduce(state,action);render();}
+function render(){
+ const s=state,me=s.clients[s.active],other=s.active==="nora"?"sam":"nora",claim=me.online?s.claim:me.snapshot,live=Model.alive(s,claim);
+ $("operator").value=s.active;
+ $("clock").textContent=`Simulated time ${Model.time(s.now)}`;
+ $("decision-status").textContent=s.decision.open?"Question open":"Answer accepted";
+ $("decision-status").className=`status ${s.decision.open?"blue":""}`;
+ $("people").innerHTML=s.anonymous?'<p class="small">Anonymous mode · individual people cannot be distinguished.</p>':Object.entries(s.clients).map(([id,c])=>{
+  const status=s.decision.answer?.actor===id?"Submitted":live&&claim.owner===id?"Handling":!c.online?"Browser asleep":s.now-c.lastSeen>=2?"Presence stale":"Viewing";
+  return `<div class="person"><strong>${Model.names[id]}${id===s.active?" · this browser":""}</strong><p>${status}${status==="Presence stale"?` · last seen ${Model.time(c.lastSeen)}`:""}</p></div>`;
+ }).join("");
+ $("claim-summary").textContent=s.anonymous?"Handling unavailable in anonymous mode":!s.decision.open?"This question has been answered":!claim?"Nobody is handling this yet":live?`${Model.names[claim.owner]} is handling this`:`${Model.names[claim.owner]}’s claim has expired`;
+ $("claim-detail").textContent=!me.online?"Stale coordination snapshot. Resume this browser to see updates.":!claim?"Viewing alone does not create a claim.":`${live?`Expires ${Model.time(claim.expires)} · ${claim.expires-s.now} minutes remaining`:`Expired at ${Model.time(claim.expires)} · available for takeover`}${claim.note?` · “${claim.note}”`:""}`;
+ $("claim").textContent=claim&&!live&&claim.owner!==s.active?"Take over expired claim":claim&&live&&claim.owner===s.active?"Renew my claim":"I am handling this";
+ $("resume-warning").textContent=me.warning;
+ $("answer-context").textContent=`${Model.name(s,s.active)}’s local draft · Question ${s.decision.id} · ${me.online?"Every send checks current decision state.":"Browser asleep. Sending is unavailable until resumed."}`;
+ if($("draft").value!==me.draft)$("draft").value=me.draft;
+ if($("status-note").value!==me.noteDraft)$("status-note").value=me.noteDraft;
+ $("receipt").textContent=s.decision.answer?`Accepted at ${Model.time(s.decision.answer.at)} from ${s.decision.answer.actorLabel}\n${s.decision.answer.text}`:"";
+ $("feedback").textContent=s.feedback.text;$("feedback").className=`notice ${s.feedback.ok?"":"error"}`;
+ $("colleague-claim").textContent=`${Model.name(s,other)} starts handling`;
+ $("colleague-submit").textContent=`${Model.name(s,other)} sends answer`;
+ $("identity").textContent=s.anonymous?"Restore signed-in mode":"Try anonymous mode";
+ $("truth").innerHTML=[['Question',s.decision.open?"Open":"Answered"],['Selected turn','Prepare release'],['Lifecycle','Running'],['Current attempt','1'],['Claim owner',s.claim?`${Model.names[s.claim.owner]}${Model.alive(s)?"":" (expired)"}`:"None"]].map(([key,value])=>`<div><dt>${key}</dt><dd>${escapeHtml(value)}</dd></div>`).join("");
+ $("timeline").innerHTML=s.timeline.length?s.timeline.map(e=>`<li><time>${Model.time(e.at)}</time>${escapeHtml(e.text)}</li>`).join(""):'<li>No coordination activity yet. Opening a page is only viewing.</li>';
+ for(const tab of document.querySelectorAll("[data-scenario]")){const selected=s.scenario?.id===tab.dataset.scenario;tab.classList.toggle("selected",selected);tab.setAttribute("aria-pressed",String(selected));}
+ if(!s.scenario){$("scenario").innerHTML='<div><h3>Free play is ready</h3><p>Use the decision above in any order, or choose a guided moment. Your local drafts survive coordination updates.</p></div>';}
+ else{const definition=scenarios[s.scenario.id],step=definition.steps[s.scenario.index],done=!step;$("scenario").innerHTML=`<div><h3>${definition.title}${done?" · complete":""}</h3><p>${definition.description}</p><div class="stepcount">${done?`Observed all ${definition.steps.length} expected outcomes.`:`Step ${s.scenario.index+1} of ${definition.steps.length}. ${step.expect==="occupied"||step.expect==="already_answered"?"This step should be refused; the draft must survive.":"Advance only after the intended outcome."}`}</div></div>${done?'<button type="button" id="replay">Replay walkthrough</button>':`<button type="button" class="primary" id="next-step">${step.label}</button>`}`;
+  if(step)$("next-step").onclick=()=>{let next=state;if(step.setup)next=Model.reduce(next,step.setup);next=Model.reduce(next,step.action);if(next.feedback.code===step.expect)next.scenario.index++;state=next;render();};
+  else $("replay").onclick=()=>startScenario(s.scenario.id);
+ }
+}
+function startScenario(id){state=Model.initial();state.scenario={id,index:0};render();}
+$("draft").addEventListener("input",event=>{state=Model.reduce(state,{type:"DRAFT",value:event.target.value});});
+$("status-note").addEventListener("input",event=>{state=Model.reduce(state,{type:"NOTE_DRAFT",value:event.target.value});});
+$("operator").addEventListener("change",event=>dispatch({type:"SWITCH",value:event.target.value}));
+for(const [id,type] of Object.entries({claim:"CLAIM",release:"RELEASE","save-note":"NOTE",refresh:"REFRESH",sleep:"SLEEP",resume:"RESUME",advance:"ADVANCE",identity:"IDENTITY"}))$(id).onclick=()=>dispatch({type});
+$("submit").onclick=()=>dispatch({type:"SUBMIT",revision:1});
+$("colleague-claim").onclick=()=>dispatch({type:"CLAIM",actor:state.active==="nora"?"sam":"nora"});
+$("colleague-submit").onclick=()=>{const actor=state.active==="nora"?"sam":"nora";if(!state.clients[actor].draft.trim())state=Model.reduce(state,{type:"DRAFT",actor,value:"Leave the connector for the next release; finish its migration guide first."});dispatch({type:"SUBMIT",actor,revision:1});};
+$("reset").onclick=()=>{state=Model.initial();render();};
+for(const tab of document.querySelectorAll("[data-scenario]"))tab.onclick=()=>startScenario(tab.dataset.scenario);
+render();
+</script>
+</body>
+</html>
