@@ -114,9 +114,8 @@ export async function ensureGitLabComment(input: {
 	discussionId?: string;
 	/** @internal */
 	signal?: AbortSignal;
-	/** Revalidated inside the durable write immediately before mutation. @public */
+	/** Revalidated inside the durable write immediately before mutation. @internal */
 	beforeWrite?: () => Promise<void>;
-	/** @public */
 }): Promise<{
 	/** @internal */
 	marker: string;

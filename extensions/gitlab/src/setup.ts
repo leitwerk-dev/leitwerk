@@ -5,6 +5,7 @@ import {
 	scopedSettingsCapability,
 	type TicketCreationConfig,
 } from "@leitwerk-dev/process-sdk";
+import type { PollResult } from "@leitwerk-dev/watcher-utils";
 import { type GitLabIntegration, gitlabIntegration } from "./capability.js";
 import { registerGitLabDeliveryTools } from "./delivery-tools.js";
 import { createGitLabProvider } from "./external.js";
@@ -24,10 +25,12 @@ export function setupGitLabIntegration(
 		ticketCreation?: TicketCreationConfig;
 	} = {},
 ):
-	| (ReturnType<typeof createGitLabProvider> & {
+	| {
+			/** @public */
+			poll(): Promise<PollResult>;
 			/** @internal */
 			maintenance: ReturnType<typeof createGitLabMaintenance>;
-	  })
+	  }
 	| undefined {
 	const catalog = integration.repositoryCatalog ?? createGitLabRepositoryCatalog(integration);
 	api.provide(gitlabIntegration, {
