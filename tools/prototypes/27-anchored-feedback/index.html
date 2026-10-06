@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Passage feedback · Leitwerk prototype</title>
+<style>
+:root{font-family:"Public Sans",ui-sans-serif,system-ui,sans-serif;color:#18212b;background:#f7f8fa;font-size:15px;line-height:1.55;--blue:#2f61b7;--border:#d9dee5}*{box-sizing:border-box}body{margin:0}button,input,textarea,select{font:inherit}button{min-height:44px;border:1px solid var(--border);border-radius:999px;padding:9px 16px;color:#18212b;background:white;cursor:pointer;font-weight:600}button:hover{border-color:var(--blue);background:#f2f5fa}button:disabled{color:#687483;background:#f2f4f7;cursor:not-allowed}button.primary{background:#18212b;color:white;border-color:#18212b}button[aria-pressed="true"]{background:#e6ecf6;border-color:var(--blue);color:#244e93}:focus-visible{outline:3px solid var(--blue);outline-offset:3px}::selection{background:#c9daf5;color:#18212b}textarea,input{width:100%;border:1px solid #aeb7c2;background:white;border-radius:10px;padding:11px 12px;color:#18212b;caret-color:var(--blue)}textarea{min-height:98px;resize:vertical}textarea::placeholder,input::placeholder{color:#596677}h1{font-size:30px;line-height:1.2;margin:0 0 12px;font-weight:700;letter-spacing:-.02em}h2{font-size:20px;line-height:1.3;margin:0 0 12px}h3{font-size:17px;line-height:1.35;margin:0 0 8px}p{margin:0 0 12px}small,.muted{color:#4c5968}small{font-size:13px}header{max-width:1280px;margin:auto;padding:32px 32px 20px}.topline{display:flex;align-items:center;justify-content:space-between;gap:20px;margin-bottom:28px}.brand{font-size:17px;font-weight:750}.intro{max-width:77ch;color:#4c5968}.statusbar{display:flex;flex-wrap:wrap;gap:14px 28px;border-block:1px solid var(--border);padding:16px 0;margin-top:22px;font-size:14px}.statusbar strong{font-weight:650}.workbench{max-width:1216px;margin:0 auto 32px;display:grid;grid-template-columns:minmax(0,1.45fr) minmax(340px,1fr);background:#fff;border:1px solid var(--border);border-radius:16px;overflow:hidden}.document{padding:30px 36px;border-right:1px solid var(--border);min-width:0}.document-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:28px}.document-head p{font-size:14px}.document-title{font-size:24px;line-height:1.25;margin:0 0 20px;max-width:30ch}.passage{padding:18px 0;border-top:1px solid #e6e9ee;scroll-margin-top:24px}.passage p{font-size:17px;line-height:1.7;max-width:67ch}.passage.selected{background:#f0f4fb;margin-inline:-14px;padding-inline:14px;border-radius:8px}.passage button{margin-top:4px;font-size:14px}.file{font-family:ui-monospace,monospace;font-size:14px;overflow-wrap:anywhere}.read-note{padding:18px 0 0;color:#4c5968;font-size:14px}.feedback{padding:30px 28px;min-width:0}.feedback>p{font-size:14px}.empty{padding:22px 0;color:#4c5968}.draft{padding:18px 0;border-top:1px solid var(--border)}label{display:block;font-weight:600;margin:0 0 7px;font-size:14px}blockquote{margin:10px 0 14px;padding:14px 16px;background:#f2f4f7;border-radius:8px;font-size:14px;overflow-wrap:anywhere}.row{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.row.between{justify-content:space-between}.section-gap{margin-top:20px}.request{border-top:1px solid var(--border);padding:20px 0}.request p{font-size:14px}.tag{font-size:13px;color:#4c5968;background:#f2f4f7;padding:4px 9px;border-radius:6px;display:inline-block}.tag.attention{color:#76470f;background:#fff2de}.tag.resolved{color:#176044;background:#eaf4ee}.notice{border:1px solid #b8cbe9;background:#f0f4fb;border-radius:10px;padding:12px 15px;margin:16px 0;font-size:14px}.notice.error{border-color:#d9b6b2;background:#fbf1ef;color:#7d2d27}.notice:empty{display:none}.receipt{margin-top:14px;padding:12px 0;border-top:1px solid var(--border);font-size:13px;color:#4c5968}.tools{max-width:1216px;margin:0 auto 32px;padding:0 0 30px}.tools-grid{display:grid;grid-template-columns:1fr 1.25fr;gap:40px}.sandbox{border-top:1px solid var(--border);padding-top:22px}.scenario-tabs{margin:14px 0}.scenario-tabs button{font-size:14px}.guide-steps{margin:12px 0;padding-left:23px;font-size:14px}.guide-steps li{margin:6px 0}.event-list{padding-left:22px;color:#4c5968;font-size:14px}details{margin-top:18px}summary{cursor:pointer;min-height:44px;padding:10px 0;font-weight:600}.inspection{padding:16px 0 0}.inspection h4{font-size:14px;margin:0 0 8px}.state-detail{font-size:13px;margin-top:14px;overflow-wrap:anywhere}.state-detail dt{font-weight:600}.state-detail dd{margin:0 0 8px;color:#4c5968}.divider{border-top:1px solid var(--border);margin-top:20px;padding-top:20px}footer{max-width:1216px;margin:0 auto 32px;color:#4c5968;font-size:13px}a{color:var(--blue);text-underline-offset:3px}button,textarea,input{touch-action:manipulation}html{scrollbar-color:#aeb7c2 #f7f8fa}button{max-width:100%}
+@media(max-width:760px){header{padding:22px 20px 18px}h1{font-size:26px}.topline{margin-bottom:24px}.statusbar{gap:8px 18px}.workbench{margin:0 12px 24px;display:block;border-radius:12px}.document{padding:24px 20px;border-right:0;border-bottom:1px solid var(--border)}.feedback{padding:24px 20px}.document-head{margin-bottom:22px}.document-title{font-size:22px}.passage p{font-size:16px}.tools,footer{margin-inline:20px}.tools-grid{display:block}.sandbox+.sandbox{margin-top:28px}.row button{flex-grow:1}.topline button{font-size:14px}.scenario-tabs{align-items:stretch}.scenario-tabs button{border-radius:12px}.request .row{align-items:stretch}.intro{font-size:14px}}
+</style>
+</head>
+<body>
+<header>
+<div class="topline"><span class="brand">Leitwerk / Process review</span><button type="button" id="reset">Reset experiment</button></div>
+<h1>Request changes on the exact passage</h1>
+<p class="intro">Can you verify every correction without rereading the conversation? This future proposal uses synthetic, in-memory results. Collect passage feedback, send it through Request revision, then verify each correction yourself.</p>
+<div class="statusbar" id="statusbar"></div>
+<div id="notice" class="notice" role="status" aria-live="polite"></div>
+</header>
+<main>
+<div class="workbench">
+<article class="document" aria-label="Process result"><div id="document"></div></article>
+<aside class="feedback" aria-label="Revision requests"><div id="feedback"></div></aside>
+</div>
+<section class="tools" aria-label="Experiment controls">
+<div class="tools-grid">
+<div class="sandbox"><h2>Try a result change</h2><p class="muted">Fixture controls simulate the next result. They do not run a worker or change a real process.</p><div class="row"><button type="button" id="receive">Receive revised result</button><button type="button" id="deleted">Receive result without section</button><button type="button" id="newer">Simulate newer result</button></div><p class="section-gap muted">Receiving a result never resolves a request. A candidate passage is evidence to inspect, not proof that the correction was made.</p><details><summary>Inspect retained state</summary><div id="model-state"></div></details></div>
+<div class="sandbox"><h2>Guided walkthroughs</h2><p class="muted">Each walkthrough starts a fresh fixture. Each step performs the actual action.</p><div class="row scenario-tabs" role="group" aria-label="Walkthroughs"><button type="button" data-scenario="happy">Verify a correction</button><button type="button" data-scenario="missing">A section disappears</button><button type="button" data-scenario="stale">A stale draft is refused</button></div><div id="guide"></div></div>
+</div>
+<details class="divider"><summary>What changed in this session</summary><ol id="events" class="event-list"></ol></details>
+</section>
+</main>
+<footer>Feedback is sent to the process only through Request revision. Verification and waivers record the operator’s review; they do not approve the plan or complete the process. Reloading clears this experiment.</footer>
+<script>
+/* Pure model: synthetic sources, immutable transitions, no DOM dependencies. */
+const FeedbackModel = (() => {
+ const original = [
+  {id:"scope",kind:"heading",title:"Rollout scope",text:"Replace the primary database in one maintenance window."},
+  {id:"backup",kind:"sentence",title:"Recovery plan",text:"Delete the pre-migration backup after the first successful health check."},
+  {id:"file",kind:"file reference",title:"Retained runbook",text:"ops/migration-runbook.md · revision a17 · steps 4–7"}
+ ];
+ const revised = [
+  {id:"scope",kind:"heading",title:"Rollout scope",text:"Migrate a canary first, then promote after operator review."},
+  {id:"backup",kind:"sentence",title:"Recovery plan",text:"Retain the pre-migration backup for seven days and verify a restore before cleanup."},
+  {id:"file",kind:"file reference",title:"Retained runbook",text:"ops/migration-runbook.md · revision b24 · steps 4–9"}
+ ];
+ function hash(text){let n=2166136261;for(const c of text){n=Math.imul(n^c.charCodeAt(0),16777619);}return `fixture-${(n>>>0).toString(16)}`;}
+ function source(rev,blocks){return {rev,record:`plan-result-${rev}`,blocks:structuredClone(blocks),hash:hash(JSON.stringify(blocks))};}
+ function initial(){return {source:source(1,original),lifecycle:"waiting",selectedTurn:"plan_decision",draft:null,requests:[],batch:null,summary:"",nextId:1,inspected:null,reviewNotes:{},notice:"",error:false,events:[]};}
+ function result(state,ok,message){return {...state,notice:message,error:!ok,events:[...state.events,message].slice(-12),lastAccepted:ok};}
+ function reduce(current,action){
+  const s=structuredClone(current);
+  const fail=(message)=>result(s,false,message);
+  if(action.type==="draftText"){if(s.draft)s.draft.text=action.text;return {...s,lastAccepted:true};}
+  if(action.type==="summary"){s.summary=action.text;return {...s,lastAccepted:true};}
+  if(action.type==="reviewNote"){s.reviewNotes[action.id]=action.text;return {...s,lastAccepted:true};}
+  if(action.type==="select"){
+   if(s.lifecycle!=="waiting"||s.batch)return fail("Finish reviewing this revision cycle, or reset to collect a new batch.");
+   if(s.draft?.text.trim())return fail("Your unsaved request is retained. Add it to the revision before choosing another passage.");
+   const block=s.source.blocks.find(b=>b.id===action.id);
+   const quote=action.quote||(block?.kind==="heading"?block.title:block?.text);
+   if(!block||!quote||!(block.text.includes(quote)||block.title===quote))return fail("Select text inside one retained passage, then try again.");
+   s.draft={blockId:block.id,kind:block.kind,quote,record:s.source.record,hash:s.source.hash,revision:s.source.rev,text:""};
+   return result(s,true,"Passage selected. Describe the correction, then add it to the revision.");
+  }
+  if(action.type==="collect"){
+   if(!s.draft?.text.trim())return fail("Describe the correction before adding this passage.");
+   if(s.draft.record!==s.source.record)return fail("The result changed while you wrote. Your draft is retained. Review and rebind it first.");
+   s.requests.push({...s.draft,id:s.nextId++,status:"draft",mapping:null,evidence:null,resolution:null});s.draft=null;
+   return result(s,true,"Request collected locally. Nothing has been sent to the process.");
+  }
+  if(action.type==="remove"){
+   const r=s.requests.find(r=>r.id===action.id);if(r?.status!=="draft")return fail("A submitted request stays in the review record.");
+   s.requests=s.requests.filter(r=>r.id!==action.id);return result(s,true,"Local request removed.");
+  }
+  if(action.type==="rebind"){
+   const target=action.id?s.requests.find(r=>r.id===action.id):s.draft;
+   if(!target||s.batch)return fail("Only an unsent draft can be rebound.");
+   const block=s.source.blocks.find(b=>b.id===target.blockId&&(b.text.includes(target.quote)||b.title===target.quote));
+   if(!block)return fail("The exact quote is absent. Keep this original request as context; remove it and select a new passage to submit.");
+   target.record=s.source.record;target.hash=s.source.hash;target.revision=s.source.rev;
+   return result(s,true,"You confirmed the unchanged quote in the current result. The request now targets this revision.");
+  }
+  if(action.type==="send"){
+   if(s.batch||s.lifecycle!=="waiting")return fail("Request revision is unavailable while this revision is pending. The existing batch is retained.");
+   if(s.draft?.text.trim())return fail("Add your unsaved passage request before sending. Its text is retained.");
+   if(!s.requests.length)return fail("Collect at least one passage request before requesting revision.");
+   if(s.requests.some(r=>r.record!==s.source.record||r.hash!==s.source.hash))return fail("Revision refused: a request targets an older result. Review and rebind each stale quote; all notes are retained.");
+   s.batch={id:"revision-batch-1",sourceRecord:s.source.record,sourceHash:s.source.hash,requestIds:s.requests.map(r=>r.id),message:s.summary};
+   s.requests=s.requests.map(r=>({...r,status:"submitted"}));s.draft=null;s.lifecycle="running";s.selectedTurn="generate_plan";
+   return result(s,true,`${s.requests.length} passage request${s.requests.length===1?"":"s"} sent together through Request revision. Waiting for a revised result.`);
+  }
+  if(action.type==="receive"){
+   if(!s.batch||s.lifecycle!=="running")return fail("Request a revision first. This fixture only receives a result for the submitted batch.");
+   const blocks=action.missing?revised.filter(b=>b.id!=="backup"):revised;
+   s.source=source(s.source.rev+1,blocks);s.lifecycle="waiting";s.selectedTurn="plan_decision";
+   s.requests=s.requests.map(r=>{const candidate=blocks.find(b=>b.id===r.blockId);return {...r,status:"unresolved",mapping:candidate?"candidate":"unmapped",evidence:candidate?candidate.text:null,evidenceRecord:s.source.record};});
+   return result(s,true,"New result received. Every submitted request is still unresolved until you verify or waive it.");
+  }
+  if(action.type==="newer"){
+   if(s.lifecycle!=="waiting"||s.batch)return fail("Use Receive revised result for the active batch. Reset to explore another stale draft.");
+   s.source=source(s.source.rev+1,s.source.blocks);return result(s,true,"A newer result arrived with the same text. Existing drafts still target the old source record.");
+  }
+  if(action.type==="inspect"){
+   const r=s.requests.find(r=>r.id===action.id);
+   if(!r||r.status==="draft"||r.status==="submitted")return fail("Wait for the next result before inspecting a proposed resolution.");
+   s.inspected={id:r.id,record:s.source.record};
+   return result(s,true,r.mapping==="unmapped"?"Original quote retained. No replacement passage was mapped; inspect the full result and record your evidence or a waiver.":"Original and candidate passages opened. Check whether the candidate satisfies the request.");
+  }
+  if(action.type==="resolve"){
+   const r=s.requests.find(r=>r.id===action.id);
+   if(!r||r.status!=="unresolved")return fail("Only an unresolved request from a received result can be verified or waived.");
+   if(s.inspected?.id!==r.id||s.inspected.record!==s.source.record)return fail("Inspect this request against the current result before resolving it.");
+   const note=(s.reviewNotes[r.id]||"").trim();
+   if((action.resolution==="waived"||r.mapping==="unmapped")&&!note)return fail("Record your reason or verification evidence first. The request stays unresolved.");
+   r.status=action.resolution;r.resolution={operator:"You",record:s.source.record,note};
+   return result(s,true,action.resolution==="waived"?"Request waived by you with a reason. The plan still awaits its separate decision.":"Request marked addressed by you. The plan still awaits its separate decision.");
+  }
+  return fail("This action is not available.");
+ }
+ return {initial,reduce};
+})();
+</script>
+<script>
+/* DOM shell and guided fixtures. Draft typing updates model without replacing inputs. */
+let state=FeedbackModel.initial();let guide=null;
+const $=(id)=>document.getElementById(id);
+const esc=(value)=>String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const scenarios={
+ happy:{title:"Verify a correction",description:"A candidate passage still needs your judgment. Collect two requests and send one revision.",steps:[
+  {label:"Collect the backup correction",actions:[{type:"select",id:"backup"},{type:"draftText",text:"Retain the backup for seven days and verify a restore before cleanup."},{type:"collect"}]},
+  {label:"Collect a runbook correction",actions:[{type:"select",id:"file"},{type:"draftText",text:"Update the retained runbook to include the restore check."},{type:"collect"}]},
+  {label:"Send both through Request revision",actions:[{type:"send"}]},
+  {label:"Receive a revised result",actions:[{type:"receive"}]},
+  {label:"Inspect the backup correction",actions:[{type:"inspect",id:1}]},
+  {label:"Mark the backup request addressed",actions:[{type:"resolve",id:1,resolution:"addressed"}]},
+  {label:"Inspect the runbook correction",actions:[{type:"inspect",id:2}]},
+  {label:"Mark the runbook request addressed",actions:[{type:"resolve",id:2,resolution:"addressed"}]}
+ ]},
+ missing:{title:"A section disappears",description:"The next result omits recovery. Missing text cannot count as a correction.",steps:[
+  {label:"Collect the backup correction",actions:[{type:"select",id:"backup"},{type:"draftText",text:"Retain the backup for seven days and verify a restore."},{type:"collect"}]},
+  {label:"Request revision",actions:[{type:"send"}]},
+  {label:"Receive a result without recovery",actions:[{type:"receive",missing:true}]},
+  {label:"Inspect the unmapped request",actions:[{type:"inspect",id:1}]},
+  {label:"Try to verify without evidence",actions:[{type:"resolve",id:1,resolution:"addressed"}],refused:true},
+  {label:"Record why this request is waived",actions:[{type:"reviewNote",id:1,text:"The rollout is deferred; recovery must be reviewed before a future rollout."}]},
+  {label:"Waive explicitly, retaining the quote",actions:[{type:"resolve",id:1,resolution:"waived"}]}
+ ]},
+ stale:{title:"A stale draft is refused",description:"An unrelated source update must preserve your notes and refuse a revision bound to an older result.",steps:[
+  {label:"Collect a rollout correction",actions:[{type:"select",id:"scope"},{type:"draftText",text:"Use a canary rollout before replacing the primary database."},{type:"collect"},{type:"summary",text:"Keep all corrections together in one revision."}]},
+  {label:"Simulate a newer result",actions:[{type:"newer"}]},
+  {label:"Try to send the stale revision",actions:[{type:"send"}],refused:true},
+  {label:"Confirm and rebind the unchanged quote",actions:[{type:"rebind",id:1}]},
+  {label:"Send the retained revision",actions:[{type:"send"}]}
+ ]}
+};
+function dispatch(action){state=FeedbackModel.reduce(state,action);render();}
+function anchorMeta(r){return `Result ${r.revision} · ${esc(r.kind)} · ${esc(r.record)}`;}
+function render(){
+ const pending=state.requests.filter(r=>r.status==="unresolved"||r.status==="submitted").length;
+ $("statusbar").innerHTML=`<span><strong>Process</strong> Database migration plan</span><span><strong>Current result</strong> Revision ${state.source.rev}</span><span><strong>Decision</strong> ${state.lifecycle==="running"?"Revision requested":"Plan review"}</span><span><strong>Open requests</strong> ${pending}</span>`;
+ $("notice").textContent=state.notice;$("notice").className=`notice${state.error?" error":""}`;
+ $("document").innerHTML=`<div class="document-head"><div><h2>Plan result</h2><p class="muted">${esc(state.source.record)} · Synthetic content</p></div><span class="tag">Revision ${state.source.rev}</span></div><h3 class="document-title">A safe path to the new database</h3><p class="muted">Review the proposed rollout. Choose a passage below or highlight text within one passage to attach a precise correction.</p>${state.source.blocks.map(b=>`<section class="passage ${state.draft?.blockId===b.id?"selected":""}" id="passage-${b.id}"><h3>${esc(b.title)}</h3><p data-passage="${b.id}" class="${b.kind==="file reference"?"file":""}">${esc(b.text)}</p><button type="button" data-select="${b.id}" ${state.batch?"disabled":""}>${b.kind==="heading"?"Select heading":b.kind==="file reference"?"Select file reference":"Select recovery sentence"}</button></section>`).join("")}<div class="read-note"><button type="button" id="selection" ${state.batch?"disabled":""}>Use highlighted text</button><p class="section-gap">This result remains available for review. Collecting a request does not change the process.</p></div>`;
+ $("feedback").innerHTML=`<div class="row between"><h2>${state.batch?"Verify requested changes":"Collect revision requests"}</h2><span class="tag">${state.requests.length} collected</span></div><p class="muted">${state.batch?"The process received this batch. Only your review can mark a request addressed or waived.":"Choose an exact passage and describe what should change. Send all requests together when ready."}</p>${state.requests.length?state.requests.map(requestHtml).join(""):"<p class=\"empty\">No requests collected yet. Start with a passage in the result.</p>"}${draftHtml()}${submissionHtml()}`;
+ $("model-state").innerHTML=`<dl class="state-detail"><dt>Selected turn / lifecycle</dt><dd>${state.selectedTurn} / ${state.lifecycle}</dd><dt>Current source / content fingerprint</dt><dd>${esc(state.source.record)} / ${esc(state.source.hash)} (illustrative non-cryptographic hash)</dd><dt>Submitted batch</dt><dd>${state.batch?`${state.batch.id} · ${state.batch.requestIds.length} requests · source ${state.batch.sourceRecord}`:"None — drafts remain local"}</dd><dt>Resolved by operator</dt><dd>${state.requests.filter(r=>["addressed","waived"].includes(r.status)).length} of ${state.requests.length}</dd></dl>`;
+ $("events").innerHTML=state.events.map(event=>`<li>${esc(event)}</li>`).join("")||"<li>No actions yet.</li>";
+ renderGuide();bindDynamic();
+}
+function requestHtml(r){
+ const stale=r.status==="draft"&&r.record!==state.source.record;
+ const status=stale?"Stale draft":r.status==="draft"?"Local draft":r.status==="submitted"?"Sent · awaiting result":r.status==="unresolved"?`${r.mapping==="unmapped"?"Unmapped":"Candidate found"} · unresolved`:r.status==="addressed"?"Addressed by you":"Waived by you";
+ const inspecting=state.inspected?.id===r.id;
+ return `<section class="request" aria-label="Request ${r.id}"><div class="row between"><h3>Request ${r.id}</h3><span class="tag ${stale||r.mapping==="unmapped"&&r.status==="unresolved"?"attention":["addressed","waived"].includes(r.status)?"resolved":""}">${status}</span></div><blockquote>“${esc(r.quote)}”</blockquote><p><strong>${esc(r.text)}</strong></p><small>${anchorMeta(r)}</small>${r.status==="draft"?`<div class="row section-gap">${stale?`<button type="button" data-rebind="${r.id}">Confirm quote and rebind</button>`:""}<button type="button" data-remove="${r.id}">Remove request ${r.id}</button></div>${stale?"<p class=\"section-gap muted\">Compare this quote with the current result before rebinding. Your correction and original source are retained until you confirm.</p>":""}`:r.status==="submitted"?"":`<div class="row section-gap"><button type="button" data-inspect="${r.id}">${inspecting?"Inspect again":"Inspect original and next result"}</button></div>${inspecting?`<div class="inspection"><h4>Proposed evidence · ${esc(r.evidenceRecord)}</h4>${r.evidence?`<blockquote>${esc(r.evidence)}</blockquote>`:"<p>No matching passage was found. The recovery section is absent from this synthetic result. Its deletion does not resolve this request.</p>"}<p class="muted">${r.mapping==="candidate"?"Candidate mapping is illustrative. Check the actual correction before verifying.":"Review the full result. Record specific verification evidence, or explain why you waive the correction."}</p>${r.status==="unresolved"?`<label for="review-${r.id}">Review note ${r.mapping==="unmapped"?"(required)":"(required for waiver)"}</label><textarea id="review-${r.id}" data-note="${r.id}" placeholder="What did you verify, or why is this waived?">${esc(state.reviewNotes[r.id]||"")}</textarea><div class="row section-gap"><button type="button" data-address="${r.id}">Mark addressed</button><button type="button" data-waive="${r.id}">Waive request</button></div>`:""}</div>`:""}${r.resolution?`<p class="section-gap">Reviewed by ${esc(r.resolution.operator)} against ${esc(r.resolution.record)}.${r.resolution.note?` ${esc(r.resolution.note)}`:""}</p>`:""}`}</section>`;
+}
+function draftHtml(){const d=state.draft;if(!d)return "";const stale=d.record!==state.source.record;return `<section class="draft"><h3>New passage request${stale?" · stale draft":""}</h3><blockquote>“${esc(d.quote)}”</blockquote><small>${anchorMeta(d)}</small><label for="draft-text" class="section-gap">What should change?</label><textarea id="draft-text" placeholder="Describe the correction you need">${esc(d.text)}</textarea><div class="row section-gap"><button type="button" id="collect">Add to revision</button>${stale?"<button type=\"button\" id=\"rebind-draft\">Confirm quote and rebind draft</button>":""}</div></section>`;}
+function submissionHtml(){if(state.batch)return `<div class="receipt"><strong>Submitted together</strong><p>${state.batch.requestIds.length} requests from ${esc(state.batch.sourceRecord)} via Request revision.</p>${state.batch.message?`<p>Additional notes: ${esc(state.batch.message)}</p>`:""}<p>${state.lifecycle==="running"?"Use a fixture control below to receive the next result.":"Reviewing requests does not approve this plan. The separate process decision remains pending."}</p></div>`;return `<section class="divider"><label for="summary">Additional revision notes (optional)</label><textarea id="summary" placeholder="Context for the whole revision">${esc(state.summary)}</textarea><p class="muted section-gap">This action sends the collected requests to the process and requests another plan revision.</p><button type="button" id="send" class="primary">Request revision${state.requests.length?` · ${state.requests.length} requests`:""}</button></section>`;}
+function bindDynamic(){
+ document.querySelectorAll("[data-select]").forEach(el=>{el.onclick=()=>dispatch({type:"select",id:el.dataset.select});});
+ document.querySelectorAll("[data-remove]").forEach(el=>{el.onclick=()=>dispatch({type:"remove",id:Number(el.dataset.remove)});});
+ document.querySelectorAll("[data-rebind]").forEach(el=>{el.onclick=()=>dispatch({type:"rebind",id:Number(el.dataset.rebind)});});
+ document.querySelectorAll("[data-inspect]").forEach(el=>{el.onclick=()=>dispatch({type:"inspect",id:Number(el.dataset.inspect)});});
+ document.querySelectorAll("[data-address]").forEach(el=>{el.onclick=()=>dispatch({type:"resolve",id:Number(el.dataset.address),resolution:"addressed"});});
+ document.querySelectorAll("[data-waive]").forEach(el=>{el.onclick=()=>dispatch({type:"resolve",id:Number(el.dataset.waive),resolution:"waived"});});
+ document.querySelectorAll("[data-note]").forEach(el=>{el.oninput=()=>{state=FeedbackModel.reduce(state,{type:"reviewNote",id:Number(el.dataset.note),text:el.value});};});
+ if($("draft-text"))$("draft-text").oninput=()=>{state=FeedbackModel.reduce(state,{type:"draftText",text:$("draft-text").value});};
+ if($("summary"))$("summary").oninput=()=>{state=FeedbackModel.reduce(state,{type:"summary",text:$("summary").value});};
+ if($("collect"))$("collect").onclick=()=>dispatch({type:"collect"});
+ if($("send"))$("send").onclick=()=>dispatch({type:"send"});
+ if($("rebind-draft"))$("rebind-draft").onclick=()=>dispatch({type:"rebind"});
+ $("selection").onpointerdown=(event)=>event.preventDefault();
+ $("selection").onclick=()=>{const selection=window.getSelection();const start=selection?.anchorNode?.parentElement?.closest("[data-passage]");const end=selection?.focusNode?.parentElement?.closest("[data-passage]");dispatch({type:"select",id:start&&start===end?start.dataset.passage:null,quote:selection?.toString().trim()});};
+}
+function renderGuide(){
+ document.querySelectorAll("[data-scenario]").forEach(el=>{el.setAttribute("aria-pressed",String(guide?.id===el.dataset.scenario));});
+ if(!guide){$("guide").innerHTML="<p class=\"muted\">Choose a walkthrough, or use the result and revision form freely.</p>";return;}
+ const scenario=scenarios[guide.id],step=scenario.steps[guide.index];
+ $("guide").innerHTML=`<h3>${scenario.title}</h3><p class="muted">${scenario.description}</p><ol class="guide-steps">${scenario.steps.map((s,i)=>`<li>${esc(s.label)}${i<guide.index?" — observed":i===guide.index?" — next":""}</li>`).join("")}</ol>${step?`<button type="button" class="primary" id="guide-next">${esc(step.label)}</button>`:`<p><strong>Walkthrough complete.</strong> ${guide.id==="happy"?"Both requests were verified by you. The plan decision remains pending.":guide.id==="missing"?"The missing passage stayed unresolved until you explicitly waived it.":"The stale submission was refused; the same notes were sent after explicit rebinding."}</p>`}`;
+ if(step)$("guide-next").onclick=()=>{let succeeded=true;for(const action of step.actions){state=FeedbackModel.reduce(state,action);if(state.lastAccepted===!!step.refused){succeeded=false;break;}}if(succeeded)guide.index++;render();};
+}
+$("reset").onclick=()=>{state=FeedbackModel.initial();guide=null;render();};
+$("receive").onclick=()=>dispatch({type:"receive"});
+$("deleted").onclick=()=>dispatch({type:"receive",missing:true});
+$("newer").onclick=()=>dispatch({type:"newer"});
+document.querySelectorAll("[data-scenario]").forEach(el=>{el.onclick=()=>{state=FeedbackModel.initial();guide={id:el.dataset.scenario,index:0};render();};});
+render();
+</script>
+</body>
+</html>
