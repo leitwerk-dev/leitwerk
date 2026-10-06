@@ -20,7 +20,7 @@ All numbers come from the synthetic state. Every worker turn in this shortened f
 2. **The boundary was missed:** publication is accepted first; the original hold request receives `boundary-passed`. Explicitly choose the later boundary, finish publication, inspect it, then Abort. The recorded publication remains visible.
 3. **The result changed:** hold after the editing turn, inspect its result, replace the saved version, and try Resume. Only `result-changed` advances this expected-refusal step. Inspect the new version and release the hold.
 
-Guided steps use the same pure reducer as the free-play controls. Success must come from the intended action; refusal steps require their exact reason code. Interleaving a conflicting free-play action leaves the guide at its current step, with a reset hint.
+Guided steps use the same pure reducer as the free-play controls. Guided requests validate the named boundary and its intended turn target before recording a hold. Success requires that target to be requested; refusal steps require their exact reason code and intended state. A mismatched free-play selection refuses the request while retaining the note and selection. Interleaving a conflicting free-play action leaves the guide at its current step, with a reset hint.
 
 ## Integration seams
 
@@ -46,6 +46,7 @@ Abort, interruption, hold, and external-write outcome remain separate facts. The
 Observed validation:
 
 - Real browser clicks completed all three guides and the free-play path from a stale request through a reached hold to explicit publication acceptance.
+- The finish-review fix was checked with real browser clicks: choosing Hold after this turn refused the before-publication guide without recording a hold or advancing. The note and selection survived; choosing the correct boundary allowed completion. The missed-boundary guide also refused a switched selection, and the after-editing guide refused a later accepted-turn target. All three normal guides completed again.
 - Notes survived unrelated updates and refusals. Missing inspection, stale inspection, and unavailable result bodies blocked Resume. Restoring a body required a fresh inspection.
 - Withdrawing a second requested hold left accepted work running. Interruption required its own confirmation, preserved the selected turn, and parked the process in error.
 - Wrong `not-held` and `not-running` refusals did not advance guide steps expecting `result-changed` and `boundary-passed`.
