@@ -52,11 +52,11 @@ const rows = [
 {id:"external",name:"Wait for release check",turn:"await_check",record:null,attempt:0,worker:null,kind:"external",before:"External wait · no worker",detail:"Listening for an external check. No new check result has been observed."}
 ];
 const guides = {
-normal:{title:"A new worker, the same accepted work",description:"Local workers stop during shutdown. This fixture observes a replacement under resume on boot, then reconciles the original accepted execution without counting another attempt.",runner:"local",steps:[
+normal:{subject:"checkout",title:"A new worker, the same accepted work",description:"Local workers stop during shutdown. This fixture observes a replacement under resume on boot, then reconciles the original accepted execution without counting another attempt.",runner:"local",steps:[
 ["capture","Capture the before sheet"],["disconnect","Simulate the server connection disappearing"],["reconnect","Observe replacement after reconnect"],["inspect:checkout","Inspect the retained execution"],["review","Mark this observation reviewed"]]},
-late:{title:"Finished is not yet durably recorded",description:"An isolated worker reports finishing during the outage. Keep its work unresolved through reconnect and replay; only the durable acknowledgement establishes recorded completion.",runner:"kubernetes",steps:[
-["capture","Capture the before sheet"],["disconnect","Simulate the connection loss"],["finish","Worker reports finishing while disconnected"],["reconnect","Observe reconnect"],["inspect:release","Inspect the unresolved final turn"],["review","Try to review before terminal recording","TERMINAL_PENDING"],["replay","Receive the correlated terminal replay"],["review","Try to review the replay alone","TERMINAL_PENDING"],["ack","Observe durable terminal acknowledgement"],["review","Review the recorded completion"]]},
-stale:{title:"A review belongs to the evidence you saw",description:"A stale evidence view cannot support a new review mark. Rechecking retains the frozen before sheet and your note; it does not silently declare the process finished.",runner:"kubernetes",steps:[
+late:{subject:"release",title:"Finished is not yet durably recorded",description:"An isolated worker reports finishing during the outage. Keep its work unresolved through reconnect and replay; only the durable acknowledgement establishes recorded completion.",runner:"kubernetes",steps:[
+["capture","Capture the before sheet"],["disconnect","Simulate the connection loss"],["finish","Worker reports finishing while disconnected"],["reconnect","Observe reconnect"],["inspect:release","Inspect the unresolved final turn"],["review","Try to review before terminal recording","TERMINAL_PENDING","reported"],["replay","Receive the correlated terminal replay"],["review","Try to review the replay alone","TERMINAL_PENDING","replayed"],["ack","Observe durable terminal acknowledgement"],["review","Review the recorded completion"]]},
+stale:{subject:"queued",title:"A review belongs to the evidence you saw",description:"A stale evidence view cannot support a new review mark. Rechecking retains the frozen before sheet and your note; it does not silently declare the process finished.",runner:"kubernetes",steps:[
 ["capture","Capture the before sheet"],["disconnect","Simulate the connection loss"],["reconnect","Observe adoption after reconnect"],["inspect:queued","Inspect the queued start"],["stale","Simulate evidence becoming stale"],["review","Try to mark stale evidence reviewed","STALE"],["refresh","Recheck this process"],["review","Review the fresh queued-start observation"]]}
 };
 function initial(runner="kubernetes") {return {runner,phase:"before",capture:null,selected:"checkout",revision:1,observations:{},drafts:{},notes:{},reviewed:{},stale:{},missing:{},terminal:"none",queueAccepted:false,events:["Before maintenance: synthetic inventory available."],notice:"Capture the inventory before trying a maintenance boundary. All four rows stay in place.",refused:false,guide:null,step:0};}
@@ -85,6 +85,16 @@ if(action.type==="missing"){s.missing[id]=true;delete s.reviewed[id];return ok("
 if(action.type==="refresh"){if(s.missing[id])return no("UNAVAILABLE","Current evidence is unavailable. Keep this row unresolved and investigate the process; your note is retained.");s.stale[id]=false;return ok("Fresh process observation received. The frozen before sheet and operator note are retained.");}
 if(action.type==="review"){if(s.missing[id])return no("UNAVAILABLE","Current evidence is unavailable. This row cannot be marked reviewed.");if(s.stale[id])return no("STALE","Evidence is stale. Recheck this process before marking its observation reviewed.");if(id==="release"&&["reported","replayed"].includes(s.terminal))return no("TERMINAL_PENDING","The terminal fact has no durable acknowledgement. Keep this process unresolved.");s.reviewed[id]=s.revision;return ok("Current observation marked reviewed. This is operator metadata, not a process action or a promise of future continuity.");}
 return no("UNKNOWN_ACTION","This fixture action is not supported.");
+}
+function guided(s){
+const guide=guides[s.guide],step=guide?.steps[s.step];if(!step)return s;
+const rowScoped=["review","stale","refresh"].includes(step[0]);
+const refuse=message=>({...s,notice:`Refused: ${message}`,refused:true});
+if(rowScoped&&s.selected!==guide.subject)return refuse(`Open ${rows.find(row=>row.id===guide.subject).name} to continue this guide. All drafts are retained.`);
+if(step[2]&&(!s.capture||s.phase!=="after"||s.missing[guide.subject]||(step[2]==="STALE"?!s.stale[guide.subject]:s.stale[guide.subject]||s.terminal!==step[3])))return refuse("This guide needs its expected evidence state before the refusal can be observed. Restart the guide to restore it; all drafts are retained until you restart.");
+const outcome=result(s,{type:step[0]});
+if(outcome.code===(step[2]||"OK"))outcome.state.step++;
+return outcome.state;
 }
 function reconciliation(s,row){
 if(!s.capture)return {label:"Not captured",tone:"",current:"Awaiting a before sheet"};
@@ -117,7 +127,7 @@ for(const button of document.querySelectorAll("[data-guide]"))button.setAttribut
 if(!state.guide)byId("guide").innerHTML='<h3>No guided case running</h3><p class="muted">Use the fixture controls freely, or choose a case above. Each guide starts with a fresh inventory.</p>';
 else {const guide=guides[state.guide],step=guide.steps[state.step];byId("guide").innerHTML=`<h3>${escapeHtml(guide.title)}</h3><p class="muted">${escapeHtml(guide.description)}</p><p class="guide-progress">${step?`Step ${state.step+1} of ${guide.steps.length}`:`Case complete · ${guide.steps.length} expected results observed`}</p>${step?`<button type="button" class="primary" id="guide-next">${escapeHtml(step[1])}</button>`:'<p>Inspect the ledger or continue in free play. Review marks never change business lifecycle.</p>'}`;}
 }
-document.addEventListener("click",e=>{const button=e.target.closest("button");if(!button)return;if(button.id==="reset"){state=initial();render();return;}if(button.dataset.guide){const guide=button.dataset.guide;state={...initial(guides[guide].runner),guide};render();return;}if(button.id==="guide-next"){const step=guides[state.guide].steps[state.step];const outcome=result(state,{type:step[0]});state=outcome.state;if(outcome.code===(step[2]||"OK"))state.step++;render();return;}if(button.id==="back-sheet"){byId("ledger").scrollIntoView({block:"start"});return;}if(button.dataset.action){dispatch(button.dataset.action);if(button.dataset.action.startsWith("inspect:"))byId("detail").scrollIntoView({block:"start"});}});
+document.addEventListener("click",e=>{const button=e.target.closest("button");if(!button)return;if(button.id==="reset"){state=initial();render();return;}if(button.dataset.guide){const guide=button.dataset.guide;state={...initial(guides[guide].runner),guide};render();return;}if(button.id==="guide-next"){state=guided(state);render();return;}if(button.id==="back-sheet"){byId("ledger").scrollIntoView({block:"start"});return;}if(button.dataset.action){dispatch(button.dataset.action);if(button.dataset.action.startsWith("inspect:"))byId("detail").scrollIntoView({block:"start"});}});
 byId("runner").addEventListener("change",e=>dispatch("runner",e.target.value));
 render();
 </script>

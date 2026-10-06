@@ -23,7 +23,7 @@ Controls remain available to expose their refusal reasons. A frozen checkpoint c
 2. **Late terminal acknowledgement:** capture an isolated installation, disconnect, and simulate a worker reporting completion. Reconnect and try to review before recording, then again after replay. Both refuse. Observe durable acknowledgement, then review the recorded completion.
 3. **Stale review refusal:** capture, reconnect, and inspect the queued start. Make evidence stale and try to review it. Recheck, then review fresh queue evidence. A stale indicator does not disappear merely because the process was opened.
 
-Each guide advances only when the requested model action succeeds or its exact expected refusal code occurs. Free-play actions remain available during guides. Incompatible free-play changes can leave the next step refused; restart that guide to recover its known fixture.
+Each guide inspects its named process. Later row actions require that same selection: Refresh checkout policy for Local replacement, Build release notes for Late terminal acknowledgement, and Scan compatibility for Stale review refusal. Selecting another row refuses before any guided mutation or progression; all notes and drafts remain. Return to the named row to continue. Refusal steps require its exact stale or reported/replayed terminal state as well as the expected refusal code. Capture, disconnect, reconnect, and terminal observations retain their global fixture scope. Other incompatible free-play changes can leave the next step refused; restart that guide to recover its known fixture.
 
 ## Integration seams
 
@@ -46,9 +46,9 @@ Validation details below record actual checks on the standalone artifact. Applic
 
 - Biome checked the HTML; inline JavaScript passed `node --check`.
 - The Impeccable detector returned no regex findings in degraded mode because HTML parser dependencies are unavailable. It did not evaluate computed contrast or selector matching.
-- All three browser guides completed (23 steps), including exact refusals before terminal acknowledgement and for stale review.
+- All three browser guides completed again after the subject fix (23 steps). Before every row-scoped step, selecting another process refused without mutation or progression and preserved both drafts. The original checkout-selection repro remained at the queued step through four next-step clicks. Fresh queued evidence and a replayed terminal could not substitute for the expected stale and reported-terminal refusals.
 - Free-play verified notes surviving selection/reconnect/refusals; stale evidence surviving inspection; unavailable evidence remaining unresolved; no duplicate accepted attempt; immutable capture and runner; unexpected guide refusal retaining its step; and offline local-worker finish refusal.
-- Desktop (1440px) and mobile (390px) full-page screenshots were opened and visually inspected. Both widths had no horizontal overflow; the browser reported no errors. The screenshots show a terminal replay still awaiting durable acknowledgement.
+- Desktop (1440px) and mobile (390px) full-page screenshots were refreshed after the subject fix, opened, and visually inspected. Both widths had no horizontal overflow; the browser reported no errors. The screenshots show a terminal replay still awaiting durable acknowledgement.
 - `git diff --check` passed.
 
 The data is invented, not a production operational record. No real worker, acknowledgement, external wait, database, or lifecycle is mutated. Notes are intentionally in-memory. Observation numbers are fixture counters, not production timestamps or ordering guarantees. The prototype reduces a production terminal mutation and acknowledgement into one observed event; it is not an IPC implementation.
