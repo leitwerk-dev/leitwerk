@@ -1,0 +1,1006 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decision rounds · Leitwerk prototype</title>
+<style>
+:root {
+	font-family: "Public Sans", ui-sans-serif, system-ui, sans-serif;
+	color: #18212b;
+	background: #fff;
+	font-size: 15px;
+	line-height: 1.55;
+	--blue: #2f61b7;
+	--border: #d9dee5;
+	--muted: #4c5968;
+}
+* {
+	box-sizing: border-box;
+}
+body {
+	margin: 0;
+}
+button,
+input,
+textarea,
+select {
+	font: inherit;
+}
+button,
+select {
+	min-height: 44px;
+}
+button {
+	padding: 9px 17px;
+	border: 1px solid var(--border);
+	border-radius: 24px;
+	background: white;
+	color: #18212b;
+	cursor: pointer;
+	font-weight: 600;
+}
+button:hover:not(:disabled) {
+	background: #f2f4f7;
+	border-color: #aeb7c2;
+}
+button.primary {
+	background: #18212b;
+	color: #fff;
+	border-color: #18212b;
+}
+button.primary:hover:not(:disabled) {
+	background: #303e4d;
+}
+button:disabled {
+	opacity: 0.5;
+	cursor: default;
+}
+:focus-visible {
+	outline: 3px solid var(--blue);
+	outline-offset: 3px;
+}
+::selection {
+	background: #d6e4fa;
+}
+textarea {
+	caret-color: var(--blue);
+}
+h1,
+h2,
+h3,
+p {
+	margin: 0;
+}
+h1 {
+	font-size: 28px;
+	line-height: 1.25;
+}
+h2 {
+	font-size: 22px;
+	line-height: 1.3;
+}
+h3 {
+	font-size: 16px;
+}
+p {
+	max-width: 75ch;
+}
+small,
+.muted {
+	color: var(--muted);
+}
+small {
+	font-size: 13px;
+}
+header {
+	padding: 26px 40px 20px;
+	border-bottom: 1px solid var(--border);
+}
+.header-row,
+.row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	flex-wrap: wrap;
+}
+.header-row {
+	justify-content: space-between;
+}
+.intro {
+	margin-top: 8px;
+}
+.prototype {
+	margin-top: 5px;
+	font-size: 13px;
+	color: var(--muted);
+}
+.guide {
+	padding: 16px 40px;
+	background: #f7f8fa;
+	border-bottom: 1px solid var(--border);
+}
+.tabs {
+	display: flex;
+	gap: 6px;
+	flex-wrap: wrap;
+}
+.tabs button {
+	border-radius: 8px;
+	font-size: 13px;
+	background: transparent;
+}
+.tabs button[aria-pressed="true"] {
+	border-color: var(--blue);
+	color: #244f96;
+	background: #e6ecf6;
+}
+.guide-body {
+	margin-top: 12px;
+	display: flex;
+	align-items: center;
+	gap: 18px;
+	justify-content: space-between;
+}
+.guide-body p {
+	font-size: 14px;
+}
+.guide-body button {
+	flex-shrink: 0;
+}
+.workspace {
+	max-width: 1400px;
+	margin: auto;
+	display: grid;
+	grid-template-columns: 310px minmax(0, 1fr);
+	min-height: 620px;
+}
+.itinerary {
+	background: #f7f8fa;
+	border-right: 1px solid var(--border);
+	padding: 24px 20px;
+}
+.itinerary summary {
+	display: none;
+}
+.itinerary h2 {
+	font-size: 17px;
+}
+.count {
+	font-variant-numeric: tabular-nums;
+}
+.itinerary ol {
+	list-style: none;
+	padding: 0;
+	margin: 20px -20px;
+}
+.slot {
+	width: 100%;
+	border: 0;
+	border-radius: 0;
+	padding: 16px 20px;
+	display: grid;
+	grid-template-columns: 25px 1fr;
+	gap: 8px;
+	text-align: left;
+	background: transparent;
+}
+.slot[aria-current="true"] {
+	background: #e6ecf6;
+	color: #244f96;
+}
+.slot strong,
+.slot small {
+	display: block;
+}
+.slot small {
+	font-weight: 400;
+	margin-top: 5px;
+}
+.position {
+	font-size: 13px;
+	padding-top: 2px;
+	font-variant-numeric: tabular-nums;
+}
+.additions {
+	border-top: 1px solid var(--border);
+	padding-top: 18px;
+}
+.additions p {
+	font-size: 13px;
+	margin: 7px 0 12px;
+}
+.additions button {
+	font-size: 13px;
+}
+.reading {
+	padding: 28px 42px 36px;
+	min-width: 0;
+}
+.breadcrumb {
+	font-size: 13px;
+	color: var(--muted);
+	margin-bottom: 12px;
+}
+.process-head {
+	display: flex;
+	justify-content: space-between;
+	align-items: flex-start;
+	gap: 16px;
+}
+.status {
+	font-size: 13px;
+	background: #f2f4f7;
+	padding: 4px 10px;
+	border-radius: 20px;
+	white-space: nowrap;
+}
+.current-state {
+	margin-top: 9px;
+	color: var(--muted);
+	font-size: 14px;
+}
+.result {
+	margin-top: 24px;
+	border-top: 1px solid var(--border);
+	padding-top: 19px;
+}
+.result header {
+	padding: 0;
+	border: 0;
+	display: flex;
+	justify-content: space-between;
+	gap: 16px;
+	flex-wrap: wrap;
+}
+.result .copy {
+	margin-top: 15px;
+}
+.result ul {
+	padding-left: 21px;
+	margin: 10px 0 15px;
+}
+.result li {
+	margin: 5px 0;
+}
+.source {
+	font-size: 13px;
+	color: var(--muted);
+	margin-top: 13px;
+}
+.action-form {
+	margin-top: 24px;
+	background: #f3f6fc;
+	padding: 21px 24px;
+	border-radius: 8px;
+}
+.action-form > p {
+	margin-top: 5px;
+	color: var(--muted);
+	font-size: 14px;
+}
+.field {
+	margin-top: 15px;
+}
+.field label {
+	display: block;
+	font-weight: 600;
+	font-size: 14px;
+	margin-bottom: 6px;
+}
+select,
+textarea {
+	width: 100%;
+	padding: 10px 12px;
+	border: 1px solid #aeb7c2;
+	border-radius: 8px;
+	background: #fff;
+	color: #18212b;
+}
+textarea {
+	resize: vertical;
+	min-height: 90px;
+}
+.check {
+	display: flex;
+	gap: 10px;
+	align-items: center;
+	margin: 13px 0;
+	font-size: 14px;
+	min-height: 44px;
+}
+.check input {
+	width: 20px;
+	height: 20px;
+	accent-color: var(--blue);
+	flex-shrink: 0;
+}
+.preview {
+	font-size: 14px;
+	margin-top: 12px;
+}
+.actions {
+	margin-top: 16px;
+}
+.round-nav {
+	margin-top: 22px;
+	padding-top: 18px;
+	border-top: 1px solid var(--border);
+}
+.round-nav p {
+	font-size: 13px;
+	color: var(--muted);
+	margin-top: 9px;
+}
+.notice {
+	padding: 12px 15px;
+	border: 1px solid var(--border);
+	border-radius: 7px;
+	margin: 18px 0;
+	background: #f7f8fa;
+	font-size: 14px;
+}
+.notice.error {
+	border-color: #a83a32;
+	color: #7d2d27;
+	background: #fff7f6;
+}
+.notice.success {
+	color: #126442;
+	background: #f1f8f4;
+}
+.simulator {
+	margin-top: 25px;
+	padding-top: 19px;
+	border-top: 1px solid var(--border);
+}
+.simulator p {
+	font-size: 13px;
+	margin: 5px 0 11px;
+	color: var(--muted);
+}
+.simulator button {
+	font-size: 13px;
+}
+.empty {
+	padding: 45px 0;
+}
+.empty h2 {
+	margin-bottom: 12px;
+}
+.empty p {
+	margin-bottom: 20px;
+}
+.receipt {
+	margin-top: 14px;
+	padding-top: 13px;
+	border-top: 1px solid var(--border);
+	font-size: 14px;
+}
+.receipt strong {
+	display: block;
+}
+.stale {
+	color: #7d2d27;
+}
+.foot {
+	padding: 16px 40px;
+	border-top: 1px solid var(--border);
+	color: var(--muted);
+	font-size: 13px;
+}
+.draft-label {
+	margin-top: 6px;
+	display: block;
+}
+.current-state strong {
+	color: #18212b;
+}
+@media (max-width: 760px) {
+	header {
+		padding: 20px;
+	}
+	.header-row {
+		align-items: flex-start;
+	}
+	h1 {
+		font-size: 25px;
+	}
+	.header-row > button {
+		font-size: 13px;
+	}
+	.guide {
+		padding: 14px 20px;
+	}
+	.guide-body {
+		align-items: flex-start;
+		flex-direction: column;
+		gap: 10px;
+	}
+	.tabs {
+		gap: 5px;
+	}
+	.tabs button {
+		padding: 8px 10px;
+	}
+	.workspace {
+		display: block;
+	}
+	.itinerary {
+		padding: 0 20px;
+		border-right: 0;
+		border-bottom: 1px solid var(--border);
+	}
+	.itinerary summary {
+		display: block;
+		padding: 14px 0;
+		cursor: pointer;
+		font-weight: 600;
+	}
+	.itinerary summary::after {
+		content: " · Show / hide";
+		font-weight: 400;
+		font-size: 13px;
+		color: var(--muted);
+	}
+	.itinerary h2 {
+		display: none;
+	}
+	.itinerary ol {
+		margin: 10px -20px;
+	}
+	.itinerary .additions {
+		padding-bottom: 18px;
+	}
+	.reading {
+		padding: 23px 20px;
+	}
+	.process-head {
+		display: block;
+	}
+	.status {
+		display: inline-block;
+		margin-top: 9px;
+	}
+	.action-form {
+		padding: 18px 15px;
+	}
+	.actions button,
+	.round-nav button {
+		flex-grow: 1;
+	}
+	.foot {
+		padding: 16px 20px;
+	}
+	.result {
+		margin-top: 20px;
+	}
+	.intro {
+		font-size: 14px;
+	}
+	.prototype {
+		font-size: 12px;
+	}
+	.breadcrumb {
+		margin-bottom: 8px;
+	}
+}
+</style>
+</head>
+<body>
+<!-- THESIS: One stable decision itinerary keeps individual context and drafts intact.
+OWN-WORLD: Leitwerk white reading surface, gray itinerary, operational blue selection, native controls.
+STORY: Capture waiting work, read one result, act or defer, admit new work deliberately.
+FIRST VIEWPORT: Compact title and guides above a left itinerary and a full-width result with its form.
+FORM: Assigned decision itinerary; no concept seed required for pinned composition. Operate mode.
+FINISH: Parent coordinates independent finish review; prototype README records observed learning. -->
+<header><div class="header-row"><h1>Decision rounds</h1><button type="button" id="reset">Reset prototype</button></div><p class="intro">Can a bounded review round save navigation without rushing individual decisions?</p><p class="prototype">Future proposal · Synthetic processes · Changes and drafts stay in this tab until reset or reload.</p></header>
+<section class="guide" aria-label="Guided walkthroughs"><div class="tabs" id="tabs"></div><div id="guide-body"></div></section>
+<main class="workspace"><aside class="itinerary"><details id="itinerary-details" open><summary id="mobile-summary">Round itinerary</summary><div id="itinerary"></div></details></aside><section class="reading" id="reading" aria-label="Selected decision"></section></main>
+<footer class="foot">Round progress is personal navigation. Every submitted decision applies to one process and one reviewed result.</footer>
+<script>
+// Pure fixture/model layer: no browser or DOM access.
+const fixtures = [
+	{
+		id: "gateway",
+		name: "Gateway timeout handling",
+		project: "edge-gateway",
+		turn: "Plan decision",
+		record: "plan-104",
+		revision: 3,
+		summary: "Make timeout responses useful without repeating a request.",
+		points: [
+			"Return a clear timeout message with the request reference.",
+			"Keep the existing retry policy; do not replay writes automatically.",
+			"Add coverage for a slow upstream and a lost connection.",
+		],
+		evidence: "Recorded evidence: plan only. Implementation and checks have not run.",
+		actions: [
+			{
+				id: "approve",
+				label: "Approve plan",
+				field: "Decision note (optional)",
+				required: false,
+				next: "Implementation can start from this plan.",
+			},
+			{
+				id: "revise",
+				label: "Request plan changes",
+				field: "Requested changes",
+				required: true,
+				next: "Return to planning with your requested changes.",
+			},
+		],
+	},
+	{
+		id: "runbook",
+		name: "Queue drain runbook",
+		project: "operations-guide",
+		turn: "Review decision",
+		record: "review-208",
+		revision: 1,
+		summary: "The revised runbook makes the stop condition explicit.",
+		points: [
+			"Pause new jobs before draining the active queue.",
+			"Stop the procedure if remaining jobs do not decrease.",
+			"Record the queue depth before resuming intake.",
+		],
+		evidence:
+			"Recorded evidence: editorial review complete. This procedure has not been exercised in a cluster.",
+		actions: [
+			{
+				id: "accept",
+				label: "Accept runbook",
+				field: "Review note (optional)",
+				required: false,
+				next: "Complete this documentation process.",
+			},
+			{
+				id: "revise",
+				label: "Request runbook changes",
+				field: "Requested changes",
+				required: true,
+				next: "Revise the runbook with your feedback.",
+			},
+		],
+	},
+	{
+		id: "release",
+		name: "Release notes terminology",
+		project: "release-notes",
+		turn: "Open question",
+		record: "write-312",
+		revision: 2,
+		summary: "The release note draft needs one naming decision before writing can continue.",
+		points: [
+			"The customer-facing heading currently says ‘worker recovery’.",
+			"The implementation calls this ‘Continue from saved work’.",
+			"Question: Which name should the final release notes use?",
+		],
+		evidence:
+			"Recorded evidence: a question during the writing turn. An answer resumes the same turn.",
+		actions: [
+			{
+				id: "answer",
+				label: "Answer question",
+				field: "Answer",
+				required: true,
+				next: "Resume the current writing turn with your answer.",
+			},
+		],
+	},
+	{
+		id: "rotation",
+		name: "Key rotation checklist",
+		project: "security-guide",
+		turn: "Review decision",
+		record: "review-419",
+		revision: 1,
+		summary: "The checklist now separates credential replacement from retiring the old key.",
+		points: [
+			"Create the replacement key in the documented destination.",
+			"Verify one consumer before revoking the previous key.",
+			"Keep a rollback contact alongside the change record.",
+		],
+		evidence: "Recorded evidence: checklist text only. No credentials or systems were changed.",
+		actions: [
+			{
+				id: "accept",
+				label: "Accept checklist",
+				field: "Review note (optional)",
+				required: false,
+				next: "Complete this documentation process.",
+			},
+			{
+				id: "revise",
+				label: "Request checklist changes",
+				field: "Requested changes",
+				required: true,
+				next: "Revise the checklist with your feedback.",
+			},
+		],
+	},
+];
+function initial() {
+	return {
+		started: false,
+		order: [],
+		selected: null,
+		processes: Object.fromEntries(
+			fixtures.map((p) => [
+				p.id,
+				{ ...p, available: true, liveRevision: p.revision, resolution: null },
+			]),
+		),
+		arrivals: [],
+		arrivalSent: false,
+		slots: {},
+		drafts: {},
+		choices: {},
+		reviewed: {},
+		message: "",
+		tone: "",
+		lastEvent: null,
+	};
+}
+function actionFor(s, id) {
+	const p = s.processes[id];
+	return p.actions.find((a) => a.id === s.choices[id]) || p.actions[0];
+}
+function draftKey(s, id) {
+	return `${id}:${actionFor(s, id).id}`;
+}
+function draftFor(s, id) {
+	return s.drafts[draftKey(s, id)] || { text: "", revision: s.processes[id].revision };
+}
+function moveNext(s) {
+	const index = s.order.indexOf(s.selected);
+	s.selected =
+		s.order.slice(index + 1).find((id) => s.slots[id] !== "done") ||
+		s.order.find((id) => s.slots[id] !== "done") ||
+		s.selected;
+}
+function transition(state, event) {
+	const s = structuredClone(state);
+	s.lastEvent = null;
+	s.message = "";
+	s.tone = "";
+	const id = event.id || s.selected;
+	const p = s.processes[id];
+	const refuse = (text) => {
+		s.message = text;
+		s.tone = "error";
+		s.lastEvent = "refused";
+		return s;
+	};
+	switch (event.type) {
+		case "start":
+			if (s.started) return refuse("This round is already open.");
+			s.started = true;
+			s.order = fixtures.slice(0, 3).map((p) => p.id);
+			s.selected = s.order[0];
+			for (const id of s.order) s.slots[id] = "pending";
+			s.lastEvent = "started";
+			s.message = "Captured 3 decisions. Their order stays fixed as work changes.";
+			break;
+		case "select":
+			if (!s.order.includes(id)) return refuse("Add this process to the round before opening it.");
+			s.selected = id;
+			s.lastEvent = "selected";
+			break;
+		case "choose":
+			if (!p.actions.some((a) => a.id === event.value))
+				return refuse("That action is unavailable.");
+			s.choices[id] = event.value;
+			s.lastEvent = "chosen";
+			break;
+		case "draft":
+			s.drafts[draftKey(s, id)] = { ...draftFor(s, id), text: event.value };
+			s.lastEvent = "drafted";
+			break;
+		case "review":
+			if (!p.available)
+				return refuse("This result is now historical. The decision has already been resolved.");
+			s.reviewed[id] = event.value ? p.liveRevision : null;
+			s.lastEvent = "reviewed";
+			break;
+		case "submit": {
+			if (!p.available) {
+				refuse("Not submitted. This action is no longer available; your draft is preserved below.");
+				s.lastEvent = "stale_refused";
+				return s;
+			}
+			const draft = draftFor(s, id);
+			if (draft.revision !== p.liveRevision || s.reviewed[id] !== p.liveRevision)
+				return refuse(
+					"Read this result and confirm the review before submitting. Your draft is preserved.",
+				);
+			const a = actionFor(s, id);
+			if (a.required && !draft.text.trim())
+				return refuse("Add the requested text before submitting. Your draft is preserved.");
+			p.available = false;
+			p.resolution = {
+				actor: "You",
+				action: a.label,
+				note: draft.text,
+				revision: p.liveRevision,
+				next: a.next,
+			};
+			s.message = `${a.label} submitted for ${p.name} only. Mark this slot Done when ready.`;
+			s.tone = "success";
+			s.lastEvent = "submitted";
+			break;
+		}
+		case "later":
+			s.slots[id] = "later";
+			moveNext(s);
+			s.message = `${p.name} left for later. Its drafts remain in this round.`;
+			s.lastEvent = "later";
+			break;
+		case "done":
+			if (p.available)
+				return refuse("This decision still needs an action. Submit it or leave it for later.");
+			s.slots[id] = "done";
+			moveNext(s);
+			s.message = "Slot marked Done. This changes round progress only.";
+			s.lastEvent = "done";
+			break;
+		case "next":
+			moveNext(s);
+			s.lastEvent = "next";
+			break;
+		case "arrival":
+			if (s.arrivalSent) return refuse("The synthetic arrival has already been delivered.");
+			s.arrivalSent = true;
+			s.arrivals.push("rotation");
+			s.message = "A new decision arrived. It stays outside the itinerary until you add it.";
+			s.lastEvent = "arrived";
+			break;
+		case "admit":
+			if (!s.arrivals.length) return refuse("There are no new decisions to add.");
+			for (const incoming of s.arrivals) {
+				s.order.push(incoming);
+				s.slots[incoming] = "pending";
+			}
+			s.arrivals = [];
+			s.message = "New decisions appended. Your place and drafts are unchanged.";
+			s.lastEvent = "admitted";
+			break;
+		case "colleague":
+			if (!p.available) return refuse("This decision has already been resolved.");
+			p.available = false;
+			p.liveRevision += 1;
+			p.resolution = {
+				actor: "Mara (simulated colleague)",
+				action: p.actions[0].label,
+				note: "Reviewed the recorded result.",
+				revision: p.revision,
+				next: p.actions[0].next,
+			};
+			s.message = "Mara resolved this decision. The slot and your unsent drafts are retained.";
+			s.lastEvent = "colleague";
+			break;
+		default:
+			return state;
+	}
+	return s;
+}
+const scenarios = [
+	{
+		name: "1 · Finish one decision",
+		description:
+			"Read and submit one plan decision, then move on. The other processes stay untouched.",
+		steps: [
+			{ label: "Start the round", event: { type: "start" }, expected: "started" },
+			{
+				label: "Confirm this result was reviewed",
+				event: { type: "review", id: "gateway", value: true },
+				expected: "reviewed",
+			},
+			{
+				label: "Submit this plan approval",
+				event: { type: "submit", id: "gateway" },
+				expected: "submitted",
+			},
+			{ label: "Mark Done and move on", event: { type: "done", id: "gateway" }, expected: "done" },
+		],
+	},
+	{
+		name: "2 · Keep a draft",
+		description:
+			"Leave feedback unfinished. A new arrival must not move your place or erase your text.",
+		steps: [
+			{ label: "Start the round", event: { type: "start" }, expected: "started" },
+			{
+				label: "Choose Request plan changes",
+				event: { type: "choose", id: "gateway", value: "revise" },
+				expected: "chosen",
+			},
+			{
+				label: "Draft a requested change",
+				event: {
+					type: "draft",
+					id: "gateway",
+					value: "Add the timeout limit to the proposed response.",
+				},
+				expected: "drafted",
+			},
+			{ label: "Leave this for later", event: { type: "later", id: "gateway" }, expected: "later" },
+			{ label: "Simulate a new decision", event: { type: "arrival" }, expected: "arrived" },
+			{ label: "Add the arrival to this round", event: { type: "admit" }, expected: "admitted" },
+			{
+				label: "Return to the retained draft",
+				event: { type: "select", id: "gateway" },
+				expected: "selected",
+			},
+		],
+	},
+	{
+		name: "3 · A colleague acts",
+		description:
+			"A prepared decision becomes stale. Attempting to submit it must preserve the draft and refuse the action.",
+		steps: [
+			{ label: "Start the round", event: { type: "start" }, expected: "started" },
+			{
+				label: "Draft a decision note",
+				event: {
+					type: "draft",
+					id: "gateway",
+					value: "Please retain the request reference in the error message.",
+				},
+				expected: "drafted",
+			},
+			{
+				label: "Confirm this result was reviewed",
+				event: { type: "review", id: "gateway", value: true },
+				expected: "reviewed",
+			},
+			{
+				label: "Simulate Mara resolving it",
+				event: { type: "colleague", id: "gateway" },
+				expected: "colleague",
+			},
+			{
+				label: "Try the prepared decision",
+				event: { type: "submit", id: "gateway" },
+				expected: "stale_refused",
+			},
+			{
+				label: "Acknowledge Done and move on",
+				event: { type: "done", id: "gateway" },
+				expected: "done",
+			},
+		],
+	},
+];
+</script>
+<script>
+// Thin DOM shell. Draft input updates the model without rebuilding the focused field.
+let state = initial();
+let scenario = -1;
+let step = 0;
+const $ = (id) => document.getElementById(id);
+const esc = (value) =>
+	String(value).replace(
+		/[&<>"']/g,
+		(c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c],
+	);
+const button = (text, command, extra = "") =>
+	`<button type="button" data-command="${command}" ${extra}>${text}</button>`;
+function dispatch(event) {
+	state = transition(state, event);
+	render();
+}
+function render() {
+	const focused = document.activeElement;
+	const focusId = focused?.id;
+	const focusCommand = focused?.dataset?.command;
+	const restoreFocus = () => {
+		if (focusId) document.getElementById(focusId)?.focus({ preventScroll: true });
+		else if (focusCommand)
+			document.querySelector(`[data-command="${focusCommand}"]`)?.focus({ preventScroll: true });
+	};
+	$("tabs").innerHTML =
+		button("Free play", "free", `aria-pressed="${scenario === -1}"`) +
+		scenarios
+			.map((s, i) => button(s.name, `scenario:${i}`, `aria-pressed="${scenario === i}"`))
+			.join("");
+	const current = scenarios[scenario];
+	$("guide-body").innerHTML = current
+		? `<div class="guide-body"><p>${esc(current.description)}<br><strong>${step === current.steps.length ? "Walkthrough complete. Continue exploring below." : `Step ${step + 1} of ${current.steps.length}`}</strong></p>${step < current.steps.length ? button(current.steps[step].label, "step", 'class="primary"') : button("Replay walkthrough", "replay")}</div>`
+		: `<div class="guide-body"><p>Start with the waiting set. Read each result, act individually, or leave it for later.</p></div>`;
+	const done = state.order.filter((id) => state.slots[id] === "done").length;
+	const later = state.order.filter((id) => state.slots[id] === "later").length;
+	$("mobile-summary").textContent = state.started
+		? `Itinerary · ${done} of ${state.order.length} done${state.arrivals.length ? ` · ${state.arrivals.length} new` : ""}`
+		: "Round itinerary";
+	$("itinerary").innerHTML =
+		`<h2>Round itinerary</h2><p class="muted count">${state.started ? `${done} of ${state.order.length} done · ${later} for later` : "Waiting set ready to capture"}</p>${
+			state.started
+				? `<ol>${state.order
+						.map((id, index) => {
+							const p = state.processes[id];
+							const d = Object.keys(state.drafts).some(
+								(key) => key.startsWith(`${id}:`) && state.drafts[key].text.trim(),
+							);
+							return `<li><button type="button" class="slot" data-command="select:${id}" aria-current="${state.selected === id}"><span class="position">${index + 1}</span><span><strong>${esc(p.name)}</strong><small>${state.slots[id] === "done" ? "Done" : !p.available ? "Resolved · acknowledge when ready" : state.slots[id] === "later" ? "For later" : "Needs decision"}${d ? " · Draft retained" : ""}</small></span></button></li>`;
+						})
+						.join("")}</ol>`
+				: `<p class="muted" style="margin:20px 0">${fixtures
+						.slice(0, 3)
+						.map((p) => esc(p.name))
+						.join("<br>")}</p>`
+		}<div class="additions"><h3>New arrivals <span class="count">(${state.arrivals.length})</span></h3><p>${state.arrivals.length ? state.arrivals.map((id) => esc(state.processes[id].name)).join("<br>") : "No decisions waiting outside this round."}</p>${button("Add arrivals to round", "admit", state.arrivals.length ? "" : "disabled")}</div>`;
+	if (!state.started) {
+		$("reading").innerHTML =
+			`<div class="empty"><h2>A bounded set. One decision at a time.</h2><p>Capture the ${fixtures.length - 1} currently waiting processes. Each keeps its place while you read, draft, and decide. Later arrivals wait separately.</p>${button("Start round with 3 decisions", "start", 'class="primary"')}<p class="muted" style="margin-top:20px">There is no bulk submission. Each process keeps its own result and action form.</p></div>`;
+		return;
+	}
+	const id = state.selected,
+		p = state.processes[id],
+		a = actionFor(state, id),
+		draft = draftFor(state, id);
+	const stale = p.resolution && p.resolution.actor !== "You";
+	const allDone = done === state.order.length;
+	$("reading").innerHTML =
+		`<div class="breadcrumb">Decision ${state.order.indexOf(id) + 1} of ${state.order.length} · ${esc(p.project)}</div><div class="process-head"><h2>${esc(p.name)}</h2><span class="status">${p.available ? esc(p.turn) : "Decision resolved"}</span></div><p class="current-state"><strong>${p.available ? `Current: ${esc(p.turn)}` : `Current: ${esc(p.resolution.next)}`}</strong><br>${p.available ? "Waiting for an individual operator decision." : "This is a simulated accepted decision, not evidence that successor work has run."}</p>${state.message ? `<div class="notice ${state.tone}" role="status">${esc(state.message)}</div>` : ""}${allDone ? `<div class="notice success">Round complete: ${done} slots acknowledged. ${state.arrivals.length ? "New arrivals are still outside the round." : "You can revisit every retained slot and draft."}</div>` : ""}${stale ? `<div class="notice"><strong>Changed since you opened this decision</strong><br>${esc(p.resolution.actor)} chose ${esc(p.resolution.action)}. The result below is historical; your original draft remains bound to revision ${draft.revision}.</div>` : ""}<article class="result"><header><h3>${stale ? "Historical result" : "Recorded result"} · Revision ${p.revision}</h3><small>${esc(p.record)}</small></header><p class="copy">${esc(p.summary)}</p><ul>${p.points.map((text) => `<li>${esc(text)}</li>`).join("")}</ul><p class="muted">${esc(p.evidence)}</p><p class="source">Source: ${esc(p.project)} / ${esc(p.record)} / revision ${p.revision}. This boundary does not change when you navigate.</p></article><section class="action-form" aria-label="Individual action"><h3>${stale ? "Your preserved decision draft" : p.available ? "Your decision" : "Decision receipt"}</h3><p>${stale ? "Submission is unavailable. Keep this text for copying or a later conversation." : p.available ? "Review this process’s result before choosing its next action." : "The submitted decision stays visible until you finish this slot."}</p>${p.resolution ? `<div class="receipt"><strong>${esc(p.resolution.action)} · ${esc(p.resolution.actor)}</strong><p>Reviewed revision ${p.resolution.revision}. ${esc(p.resolution.next)}</p>${p.resolution.note ? `<p>Recorded note: ${esc(p.resolution.note)}</p>` : ""}</div>` : ""}${`<div class="field"><label for="choice">${p.available ? "Action for this process" : "Retained action drafts"}</label><select id="choice">${p.actions.map((option) => `<option value="${option.id}" ${a.id === option.id ? "selected" : ""}>${esc(option.label)}</option>`).join("")}</select></div><div class="field"><label for="draft">${esc(a.field)}</label><textarea id="draft" ${!p.available ? "readonly" : ""} placeholder="${a.required ? "Add the text this action requires" : "Add context if it helps"}">${esc(draft.text)}</textarea><small class="draft-label">${!p.available ? "Draft retained for reference" : "Draft kept in this tab"} · ${esc(p.name)} · ${esc(a.label)} · revision ${draft.revision}</small></div>${p.available ? `<label class="check"><input id="reviewed" type="checkbox" ${state.reviewed[id] === p.liveRevision ? "checked" : ""}>I reviewed the result at revision ${p.revision} for this decision.</label><p class="preview"><strong>After submission:</strong> ${esc(a.next)}</p>` : ""}<div class="row actions">${button(!p.available ? "Check prepared decision" : a.label, "submit", 'class="primary"')}${!p.available ? button("Select draft to copy", "copy") : ""}</div>`}</section><nav class="round-nav" aria-label="Round navigation"><div class="row">${button("Done and next", "done")}${button("Leave for later", "later")}${button("Next process", "next")}</div><p>Done acknowledges this slot. Later keeps it open. Neither submits a decision.</p></nav><section class="simulator"><h3>Fixture controls</h3><p>Simulate changes from outside this tab. These controls never call a real service.</p><div class="row">${button("Simulate new arrival", "arrival", state.arrivalSent ? "disabled" : "")}${button("Simulate colleague resolving this", "colleague", p.available ? "" : "disabled")}</div></section>`;
+	restoreFocus();
+}
+document.addEventListener("click", (event) => {
+	const control = event.target.closest("[data-command]");
+	if (!control) return;
+	const command = control.dataset.command;
+	if (command === "free") {
+		scenario = -1;
+		step = 0;
+		render();
+		return;
+	}
+	if (command.startsWith("scenario:") || command === "replay") {
+		if (command !== "replay") scenario = Number(command.split(":")[1]);
+		step = 0;
+		state = initial();
+		render();
+		return;
+	}
+	if (command === "step") {
+		const guide = scenarios[scenario].steps[step];
+		state = transition(state, guide.event);
+		if (state.lastEvent === guide.expected) step += 1;
+		render();
+		return;
+	}
+	if (command === "copy") {
+		const field = $("draft");
+		field.focus();
+		field.select();
+		return;
+	}
+	if (command.startsWith("select:")) {
+		dispatch({ type: "select", id: command.split(":")[1] });
+		if (matchMedia("(max-width:760px)").matches) $("itinerary-details").open = false;
+		return;
+	}
+	dispatch({ type: command });
+});
+document.addEventListener("input", (event) => {
+	if (event.target.id === "draft")
+		state = transition(state, { type: "draft", value: event.target.value });
+});
+document.addEventListener("change", (event) => {
+	if (event.target.id === "choice") dispatch({ type: "choose", value: event.target.value });
+	if (event.target.id === "reviewed") dispatch({ type: "review", value: event.target.checked });
+});
+$("reset").addEventListener("click", () => {
+	state = initial();
+	scenario = -1;
+	step = 0;
+	render();
+});
+if (matchMedia("(max-width:760px)").matches) $("itinerary-details").open = false;
+matchMedia("(max-width:760px)").addEventListener("change", (event) => {
+	$("itinerary-details").open = !event.matches;
+});
+render();
+</script>
+</body>
+</html>
