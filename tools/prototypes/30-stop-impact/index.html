@@ -37,7 +37,7 @@ const StopImpact = (() => {
  ]});
  const capture = s => ({sequence:s.sequence,turnRecordId:s.turnRecordId,effects:structuredClone(s.effects)});
  const result = (state,ok=true,code="ok") => ({state,ok,code});
- function reduce(state,action) {
+ function reduce(state,action,expectedKind) {
   if(action==="reset")return result(initial());
   const s=structuredClone(state);s.error=null;
   const refuse=(code,message)=>{s.error={code,message};s.message=`Action refused: ${message}`;return result(s,false,code);};
@@ -65,6 +65,7 @@ const StopImpact = (() => {
   }else if(action==="request"){
    if(!s.preview)return refuse("no_review","Choose an intervention first.");
    const kind=s.preview.kind;
+   if(expectedKind&&kind!==expectedKind)return refuse("review_mismatch",`This guided step requires a ${expectedKind==="stop"?"turn stop":"process abort"} review. Open that review and try this step again. No intervention was requested; your note is retained.`);
    const accepted=capture(s);
    if(kind==="stop"){
     if(!s.supervisor)return refuse("worker_supervisor_unavailable","Worker supervisor is not available.");
@@ -92,20 +93,18 @@ const StopImpact = (() => {
  return {initial,reduce};
 })();
 const scenarios={
- stop:{title:"Stop, then wait for confirmation",description:"Interrupt the active LLM turn, then distinguish an accepted request from the worker's final report.",steps:[{action:"review-stop",label:"Review this turn's impact",expect:"ok"},{action:"request",label:"Request stop this turn",expect:"ok"},{action:"ack",label:"Receive worker confirmation",expect:"ok"}],learning:"Turn stop parks the failed turn for recovery only after confirmation. The published branch remains; the write can still be uncertain."},
- race:{title:"A write commits during review",description:"Keep the review open while the provider reports a committed write. The acceptance receipt must name that newer evidence.",steps:[{action:"review-abort",label:"Review abort process",expect:"ok"},{action:"commit",label:"Receive provider commitment",expect:"ok"},{action:"request",label:"Confirm abort with latest evidence",expect:"ok"}],learning:"The receipt preserves both boundaries: what was reviewed and what was known at acceptance. Pull request #286 remains open; issue draft #109 continues."},
- refusal:{title:"Worker disappears before stop",description:"Open a review and write an optional note. Losing the worker must refuse the command without losing your draft.",steps:[{action:"review-stop",label:"Review stop this turn",expect:"ok"},{action:"lose-worker",label:"Make the worker unavailable",expect:"ok"},{action:"request",label:"Try stop and inspect refusal",expect:"worker_unavailable"}],learning:"The current command is refused as worker_unavailable. The process stays active and the note survives. Restore the connection or review abort process."}
+ stop:{title:"Stop, then wait for confirmation",description:"Interrupt the active LLM turn, then distinguish an accepted request from the worker's final report.",steps:[{action:"review-stop",label:"Review this turn's impact",expect:"ok"},{action:"request",kind:"stop",label:"Request stop this turn",expect:"ok",reached:s=>s.receipt?.kind==="stop"&&s.stopRequested&&s.lifecycle==="active"},{action:"ack",label:"Receive worker confirmation",expect:"ok"}],learning:"Turn stop parks the failed turn for recovery only after confirmation. The published branch remains; the write can still be uncertain."},
+ race:{title:"A write commits during review",description:"Keep the review open while the provider reports a committed write. The acceptance receipt must name that newer evidence.",steps:[{action:"review-abort",label:"Review abort process",expect:"ok"},{action:"commit",label:"Receive provider commitment",expect:"ok"},{action:"request",kind:"abort",label:"Confirm abort with latest evidence",expect:"ok",reached:s=>s.receipt?.kind==="abort"&&s.lifecycle==="aborted"}],learning:"The receipt preserves both boundaries: what was reviewed and what was known at acceptance. Pull request #286 remains open; issue draft #109 continues."},
+ refusal:{title:"Worker disappears before stop",description:"Open a review and write an optional note. Losing the worker must refuse the command without losing your draft.",steps:[{action:"review-stop",label:"Review stop this turn",expect:"ok"},{action:"lose-worker",label:"Make the worker unavailable",expect:"ok"},{action:"request",kind:"stop",label:"Try stop and inspect refusal",expect:"worker_unavailable",reached:s=>s.preview?.kind==="stop"&&!s.stopRequested&&s.lifecycle==="active"}],learning:"The current command is refused as worker_unavailable. The process stays active and the note survives. Restore the connection or review abort process."}
 };
 let state=StopImpact.initial();
 const $=id=>document.getElementById(id);
 const escapeHtml=value=>String(value).replace(/[&<>"']/g,char=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[char]));
 const labels={committed:"Committed",unknown:"Uncertain write",pending:"Open approval",cancelled:"Approval cancelled",independent:"Independent process"};
-function dispatch(action){
- const before=state;const outcome=StopImpact.reduce(state,action);state=outcome.state;
- if(before.guide&&action!=="reset"){
-  const step=scenarios[before.guide].steps[before.step];
-  if(step&&step.action===action&&step.expect===outcome.code)state.step=before.step+1;
- }
+function dispatch(action,guided=false){
+ const before=state;const step=before.guide?scenarios[before.guide].steps[before.step]:null;
+ const outcome=StopImpact.reduce(state,action,guided?step?.kind:undefined);state=outcome.state;
+ if(step&&step.action===action&&step.expect===outcome.code&&(!step.reached||step.reached(state)))state.step=before.step+1;
  render();
 }
 function render(){
@@ -131,7 +130,7 @@ function render(){
  $("fixture-worker").disabled=!s.worker;$("fixture-supervisor").disabled=!s.supervisor;
  $("fixture-finish").disabled=s.lifecycle==="completed"||s.lifecycle==="aborted";
 }
-document.addEventListener("click",event=>{const button=event.target.closest("button");if(!button||button.disabled)return;if(button.dataset.scenario){state=StopImpact.initial();state.guide=button.dataset.scenario;state.message="Guided fixture loaded. Use the next step or the matching free-play action.";render();}else if(button.dataset.action)dispatch(button.dataset.action);});
+document.addEventListener("click",event=>{const button=event.target.closest("button");if(!button||button.disabled)return;if(button.dataset.scenario){state=StopImpact.initial();state.guide=button.dataset.scenario;state.message="Guided fixture loaded. Use the next step or the matching free-play action.";render();}else if(button.dataset.action)dispatch(button.dataset.action,button.id==="guide-next");});
 document.addEventListener("input",event=>{if(event.target.id==="note")state={...state,note:event.target.value};});
 render();
 </script>

@@ -18,7 +18,7 @@ The three guided tabs reset the fixture and start a fresh draft:
 2. **A write commits during review:** open an abort review at evidence 18, receive the pull-request commitment at evidence 19, then confirm abort. The frozen review stays visibly stale. The receipt retains both boundaries and names pull request #286 as committed at acceptance. The independent issue draft continues.
 3. **Worker disappears before stop:** open a stop review, optionally type a note, make the worker unavailable, then try stopping. The command is refused with `worker_unavailable`, the process stays active, and the draft remains. Restore the connection or review process abort to continue free play.
 
-Each guided step advances only on its expected success or exact expected refusal. Free-play fixture buttons can also restore the worker, remove the supervisor, complete the process elsewhere, deliver a late write, and confirm an accepted interruption. Reset starts over. These are explicitly simulated outside events, not commands sent to any service.
+Each guided request is bound to its named intervention. Switching the free-play review to a different intervention refuses the guided request without changing the lifecycle or losing the review and note. A step advances only when its expected receipt and lifecycle are present, or its exact expected refusal is observed for the intended intervention. Free-play fixture buttons can also restore the worker, remove the supervisor, complete the process elsewhere, deliver a late write, and confirm an accepted interruption. Reset starts over. These are explicitly simulated outside events, not commands sent to any service.
 
 ## Existing integration seams
 
@@ -47,6 +47,7 @@ The existing turn-stop input does not carry the prototype's review sequence or n
 - Biome checked the standalone HTML with no findings after the final fixes. All buttons, including generated markup, declare `type="button"`.
 - Every inline script was extracted and passed `node --check`; `git diff --check` passed.
 - Agent Browser exercised all three guided cases with real clicks and typing. The stop case stayed active at acceptance and reached `error` only on confirmation. The race case retained review 18 and accepted evidence 19 with the newly committed pull request. The refusal case preserved its note and stayed active.
+- The finish-review fix was checked with real browser clicks: a guided stop refused an abort review, a guided abort refused a stop review, and the worker-loss guide refused the wrong review. Drafts and guide positions survived; correcting the review allowed progress. A separately confirmed free-play abort did not satisfy the stop guide. All three normal guides completed again.
 - Free play confirmed a successful stop and acknowledgement, then delivered a late write: the live inventory changed to two committed effects while the acceptance snapshot retained its original uncertain write.
 - Additional checks observed `invalid_transition` after external completion and `worker_supervisor_unavailable` taking precedence when the supervisor was also absent. Restoration preserved both the draft and stale-review warning.
 - Desktop 1440px and mobile 390px screenshots were captured and visually opened. The 390px document and body widths were both 390px. No browser errors were reported.
