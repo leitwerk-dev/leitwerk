@@ -46,13 +46,13 @@ const FeedbackModel = (() => {
  function hash(text){let n=2166136261;for(const c of text){n=Math.imul(n^c.charCodeAt(0),16777619);}return `fixture-${(n>>>0).toString(16)}`;}
  function source(rev,blocks){return {rev,record:`plan-result-${rev}`,blocks:structuredClone(blocks),hash:hash(JSON.stringify(blocks))};}
  function initial(){return {source:source(1,original),lifecycle:"waiting",selectedTurn:"plan_decision",draft:null,requests:[],batch:null,summary:"",nextId:1,inspected:null,reviewNotes:{},notice:"",error:false,events:[]};}
- function result(state,ok,message){return {...state,notice:message,error:!ok,events:[...state.events,message].slice(-12),lastAccepted:ok};}
+ function result(state,ok,message,refusalReason=null){return {...state,notice:message,error:!ok,events:[...state.events,message].slice(-12),lastAccepted:ok,refusalReason};}
  function reduce(current,action){
   const s=structuredClone(current);
-  const fail=(message)=>result(s,false,message);
-  if(action.type==="draftText"){if(s.draft)s.draft.text=action.text;return {...s,lastAccepted:true};}
-  if(action.type==="summary"){s.summary=action.text;return {...s,lastAccepted:true};}
-  if(action.type==="reviewNote"){s.reviewNotes[action.id]=action.text;return {...s,lastAccepted:true};}
+  const fail=(message,reason="action_unavailable")=>result(s,false,message,reason);
+  if(action.type==="draftText"){if(s.draft)s.draft.text=action.text;return {...s,lastAccepted:true,refusalReason:null};}
+  if(action.type==="summary"){s.summary=action.text;return {...s,lastAccepted:true,refusalReason:null};}
+  if(action.type==="reviewNote"){s.reviewNotes[action.id]=action.text;return {...s,lastAccepted:true,refusalReason:null};}
   if(action.type==="select"){
    if(s.lifecycle!=="waiting"||s.batch)return fail("Finish reviewing this revision cycle, or reset to collect a new batch.");
    if(s.draft?.text.trim())return fail("Your unsaved request is retained. Add it to the revision before choosing another passage.");
@@ -83,8 +83,8 @@ const FeedbackModel = (() => {
   if(action.type==="send"){
    if(s.batch||s.lifecycle!=="waiting")return fail("Request revision is unavailable while this revision is pending. The existing batch is retained.");
    if(s.draft?.text.trim())return fail("Add your unsaved passage request before sending. Its text is retained.");
-   if(!s.requests.length)return fail("Collect at least one passage request before requesting revision.");
-   if(s.requests.some(r=>r.record!==s.source.record||r.hash!==s.source.hash))return fail("Revision refused: a request targets an older result. Review and rebind each stale quote; all notes are retained.");
+   if(!s.requests.length)return fail("Collect at least one passage request before requesting revision.","no_requests");
+   if(s.requests.some(r=>r.record!==s.source.record||r.hash!==s.source.hash))return fail("Revision refused: a request targets an older result. Review and rebind each stale quote; all notes are retained.","stale_source");
    s.batch={id:"revision-batch-1",sourceRecord:s.source.record,sourceHash:s.source.hash,requestIds:s.requests.map(r=>r.id),message:s.summary};
    s.requests=s.requests.map(r=>({...r,status:"submitted"}));s.draft=null;s.lifecycle="running";s.selectedTurn="generate_plan";
    return result(s,true,`${s.requests.length} passage request${s.requests.length===1?"":"s"} sent together through Request revision. Waiting for a revised result.`);
@@ -108,10 +108,10 @@ const FeedbackModel = (() => {
   }
   if(action.type==="resolve"){
    const r=s.requests.find(r=>r.id===action.id);
-   if(!r||r.status!=="unresolved")return fail("Only an unresolved request from a received result can be verified or waived.");
-   if(s.inspected?.id!==r.id||s.inspected.record!==s.source.record)return fail("Inspect this request against the current result before resolving it.");
+   if(!r||r.status!=="unresolved")return fail("Only an unresolved request from a received result can be verified or waived.","request_not_unresolved");
+   if(s.inspected?.id!==r.id||s.inspected.record!==s.source.record)return fail("Inspect this request against the current result before resolving it.","inspection_required");
    const note=(s.reviewNotes[r.id]||"").trim();
-   if((action.resolution==="waived"||r.mapping==="unmapped")&&!note)return fail("Record your reason or verification evidence first. The request stays unresolved.");
+   if((action.resolution==="waived"||r.mapping==="unmapped")&&!note)return fail("Record your reason or verification evidence first. The request stays unresolved.","missing_review_evidence");
    r.status=action.resolution;r.resolution={operator:"You",record:s.source.record,note};
    return result(s,true,action.resolution==="waived"?"Request waived by you with a reason. The plan still awaits its separate decision.":"Request marked addressed by you. The plan still awaits its separate decision.");
   }
@@ -141,14 +141,14 @@ const scenarios={
   {label:"Request revision",actions:[{type:"send"}]},
   {label:"Receive a result without recovery",actions:[{type:"receive",missing:true}]},
   {label:"Inspect the unmapped request",actions:[{type:"inspect",id:1}]},
-  {label:"Try to verify without evidence",actions:[{type:"resolve",id:1,resolution:"addressed"}],refused:true},
+  {label:"Try to verify without evidence",actions:[{type:"resolve",id:1,resolution:"addressed"}],refusal:{reason:"missing_review_evidence",matches:s=>s.requests.some(r=>r.id===1&&r.status==="unresolved"&&r.mapping==="unmapped"&&r.evidenceRecord===s.source.record)&&s.inspected?.id===1&&s.inspected.record===s.source.record&&!(s.reviewNotes[1]||"").trim()}},
   {label:"Record why this request is waived",actions:[{type:"reviewNote",id:1,text:"The rollout is deferred; recovery must be reviewed before a future rollout."}]},
   {label:"Waive explicitly, retaining the quote",actions:[{type:"resolve",id:1,resolution:"waived"}]}
  ]},
  stale:{title:"A stale draft is refused",description:"An unrelated source update must preserve your notes and refuse a revision bound to an older result.",steps:[
   {label:"Collect a rollout correction",actions:[{type:"select",id:"scope"},{type:"draftText",text:"Use a canary rollout before replacing the primary database."},{type:"collect"},{type:"summary",text:"Keep all corrections together in one revision."}]},
   {label:"Simulate a newer result",actions:[{type:"newer"}]},
-  {label:"Try to send the stale revision",actions:[{type:"send"}],refused:true},
+  {label:"Try to send the stale revision",actions:[{type:"send"}],refusal:{reason:"stale_source",matches:s=>s.lifecycle==="waiting"&&!s.batch&&s.requests.some(r=>r.id===1&&r.status==="draft"&&(r.record!==s.source.record||r.hash!==s.source.hash))}},
   {label:"Confirm and rebind the unchanged quote",actions:[{type:"rebind",id:1}]},
   {label:"Send the retained revision",actions:[{type:"send"}]}
  ]}
@@ -194,7 +194,7 @@ function renderGuide(){
  if(!guide){$("guide").innerHTML="<p class=\"muted\">Choose a walkthrough, or use the result and revision form freely.</p>";return;}
  const scenario=scenarios[guide.id],step=scenario.steps[guide.index];
  $("guide").innerHTML=`<h3>${scenario.title}</h3><p class="muted">${scenario.description}</p><ol class="guide-steps">${scenario.steps.map((s,i)=>`<li>${esc(s.label)}${i<guide.index?" — observed":i===guide.index?" — next":""}</li>`).join("")}</ol>${step?`<button type="button" class="primary" id="guide-next">${esc(step.label)}</button>`:`<p><strong>Walkthrough complete.</strong> ${guide.id==="happy"?"Both requests were verified by you. The plan decision remains pending.":guide.id==="missing"?"The missing passage stayed unresolved until you explicitly waived it.":"The stale submission was refused; the same notes were sent after explicit rebinding."}</p>`}`;
- if(step)$("guide-next").onclick=()=>{let succeeded=true;for(const action of step.actions){state=FeedbackModel.reduce(state,action);if(state.lastAccepted===!!step.refused){succeeded=false;break;}}if(succeeded)guide.index++;render();};
+ if(step)$("guide-next").onclick=()=>{let succeeded=true;for(const action of step.actions){state=FeedbackModel.reduce(state,action);const expected=step.refusal?state.lastAccepted===false&&state.refusalReason===step.refusal.reason&&step.refusal.matches(state):state.lastAccepted===true;if(!expected){succeeded=false;break;}}if(succeeded)guide.index++;render();};
 }
 $("reset").onclick=()=>{state=FeedbackModel.initial();guide=null;render();};
 $("receive").onclick=()=>dispatch({type:"receive"});

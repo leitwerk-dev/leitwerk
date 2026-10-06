@@ -29,7 +29,7 @@ This adds precise feedback and verification across the actual revision loop to t
 2. **A section disappears:** request a backup correction and receive a result without recovery. Inspect the unmapped request; an attempt to verify without evidence is refused. Record a reason and explicitly waive it. The original quote remains visible.
 3. **A stale draft is refused:** collect a rollout correction and batch notes, simulate a newer source record, and try to send. The refusal retains all notes. Confirm the unchanged quote, rebind it, and send the retained revision.
 
-Each step uses the same reducer as free play. A walkthrough advances only after its action succeeds or its expected refusal is observed.
+Each step uses the same reducer as free play. A walkthrough advances only after its action succeeds or its exact expected refusal and required request state are observed. An empty collection, an already-resolved request, or inspection of another request cannot stand in for the stale-source or missing-evidence refusal.
 
 ## Existing seams and proposed additions
 
@@ -52,6 +52,7 @@ A production implementation needs an explicit durable migration and server-owned
 
 - Biome check passed for the standalone HTML; both inline scripts were extracted together and passed `node --check`. `git diff --check` passed.
 - All three guided walkthroughs completed through real browser clicks. State observations confirmed submitted batch membership, unresolved status on receipt, explicit resolutions, and preservation of notes after stale refusal.
+- A focused review-fix browser pass confirmed that no-requests, already-resolved, and wrong-target inspection refusals leave their guided step unchanged. The intended stale-source and missing-evidence refusals advance the correct step; typed notes remain intact. Both screenshots were refreshed and opened after this fix.
 - Free play exercised native text selection, heading and file-reference selection, typed corrections, batch notes, empty submission refusal, unsaved-draft preservation when another passage was selected, stale-draft refusal and rebinding, and two-request submission and verification.
 - Review notes survived inspecting another request. An unmapped waiver without a reason was refused; the original quote remained unresolved. A later explicit mobile waiver kept `plan_decision / waiting`.
 - Desktop at 1440px and mobile at 390px were captured together and both PNGs opened for visual inspection. Mobile had no horizontal overflow and no buttons below 44px height. The browser reported no page errors.
