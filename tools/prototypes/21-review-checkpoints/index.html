@@ -1,0 +1,1005 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width,initial-scale=1">
+		<title>Since my last review · Leitwerk prototype</title>
+		<style>
+		:root {
+			font-family: "Public Sans", ui-sans-serif, system-ui, sans-serif;
+			color: #18212b;
+			background: #fff;
+			font-synthesis: none;
+			line-height: 1.5;
+			--muted: #4c5968;
+			--line: #d9dee5;
+			--blue: #2f61b7;
+			--soft: #f2f4f7;
+		}
+		* {
+			box-sizing: border-box;
+		}
+		body {
+			margin: 0;
+		}
+		button,
+		input,
+		textarea {
+			font: inherit;
+		}
+		button {
+			min-height: 44px;
+			padding: 9px 16px;
+			border: 1px solid var(--line);
+			border-radius: 999px;
+			background: #fff;
+			color: inherit;
+			font-weight: 600;
+			cursor: pointer;
+		}
+		button:hover {
+			border-color: var(--blue);
+			background: #f5f7fb;
+		}
+		button:disabled {
+			opacity: 0.55;
+			cursor: default;
+		}
+		button.primary {
+			background: #18212b;
+			color: white;
+			border-color: #18212b;
+		}
+		button.primary:hover {
+			background: #2f3e4d;
+		}
+		button:focus-visible,
+		a:focus-visible,
+		textarea:focus-visible,
+		input:focus-visible {
+			outline: 3px solid var(--blue);
+			outline-offset: 3px;
+		}
+		a {
+			color: var(--blue);
+			text-underline-offset: 3px;
+		}
+		::selection {
+			background: #e6ecf6;
+		}
+		textarea {
+			caret-color: var(--blue);
+		}
+		header {
+			background: #f7f8fa;
+			border-bottom: 1px solid var(--line);
+			padding: 18px 40px;
+			display: flex;
+			align-items: center;
+			gap: 24px;
+		}
+		.brand {
+			font-size: 20px;
+			font-weight: 750;
+		}
+		.header-context {
+			color: var(--muted);
+			font-size: 14px;
+		}
+		.identity {
+			margin-left: auto;
+			color: var(--muted);
+			font-size: 14px;
+		}
+		main {
+			max-width: 1360px;
+			margin: auto;
+			padding: 34px 40px 48px;
+		}
+		h1 {
+			font-size: 30px;
+			letter-spacing: -0.025em;
+			line-height: 1.2;
+			margin: 0 0 12px;
+		}
+		h2 {
+			font-size: 20px;
+			line-height: 1.3;
+			margin: 0 0 10px;
+		}
+		h3 {
+			font-size: 17px;
+			margin: 0 0 8px;
+		}
+		p {
+			margin: 0 0 14px;
+			max-width: 72ch;
+		}
+		.intro {
+			color: var(--muted);
+			font-size: 15px;
+		}
+		.proposal {
+			font-size: 14px;
+			color: var(--muted);
+		}
+		.process {
+			display: flex;
+			justify-content: space-between;
+			gap: 20px;
+			margin-top: 28px;
+			padding: 20px 0;
+			border-top: 1px solid var(--line);
+			border-bottom: 1px solid var(--line);
+		}
+		.process h2 {
+			margin-bottom: 4px;
+		}
+		.meta {
+			color: var(--muted);
+			font-size: 14px;
+		}
+		.meta p {
+			margin: 0;
+		}
+		.process-status {
+			text-align: right;
+			font-size: 14px;
+		}
+		.review-state {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 22px;
+			padding: 20px 0;
+		}
+		.review-state p {
+			margin: 0;
+		}
+		.boundary {
+			font-variant-numeric: tabular-nums;
+		}
+		.subtle {
+			font-size: 13px;
+			color: var(--muted);
+		}
+		.arrival {
+			background: #e6ecf6;
+			padding: 16px 20px;
+			border-radius: 10px;
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 18px;
+			margin-bottom: 20px;
+		}
+		.arrival p {
+			margin: 0;
+			color: #263f65;
+		}
+		.work {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+			border-top: 1px solid var(--line);
+			border-bottom: 1px solid var(--line);
+			min-height: 485px;
+		}
+		.changes {
+			padding: 24px 28px 24px 0;
+		}
+		.evidence {
+			background: #f8fafc;
+			border-left: 1px solid var(--line);
+			padding: 24px 28px;
+			min-width: 0;
+			scroll-margin: 20px;
+		}
+		.changes ol {
+			padding: 0;
+			margin: 16px 0;
+			list-style: none;
+		}
+		.change {
+			border-top: 1px solid var(--line);
+		}
+		.change:last-child {
+			border-bottom: 1px solid var(--line);
+		}
+		.change-button {
+			display: block;
+			width: 100%;
+			border: 0;
+			border-radius: 0;
+			text-align: left;
+			padding: 16px 12px;
+			min-height: 85px;
+			font-weight: 400;
+		}
+		.change-button[aria-pressed="true"] {
+			background: #e6ecf6;
+		}
+		.change-top {
+			display: flex;
+			justify-content: space-between;
+			align-items: baseline;
+			gap: 14px;
+			color: var(--muted);
+			font-size: 13px;
+		}
+		.change-title {
+			display: block;
+			font-size: 15px;
+			font-weight: 650;
+			margin: 4px 0;
+		}
+		.change-foot {
+			color: var(--muted);
+			font-size: 13px;
+		}
+		.opened {
+			color: #285580;
+		}
+		.empty {
+			padding: 30px 0;
+			color: var(--muted);
+		}
+		.evidence-header {
+			border-bottom: 1px solid var(--line);
+			padding-bottom: 16px;
+			margin-bottom: 22px;
+		}
+		.evidence-header p {
+			margin: 0 0 6px;
+		}
+		.evidence h3 {
+			font-size: 22px;
+			letter-spacing: -0.015em;
+		}
+		.evidence-body {
+			font-size: 16px;
+			line-height: 1.65;
+		}
+		.evidence-body ul {
+			padding-left: 22px;
+		}
+		.evidence-body blockquote {
+			margin: 14px 0;
+			padding: 16px;
+			background: #e6ecf6;
+			border-radius: 6px;
+			color: #263f65;
+		}
+		.context-line {
+			padding: 13px 0;
+			border-top: 1px solid var(--line);
+			font-size: 14px;
+			color: var(--muted);
+			margin-top: 22px;
+		}
+		.source {
+			font-size: 13px;
+			overflow-wrap: anywhere;
+			color: var(--muted);
+		}
+		.warning {
+			padding: 16px;
+			background: #faf2e5;
+			color: #754911;
+			border: 1px solid #d8bb8b;
+			border-radius: 10px;
+		}
+		.warning p:last-child {
+			margin-bottom: 0;
+		}
+		.danger {
+			color: #7d2d27;
+		}
+		.gap-label {
+			display: flex;
+			gap: 10px;
+			align-items: flex-start;
+			font-size: 14px;
+			margin: 16px 0;
+		}
+		.gap-label input {
+			width: 20px;
+			height: 20px;
+			flex: none;
+			margin-top: 1px;
+			accent-color: var(--blue);
+		}
+		.old-concern {
+			font-size: 14px;
+			color: var(--muted);
+			padding-top: 14px;
+		}
+		.old-concern strong {
+			color: #18212b;
+			display: block;
+		}
+		.acknowledge {
+			display: grid;
+			grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+			gap: 28px;
+			padding: 24px 0;
+		}
+		.acknowledge label {
+			display: block;
+			font-size: 14px;
+			font-weight: 600;
+			margin-bottom: 8px;
+		}
+		textarea {
+			display: block;
+			resize: vertical;
+			width: 100%;
+			min-height: 90px;
+			border: 1px solid #aeb7c2;
+			border-radius: 10px;
+			padding: 12px;
+			background: #fff;
+			color: #18212b;
+		}
+		textarea::placeholder {
+			color: #596777;
+		}
+		.mark-area {
+			padding-left: 28px;
+		}
+		.mark-area p {
+			font-size: 14px;
+			color: var(--muted);
+			margin-bottom: 12px;
+		}
+		.notice {
+			min-height: 46px;
+			padding: 12px 16px;
+			background: #f2f4f7;
+			border-radius: 8px;
+			font-size: 14px;
+			margin-bottom: 22px;
+		}
+		.notice.error {
+			background: #fbefee;
+			color: #7d2d27;
+		}
+		.receipt {
+			border-top: 1px solid var(--line);
+			padding: 18px 0;
+		}
+		.receipt p {
+			font-size: 14px;
+			margin: 4px 0;
+			overflow-wrap: anywhere;
+		}
+		.lab {
+			border-top: 1px solid var(--line);
+			margin-top: 12px;
+			padding-top: 22px;
+		}
+		.lab-head {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			gap: 16px;
+		}
+		.lab-head p {
+			margin: 3px 0 18px;
+			font-size: 14px;
+			color: var(--muted);
+		}
+		.controls {
+			display: flex;
+			gap: 8px;
+			flex-wrap: wrap;
+		}
+		.controls button {
+			font-size: 14px;
+		}
+		.scenarios {
+			margin-top: 24px;
+			padding-top: 22px;
+			border-top: 1px solid var(--line);
+		}
+		.scenario-tabs {
+			display: flex;
+			gap: 8px;
+			flex-wrap: wrap;
+			margin: 12px 0;
+		}
+		.scenario-tabs button[aria-pressed="true"] {
+			background: #e6ecf6;
+			border-color: var(--blue);
+		}
+		.walkthrough {
+			background: #f7f8fa;
+			border: 1px solid var(--line);
+			padding: 18px 20px;
+			border-radius: 10px;
+			display: flex;
+			justify-content: space-between;
+			gap: 22px;
+			align-items: center;
+		}
+		.walkthrough p {
+			margin: 4px 0;
+			font-size: 14px;
+			color: var(--muted);
+		}
+		.walkthrough button {
+			flex: none;
+			max-width: 320px;
+		}
+		.footnote {
+			margin-top: 24px;
+			font-size: 13px;
+			color: var(--muted);
+		}
+		[hidden] {
+			display: none;
+		}
+		@media (max-width: 800px) {
+			header {
+				padding: 16px 20px;
+				gap: 16px;
+			}
+			.header-context {
+				display: none;
+			}
+			main {
+				padding: 28px 20px;
+			}
+			.work {
+				grid-template-columns: 1fr;
+			}
+			.changes {
+				padding: 20px 0;
+			}
+			.evidence {
+				border-left: 0;
+				border-top: 1px solid var(--line);
+				padding: 24px 20px;
+			}
+			.acknowledge {
+				grid-template-columns: 1fr;
+				gap: 18px;
+			}
+			.mark-area {
+				padding: 0;
+			}
+			.walkthrough {
+				align-items: flex-start;
+				flex-direction: column;
+			}
+			.walkthrough button {
+				max-width: 100%;
+			}
+			.review-state {
+				align-items: flex-start;
+			}
+			.arrival {
+				align-items: flex-start;
+				flex-direction: column;
+			}
+			.process {
+				flex-direction: column;
+				gap: 10px;
+			}
+			.process-status {
+				text-align: left;
+			}
+			.lab-head {
+				align-items: flex-start;
+			}
+			h1 {
+				font-size: 27px;
+			}
+			.change-top {
+				gap: 8px;
+			}
+			.identity {
+				font-size: 13px;
+			}
+			.boundary {
+				font-size: 14px;
+			}
+		}
+		</style>
+	</head>
+	<body>
+		<header>
+			<span class="brand">Leitwerk</span
+			><span class="header-context">Operator experiments / Review checkpoints</span
+			><span class="identity">Personal view · Alex Morgan</span>
+		</header>
+		<main>
+			<h1>Since my last review</h1>
+			<p class="intro">Return to the changes, without losing sight of what is still unresolved.</p>
+			<p class="proposal">
+				Future proposal · Synthetic evidence, held in memory in this tab. Can a captured review
+				boundary distinguish new evidence from old concerns?
+			</p>
+			<section class="process" aria-label="Current process">
+				<div>
+					<h2>Staging verification</h2>
+					<div class="meta">Repository change · release-sample · Process P-214</div>
+				</div>
+				<div class="process-status">
+					<strong>Active · Verify changes</strong><br>Current question awaits an answer in the
+					Chronicle
+				</div>
+			</section>
+			<section class="review-state" aria-label="Personal review state">
+				<div>
+					<p><strong id="marker"></strong></p>
+					<p class="subtle">Opening a change does not mark it reviewed.</p>
+				</div>
+				<p id="boundary" class="boundary"></p>
+			</section>
+			<div id="arrival" class="arrival" hidden></div>
+			<div class="work">
+				<section class="changes" aria-labelledby="changes-title">
+					<h2 id="changes-title">Changes in this review</h2>
+					<p id="counts" class="meta"></p>
+					<ol id="change-list"></ol>
+					<div id="retention"></div>
+					<div class="old-concern">
+						<strong>Still unresolved · already present at your last review</strong>Deployment
+						permission is unconfirmed. This concern was recorded before event 100; reviewing new
+						evidence does not resolve it.
+					</div>
+				</section>
+				<section
+					id="evidence"
+					class="evidence"
+					aria-label="Chronicle evidence"
+					tabindex="-1"
+				></section>
+			</div>
+			<section class="acknowledge" aria-label="Explicit review acknowledgement">
+				<div>
+					<label for="review-note">Personal review note (optional)</label
+					><textarea
+						id="review-note"
+						placeholder="Keep a reminder with this review receipt…"
+					></textarea>
+					<p class="subtle">This note is not sent to the process or the agent.</p>
+				</div>
+				<div class="mark-area">
+					<h3 id="mark-heading"></h3>
+					<p id="mark-explanation"></p>
+					<button type="button" class="primary" id="mark">Mark captured changes reviewed</button>
+				</div>
+			</section>
+			<div id="notice" class="notice" role="status" aria-live="polite"></div>
+			<section id="receipt" class="receipt" hidden aria-label="Latest review receipt"></section>
+			<section class="lab" aria-labelledby="lab-heading">
+				<div class="lab-head">
+					<div>
+						<h2 id="lab-heading">Try the model</h2>
+						<p>These controls simulate evidence arriving or becoming unavailable.</p>
+					</div>
+					<button type="button" id="reset">Reset demo</button>
+				</div>
+				<div class="controls">
+					<button type="button" id="arrive">Simulate a new result</button
+					><button type="button" id="capture">Capture latest changes</button
+					><button type="button" id="retain">Simulate retention gap</button
+					><button type="button" id="offline">Simulate save outage</button>
+				</div>
+			</section>
+			<section class="scenarios" aria-labelledby="scenario-heading">
+				<h2 id="scenario-heading">Guided walkthroughs</h2>
+				<div class="scenario-tabs" role="group" aria-label="Start a walkthrough">
+					<button type="button" data-scenario="0">1. Return after lunch</button
+					><button type="button" data-scenario="1">2. An arrival during review</button
+					><button type="button" data-scenario="2">3. Missing earlier evidence</button>
+				</div>
+				<div id="walkthrough" class="walkthrough"></div>
+			</section>
+			<p class="footnote">
+				Review checkpoints are operator metadata. Process state, answers, retries and approvals
+				remain separate business actions. This experiment does not persist across reloads or
+				devices.
+			</p>
+		</main>
+		<script>
+		// Pure model. All changes return a new state; no DOM or browser dependencies.
+		const ReviewModel = (() => {
+			const fixtures = [
+				{
+					seq: 101,
+					time: "12:04",
+					kind: "Result added",
+					title: "Revised verification plan",
+					execution: "Plan changes · attempt 1",
+					record: "turn-plan-1",
+					body: "The proposed verification now separates read-only checks from the staging smoke test.",
+					detail:
+						"Run the local suite first. Request explicit confirmation before using staging credentials. Deployment permission remains unconfirmed.",
+					type: "result",
+				},
+				{
+					seq: 104,
+					time: "12:09",
+					kind: "Decision recorded",
+					title: "Plan approved with staging condition",
+					execution: "Plan decision · operator action",
+					record: "turn-decision-1",
+					body: "Morgan approved the revised plan with a condition: use restricted credentials for staging checks.",
+					detail:
+						"This is a recorded decision on the plan. It does not grant deployment permission or answer a later question.",
+					type: "decision",
+				},
+				{
+					seq: 108,
+					time: "12:18",
+					kind: "Failure recorded",
+					title: "Verification attempt could not reach staging",
+					execution: "Verify changes · attempt 1",
+					record: "turn-verify-1",
+					body: "The staging connection timed out. The attempt ended with an error; the selected business turn remained Verify changes.",
+					detail:
+						"A retry was subsequently accepted as attempt 2. This historical failure stays visible; the current process is active in Verify changes.",
+					type: "failure",
+				},
+				{
+					seq: 112,
+					time: "12:26",
+					kind: "Question replaced",
+					title: "A more specific credential question",
+					execution: "Verify changes · attempt 2",
+					record: "turn-verify-2",
+					body: "May I use the restricted staging credentials for the smoke test?",
+					detail:
+						"The earlier question, “Can I run staging smoke tests?”, was replaced in the same execution. Only the current question can be answered in the real Chronicle.",
+					type: "question",
+				},
+			];
+			const initial = () => ({
+				events: fixtures.map((e) => ({ ...e, available: true })),
+				marker: 100,
+				captured: 112,
+				selected: null,
+				opened: [],
+				gapAccepted: false,
+				note: "",
+				receipt: null,
+				offline: false,
+				message: "Review the captured changes, then mark this boundary reviewed explicitly.",
+				tone: "normal",
+			});
+			const project = (state) => {
+				const changes = state.events.filter((e) => e.seq > state.marker && e.seq <= state.captured);
+				const missing = changes.filter((e) => !e.available);
+				const unread = changes.filter((e) => e.available && !state.opened.includes(e.seq));
+				return {
+					changes,
+					missing,
+					unread,
+					pending: state.events.filter((e) => e.seq > state.captured),
+					latest: Math.max(100, ...state.events.map((e) => e.seq)),
+				};
+			};
+			const reduce = (state, action) => {
+				const next = { ...state, tone: "normal" };
+				const p = project(state);
+				const refuse = (message, reason = "refused") => ({
+					state: { ...state, message, tone: "error" },
+					outcome: reason,
+				});
+				if (action.type === "note")
+					return { state: { ...state, note: action.value }, outcome: "saved-draft" };
+				if (action.type === "open") {
+					const event = state.events.find((e) => e.seq === action.seq);
+					if (!event || event.seq > state.captured)
+						return refuse("Capture the newer boundary before reviewing that arrival.");
+					next.selected = event.seq;
+					next.opened = event.available ? [...new Set([...state.opened, event.seq])] : state.opened;
+					next.message = event.available
+						? `Opened event ${event.seq} at its exact Chronicle execution. Your review marker is still ${state.marker}.`
+						: `Event ${event.seq} is unavailable. Its identity is retained; no replacement evidence has been substituted.`;
+				} else if (action.type === "arrive") {
+					const seq = p.latest + 6;
+					next.events = [
+						...state.events,
+						{
+							seq,
+							time: "12:32",
+							kind: "Result added",
+							title: `Staging access observation ${state.events.length - 3}`,
+							execution: "Verify changes · attempt 2",
+							record: "turn-verify-2",
+							type: "result",
+							available: true,
+							body: "A read-only access check reached the staging endpoint. Running the smoke test still needs the current question answered.",
+							detail:
+								"This arrival is new evidence, not a submitted answer or a deployment approval. The process remains active in Verify changes.",
+						},
+					];
+					next.message = `New evidence arrived at event ${seq}. This review remains captured through ${state.captured}.`;
+				} else if (action.type === "capture") {
+					next.captured = p.latest;
+					next.gapAccepted = false;
+					next.message = `Captured evidence through ${p.latest}. Your saved marker remains ${state.marker}; your note is preserved.`;
+				} else if (action.type === "retention") {
+					const target = p.changes.find((e) => e.available);
+					if (!target)
+						return refuse(
+							"There is no retained change in this review to remove. Capture new evidence or reset the demo.",
+						);
+					next.events = state.events.map((e) =>
+						e.seq === target.seq ? { ...e, available: false } : e,
+					);
+					next.opened = state.opened.filter((seq) => seq !== target.seq);
+					next.gapAccepted = false;
+					next.message = `Retention removed event ${target.seq}'s content. Its review row remains as an evidence gap.`;
+				} else if (action.type === "gap") {
+					next.gapAccepted = action.value;
+					next.message = action.value
+						? "The receipt will record the unavailable evidence explicitly. It will not claim you inspected its content."
+						: "The evidence gap still needs explicit acknowledgement.";
+				} else if (action.type === "offline") {
+					next.offline = !state.offline;
+					next.message = next.offline
+						? "Simulated save outage. Reading and drafting remain available; saving a review will be refused."
+						: "Simulated connection restored. Your note and opened evidence are preserved.";
+				} else if (action.type === "mark") {
+					if (state.offline)
+						return refuse(
+							"Review was not saved: the simulated server is unavailable. Restore saving and try again. Your note is preserved.",
+							"refused-offline",
+						);
+					if (!p.changes.length)
+						return refuse(
+							"No captured changes remain to mark. Capture newer evidence when it arrives.",
+						);
+					if (p.missing.length && !state.gapAccepted)
+						return refuse(
+							`Review was not saved: ${p.missing.length} evidence gap must be acknowledged. Your note is preserved.`,
+							"refused-gap",
+						);
+					if (p.unread.length)
+						return refuse(
+							`Review was not saved: open the ${p.unread.length} remaining retained change${p.unread.length === 1 ? "" : "s"} first. Your note is preserved.`,
+						);
+					next.marker = state.captured;
+					next.receipt = {
+						from: state.marker,
+						through: state.captured,
+						count: p.changes.length,
+						missing: p.missing.map((e) => e.seq),
+						note: state.note,
+					};
+					next.note = "";
+					next.message = `Reviewed through event ${state.captured}. ${p.pending.length} later arrival${p.pending.length === 1 ? " remains" : "s remain"} unreviewed. Process state is unchanged.`;
+				} else return refuse("This action is unavailable.");
+				return { state: next, outcome: "accepted" };
+			};
+			return { initial, project, reduce };
+		})();
+		</script>
+		<script>
+		const $ = (id) => document.getElementById(id);
+		const escapeHtml = (value) =>
+			String(value).replace(
+				/[&<>"']/g,
+				(char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char],
+			);
+		let state = ReviewModel.initial();
+		let activeScenario = null;
+		let step = 0;
+		const readSteps = [101, 104, 108, 112].map((seq) => ({
+			label: `Open event ${seq} in Chronicle`,
+			action: { type: "open", seq },
+			expected: "accepted",
+		}));
+		const scenarios = [
+			{
+				title: "Return after lunch",
+				description:
+					"Open each recorded change. Notice that reading leaves your marker at 100; only the final acknowledgement moves it.",
+				steps: [
+					...readSteps,
+					{ label: "Mark this review through 112", action: { type: "mark" }, expected: "accepted" },
+				],
+				done: "Review saved through 112. The old deployment concern is still unresolved, and the current question still awaits an answer.",
+			},
+			{
+				title: "An arrival during review",
+				description:
+					"Read the captured changes, let another result arrive, then mark only what was captured.",
+				steps: [
+					...readSteps,
+					{ label: "Let a new result arrive", action: { type: "arrive" }, expected: "accepted" },
+					{ label: "Mark only through event 112", action: { type: "mark" }, expected: "accepted" },
+					{
+						label: "Capture the remaining arrival",
+						action: { type: "capture" },
+						expected: "accepted",
+					},
+					{
+						label: "Open event 118 in Chronicle",
+						action: { type: "open", seq: 118 },
+						expected: "accepted",
+					},
+					{
+						label: "Mark the new boundary reviewed",
+						action: { type: "mark" },
+						expected: "accepted",
+					},
+				],
+				done: "Two separate receipts used two explicit boundaries. Event 118 stayed new until you captured, opened and marked it.",
+			},
+			{
+				title: "Missing earlier evidence",
+				description:
+					"Retention removes a result. An attempted review must be refused until the gap is acknowledged and the retained changes are opened.",
+				steps: [
+					{
+						label: "Remove the earlier result",
+						action: { type: "retention" },
+						expected: "accepted",
+					},
+					{
+						label: "Try to mark reviewed (expect refusal)",
+						action: { type: "mark" },
+						expected: "refused-gap",
+					},
+					{
+						label: "Open the unavailable source",
+						action: { type: "open", seq: 101 },
+						expected: "accepted",
+					},
+					{
+						label: "Acknowledge the evidence gap",
+						action: { type: "gap", value: true },
+						expected: "accepted",
+					},
+					...readSteps.slice(1),
+					{
+						label: "Save review with a recorded gap",
+						action: { type: "mark" },
+						expected: "accepted",
+					},
+				],
+				done: "The receipt names missing event 101. Acknowledging a gap does not turn missing evidence into reviewed content.",
+			},
+		];
+		function dispatch(action) {
+			const result = ReviewModel.reduce(state, action);
+			state = result.state;
+			render();
+			return result.outcome;
+		}
+		function renderEvidence() {
+			const event = state.events.find((e) => e.seq === state.selected);
+			if (!event) {
+				$("evidence").innerHTML =
+					`<div class="evidence-header"><h2>Chronicle evidence</h2><p class="meta">Open a change to read its exact recorded context.</p></div><div class="empty"><h3>Your place in the process</h3><p>The change list is held through event ${state.captured}. Open any row to see its result, decision, failure or replacement question here.</p><p>Reading is separate from acknowledging. Your personal review marker will stay at ${state.marker} until you mark the captured changes reviewed.</p></div>`;
+				return;
+			}
+			$("evidence").innerHTML =
+				`<div class="evidence-header"><h2>Chronicle</h2><p>${escapeHtml(event.execution)}</p><p class="source">P-214 / ${escapeHtml(event.record)} / event ${event.seq} · ${event.time}</p></div><h3>${escapeHtml(event.title)}</h3>${event.available ? `<div class="evidence-body"><p>${escapeHtml(event.body)}</p>${event.type === "question" ? `<blockquote>Current question · Answer pending</blockquote>` : ""}<p>${escapeHtml(event.detail)}</p></div>` : `<div class="warning"><h3>Source unavailable</h3><p>Retention removed the content of event ${event.seq}. This is its original execution; no later result can stand in for it.</p><p>The summary and source identity are illustrative retained metadata. The receipt must disclose this gap.</p></div>`}<div class="context-line">${event.seq > state.marker ? "Opened in this review · not yet acknowledged" : "At or before your saved review marker"}</div><p class="subtle">Current process: active in Verify changes. The credential question remains unanswered. Review metadata does not submit an answer.</p>`;
+		}
+		function render() {
+			const p = ReviewModel.project(state);
+			$("marker").textContent = `Last marked reviewed: event ${state.marker}`;
+			$("boundary").textContent =
+				`Captured through ${state.captured} · Latest evidence ${p.latest}`;
+			$("counts").textContent =
+				`${p.changes.length} changes · ${p.changes.filter((e) => e.available && state.opened.includes(e.seq)).length} opened · ${p.missing.length} unavailable`;
+			$("change-list").innerHTML = p.changes.length
+				? p.changes
+						.map(
+							(e) =>
+								`<li class="change"><button type="button" class="change-button" data-open="${e.seq}" aria-pressed="${state.selected === e.seq}" aria-label="Open event ${e.seq}: ${escapeHtml(e.title)}"><span class="change-top"><span>${escapeHtml(e.kind)}</span><span>${e.time} · ${e.seq}</span></span><span class="change-title">${escapeHtml(e.title)}</span><span class="change-foot ${state.opened.includes(e.seq) ? "opened" : ""}">${!e.available ? "Source unavailable · original identity retained" : state.opened.includes(e.seq) ? "Opened · not yet acknowledged" : "Open in Chronicle"}</span></button></li>`,
+						)
+						.join("")
+				: `<li class="empty"><h3>This captured review is complete</h3><p>No unreviewed changes through event ${state.captured}. ${p.pending.length ? "Later arrivals are still new. Capture them to begin another review." : "New evidence will appear here after you capture it."}</p></li>`;
+			$("retention").innerHTML = p.missing.length
+				? `<div class="warning"><strong>${p.missing.length} evidence gap${p.missing.length === 1 ? "" : "s"}</strong><p>The original content is no longer available. You can record that limitation without claiming to have read it.</p><label class="gap-label"><input id="gap" type="checkbox" ${state.gapAccepted ? "checked" : ""}> Include missing event${p.missing.length === 1 ? "" : "s"} ${p.missing.map((e) => e.seq).join(", ")} as an explicit gap in my receipt.</label></div>`
+				: "";
+			$("arrival").hidden = !p.pending.length;
+			$("arrival").innerHTML =
+				`<div><strong>${p.pending.length} new arrival${p.pending.length === 1 ? "" : "s"} outside this review</strong><p>Marking through ${state.captured} will leave ${p.pending.map((e) => e.seq).join(", ")} unreviewed.</p></div><button type="button" id="capture-arrivals">Capture newer evidence</button>`;
+			$("mark-heading").textContent = `Mark only through event ${state.captured}`;
+			$("mark-explanation").textContent = p.changes.length
+				? `Open ${p.unread.length ? `the ${p.unread.length} remaining retained change${p.unread.length === 1 ? "" : "s"}` : "all retained changes (done)"}${p.missing.length ? " and acknowledge unavailable evidence" : ""}. Later arrivals stay new. The process keeps its current state.`
+				: "This boundary is already acknowledged. Capture any newer evidence to begin the next review.";
+			$("mark").disabled = !p.changes.length;
+			$("review-note").value = state.note;
+			$("notice").textContent = state.message;
+			$("notice").className = `notice ${state.tone === "error" ? "error" : ""}`;
+			$("offline").textContent = state.offline ? "Restore saving" : "Simulate save outage";
+			$("receipt").hidden = !state.receipt;
+			if (state.receipt) {
+				const r = state.receipt;
+				$("receipt").innerHTML =
+					`<h3>Personal review receipt · through ${r.through}</h3><p>Alex Morgan acknowledged ${r.count} changes after ${r.from} through ${r.through}. ${r.missing.length ? `Unavailable source${r.missing.length === 1 ? "" : "s"}: event ${r.missing.join(", ")}. Content was not inspected.` : "All captured source content was opened."}</p><p>${r.note ? `Note: ${escapeHtml(r.note)}` : "No personal note added."}</p><p class="meta">Saved only in this tab · no process action taken</p>`;
+			}
+			renderEvidence();
+			renderScenario();
+		}
+		function renderScenario() {
+			document.querySelectorAll("[data-scenario]").forEach((button) => {
+				button.setAttribute(
+					"aria-pressed",
+					String(Number(button.dataset.scenario) === activeScenario),
+				);
+			});
+			const scenario = scenarios[activeScenario];
+			if (!scenario) {
+				$("walkthrough").innerHTML =
+					"<div><strong>Choose a walkthrough to reset to a known starting point.</strong><p>Or use the controls above freely. Each walkthrough uses the same actions as the working surface.</p></div>";
+				return;
+			}
+			const current = scenario.steps[step];
+			$("walkthrough").innerHTML =
+				`<div><strong>${escapeHtml(scenario.title)} · ${current ? `Step ${step + 1} of ${scenario.steps.length}` : "Complete"}</strong><p>${escapeHtml(current ? scenario.description : scenario.done)}</p></div>${current ? `<button type="button" id="step">${escapeHtml(current.label)}</button>` : '<button type="button" id="restart">Restart this walkthrough</button>'}`;
+		}
+		document.addEventListener("click", (event) => {
+			const button = event.target.closest("button");
+			if (!button) return;
+			if (button.dataset.open) {
+				dispatch({ type: "open", seq: Number(button.dataset.open) });
+				if (window.innerWidth < 801) $("evidence").scrollIntoView({ block: "start" });
+				return;
+			}
+			if (button.dataset.scenario !== undefined) {
+				activeScenario = Number(button.dataset.scenario);
+				step = 0;
+				state = ReviewModel.initial();
+				render();
+				return;
+			}
+			if (button.id === "reset") {
+				state = ReviewModel.initial();
+				activeScenario = null;
+				step = 0;
+				render();
+				return;
+			}
+			if (button.id === "restart") {
+				state = ReviewModel.initial();
+				step = 0;
+				render();
+				return;
+			}
+			if (button.id === "step") {
+				const current = scenarios[activeScenario].steps[step];
+				const outcome = dispatch(current.action);
+				if (outcome === current.expected) {
+					step++;
+					renderScenario();
+				} else {
+					state = {
+						...state,
+						message:
+							"This step did not reach its intended outcome. Restore the required state or restart this walkthrough.",
+						tone: "error",
+					};
+					render();
+				}
+				return;
+			}
+			const actions = {
+				arrive: "arrive",
+				capture: "capture",
+				"capture-arrivals": "capture",
+				retain: "retention",
+				offline: "offline",
+				mark: "mark",
+			};
+			if (actions[button.id]) dispatch({ type: actions[button.id] });
+		});
+		$("review-note").addEventListener("input", (event) => {
+			state = ReviewModel.reduce(state, { type: "note", value: event.target.value }).state;
+		});
+		document.addEventListener("change", (event) => {
+			if (event.target.id === "gap") dispatch({ type: "gap", value: event.target.checked });
+		});
+		render();
+		</script>
+	</body>
+</html>
