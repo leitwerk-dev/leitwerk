@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Changes since your review · Leitwerk prototype</title>
+<style>
+:root{font-family:"Public Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#18212b;background:#f4f5f7;font-synthesis:none;--blue:#2f61b7;--border:#d7dce2;--muted:#535e6b}
+*{box-sizing:border-box}body{margin:0;font-size:16px;line-height:1.55}button,input,select,textarea{font:inherit;color:inherit}button,select{min-height:44px}button{background:white;border:1px solid var(--border);border-radius:22px;padding:9px 17px;cursor:pointer;font-weight:600}button:hover{border-color:var(--blue);background:#f3f6fb}button:disabled{opacity:.55;cursor:default}button.primary{background:#18212b;color:white;border-color:#18212b}button[aria-pressed="true"]{background:#eaf0fb;border-color:var(--blue);color:#224d94}:focus-visible{outline:3px solid var(--blue);outline-offset:3px}::selection{background:#dce8ff}select,textarea{border:1px solid #aeb7c2;border-radius:10px;background:white;padding:10px;max-width:100%;width:100%;caret-color:var(--blue)}a{color:var(--blue);text-underline-offset:3px}h1{font-size:34px;line-height:1.17;letter-spacing:-.025em;margin:0 0 12px;text-wrap:balance}h2{font-size:22px;line-height:1.3;margin:0 0 10px}h3{font-size:18px;line-height:1.3;margin:0 0 10px}p{margin:0 0 12px;max-width:75ch}small,.muted{color:var(--muted)}small{font-size:14px}.shell{border-bottom:1px solid var(--border);background:#fff;padding:16px max(24px,calc((100vw - 1216px)/2));display:flex;gap:22px;align-items:center}.shell strong{font-size:20px}.shell span{color:var(--muted);font-size:14px}main{max-width:1264px;padding:38px 24px 60px;margin:auto}header{margin-bottom:26px}header p{max-width:84ch;color:var(--muted)}.state{display:flex;flex-wrap:wrap;gap:10px 24px;font-size:14px;padding:14px 0;border-block:1px solid var(--border);margin-top:22px}.state span{display:block}.state strong{font-weight:600}.work{background:white;border:1px solid var(--border);border-radius:12px;overflow:hidden}.selectors{display:grid;grid-template-columns:1fr 1fr;gap:28px;padding:24px}.selectors label{display:block;font-weight:650;margin-bottom:7px}.selectors small{display:block;margin-top:6px}.request{padding:16px 24px;border-block:1px solid var(--border);background:#f7f8fa;font-size:15px}.request p{margin-bottom:3px}.summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:20px 24px;border-bottom:1px solid var(--border);flex-wrap:wrap}.summary p{margin:0}.summary strong{font-size:18px}.toolbar{display:flex;gap:8px;flex-wrap:wrap}.compare{display:grid;grid-template-columns:300px minmax(0,1fr);min-height:400px}.index{padding:20px 16px;border-right:1px solid var(--border);background:#fbfcfd}.index h2{font-size:16px;margin:0 8px 12px}.section-row{display:block;text-align:left;width:100%;border-radius:8px;border-color:transparent;padding:10px 12px;margin:0 0 5px;line-height:1.4}.section-row span{display:block;font-size:13px;font-weight:500;color:var(--muted);margin-top:3px}.section-row[aria-pressed="true"] span{color:#335784}.detail{padding:25px 28px;min-width:0}.detail .status{display:inline-block;margin-bottom:8px;font-size:14px;color:var(--muted)}.position{font-size:14px;color:var(--muted);margin-bottom:20px}.text-lines{border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-top:14px}.line{display:grid;grid-template-columns:83px minmax(0,1fr);gap:12px;padding:8px 12px;border-bottom:1px solid #e5e8ec;font-size:15px;white-space:pre-wrap;overflow-wrap:anywhere;min-height:36px}.line:last-child{border-bottom:0}.line .tag{font-size:12px;font-weight:600;white-space:normal;color:#535e6b;padding-top:2px}.line.removed{background:#fff1ef}.line.added{background:#edf6ef}.line.removed .tag{color:#8b3027}.line.added .tag{color:#2b633a}.message{padding:14px 18px;margin:18px 0;border:1px solid #b9c9e3;border-radius:10px;background:#edf3fc}.message.warning{background:#fff8e9;border-color:#dbca9e;color:#654c12}.message p:last-child{margin-bottom:0}.empty{padding:34px 24px}.footnote{border-top:1px solid var(--border);padding:14px 24px;font-size:13px;color:var(--muted)}.sources{margin-top:22px;background:white;border:1px solid var(--border);border-radius:12px;padding:24px}.source-columns{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:16px}pre{font-family:inherit;font-size:15px;white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%;padding:18px;background:#f6f7f9;border:1px solid var(--border);border-radius:8px;margin:10px 0;line-height:1.65}details{margin-top:18px}summary{cursor:pointer;min-height:44px;padding:8px 0;font-weight:600}.note{margin-top:30px}.note textarea{min-height:100px;resize:vertical;margin:8px 0}.note label{font-weight:650}.note .toolbar{align-items:center}.note ul{padding-left:22px}.playground{margin-top:36px;border-top:1px solid var(--border);padding-top:24px}.playground p{color:var(--muted)}.guides{margin-top:30px;border-top:1px solid var(--border);padding-top:24px}.guide-panel{background:white;border:1px solid var(--border);border-radius:10px;padding:20px;margin-top:14px}.steps{display:flex;flex-wrap:wrap;gap:8px}.steps button{border-radius:10px;text-align:left}.guide-panel p{font-size:15px}.saved{padding:12px 0;border-bottom:1px solid var(--border)}.saved p{margin:3px 0}footer{margin-top:30px;color:var(--muted);font-size:14px}code{font-size:13px}section[id]{scroll-margin-top:20px}[hidden]{display:none}
+@media(max-width:700px){main{padding:25px 16px 40px}.shell{padding:13px 16px;gap:14px}.shell span{font-size:12px}h1{font-size:28px}.state{gap:10px 20px}.selectors{grid-template-columns:1fr;padding:18px;gap:18px}.request{padding:16px 18px}.summary{padding:18px}.compare{grid-template-columns:1fr}.index{border-right:0;border-bottom:1px solid var(--border);padding:14px}.section-row{padding:10px}.detail{padding:22px 18px}.source-columns{grid-template-columns:1fr;gap:16px}.sources{padding:18px}.line{grid-template-columns:62px minmax(0,1fr);gap:6px;padding:8px;font-size:14px}.line .tag{font-size:11px}.toolbar button{flex-grow:1}.footnote{padding:14px 18px}.guide-panel{padding:16px}.steps{display:grid}.steps button{width:100%}.note .toolbar{align-items:stretch}.note .toolbar small{width:100%}}
+</style>
+</head>
+<body>
+<div class="shell"><strong>Leitwerk</strong><span>Process / Reduce duplicate notifications</span></div>
+<main>
+<header>
+<h1>Changes since your review</h1>
+<p>Future proposal · Synthetic retained results, held only in this page. Can a section comparison make repeat review faster while keeping every meaningful edit visible?</p>
+<div class="state"><div><strong>Selected turn</strong><span>Review plan</span></div><div><strong>Lifecycle</strong><span>Active · operator decision offered</span></div><div><strong>Latest retained result</strong><span id="latest-state"></span></div><div><strong>Last revision request</strong><span>Against R1 · turn-plan-101</span></div></div>
+</header>
+<div id="stale"></div>
+<div class="work">
+<div class="selectors">
+<div><label for="baseline">Compare against</label><select id="baseline"></select><small id="baseline-meta"></small></div>
+<div><label for="current">Retained result to inspect</label><select id="current"></select><small id="current-meta"></small></div>
+</div>
+<div class="request"><p><strong>Your submitted request on R1</strong> · retained fixture</p><p>“Make the retry limit explicit and add an observation window. Keep a staged rollback.”</p><small>This request stays attached to R1. Text changes do not prove the request is satisfied or that any checks ran.</small></div>
+<div class="summary"><p id="summary"></p><div class="toolbar"><button type="button" id="changes">Changes only</button><button type="button" id="all">Include unchanged</button><button type="button" id="open-sources">Full retained texts</button></div></div>
+<div id="comparison"></div>
+<div class="footnote">Exact heading text groups sections. Repeated headings stay unmatched; renamed headings and changed generated IDs remain separate. Positions describe these documents and do not establish ancestry.</div>
+</div>
+<section id="sources" class="sources" hidden>
+<h2>Full retained texts</h2><p class="muted">Exact fixture text, including unchanged sections and heading syntax. Nothing is summarized away.</p><div id="source-columns" class="source-columns"></div>
+<details id="whole-diff"><summary>Deterministic line comparison of the entire text</summary><div id="full-diff"></div></details>
+</section>
+<section class="note" id="note-section">
+<h2>Keep a note with this comparison</h2><p class="muted">A local reading note records exactly which two results you inspected. It does not approve the plan or send a revision request.</p>
+<label for="note">Comparison note</label><textarea id="note" placeholder="What still needs attention in this revision?"></textarea><div class="toolbar"><button type="button" class="primary" id="save-note">Save comparison note</button><button type="button" id="rebind">Bind draft to these results</button><small id="draft-binding"></small></div>
+<div id="notice" role="status" aria-live="polite"></div><div id="saved-notes"></div>
+</section>
+<section class="playground"><h2>Try another arrival</h2><p>Fixture controls only. A new result leaves your open comparison and draft in place until you choose to inspect it.</p><div class="toolbar"><button type="button" id="arrive">Simulate R3 arriving</button><button type="button" id="inspect-latest">Inspect latest result</button><button type="button" id="reset">Reset free play</button></div></section>
+<section class="guides"><h2>Guided walkthroughs</h2><p class="muted">Starting a walkthrough resets this local experiment, including notes.</p><div class="toolbar" id="guide-tabs"></div><div id="guide-panel"></div></section>
+<footer>Prototype 28 · Compares retained result content after a real revision request in the fixture. It does not predict hypothetical outcomes. No server, AI summary, external writes, or durable storage.</footer>
+</main>
+<script>
+const Model = (() => {
+ const records = {
+  r0:{id:"turn-plan-090",label:"R0 · text not retained",time:"09:10",text:null},
+  r1:{id:"turn-plan-101",label:"R1 · reviewed, revisions requested",time:"09:32",text:"# Reduce duplicate notifications\n\nPlan for the notification delivery worker.\n\n## Scope\nKeep the existing notification API and queue format.\n\n## Delivery\nSend each queued notification once.\nA delivery key expires after 24 hours.\n\n## Retry policy\nRetry transient failures up to 5 times.\nDo not retry permanent failures.\n\n## Rollback\nKeep a staged rollback: disable deduplication for one tenant first.\nRetain delivery records during rollback.\n\n## Validation {#check-a}\nProposed check: exercise a duplicate delivery in a local fixture.\nNo checks have been run.\n"},
+  r2:{id:"turn-plan-108",label:"R2 · revised plan",time:"10:06",text:"# Reduce duplicate notifications\n\nPlan for the notification delivery worker.\n\n## Scope\nKeep the existing notification API and queue format.\n\n## Delivery\nSend each queued notification once.\nA delivery key expires after 72 hours.\n\n## Retry policy\nRetry transient failures up to 3 times.\nDo not retry permanent failures.\n\n## Observation\nObserve duplicate counts for 30 minutes before expanding rollout.\n\n## Validation {#check-a}\nProposed check: exercise a duplicate delivery and exhausted retries in a local fixture.\nNo checks have been run.\n"},
+  r3:{id:"turn-plan-116",label:"R3 · headings reorganized",time:"10:41",text:"# Reduce duplicate notifications\n\nPlan for the notification delivery worker.\n\n## Retry policy\nRetry transient failures up to 3 times.\nDo not retry permanent failures.\n\n## Scope\nKeep the existing notification API and queue format.\n\n## Delivery\nSend each queued notification once.\nA delivery key expires after 72 hours.\n\n## Delivery\nDelivery records stay available during rollback.\n\n## Observation\nObserve duplicate counts for 30 minutes before expanding rollout.\n\n## Validation {#check-b}\nProposed check: exercise a duplicate delivery and exhausted retries in a local fixture.\nNo checks have been run.\n"}
+ };
+ const pair = s => `${s.baseline} → ${s.current}`;
+ const initial = () => ({baseline:"r1",current:"r2",latest:"r2",available:["r0","r1","r2"],all:false,selected:"Delivery",sources:false,draft:"",draftPair:null,notes:[],notice:"",kind:"",guide:null,step:0});
+ function sections(text){
+  const result=[];let title="Opening text",lines=[],fence=null;
+  function flush(){if(lines.length) result.push({title,text:lines.join("\n"),position:result.length+1});}
+  for(const line of text.split("\n")){
+   const marker=line.match(/^\s*(`{3,}|~{3,})/);
+   if(marker){if(!fence)fence=marker[1][0];else if(fence===marker[1][0])fence=null;}
+   const heading=!fence&&line.match(/^## (.+)$/);
+   if(heading){flush();title=heading[1];lines=[line];}else lines.push(line);
+  }
+  flush();return result;
+ }
+ function compare(s){
+  const before=records[s.baseline],after=records[s.current];
+  if(before.text===null||after.text===null)return {available:false,reason:`${before.text===null?"Baseline":"Inspected result"} text was not retained. Select a retained result; no comparison can be reconstructed.`,rows:[]};
+  const a=sections(before.text),b=sections(after.text),keys=[...new Set([...b.map(x=>x.title),...a.map(x=>x.title)])];
+  const rows=keys.map(title=>{
+   const old=a.filter(x=>x.title===title),next=b.filter(x=>x.title===title);
+   const uncertain=old.length>1||next.length>1;
+   const status=uncertain?"Unmatched":!old.length?"Added":!next.length?"Removed":old[0].text===next[0].text?"Unchanged":"Changed";
+   return {title,old,next,status,uncertain,order:!uncertain&&old.length&&next.length&&old[0].position!==next[0].position};
+  });return {available:true,rows,limited:rows.some(x=>x.uncertain)};
+ }
+ function lines(before,after){
+  const a=before.split("\n"),b=after.split("\n"),table=Array.from({length:a.length+1},()=>Array(b.length+1).fill(0));
+  for(let i=a.length-1;i>=0;i--)for(let j=b.length-1;j>=0;j--)table[i][j]=a[i]===b[j]?table[i+1][j+1]+1:Math.max(table[i+1][j],table[i][j+1]);
+  const out=[];let i=0,j=0;
+  while(i<a.length||j<b.length){
+   if(i<a.length&&j<b.length&&a[i]===b[j]){out.push({kind:"Same",text:a[i]});i++;j++;}
+   else if(i<a.length&&(j===b.length||table[i+1][j]>=table[i][j+1])){out.push({kind:"Removed",text:a[i]});i++;}
+   else {out.push({kind:"Added",text:b[j]});j++;}
+  }return out;
+ }
+ function reduce(s,a){
+  const n={...s,notice:"",kind:"",reason:null};
+  if(a.type==="baseline"||a.type==="current")return {...n,[a.type]:a.value,selected:null};
+  if(a.type==="filter")return {...n,all:a.value};
+  if(a.type==="select")return {...n,selected:a.value,all:s.all||compare(s).rows.find(x=>x.title===a.value)?.status==="Unchanged"};
+  if(a.type==="sources")return {...n,sources:true};
+  if(a.type==="draft")return {...s,draft:a.value,draftPair:s.draftPair||pair(s)};
+  if(a.type==="rebind")return {...n,draftPair:pair(s),notice:"Draft explicitly bound to the selected results. Its text is unchanged.",kind:"success"};
+  if(a.type==="arrive")return {...n,latest:"r3",available:["r0","r1","r2","r3"],notice:"R3 arrived in the fixture. Your comparison and draft still reference the same results.",kind:"success"};
+  if(a.type==="latest")return {...n,current:s.latest,selected:null};
+  if(a.type==="save"){
+   if(!s.draft.trim())return {...n,notice:"Write a note before saving. No review or lifecycle state has changed.",kind:"refused",reason:"empty-draft"};
+   if(!compare(s).available)return {...n,notice:"Cannot save a comparison note: retained text is missing. Choose a retained baseline; your draft is kept.",kind:"refused",reason:"missing-text"};
+   if(s.draftPair!==pair(s))return {...n,notice:"Cannot save: this draft belongs to different results. Return to them or explicitly bind the draft to these results. Your text is kept.",kind:"refused",reason:"pair-mismatch"};
+   return {...n,notes:[...s.notes,{pair:pair(s),baseline:s.baseline,current:s.current,text:s.draft}],draft:"",draftPair:null,notice:"Comparison note saved locally with these exact result IDs. The plan still awaits a decision.",kind:"success"};
+  }
+  return s;
+ }
+ return {records,initial,pair,sections,compare,lines,reduce};
+})();
+const guides=[
+ {id:"review",title:"Review the actual edits",description:"R2 answered part of the request, but the staged rollback disappeared. Inspect that removal and keep the unchanged context close.",setup:()=>Model.initial(),steps:[
+  {label:"Inspect the removed rollback",action:{type:"select",value:"Rollback"},expect:s=>s.selected==="Rollback"},
+  {label:"Read unchanged Scope",action:{type:"select",value:"Scope"},expect:s=>s.selected==="Scope"&&s.all},
+  {label:"Open both full texts",action:{type:"sources"},expect:s=>s.sources},
+  {label:"Draft the remaining concern",action:{type:"draft",value:"The staged rollback is missing in R2. Keep it before approval."},expect:s=>s.draft.includes("staged rollback")},
+  {label:"Save note on R1 → R2",action:{type:"save"},expect:s=>s.kind==="success"&&s.notes.length===1}
+ ]},
+ {id:"headings",title:"Handle uncertain headings",description:"R3 repeats Delivery, reorders Retry policy, and changes a generated heading ID. Read unmatched content without guessing what replaced what.",setup:()=>({...Model.initial(),current:"r3",latest:"r3",available:["r0","r1","r2","r3"]}),steps:[
+  {label:"Inspect repeated Delivery",action:{type:"select",value:"Delivery"},expect:s=>Model.compare(s).rows.find(x=>x.title==="Delivery").uncertain},
+  {label:"Inspect reordered Retry policy",action:{type:"select",value:"Retry policy"},expect:s=>s.selected==="Retry policy"&&Model.compare(s).rows.find(x=>x.title==="Retry policy").order},
+  {label:"Inspect the old heading ID",action:{type:"select",value:"Validation {#check-a}"},expect:s=>s.selected==="Validation {#check-a}"},
+  {label:"Read the full text pair",action:{type:"sources"},expect:s=>s.sources}
+ ]},
+ {id:"missing",title:"Recover a missing baseline",description:"The older result has no retained text. A refused save keeps the draft, and choosing a new baseline requires an explicit draft binding.",setup:()=>({...Model.initial(),baseline:"r0",draft:"Preserve the staged rollback in the next revision.",draftPair:"r0 → r2"}),steps:[
+  {label:"Try saving with missing text",action:{type:"save"},expect:s=>s.reason==="missing-text"&&s.baseline==="r0"&&s.draft==="Preserve the staged rollback in the next revision."},
+  {label:"Choose retained R1",action:{type:"baseline",value:"r1"},expect:s=>s.baseline==="r1"},
+  {label:"Try saving the old draft",action:{type:"save"},expect:s=>s.reason==="pair-mismatch"&&s.baseline==="r1"&&s.draftPair==="r0 → r2"&&s.draft==="Preserve the staged rollback in the next revision."},
+  {label:"Bind draft to R1 → R2",action:{type:"rebind"},expect:s=>s.draftPair==="r1 → r2"},
+  {label:"Save the bound note",action:{type:"save"},expect:s=>s.kind==="success"&&s.notes.length===1},
+  {label:"Simulate a later arrival",action:{type:"arrive"},expect:s=>s.current==="r2"&&s.latest==="r3"}
+ ]}
+];
+let state=Model.initial();
+const el=id=>document.getElementById(id);
+const escapeHtml=value=>String(value).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
+function lineHtml(rows){return `<div class="text-lines">${rows.map(x=>`<div class="line ${x.kind.toLowerCase()}"><span class="tag">${x.kind}</span><span>${escapeHtml(x.text)||" "}</span></div>`).join("")}</div>`;}
+function sectionHtml(row){
+ const positions=row.uncertain?"Repeated heading: no section pairing is claimed.":`Baseline position: ${row.old[0]?.position??"absent"} · Inspected position: ${row.next[0]?.position??"absent"}${row.order?" · Order differs; no ancestry inferred.":""}`;
+ let body;
+ if(row.uncertain){body=`<p>Read each occurrence below, or inspect the complete texts. Identical heading names are not stable section identities.</p>${[["Baseline",row.old],["Inspected result",row.next]].map(([label,items])=>`<h3>${label}</h3>${items.length?items.map(x=>`<small>Position ${x.position}</small><pre>${escapeHtml(x.text)}</pre>`).join(""):"<p>No occurrence.</p>"}`).join("")}`;}
+ else if(!row.old.length)body=lineHtml(row.next[0].text.split("\n").map(text=>({kind:"Added",text})));
+ else if(!row.next.length)body=`<p>This text is absent under this exact heading. Its removal does not prove the promise was rejected or fulfilled.</p>${lineHtml(row.old[0].text.split("\n").map(text=>({kind:"Removed",text})))}`;
+ else body=lineHtml(Model.lines(row.old[0].text,row.next[0].text));
+ return `<span class="status">${row.status}${row.order?" · different position":""}</span><h2>${escapeHtml(row.title)}</h2><p class="position">${positions}</p>${body}`;
+}
+function render(){
+ const baseline=Model.records[state.baseline],current=Model.records[state.current],comparison=Model.compare(state);
+ el("latest-state").textContent=`${state.latest.toUpperCase()} · ${Model.records[state.latest].id}`;
+ for(const name of ["baseline","current"]){el(name).innerHTML=state.available.map(id=>`<option value="${id}" ${state[name]===id?"selected":""}>${Model.records[id].label}</option>`).join("");el(`${name}-meta`).textContent=`${Model.records[state[name]].id} · fixture saved ${Model.records[state[name]].time}`;}
+ el("stale").innerHTML=state.current!==state.latest?`<div class="message warning"><strong>You are inspecting ${state.current.toUpperCase()}; latest is ${state.latest.toUpperCase()}.</strong><p>This comparison stays pinned. Use “Inspect latest result” below to change it; your draft will remain bound to its original results.</p></div>`:"";
+ el("changes").setAttribute("aria-pressed",String(!state.all));el("all").setAttribute("aria-pressed",String(state.all));
+ if(!comparison.available){el("summary").textContent="Comparison unavailable";el("comparison").innerHTML=`<div class="empty"><h2>Retained text is missing</h2><p>${comparison.reason}</p><p class="muted">The other result remains readable in Full retained texts. Missing evidence is never counted as an unchanged result.</p></div>`;}
+ else{
+ const counts=["Changed","Added","Removed","Unmatched","Unchanged"].map(status=>({status,n:comparison.rows.filter(x=>x.status===status).length})).filter(x=>x.n);
+ el("summary").innerHTML=`<strong>${state.baseline.toUpperCase()} → ${state.current.toUpperCase()}${comparison.limited?" · Limited matching":""}</strong><br><small>${counts.map(x=>`${x.n} ${x.status.toLowerCase()}`).join(" · ")}</small>`;
+ const visible=comparison.rows.filter(x=>state.all||x.status!=="Unchanged"||x.order);
+ const selected=visible.find(x=>x.title===state.selected)||visible[0];
+ el("comparison").innerHTML=visible.length?`<div class="compare"><nav class="index" aria-label="Result sections"><h2>${state.all?"All sections":"Changes in these texts"}</h2>${visible.map(x=>`<button type="button" class="section-row" data-section="${escapeHtml(x.title)}" aria-pressed="${x===selected}">${escapeHtml(x.title)}<span>${x.status}${x.order?" · different position":""}${x.uncertain?" · repeated heading":""}</span></button>`).join("")}</nav><article class="detail">${sectionHtml(selected)}</article></div>`:`<div class="empty"><h2>No text changes</h2><p>The selected retained texts are identical. Include unchanged sections or open the full texts to read them.</p></div>`;
+ }
+ el("sources").hidden=!state.sources;
+ el("source-columns").innerHTML=[["Baseline",baseline],["Inspected result",current]].map(([label,record])=>`<div><h3>${label} · ${escapeHtml(record.id)}</h3>${record.text===null?"<p>Text not retained. No substitute has been reconstructed.</p>":`<pre>${escapeHtml(record.text)}</pre>`}</div>`).join("");
+ el("full-diff").innerHTML=comparison.available?lineHtml(Model.lines(baseline.text,current.text)):"<p>Line comparison unavailable: one retained text is missing.</p>";
+ el("note").value=state.draft;
+ el("draft-binding").textContent=state.draftPair?`Draft bound to ${state.draftPair.toUpperCase()}${state.draftPair!==Model.pair(state)?" · different from selection":""}`:`Next note binds to ${Model.pair(state).toUpperCase()}`;
+ el("notice").innerHTML=state.notice?`<div class="message ${state.kind==="refused"?"warning":""}">${escapeHtml(state.notice)}</div>`:"";
+ el("saved-notes").innerHTML=state.notes.length?`<h3 style="margin-top:24px">Saved locally</h3>${state.notes.map(n=>`<div class="saved"><strong>${n.pair.toUpperCase()}</strong><p>${escapeHtml(n.text)}</p><small>${Model.records[n.baseline].id} → ${Model.records[n.current].id} · lifecycle unchanged</small></div>`).join("")}`:"";
+ el("arrive").disabled=state.latest==="r3";
+ el("guide-tabs").innerHTML=guides.map(g=>`<button type="button" data-guide="${g.id}" aria-pressed="${g.id===state.guide}">${g.title}</button>`).join("");
+ const guide=guides.find(g=>g.id===state.guide);
+ el("guide-panel").innerHTML=guide?`<div class="guide-panel"><h3>${guide.title}</h3><p>${guide.description}</p><p><strong>${state.step===guide.steps.length?"Walkthrough complete":`Step ${state.step+1} of ${guide.steps.length}`}</strong></p><div class="steps">${guide.steps.map((step,i)=>`<button type="button" data-step="${i}" ${i!==state.step?"disabled":""}>${i<state.step?"Done · ":""}${step.label}</button>`).join("")}</div></div>`:"";
+}
+function dispatch(action){state=Model.reduce(state,action);render();}
+el("baseline").addEventListener("change",e=>dispatch({type:"baseline",value:e.target.value}));
+el("current").addEventListener("change",e=>dispatch({type:"current",value:e.target.value}));
+el("note").addEventListener("input",e=>{state=Model.reduce(state,{type:"draft",value:e.target.value});el("draft-binding").textContent=`Draft bound to ${state.draftPair.toUpperCase()}${state.draftPair!==Model.pair(state)?" · different from selection":""}`;});
+for(const [id,action] of [["changes",{type:"filter",value:false}],["all",{type:"filter",value:true}],["save-note",{type:"save"}],["rebind",{type:"rebind"}],["arrive",{type:"arrive"}],["inspect-latest",{type:"latest"}]])el(id).addEventListener("click",()=>dispatch(action));
+el("open-sources").addEventListener("click",()=>{dispatch({type:"sources"});el("sources").scrollIntoView({block:"start"});});
+el("reset").addEventListener("click",()=>{state=Model.initial();render();window.scrollTo(0,0);});
+el("comparison").addEventListener("click",e=>{const b=e.target.closest("[data-section]");if(b)dispatch({type:"select",value:b.dataset.section});});
+el("guide-tabs").addEventListener("click",e=>{const b=e.target.closest("[data-guide]");if(!b)return;const guide=guides.find(g=>g.id===b.dataset.guide);state={...guide.setup(),guide:guide.id};render();});
+el("guide-panel").addEventListener("click",e=>{const b=e.target.closest("[data-step]");if(!b||Number(b.dataset.step)!==state.step)return;const guide=guides.find(g=>g.id===state.guide),step=guide.steps[state.step],next=Model.reduce(state,step.action);state=step.expect(next)?{...next,step:state.step+1}:next;render();});
+render();
+</script>
+</body>
+</html>
