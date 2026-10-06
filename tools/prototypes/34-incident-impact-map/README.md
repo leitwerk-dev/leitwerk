@@ -18,6 +18,8 @@ Free play supports membership changes, empty scope, grouping, typed investigatio
 
 Each saved note captures source IDs, observation versions, source availability and membership. Later changes label it historical without rewriting the note. Source removal clears the retained failure body; receipts retain operator-authored notes and identity metadata, not cached source bodies.
 
+Guided membership steps set an explicit excluded state and verify it. Removing a process in free play before the guide cannot make the guide reinclude it.
+
 ## Integration seams and proposals
 
 - `packages/server/src/routes/process-diagnostics-assembler.ts` captures durable process, project, event, turn, launch and lease evidence before reading session data.
