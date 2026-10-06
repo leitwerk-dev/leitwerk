@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Coordinated delivery · Leitwerk prototype</title>
+<style>
+:root{font-family:"Public Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#18212b;background:#f5f6f8;font-size:15px;line-height:1.5;--border:#d7dce3;--blue:#2f61b7;--muted:#586575;scrollbar-color:#aab4c3 #f5f6f8}*{box-sizing:border-box}body{margin:0}::selection{background:#dce8fa}button,input,select,textarea{font:inherit}button,select,textarea{border:1px solid var(--border);background:#fff;color:#18212b}button{min-height:44px;padding:9px 16px;border-radius:999px;font-weight:600;cursor:pointer}button:hover:not(:disabled){background:#edf2f8;border-color:#9caeca}button:disabled{opacity:.55;cursor:default}button:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--blue);outline-offset:3px}button.primary{background:#18212b;color:#fff;border-color:#18212b}button.primary:hover:not(:disabled){background:#354455}button[aria-pressed=true]{color:#204d97;background:#edf3fd;border-color:#9cb6e0}select,textarea{width:100%;min-height:44px;border-radius:9px;padding:10px;caret-color:var(--blue)}textarea{resize:vertical;min-height:100px}label{font-weight:600;display:block;margin-bottom:7px}p{margin:6px 0 14px;max-width:74ch}h1{font-size:32px;line-height:1.18;letter-spacing:-.025em;font-weight:650;margin:0 0 12px;text-wrap:balance}h2{font-size:20px;line-height:1.3;margin:0 0 10px;font-weight:650}h3{font-size:17px;margin:0 0 4px;font-weight:650}code{font:13px ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}.muted{color:var(--muted)}.small{font-size:13px}.shell{padding:16px 38px;border-bottom:1px solid var(--border);background:#fff;display:flex;justify-content:space-between;gap:20px}.brand{font-weight:650}.shell span:last-child{color:var(--muted)}main{max-width:1330px;margin:auto;padding:32px 38px 50px}.intro{display:flex;justify-content:space-between;gap:20px;align-items:start}.intro button{flex-shrink:0}.state-line{display:flex;gap:14px;flex-wrap:wrap;font-size:14px;padding:15px 0 20px}.state-line :where(span)+span{border-left:1px solid var(--border);padding-left:14px}.layout{display:grid;grid-template-columns:minmax(0,1fr) 338px;gap:28px;align-items:start}.work{background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden}.work-header{padding:22px 24px 18px;border-bottom:1px solid var(--border)}.summary{font-weight:600;margin:0 0 8px}.dependencies{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:14px}.dependencies svg{width:24px;height:16px;stroke:#748398;flex-shrink:0}.plan{display:flex;gap:14px;justify-content:space-between;align-items:center;margin-top:17px;padding-top:16px;border-top:1px solid #e8ebef}.plan p{margin:0;font-size:13px}.lane{padding:21px 24px;border-bottom:1px solid var(--border)}.lane:last-child{border-bottom:0}.lane-head{display:flex;align-items:start;justify-content:space-between;gap:12px}.lane-title{display:flex;gap:12px}.order{color:var(--muted);font-variant-numeric:tabular-nums;padding-top:1px;min-width:18px}.badge{font-size:13px;font-weight:600;border:1px solid var(--border);background:#f4f6f8;padding:4px 9px;border-radius:6px;max-width:230px}.badge.ready{color:#204d97;border-color:#b9ccec;background:#edf3fd}.badge.problem{color:#86401a;border-color:#e0c7b8;background:#fff6ef}.facts{margin:14px 0 12px;display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:12px}.facts div{min-width:0}.facts dt,.inspector dt{font-size:12px;color:var(--muted);margin-bottom:4px}.facts dd,.inspector dd{margin:0;font-size:14px}.dependency-note{font-size:13px;color:var(--muted);margin:0 0 11px}.actions{display:flex;gap:8px;flex-wrap:wrap}.actions button{font-size:13px;padding:8px 13px}.side section{padding-bottom:24px;margin-bottom:24px;border-bottom:1px solid var(--border)}.side section:last-child{border-bottom:0}.scenario-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}.scenario-tabs button{font-size:13px;padding:8px 12px}.guide-copy{font-size:14px}.step-list{padding-left:22px;margin:12px 0;font-size:13px}.step-list li{margin-bottom:7px}.step-list li.done{color:#526575;text-decoration:line-through}.step-list li.current{font-weight:650;color:#204d97}.guide-action{width:100%;margin-top:8px;text-align:left;border-radius:9px}.inspector dl{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin:15px 0}.inspector .wide{grid-column:1/-1}.inspector dd{overflow-wrap:anywhere}.inspector .evidence-note{background:#edf1f6;padding:12px;border-radius:6px;font-size:13px}.notice{padding:13px 16px;background:#edf3fd;border:1px solid #bfceea;border-radius:8px;margin:0 0 22px;font-size:14px}.notice[data-ok=false]{background:#fff6ef;border-color:#e0c7b8}.notice code{display:block;font-size:11px;color:#586575;margin-top:3px}.below{display:grid;grid-template-columns:1.2fr 1fr;gap:28px;margin-top:30px}.section{border-top:1px solid var(--border);padding-top:24px}.fixture-form{display:grid;grid-template-columns:1fr 1.35fr;gap:14px;margin-bottom:14px}.decision-row{display:flex;gap:12px;align-items:center;margin-top:12px}.decision-row p{font-size:13px;margin:0}.decision-row button{flex-shrink:0}.history{font-size:13px;margin:10px 0;padding-left:21px;max-height:180px;overflow:auto}.history li{padding:5px 0}.footer-note{font-size:13px;margin-top:24px;color:var(--muted)}
+@media(max-width:1000px){.layout{grid-template-columns:minmax(0,1fr) 290px;gap:20px}.facts{grid-template-columns:1fr 1fr}.facts div:last-child{grid-column:1/-1}.lane-head{flex-direction:column}.below{grid-template-columns:1fr 1fr}main{padding:26px 24px}.shell{padding:16px 24px}}
+@media(max-width:720px){.layout,.below{grid-template-columns:1fr;gap:26px}main{padding:24px 16px 36px}.shell{padding:14px 16px;font-size:13px}.shell span:last-child{max-width:150px;text-align:right}.intro{display:block}.intro button{margin:2px 0 14px}h1{font-size:28px}.state-line{gap:7px;display:block;padding-top:0}.state-line span{display:block}.state-line :where(span)+span{border:0;padding:0}.work-header,.lane{padding:18px 16px}.plan{align-items:start;flex-direction:column;gap:10px}.facts{gap:13px}.badge{max-width:100%}.side section{margin-bottom:20px;padding-bottom:20px}.fixture-form{grid-template-columns:1fr}.decision-row{align-items:start;flex-direction:column}.below{margin-top:0}.side{margin-top:0}.notice{margin-bottom:20px}}
+</style>
+</head>
+<body>
+<header class="shell"><span class="brand">Leitwerk / Process 731</span><span>Repository delivery experiment</span></header>
+<main>
+<div class="intro"><div><h1>Deliver together, in the right order</h1><p class="muted">Can one view help operators deliver an API, its client, and deployment safely when repositories progress independently?</p><p class="small muted">Future proposal · Synthetic data · In-memory only. Provider actions below are simulations.</p></div><button type="button" id="reset">Reset experiment</button></div>
+<div class="state-line"><span>Process: <strong>Pagination rollout</strong></span><span>Lifecycle: <strong>active</strong></span><span>Selected turn: <strong>Delivery</strong></span><span>One process · one execution tree</span></div>
+<div id="notice" class="notice" role="status" aria-live="polite"></div>
+<div class="layout">
+<section class="work" aria-label="Repository delivery lanes"><div class="work-header"><h2>Delivery sequence</h2><p class="summary" id="summary"></p><div class="dependencies" aria-label="API before client, client before deployment"><span>API</span><svg viewBox="0 0 24 16" fill="none" aria-hidden="true"><path d="M1 8h21m-6-6 6 6-6 6"/></svg><span>Client</span><svg viewBox="0 0 24 16" fill="none" aria-hidden="true"><path d="M1 8h21m-6-6 6 6-6 6"/></svg><span>Deployment</span></div><div class="plan"><p id="plan-state"></p><button type="button" id="confirm">Confirm this order</button></div></div><div id="lanes"></div></section>
+<aside class="side"><section><h2>Guided cases</h2><div class="scenario-tabs" aria-label="Choose a walkthrough"><button type="button" data-scenario="safe" aria-pressed="true">Safe order</button><button type="button" data-scenario="partial" aria-pressed="false">Partial delivery</button><button type="button" data-scenario="stale" aria-pressed="false">Head changed</button></div><div id="guide"></div></section><section class="inspector" aria-label="Component evidence"><h2>Evidence inspector</h2><div id="inspection"></div></section></aside>
+</div>
+<div class="below">
+<section class="section"><h2>Record the operator choice</h2><p class="small muted">For a partial delivery, record whether to hold the remaining work or request a repair. This note does not change the process lifecycle, merge a request, or undo a delivered commit.</p><label for="choice">Next coordination step</label><select id="choice"><option value="Hold remaining delivery">Hold remaining delivery</option><option value="Request repair for the closed component">Request repair for the closed component</option><option value="Escalate the delivery plan">Escalate the delivery plan</option></select><label for="note" style="margin-top:14px">Reason / handoff note</label><textarea id="note" placeholder="What should the next operator know?"></textarea><div class="decision-row"><button type="button" id="save-note">Record choice</button><p id="saved-note" class="muted"></p></div></section>
+<section class="section"><h2>Simulate an external change</h2><p class="small muted">Fixture controls only. External merges can arrive in any order, independently of this advisory view. Every observation names its component and commit.</p><div class="fixture-form"><div><label for="component">Component</label><select id="component"><option value="api">API</option><option value="client">Client</option><option value="deploy">Deployment</option></select></div><div><label for="event">External event</label><select id="event"><option value="merge">Merge current head</option><option value="close">Close request unmerged</option><option value="advance">Push a new head</option><option value="refresh">Observe current head, approved and passing</option><option value="old">Deliver an old-head merge observation</option><option value="unavailable">Provider unavailable</option><option value="conflict">Merge conflict observed</option><option value="checks">Checks failed</option><option value="review">Review requested changes</option></select></div></div><button type="button" id="apply-event">Apply simulated event</button><h3 style="margin-top:22px">Observation log</h3><ol class="history" id="history"></ol></section>
+</div><p class="footer-note">Readiness is guidance, not merge authority. A production action would use the owning provider’s write contract and reconcile observed outcomes on the server. There is no rollback action in this experiment.</p>
+</main>
+<script>
+// Pure model: no DOM or side effects. All fixture observations are component/head-correlated.
+const model = (() => {
+ const names={api:'API',client:'Client',deploy:'Deployment'};
+ const heads={api:'a31f020',client:'c82b114',deploy:'d14f820'};
+ const dependencies={api:[],client:['api'],deploy:['client']};
+ const initial=()=>({revision:1,confirmed:null,inspected:'api',handoff:null,choice:null,events:[],message:{ok:true,code:'READY_TO_EXPLORE',text:'Review the proposed order, then follow a component to its provider. Nothing has been delivered yet.'},components:Object.keys(names).map((key,i)=>({key,name:names[key],repo:['atlas-api','atlas-client','atlas-deploy'][i],number:[214,89,52][i],branch:'change/pagination',base:'main',head:heads[key],previous:null,version:0,request:'open',merge:null,evidence:{head:heads[key],checks:'passing',review:'approved',available:true,conflict:false},depends:dependencies[key]}))});
+ const status=(state,c)=>{
+  if(c.request==='merged')return {code:'ALREADY_DELIVERED',label:'Already delivered',detail:`Observed merge ${c.merge} for ${c.head}.`,kind:''};
+  if(c.request==='closed')return {code:'REQUEST_CLOSED',label:'Closed unmerged',detail:'An operator must choose a repair or hold. This request cannot be delivered.',kind:'problem'};
+  if(!c.evidence.available)return {code:'EVIDENCE_UNAVAILABLE',label:'Evidence unavailable',detail:'Provider unavailable. Restore observation before deciding.',kind:'problem'};
+  if(c.evidence.head!==c.head)return {code:'EVIDENCE_STALE',label:'Stale evidence',detail:`Checks and review describe ${c.evidence.head}, not current head ${c.head}.`,kind:'problem'};
+  if(c.evidence.conflict)return {code:'MERGE_CONFLICT',label:'Merge conflict',detail:'Resolve the provider conflict and observe the current head again.',kind:'problem'};
+  if(c.evidence.checks!=='passing')return {code:'CHECKS_FAILED',label:'Checks failed',detail:'Observe passing checks for this head before continuing.',kind:'problem'};
+  if(c.evidence.review!=='approved')return {code:'REVIEW_REQUIRED',label:'Review required',detail:'The provider has requested changes on this head.',kind:'problem'};
+  if(state.confirmed!==state.revision)return {code:'PLAN_UNCONFIRMED',label:'Order needs confirmation',detail:`Confirm the process-owned prerequisites at revision ${state.revision}.`,kind:''};
+  const waiting=c.depends.filter(key=>state.components.find(item=>item.key===key).request!=='merged');
+  if(waiting.length)return {code:'PREREQUISITE_UNDELIVERED',label:`Waiting for ${waiting.map(k=>names[k]).join(', ')}`,detail:'Required components have no observed merge. A passing check alone does not deliver them.',kind:''};
+  return {code:'READY',label:'Ready to deliver',detail:'Current checks, review, and prerequisites agree. Continue at the provider.',kind:'ready'};
+ };
+ function reduce(state,action){
+  const next=structuredClone(state);
+  const c=next.components.find(item=>item.key===action.key);
+  const finish=(ok,code,text)=>{next.message={ok,code,text};if(action.type!=='inspect')next.events.unshift({code,text});return next;};
+  if(action.type==='inspect'){next.inspected=action.key;return next;}
+  if(action.type==='confirm'){next.confirmed=next.revision;return finish(true,'ORDER_CONFIRMED',`Delivery order confirmed for revision ${next.revision}, with each current head pinned. This is an advisory confirmation.`);}
+  if(action.type==='handoff'){
+   next.inspected=action.key;
+   const result=status(next,c);
+   if(result.code!=='READY')return finish(false,result.code,`${c.name}: ${result.detail}`);
+   next.handoff={key:c.key,head:c.head,revision:next.revision};
+   return finish(true,'HANDOFF_READY',`${c.name} review #${c.number} is ready at ${c.head}. Provider preview opened below; no merge was requested.`);
+  }
+  if(action.type==='note'){
+   if(!action.note.trim())return finish(false,'NOTE_REQUIRED','Add a reason before recording the choice. Your selection is retained.');
+   next.choice={choice:action.choice,note:action.note,revision:next.revision};
+   return finish(true,'CHOICE_RECORDED','Operator choice recorded locally. Process lifecycle is still active; delivered commits remain delivered.');
+  }
+  if(action.type==='external'){
+   next.inspected=c.key;
+   if(action.event==='old')return finish(false,'OBSERVATION_MISMATCH',`${c.name}: ignored merge observation for ${c.previous||'0000000'}. Expected current head ${c.head}; delivery has not changed.`);
+   if(c.request!=='open')return finish(false,'REQUEST_TERMINAL',`${c.name}: the request is already ${c.request}. Start a separately reviewed repair to change delivered or closed work.`);
+   if(action.event==='merge'){c.request='merged';c.merge=`m${c.head.slice(1)}`;return finish(true,'MERGE_OBSERVED',`${c.name}: observed external merge of ${c.head}. Other components retain their own delivery state.`);}
+   if(action.event==='close'){c.request='closed';return finish(true,'CLOSED_OBSERVED',`${c.name}: request closed unmerged. Choose a hold or repair; existing merges cannot be undone here.`);}
+   if(action.event==='advance'){c.previous=c.head;c.version+=1;c.head=`${heads[c.key].slice(0,5)}${String(c.version).padStart(2,'0')}`;next.revision+=1;return finish(true,'HEAD_CHANGED',`${c.name}: new head ${c.head}. Old checks, review, confirmation, and provider handoff are stale until reviewed again.`);}
+   if(action.event==='refresh'){c.evidence={head:c.head,checks:'passing',review:'approved',available:true,conflict:false};return finish(true,'EVIDENCE_REFRESHED',`${c.name}: approved review and passing checks observed for current head ${c.head}.`);}
+   if(action.event==='unavailable'){c.evidence.available=false;return finish(true,'PROVIDER_UNAVAILABLE',`${c.name}: provider unavailable. Retained evidence is visible but cannot establish readiness.`);}
+   if(action.event==='conflict'){c.evidence.conflict=true;return finish(true,'CONFLICT_OBSERVED',`${c.name}: provider reports a merge conflict. A new observation is required after repair.`);}
+   if(action.event==='checks'){c.evidence.checks='failed';return finish(true,'CHECKS_OBSERVED',`${c.name}: checks failed for ${c.head}.`);}
+   if(action.event==='review'){c.evidence.review='changes requested';return finish(true,'REVIEW_OBSERVED',`${c.name}: review requests changes for ${c.head}.`);}
+  }
+  return finish(false,'UNKNOWN_ACTION','No fixture change was applied.');
+ }
+ return {initial,status,reduce};
+})();
+const ext=(key,event)=>({type:'external',key,event});
+const handoff=(key)=>({type:'handoff',key});
+const scenarios={
+ safe:{title:'Deliver in dependency order',description:'Confirm the plan, review each component, then observe its external merge. The next lane opens only after its prerequisite is delivered.',steps:[
+ ['Confirm this order',{type:'confirm'},'ORDER_CONFIRMED'],['Review API delivery',handoff('api'),'HANDOFF_READY'],['Observe API merge',ext('api','merge'),'MERGE_OBSERVED'],['Review Client delivery',handoff('client'),'HANDOFF_READY'],['Observe Client merge',ext('client','merge'),'MERGE_OBSERVED'],['Review Deployment delivery',handoff('deploy'),'HANDOFF_READY'],['Observe Deployment merge',ext('deploy','merge'),'MERGE_OBSERVED']]},
+ partial:{title:'A merge cannot be taken back here',description:'The API merges externally, then the Client request closes. Inspect the partial result, observe the exact refusal, and record an operator choice.',steps:[
+ ['Observe API merge',ext('api','merge'),'MERGE_OBSERVED'],['Observe Client closed',ext('client','close'),'CLOSED_OBSERVED'],['Try Client delivery',handoff('client'),'REQUEST_CLOSED'],['Record operator choice with a reason',{type:'guided-note'},'CHOICE_RECORDED']]},
+ stale:{title:'A new commit invalidates readiness',description:'A previously reviewed head changes. Keep the old evidence visible, reject an old-head outcome, then review the new revision.',steps:[
+ ['Confirm this order',{type:'confirm'},'ORDER_CONFIRMED'],['Review API delivery',handoff('api'),'HANDOFF_READY'],['Push a new API head',ext('api','advance'),'HEAD_CHANGED'],['Try API with stale evidence',handoff('api'),'EVIDENCE_STALE'],['Reject old-head merge evidence',ext('api','old'),'OBSERVATION_MISMATCH'],['Observe current API checks and review',ext('api','refresh'),'EVIDENCE_REFRESHED'],['Confirm the revised order',{type:'confirm'},'ORDER_CONFIRMED'],['Review the new API head',handoff('api'),'HANDOFF_READY']]}
+};
+let state=model.initial();
+let scenario='safe';
+let step=0;
+const drafts={note:'',choice:'Hold remaining delivery',component:'api',event:'merge'};
+const $=(id)=>document.getElementById(id);
+const escapeHtml=(value)=>String(value).replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+function act(action){state=model.reduce(state,action);render();}
+function render(){
+ const message=state.message;
+ $('notice').dataset.ok=String(message.ok);
+ $('notice').innerHTML=`${escapeHtml(message.text)}<code>${escapeHtml(message.code)}</code>`;
+ const count=state.components.filter(c=>c.request==='merged').length;
+ const closed=state.components.filter(c=>c.request==='closed').length;
+ $('summary').textContent=count===3?'All 3 components observed delivered · awaiting process reconciliation':`${count} of 3 components delivered${count&&closed?(state.choice?.revision===state.revision?' · Partial delivery · operator choice recorded':' · Partial delivery needs an operator choice'):count?' · Remaining components retain their own state':''}`;
+ $('plan-state').innerHTML=`<strong>Plan revision ${state.revision} · ${state.confirmed===state.revision?'Order confirmed':'Confirmation needed'}</strong><br>Client requires API; Deployment requires Client.${state.confirmed&&state.confirmed!==state.revision?` Prior confirmation: revision ${state.confirmed}.`:''}`;
+ $('lanes').innerHTML=state.components.map((c,index)=>{
+  const s=model.status(state,c);
+  return `<article class="lane" id="lane-${c.key}"><div class="lane-head"><div class="lane-title"><span class="order">${index+1}</span><div><h3>${c.name}</h3><div class="small muted">${c.repo} · Review #${c.number}</div></div></div><span class="badge ${s.kind}">${s.label}</span></div><dl class="facts"><div><dt>Branch / pinned head</dt><dd><code>${c.branch}</code><br><code>${c.head}</code> into <code>${c.base}</code></dd></div><div><dt>Checks / review</dt><dd>${c.evidence.checks} · ${c.evidence.review}${c.evidence.conflict?' · merge conflict':''}<br><span class="small muted">${!c.evidence.available?'Unavailable · retained evidence':c.evidence.head!==c.head?'Stale · old head':'Observed for'} <code>${c.evidence.head}</code></span></dd></div><div><dt>Observed delivery</dt><dd>${c.request==='merged'?`Merged · <code>${c.merge}</code>`:c.request==='closed'?'Closed unmerged':'Open · no merge observed'}</dd></div></dl><p class="dependency-note">${escapeHtml(s.detail)}</p><div class="actions"><button type="button" data-inspect="${c.key}">Inspect ${c.name}</button><button type="button" data-handoff="${c.key}" ${s.code==='READY'?'class="primary"':''}>Review ${c.name} delivery</button></div></article>`;
+ }).join('');
+ const c=state.components.find(item=>item.key===state.inspected);
+ const h=state.handoff;
+ const isHandoff=h?.key===c.key;
+ const handoffStale=isHandoff&&(h.head!==c.head||h.revision!==state.revision);
+ const handoffHistorical=isHandoff&&model.status(state,c).code!=='READY';
+ $('inspection').innerHTML=`<h3>${c.name} / review #${c.number}</h3><p class="small muted">${model.status(state,c).label}. Inspections never refresh retained evidence.</p><dl><div><dt>Project key</dt><dd><code>${c.key}</code></dd></div><div><dt>Expected head</dt><dd><code>${c.head}</code></dd></div><div><dt>Observation head</dt><dd><code>${c.evidence.head}</code></dd></div><div><dt>Evidence validity</dt><dd>${!c.evidence.available?'Unavailable':c.evidence.head!==c.head?'Stale':'Current'}</dd></div><div class="wide"><dt>Provider handoff snapshot</dt><dd>${isHandoff?`${handoffStale?'Stale':handoffHistorical?'Historical':'Reviewed'} · revision ${h.revision} · <code>${h.head}</code>`:'No provider handoff reviewed for this component.'}</dd></div></dl><div class="evidence-note">${isHandoff?`<strong>Simulated provider preview</strong><br>${c.repo} / #${c.number}<br>${handoffStale?'The reviewed revision is stale. Refresh evidence and review the current plan before continuing.':c.request==='merged'?'The provider reports a merge. The handoff itself did not merge anything.':handoffHistorical?'This earlier handoff no longer establishes readiness. Inspect the current request state before continuing.':'A real integration would open this exact request at its provider. Provider checks and permissions still apply.'}`:'Select Review delivery to check prerequisites and prepare a provider handoff. Readiness grants no merge permission.'}</div>`;
+ const guide=scenarios[scenario];
+ const done=step>=guide.steps.length;
+ $('guide').innerHTML=`<h3>${guide.title}</h3><p class="guide-copy muted">${guide.description}</p><ol class="step-list">${guide.steps.map((item,i)=>`<li class="${i<step?'done':i===step?'current':''}">${item[0]}${['REQUEST_CLOSED','EVIDENCE_STALE','OBSERVATION_MISMATCH'].includes(item[2])?` <span class="muted">(expect ${item[2]})</span>`:''}</li>`).join('')}</ol><button type="button" class="guide-action primary" id="guide-next" ${done?'disabled':''}>${done?'Walkthrough complete':`${step+1}. ${guide.steps[step][0]}`}</button><p class="small muted" style="margin-top:10px">${done?'Choose another case or use free play below.':'Only the expected outcome advances a step. Each case starts fresh; local note drafts are retained.'}</p>`;
+ for(const button of document.querySelectorAll('[data-scenario]'))button.setAttribute('aria-pressed',String(button.dataset.scenario===scenario));
+ $('saved-note').textContent=state.choice?`${state.choice.choice} · recorded at revision ${state.choice.revision}. ${state.choice.note}`:'No operator choice recorded yet.';
+ $('history').innerHTML=state.events.length?state.events.map(event=>`<li>${escapeHtml(event.text)} <code>${event.code}</code></li>`).join(''):'<li>No external observations or decisions yet. Use a guided case or simulate an event.</li>';
+}
+document.addEventListener('click',(event)=>{
+ const button=event.target.closest('button');
+ if(!button)return;
+ if(button.dataset.inspect)act({type:'inspect',key:button.dataset.inspect});
+ if(button.dataset.handoff)act(handoff(button.dataset.handoff));
+ if(button.dataset.scenario){scenario=button.dataset.scenario;step=0;state=model.initial();render();}
+ if(button.id==='reset'){state=model.initial();scenario='safe';step=0;drafts.note='';drafts.choice='Hold remaining delivery';drafts.component='api';drafts.event='merge';$('note').value='';$('choice').value=drafts.choice;$('component').value=drafts.component;$('event').value=drafts.event;render();}
+ if(button.id==='confirm')act({type:'confirm'});
+ if(button.id==='save-note')act({type:'note',note:drafts.note,choice:drafts.choice});
+ if(button.id==='apply-event')act(ext(drafts.component,drafts.event));
+ if(button.id==='guide-next'){
+  const current=scenarios[scenario].steps[step];
+  const action=current[1].type==='guided-note'?{type:'note',note:drafts.note,choice:drafts.choice}:current[1];
+  state=model.reduce(state,action);
+  if(state.message.code===current[2]&&(state.message.ok||['REQUEST_CLOSED','EVIDENCE_STALE','OBSERVATION_MISMATCH'].includes(current[2])))step+=1;
+  render();
+ }
+});
+$('note').addEventListener('input',event=>{drafts.note=event.target.value;});
+for(const id of ['choice','component','event'])$(id).addEventListener('change',event=>{drafts[id]=event.target.value;});
+render();
+</script>
+</body>
+</html>
