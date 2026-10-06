@@ -16,6 +16,8 @@ This differs from the earlier recovery assistant and topic knowledge: the centra
 
 Free play also supports empty search results, different repositories with similar names, process-type intersections, startup recovery distinct from accepted-turn retry, duplicate references and arbitrary investigation notes. Guided refusals require the intended unavailable source and saved reference, rather than any failed action.
 
+Source-scoped guided steps require the named historical case before acting. Switching cases cannot save a different reference or overwrite the current investigation draft through the guide.
+
 ## Integration seams and proposed contracts
 
 - `packages/server/src/db/process-instance-repo.ts` currently searches title, external ID, process ID and parameters, not failure/intervention content.
