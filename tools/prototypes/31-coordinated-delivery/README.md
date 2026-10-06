@@ -25,6 +25,10 @@ unmerged. It does not split components into separate processes.
   unavailable providers, failed checks, requested changes, and merge conflicts.
 - Record an advisory operator choice and reason. Notes survive inspections,
   unrelated updates, rejected actions, and walkthrough changes. Reset clears them.
+  Each choice retains the exact component heads, request outcomes, merge commits,
+  checks, reviews, and availability it assessed. Changed observations make it
+  historical; partial delivery then requires a new choice. Earlier receipts and
+  reasons remain in the observation log when a new choice is recorded.
 
 All counts are calculated from the three synthetic repositories. The compact
 commit identifiers are fixture labels, not real Git objects. Guided steps use the
@@ -76,7 +80,10 @@ A production proposal needs process-owned prerequisite definitions and a deliver
 plan snapshot bound to the component heads. Observations need component, request,
 head, provider provenance, and observation identity, with explicit unavailable and
 stale states. Persist confirmations and advisory choices server-side, separately
-from process lifecycle. Revalidate observations and the reviewed revision at any
+from process lifecycle. Bind each choice to its frozen delivery observations as
+well as the plan revision. A later material observation invalidates that choice,
+even if evidence availability subsequently returns to its former state.
+Revalidate observations and the reviewed revision at any
 future provider write boundary. Such writes must use the owning provider's retry-safe external-write contract
 (`ExternalWrites.ensure` at this source boundary); the display is not merge authority.
 
@@ -93,6 +100,13 @@ and mobile inspection. The final captures use 1440px and 390px viewports and wer
 opened for visual inspection. Both widths have no horizontal overflow and all
 buttons meet the 44px minimum. The browser reported no runtime errors.
 
+The delivery-choice follow-up reproduced a choice recorded before API merged and
+Client closed, then verified that those outcomes require a fresh choice while the
+plan remains at revision 1. Real browser interactions also confirmed availability
+loss and restoration keep old choices historical, fresh choices assess the new
+state, and prior receipts and drafts survive inspections and refused actions.
+All three normal walkthroughs were repeated, including the missing-reason refusal.
+
 Biome check, extracted inline JavaScript syntax checking with `node --check`, and
 `git diff --check` pass. The one Impeccable detector run returned no findings in
 **degraded regex mode** because parser modules were unavailable; it did not verify
@@ -103,7 +117,10 @@ Provisional learning: readiness and delivery need separate language. A green
 review cannot release a dependent component, and a recorded operator choice
 cannot turn partial delivery into completion. Preserving the old head beside the
 current head makes revision invalidation understandable without erasing history.
-This is a behavior demonstration, not evidence from operator usability research.
+A choice must also identify the delivery observations it assessed: an unchanged
+plan revision does not mean independently observed repository outcomes are
+unchanged. This is a behavior demonstration, not evidence from operator usability
+research.
 
 Limits: no persistence, real provider links, permissions, merge writes, rollback,
 repair creation, asynchronous races, clocks, or process reconciliation. Three fixed

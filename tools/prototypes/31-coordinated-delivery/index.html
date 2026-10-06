@@ -31,7 +31,7 @@ const model = (() => {
  const names={api:'API',client:'Client',deploy:'Deployment'};
  const heads={api:'a31f020',client:'c82b114',deploy:'d14f820'};
  const dependencies={api:[],client:['api'],deploy:['client']};
- const initial=()=>({revision:1,confirmed:null,inspected:'api',handoff:null,choice:null,events:[],message:{ok:true,code:'READY_TO_EXPLORE',text:'Review the proposed order, then follow a component to its provider. Nothing has been delivered yet.'},components:Object.keys(names).map((key,i)=>({key,name:names[key],repo:['atlas-api','atlas-client','atlas-deploy'][i],number:[214,89,52][i],branch:'change/pagination',base:'main',head:heads[key],previous:null,version:0,request:'open',merge:null,evidence:{head:heads[key],checks:'passing',review:'approved',available:true,conflict:false},depends:dependencies[key]}))});
+ const initial=()=>({revision:1,observationRevision:1,confirmed:null,inspected:'api',handoff:null,choice:null,events:[],message:{ok:true,code:'READY_TO_EXPLORE',text:'Review the proposed order, then follow a component to its provider. Nothing has been delivered yet.'},components:Object.keys(names).map((key,i)=>({key,name:names[key],repo:['atlas-api','atlas-client','atlas-deploy'][i],number:[214,89,52][i],branch:'change/pagination',base:'main',head:heads[key],previous:null,version:0,request:'open',merge:null,evidence:{head:heads[key],checks:'passing',review:'approved',available:true,conflict:false},depends:dependencies[key]}))});
  const status=(state,c)=>{
   if(c.request==='merged')return {code:'ALREADY_DELIVERED',label:'Already delivered',detail:`Observed merge ${c.merge} for ${c.head}.`,kind:''};
   if(c.request==='closed')return {code:'REQUEST_CLOSED',label:'Closed unmerged',detail:'An operator must choose a repair or hold. This request cannot be delivered.',kind:'problem'};
@@ -45,10 +45,17 @@ const model = (() => {
   if(waiting.length)return {code:'PREREQUISITE_UNDELIVERED',label:`Waiting for ${waiting.map(k=>names[k]).join(', ')}`,detail:'Required components have no observed merge. A passing check alone does not deliver them.',kind:''};
   return {code:'READY',label:'Ready to deliver',detail:'Current checks, review, and prerequisites agree. Continue at the provider.',kind:'ready'};
  };
+ const observations=state=>state.components.map(({key,number,head,request,merge,evidence})=>({key,number,head,request,merge,evidence:structuredClone(evidence)}));
+ const currentChoice=(state,choice=state.choice)=>Boolean(choice&&choice.id===state.choice?.id&&choice.revision===state.revision&&choice.observationRevision===state.observationRevision);
  function reduce(state,action){
   const next=structuredClone(state);
   const c=next.components.find(item=>item.key===action.key);
-  const finish=(ok,code,text)=>{next.message={ok,code,text};if(action.type!=='inspect')next.events.unshift({code,text});return next;};
+  const finish=(ok,code,text)=>{
+   if(action.type==='external'&&JSON.stringify(observations(state))!==JSON.stringify(observations(next)))next.observationRevision+=1;
+   next.message={ok,code,text};
+   if(action.type!=='inspect')next.events.unshift({code,text,...(code==='CHOICE_RECORDED'?{choice:structuredClone(next.choice)}:{})});
+   return next;
+  };
   if(action.type==='inspect'){next.inspected=action.key;return next;}
   if(action.type==='confirm'){next.confirmed=next.revision;return finish(true,'ORDER_CONFIRMED',`Delivery order confirmed for revision ${next.revision}, with each current head pinned. This is an advisory confirmation.`);}
   if(action.type==='handoff'){
@@ -60,7 +67,7 @@ const model = (() => {
   }
   if(action.type==='note'){
    if(!action.note.trim())return finish(false,'NOTE_REQUIRED','Add a reason before recording the choice. Your selection is retained.');
-   next.choice={choice:action.choice,note:action.note,revision:next.revision};
+   next.choice={id:next.events.length+1,choice:action.choice,note:action.note,revision:next.revision,observationRevision:next.observationRevision,components:observations(next)};
    return finish(true,'CHOICE_RECORDED','Operator choice recorded locally. Process lifecycle is still active; delivered commits remain delivered.');
   }
   if(action.type==='external'){
@@ -78,7 +85,7 @@ const model = (() => {
   }
   return finish(false,'UNKNOWN_ACTION','No fixture change was applied.');
  }
- return {initial,status,reduce};
+ return {initial,status,currentChoice,reduce};
 })();
 const ext=(key,event)=>({type:'external',key,event});
 const handoff=(key)=>({type:'handoff',key});
@@ -103,7 +110,7 @@ function render(){
  $('notice').innerHTML=`${escapeHtml(message.text)}<code>${escapeHtml(message.code)}</code>`;
  const count=state.components.filter(c=>c.request==='merged').length;
  const closed=state.components.filter(c=>c.request==='closed').length;
- $('summary').textContent=count===3?'All 3 components observed delivered · awaiting process reconciliation':`${count} of 3 components delivered${count&&closed?(state.choice?.revision===state.revision?' · Partial delivery · operator choice recorded':' · Partial delivery needs an operator choice'):count?' · Remaining components retain their own state':''}`;
+ $('summary').textContent=count===3?'All 3 components observed delivered · awaiting process reconciliation':`${count} of 3 components delivered${count&&closed?(model.currentChoice(state)?' · Partial delivery · operator choice recorded':' · Partial delivery needs an operator choice'):count?' · Remaining components retain their own state':''}`;
  $('plan-state').innerHTML=`<strong>Plan revision ${state.revision} · ${state.confirmed===state.revision?'Order confirmed':'Confirmation needed'}</strong><br>Client requires API; Deployment requires Client.${state.confirmed&&state.confirmed!==state.revision?` Prior confirmation: revision ${state.confirmed}.`:''}`;
  $('lanes').innerHTML=state.components.map((c,index)=>{
   const s=model.status(state,c);
@@ -119,8 +126,8 @@ function render(){
  const done=step>=guide.steps.length;
  $('guide').innerHTML=`<h3>${guide.title}</h3><p class="guide-copy muted">${guide.description}</p><ol class="step-list">${guide.steps.map((item,i)=>`<li class="${i<step?'done':i===step?'current':''}">${item[0]}${['REQUEST_CLOSED','EVIDENCE_STALE','OBSERVATION_MISMATCH'].includes(item[2])?` <span class="muted">(expect ${item[2]})</span>`:''}</li>`).join('')}</ol><button type="button" class="guide-action primary" id="guide-next" ${done?'disabled':''}>${done?'Walkthrough complete':`${step+1}. ${guide.steps[step][0]}`}</button><p class="small muted" style="margin-top:10px">${done?'Choose another case or use free play below.':'Only the expected outcome advances a step. Each case starts fresh; local note drafts are retained.'}</p>`;
  for(const button of document.querySelectorAll('[data-scenario]'))button.setAttribute('aria-pressed',String(button.dataset.scenario===scenario));
- $('saved-note').textContent=state.choice?`${state.choice.choice} · recorded at revision ${state.choice.revision}. ${state.choice.note}`:'No operator choice recorded yet.';
- $('history').innerHTML=state.events.length?state.events.map(event=>`<li>${escapeHtml(event.text)} <code>${event.code}</code></li>`).join(''):'<li>No external observations or decisions yet. Use a guided case or simulate an event.</li>';
+ $('saved-note').textContent=state.choice?`${model.currentChoice(state)?'Current':'Historical'} · ${state.choice.choice} · plan revision ${state.choice.revision}, delivery observations ${state.choice.observationRevision}. ${state.choice.note}${model.currentChoice(state)?'':' Delivery observations changed; record a new choice for the current state.'}`:'No operator choice recorded yet.';
+ $('history').innerHTML=state.events.length?state.events.map(event=>`<li>${escapeHtml(event.text)} <code>${event.code}</code>${event.choice?`<p class="small">${model.currentChoice(state,event.choice)?'Current':'Historical'} choice · ${escapeHtml(event.choice.choice)} · plan revision ${event.choice.revision}, delivery observations ${event.choice.observationRevision}. ${escapeHtml(event.choice.note)}<br>Assessed: ${event.choice.components.map(item=>`${escapeHtml(item.key)} #${item.number} at <code>${escapeHtml(item.head)}</code>: ${item.request}${item.merge?` (${escapeHtml(item.merge)})`:''}; evidence ${item.evidence.available?'available':'unavailable'} at <code>${escapeHtml(item.evidence.head)}</code>, ${item.evidence.checks}, ${item.evidence.review}${item.evidence.conflict?', merge conflict':''}`).join('<br>')}</p>`:''}</li>` ).join(''):'<li>No external observations or decisions yet. Use a guided case or simulate an event.</li>';
 }
 document.addEventListener('click',(event)=>{
  const button=event.target.closest('button');
