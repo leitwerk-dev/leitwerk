@@ -595,6 +595,7 @@ describe("ProcessTurnRecordRepo", () => {
 		expect(updated?.status).toBe("failed");
 		expect(updated?.errorSummary).toBe("plan generation failed");
 		expect(updated?.turnResultMarkdown).toBe("## Plan result");
+		expect(turnRecords.getLatestSucceededPrimaryByInstance(process.id)).toBeNull();
 
 		const primarySucceeded = turnRecords.create({
 			instanceId: process.id,
@@ -605,24 +606,22 @@ describe("ProcessTurnRecordRepo", () => {
 			resultPiEntryId: "pi_turn_1",
 			endedAt: new Date().toISOString(),
 		});
-		turnRecords.create({
-			instanceId: process.id,
-			turnId: "run_llm_review",
-			turnType: "human",
-			status: "succeeded",
-			pathType: "root_branch",
-			resultPiEntryId: "pi_review_1",
-			endedAt: new Date().toISOString(),
-		});
+		for (const resultPiEntryId of [null, "", "pi_review_1"]) {
+			turnRecords.create({
+				instanceId: process.id,
+				turnId: "run_llm_review",
+				turnType: "human",
+				status: "succeeded",
+				pathType: resultPiEntryId ? "root_branch" : "primary",
+				resultPiEntryId,
+				startedAt: "2099-01-01T00:00:00.000Z",
+			});
+		}
 
 		const all = turnRecords.listByInstance(process.id);
-		expect(all).toHaveLength(3);
-		expect(
-			turnRecords.listByInstance(process.id).find((record) => record.status === "failed")?.id,
-		).toBe(run.id);
-		expect(turnRecords.getLatestSucceededPrimaryByInstance(process.id)?.id).toBe(
-			primarySucceeded.id,
-		);
+		expect(all).toHaveLength(5);
+		expect(all.find((record) => record.status === "failed")?.id).toBe(run.id);
+		expect(turnRecords.getLatestSucceededPrimaryByInstance(process.id)).toEqual(primarySucceeded);
 	});
 });
 

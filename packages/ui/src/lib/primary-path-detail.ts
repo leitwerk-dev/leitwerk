@@ -6,6 +6,16 @@ import {
 	WS_PRIMARY_PATH_TYPES,
 } from "@leitwerk-dev/protocol";
 
+/** @internal */
+export function isFullPrimaryPathDetailFrame(frame: PrimaryPathWsFrame): boolean {
+	return (
+		frame.type === WS_PRIMARY_PATH_TYPES.ASSISTANT_PARTIAL ||
+		frame.type === WS_PRIMARY_PATH_TYPES.USAGE_UPDATED ||
+		frame.type === WS_PRIMARY_PATH_TYPES.TOOL_CALL_STARTED ||
+		frame.type === WS_PRIMARY_PATH_TYPES.TOOL_CALL_COMPLETED
+	);
+}
+
 function updateSemanticLeafRefs(
 	snapshot: PrimaryPathUiSnapshot,
 	rootEntry: PrimaryPathUiSnapshot["semanticEntryRefs"]["rootEntry"],
@@ -122,15 +132,7 @@ export function applyPrimaryPathFrame(
 			},
 		};
 	}
-	if (
-		[
-			WS_PRIMARY_PATH_TYPES.ASSISTANT_PARTIAL,
-			WS_PRIMARY_PATH_TYPES.USAGE_UPDATED,
-			WS_PRIMARY_PATH_TYPES.TOOL_CALL_STARTED,
-			WS_PRIMARY_PATH_TYPES.TOOL_CALL_COMPLETED,
-		].includes(frame.type as typeof WS_PRIMARY_PATH_TYPES.ASSISTANT_PARTIAL)
-	)
-		return snapshot;
+	if (isFullPrimaryPathDetailFrame(frame)) return snapshot;
 	if (
 		frame.type === WS_PRIMARY_PATH_TYPES.ASSISTANT_COMMITTED &&
 		active &&

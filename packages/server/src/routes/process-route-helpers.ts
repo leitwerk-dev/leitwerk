@@ -684,16 +684,10 @@ export function sendScheduledActionMutationResponse(
 export function mergeProcessEventWindowsAscending(
 	windows: readonly (readonly ProcessEvent[])[],
 ): ProcessEvent[] {
-	const eventsById = new Map<string, ProcessEvent>();
-	for (const window of windows) {
-		for (const event of window) {
-			eventsById.set(event.id, event);
-		}
-	}
-	return [...eventsById.values()].sort((left, right) => {
-		const createdAtComparison = left.createdAt.localeCompare(right.createdAt);
-		return createdAtComparison !== 0 ? createdAtComparison : left.id.localeCompare(right.id);
-	});
+	return [...new Map(windows.flat().map((event) => [event.id, event])).values()].sort(
+		(left, right) =>
+			left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
+	);
 }
 
 export { getSelectedTurnSummaryForProcess };

@@ -141,27 +141,22 @@ export function createExecutionInspectionRepo(db: LeitwerkDb) {
 				)
 				.orderBy(asc(executionInspections.sequence))
 				.all()
-				.flatMap((row) => {
-					const fact = JSON.parse(row.factJson) as ExecutionInspectionCapture["fact"];
-					if (
-						fact.kind !== "supplied_context" &&
-						fact.kind !== "product_consumed" &&
-						fact.kind !== "entry_link"
-					)
-						return [];
-					return [
-						{
-							id: row.id,
-							turnRecordId: row.turnRecordId,
-							fact:
-								fact.kind === "supplied_context"
-									? {
-											...fact,
-											products: fact.products.map(({ content: _content, ...source }) => source),
-										}
-									: fact,
-						},
-					];
+				.map((row) => {
+					const fact = JSON.parse(row.factJson) as Extract<
+						ExecutionInspectionCapture["fact"],
+						{ kind: "supplied_context" | "product_consumed" | "entry_link" }
+					>;
+					return {
+						id: row.id,
+						turnRecordId: row.turnRecordId,
+						fact:
+							fact.kind === "supplied_context"
+								? {
+										...fact,
+										products: fact.products.map(({ content: _content, ...source }) => source),
+									}
+								: fact,
+					};
 				});
 		},
 	};

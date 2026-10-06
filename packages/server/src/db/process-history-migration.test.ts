@@ -5,7 +5,13 @@ import { expect, it } from "vitest";
 import { closeDatabase, createDatabase } from "./database.js";
 import { createAllRepos } from "./repositories.js";
 
-it("adds history indexes to retained file-backed data and only repairs missing summaries", () => {
+it.each([
+	`DROP INDEX idx_turn_records_page;
+DROP INDEX idx_turn_annotations_created;
+DROP INDEX idx_worker_leases_started;
+DROP INDEX idx_worker_leases_exited;`,
+	"CREATE INDEX idx_leaf_outcomes_anchored ON process_leaf_outcome_snapshots(instance_id, anchored_at)",
+])("migrates retained file-backed history (%#)", (upgrade) => {
 	const root = mkdtempSync(join(tmpdir(), "leitwerk-history-migration-"));
 	const sqlitePath = join(root, "state.sqlite");
 	let db = createDatabase({ sqlitePath });
@@ -24,14 +30,7 @@ it("adds history indexes to retained file-backed data and only repairs missing s
 			eventType: "turn.progress",
 			data: { turnRecordId: turn.id },
 		});
-		for (const name of [
-			"idx_turn_records_page",
-			"idx_turn_annotations_created",
-			"idx_worker_leases_started",
-			"idx_worker_leases_exited",
-			"idx_leaf_outcomes_anchored",
-		])
-			db.$client.exec(`DROP INDEX ${name}`);
+		db.$client.exec(upgrade);
 		closeDatabase(db);
 		db = createDatabase({ sqlitePath });
 		repos = createAllRepos(db);
@@ -39,6 +38,7 @@ it("adds history indexes to retained file-backed data and only repairs missing s
 		expect(repos.turnRecords.listMissingSummaries(process.id)).toEqual([]);
 		expect(readdirSync(join(root, "backups")).some((name) => name.endsWith(".bak"))).toBe(true);
 		expect(db.$client.prepare("PRAGMA integrity_check").get()).toEqual({ integrity_check: "ok" });
+		expect(db.$client.prepare("PRAGMA index_info(idx_leaf_outcomes_anchored)").all()).toEqual([]);
 	} finally {
 		closeDatabase(db);
 		rmSync(root, { recursive: true, force: true });

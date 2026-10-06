@@ -86,6 +86,15 @@ function pauseSessionRead(source: ProcessSessionSource) {
 	};
 }
 
+function createWaitingReviewProcess() {
+	return fixture.deps.processes.create({
+		processId: "ticket_issue_process",
+		selectedTurnId: "plan_review",
+		lifecycleStatus: "waiting",
+		stateJson: createStructuralStateJson(),
+	});
+}
+
 function createRunningTurn() {
 	const { deps } = fixture;
 	const process = deps.processes.create({
@@ -168,12 +177,7 @@ it("captures primary-path state through its seven dependencies before session lo
 
 it("resolves visible actions once when presenting the action list", () => {
 	const { deps } = fixture;
-	const process = deps.processes.create({
-		processId: "ticket_issue_process",
-		selectedTurnId: "plan_review",
-		lifecycleStatus: "waiting",
-		stateJson: createStructuralStateJson(),
-	});
+	const process = createWaitingReviewProcess();
 	const resolve = vi.spyOn(deps.processActionRegistry, "listVisibleActions");
 	const actions = listVisibleActionsForProcess(deps, process);
 	expect(actions.length).toBeGreaterThan(0);
@@ -186,12 +190,7 @@ it("resolves visible actions once when presenting the action list", () => {
 
 it("captures action availability before scheduling changes during session loading", async () => {
 	const { deps, source } = fixture;
-	const process = deps.processes.create({
-		processId: "ticket_issue_process",
-		selectedTurnId: "plan_review",
-		lifecycleStatus: "waiting",
-		stateJson: createStructuralStateJson(),
-	});
+	const process = createWaitingReviewProcess();
 	const assembler = new ProcessDiagnosticsAssembler(deps);
 	const before = await assembler.assembleDetail(process.id);
 	expect(before?.actions.length).toBeGreaterThan(0);
@@ -471,12 +470,7 @@ it("keeps context observations captured before session loading", async () => {
 
 it("pages long process histories without reading all turns, leases, annotations or summaries", async () => {
 	const { deps, db } = fixture;
-	const process = deps.processes.create({
-		processId: "ticket_issue_process",
-		selectedTurnId: "plan_review",
-		lifecycleStatus: "waiting",
-		stateJson: createStructuralStateJson(),
-	});
+	const process = createWaitingReviewProcess();
 	const ids: string[] = [];
 	const lease = deps.leases.create({
 		instanceId: process.id,
@@ -492,7 +486,7 @@ it("pages long process histories without reading all turns, leases, annotations 
 			id: `trn_page_${String(i).padStart(4, "0")}`,
 			instanceId: process.id,
 			turnId: "plan_review",
-			turnType: "human",
+			turnType: i === 0 ? "automatic" : "human",
 			status: "succeeded",
 			startedAt,
 			endedAt: startedAt,
@@ -528,6 +522,7 @@ it("pages long process histories without reading all turns, leases, annotations 
 			seen.add(turn.id);
 		}
 	}
+	expect(page?.startup.attempts[0]?.workerLeaseId).toEqual(expect.any(String));
 	expect([...seen].sort()).toEqual(ids);
 	expect(allTurns).not.toHaveBeenCalled();
 	expect(firstBytes).toBeLessThan(120_000);
@@ -550,12 +545,7 @@ it("pages long process histories without reading all turns, leases, annotations 
 
 it("keeps timeline presentation while leaving large source payloads in diagnostic reads", async () => {
 	const { deps } = fixture;
-	const process = deps.processes.create({
-		processId: "ticket_issue_process",
-		selectedTurnId: "plan_review",
-		lifecycleStatus: "waiting",
-		stateJson: createStructuralStateJson(),
-	});
+	const process = createWaitingReviewProcess();
 	const turn = deps.turnRecords.create({
 		instanceId: process.id,
 		turnId: "plan_review",
