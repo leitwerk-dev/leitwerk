@@ -36,14 +36,11 @@ let choicesLoading = $state(false);
 let choicesError = $state("");
 let choicesLoaded = $state(false);
 let choicesRefresh = $state(0);
+const mergeChoices = (...lists: SettingChoice[][]) => [
+	...new Map(lists.flat().map((choice) => [choice.value, choice])).values(),
+];
 const choices = $derived(
-	field.choicesDeferred
-		? [
-				...new Map(
-					[...field.choices, ...remoteChoices].map((choice) => [choice.value, choice]),
-				).values(),
-			]
-		: field.choices,
+	field.choicesDeferred ? mergeChoices(field.choices, remoteChoices) : field.choices,
 );
 const searchMinimum = $derived(field.form.search?.minimumLength ?? 0);
 const needsSearch = $derived(searchMinimum > 0 && search.trim().length < searchMinimum);
@@ -53,6 +50,11 @@ const activeOverride = $derived(field.override && !field.override.reset ? field.
 const selected = $derived(
 	Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [],
 );
+const retainedChoices = (saved: unknown) =>
+	remoteChoices.filter(
+		(choice) =>
+			selected.includes(choice.value) || (Array.isArray(saved) && saved.includes(choice.value)),
+	);
 const selectionChoices = $derived([
 	...selected
 		.filter((value) => !choices.some((choice) => choice.value === value))
@@ -138,12 +140,7 @@ $effect(() => {
 	const query = editing ? search.trim() : "";
 	void choicesRefresh;
 	if (searchMinimum > 0) {
-		remoteChoices = untrack(() =>
-			remoteChoices.filter(
-				(choice) =>
-					selected.includes(choice.value) || (Array.isArray(saved) && saved.includes(choice.value)),
-			),
-		);
+		remoteChoices = untrack(() => retainedChoices(saved));
 		if (!editing || query.length < searchMinimum) {
 			choicesLoading = false;
 			choicesError = "";
@@ -157,16 +154,7 @@ $effect(() => {
 		void fetchSettingsChoices(id, key, query, controller.signal)
 			.then((result) => {
 				if (controller.signal.aborted) return;
-				const retained = remoteChoices.filter(
-					(choice) =>
-						selected.includes(choice.value) ||
-						(Array.isArray(saved) && saved.includes(choice.value)),
-				);
-				remoteChoices = [
-					...new Map(
-						[...retained, ...result.choices].map((choice) => [choice.value, choice]),
-					).values(),
-				];
+				remoteChoices = mergeChoices(retainedChoices(saved), result.choices);
 				choicesLoaded = true;
 			})
 			.catch((caught: unknown) => {

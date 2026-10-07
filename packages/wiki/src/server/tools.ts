@@ -9,8 +9,78 @@ export function registerWikiTools(
 	wiki: WikiIntegration,
 ): void {
 	const contentKeys = ["title", "markdown", "applicability", "status", "evidence", "links"];
+	const fields = {
+		wiki_index: ["query"],
+		wiki_read: ["pageId"],
+		wiki_share: ["pageId", "expectedRevision", ...contentKeys],
+		wiki_edit: ["pageId", "expectedRevision", ...contentKeys],
+		wiki_delete: ["pageId", "expectedRevision"],
+		wiki_delete_group: ["expectedRevision"],
+	};
 	for (const name of wikiToolNames) {
-		const deletion = name === "wiki_delete" || name === "wiki_delete_group";
+		const properties: Record<string, unknown> = {
+			pageId: {
+				type: "string",
+				description:
+					"Use an entry ID returned by wiki_index, not the topic ID or an evidence revision. For a new wiki_share page, choose a stable alphanumeric ID with hyphens or underscores.",
+			},
+			query: {
+				type: "string",
+				description:
+					"Optional case-insensitive literal substring across title, applicability and text. Omit or use an empty string to discover all pages first. Long questions and keyword lists are not semantic search. If a filter returns no pages, retry without it before concluding no guidance exists.",
+			},
+			expectedRevision: {
+				type: "integer",
+				minimum: name === "wiki_share" ? 0 : 1,
+				description:
+					name === "wiki_delete_group"
+						? "The topic.revision returned by wiki_index, including all entry changes."
+						: "The entry revision returned by wiki_read; 0 is only for new wiki_share pages.",
+			},
+			title: {
+				type: "string",
+				description: "Name the reusable solution, not this process or its progress.",
+			},
+			markdown: {
+				type: "string",
+				description:
+					"Explain the new solution, why it works, and limitations. Exclude instructions already in the current ticket or shared source requirement. Failed attempts are supporting evidence only.",
+			},
+			applicability: {
+				type: "string",
+				description:
+					"Concrete conditions under which another process in this topic can apply the solution (versions, constraints, repository characteristics).",
+			},
+			status: {
+				type: "string",
+				enum: ["proposed", "observed", "validated", "needs_revalidation"],
+				description:
+					"Evidence strength: proposed solution, observed behavior, validated against the cited evidence, or needs_revalidation after drift or contradiction. Validated is not universal correctness.",
+			},
+			evidence: {
+				type: "array",
+				items: {
+					type: "object",
+					properties: {
+						repository: { type: "string" },
+						revision: {
+							type: "string",
+							description:
+								"Full inspected repository commit SHA (40 or 64 hexadecimal characters). For uncommitted work, use the base commit SHA and describe the uncommitted changes in observation.",
+						},
+						path: { type: "string" },
+						observation: { type: "string" },
+					},
+					required: ["repository", "revision", "path", "observation"],
+				},
+			},
+			links: {
+				type: "array",
+				items: { type: "string" },
+				description:
+					"IDs of other current pages returned by wiki_index in this topic. Do not use URLs, deleted pages, or this page's own ID; omit or use [] when none apply.",
+			},
+		};
 		api.tool<Record<string, unknown>>({
 			name,
 			description: {
@@ -29,103 +99,10 @@ export function registerWikiTools(
 			}[name],
 			parameters: {
 				type: "object",
-				properties: {
-					...(name !== "wiki_index" && name !== "wiki_delete_group"
-						? {
-								pageId: {
-									type: "string",
-									description:
-										"Use an entry ID returned by wiki_index, not the topic ID or an evidence revision. For a new wiki_share page, choose a stable alphanumeric ID with hyphens or underscores.",
-								},
-							}
-						: {}),
-					...(name === "wiki_index"
-						? {
-								query: {
-									type: "string",
-									description:
-										"Optional case-insensitive literal substring across title, applicability and text. Omit or use an empty string to discover all pages first. Long questions and keyword lists are not semantic search. If a filter returns no pages, retry without it before concluding no guidance exists.",
-								},
-							}
-						: {}),
-					...(name !== "wiki_index" && name !== "wiki_read"
-						? {
-								expectedRevision: {
-									type: "integer",
-									minimum: name === "wiki_share" ? 0 : 1,
-									description:
-										name === "wiki_delete_group"
-											? "The topic.revision returned by wiki_index, including all entry changes."
-											: "The entry revision returned by wiki_read; 0 is only for new wiki_share pages.",
-								},
-							}
-						: {}),
-					...(!deletion && name !== "wiki_index" && name !== "wiki_read"
-						? {
-								title: {
-									type: "string",
-									description: "Name the reusable solution, not this process or its progress.",
-								},
-								markdown: {
-									type: "string",
-									description:
-										"Explain the new solution, why it works, and limitations. Exclude instructions already in the current ticket or shared source requirement. Failed attempts are supporting evidence only.",
-								},
-								applicability: {
-									type: "string",
-									description:
-										"Concrete conditions under which another process in this topic can apply the solution (versions, constraints, repository characteristics).",
-								},
-								status: {
-									type: "string",
-									enum: ["proposed", "observed", "validated", "needs_revalidation"],
-									description:
-										"Evidence strength: proposed solution, observed behavior, validated against the cited evidence, or needs_revalidation after drift or contradiction. Validated is not universal correctness.",
-								},
-								evidence: {
-									type: "array",
-									items: {
-										type: "object",
-										properties: {
-											repository: { type: "string" },
-											revision: {
-												type: "string",
-												description:
-													"Full inspected repository commit SHA (40 or 64 hexadecimal characters). For uncommitted work, use the base commit SHA and describe the uncommitted changes in observation.",
-											},
-											path: { type: "string" },
-											observation: { type: "string" },
-										},
-										required: ["repository", "revision", "path", "observation"],
-									},
-								},
-								links: {
-									type: "array",
-									items: { type: "string" },
-									description:
-										"IDs of other current pages returned by wiki_index in this topic. Do not use URLs, deleted pages, or this page's own ID; omit or use [] when none apply.",
-								},
-							}
-						: {}),
-				},
-				required:
-					name === "wiki_index"
-						? []
-						: name === "wiki_read"
-							? ["pageId"]
-							: name === "wiki_share"
-								? [
-										"pageId",
-										"expectedRevision",
-										"title",
-										"markdown",
-										"applicability",
-										"status",
-										"evidence",
-									]
-								: name === "wiki_delete_group"
-									? ["expectedRevision"]
-									: ["pageId", "expectedRevision"],
+				properties: Object.fromEntries(fields[name].map((key) => [key, properties[key]])),
+				required: fields[name].filter((key) =>
+					name === "wiki_share" ? key !== "links" : key !== "query" && !contentKeys.includes(key),
+				),
 				additionalProperties: false,
 			},
 			async execute(ctx, args) {

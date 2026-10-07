@@ -16,6 +16,15 @@ import {
 
 export { registerJiraTools } from "./tools.js";
 
+function upsertRemoteLink(links: JiraRemoteLink[], input: Omit<JiraRemoteLink, "id">) {
+	const previous = links.find((link) => link.globalId === input.globalId);
+	const link = { ...structuredClone(input), id: previous?.id ?? links.length + 1 };
+	if (previous) links[links.indexOf(previous)] = link;
+	else links.push(link);
+	const result: Pick<JiraRemoteLink, "id"> = { id: link.id };
+	return result;
+}
+
 const workflowTransitions: JiraTransition[] = [
 	{
 		id: "31",
@@ -207,17 +216,11 @@ export class LocalJiraSplitAdapter implements JiraClientLike {
 	/** @internal */ async listRemoteLinks(id: string) {
 		return structuredClone(this.remoteLinks.get(id) ?? []);
 	}
-	/** @internal */ async upsertRemoteLink(
-		id: string,
-		input: Omit<JiraRemoteLink, "id">,
-	): Promise<Pick<JiraRemoteLink, "id">> {
+	/** @internal */ async upsertRemoteLink(id: string, input: Omit<JiraRemoteLink, "id">) {
 		const links = this.remoteLinks.get(id) ?? [];
-		const previous = links.find((link) => link.globalId === input.globalId);
-		const link = { ...structuredClone(input), id: previous?.id ?? links.length + 1 };
-		if (previous) links[links.indexOf(previous)] = link;
-		else links.push(link);
+		const result = upsertRemoteLink(links, input);
 		this.remoteLinks.set(id, links);
-		return { id: link.id };
+		return result;
 	}
 	/** @internal */ async listTransitions(_id: string) {
 		return structuredClone(this.transitions);
@@ -391,13 +394,9 @@ export function localJiraIssueClient(
 		upsertRemoteLink: async (id, input) => {
 			state.remoteLinks ??= {};
 			state.remoteLinks[issue(id).id] ??= [];
-			const links = state.remoteLinks[issue(id).id];
-			const previous = links.find((link) => link.globalId === input.globalId);
-			const link = { ...structuredClone(input), id: previous?.id ?? links.length + 1 };
-			if (previous) links[links.indexOf(previous)] = link;
-			else links.push(link);
+			const result = upsertRemoteLink(state.remoteLinks[issue(id).id], input);
 			save();
-			return { id: link.id };
+			return result;
 		},
 		listTransitions: async () => structuredClone(workflowTransitions),
 		transitionIssue: async (id, transitionId) => {

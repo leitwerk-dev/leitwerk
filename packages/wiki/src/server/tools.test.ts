@@ -1,30 +1,16 @@
-import { DatabaseSync } from "node:sqlite";
 import type {
 	IntegrationToolDefinition,
 	IntegrationToolExecutionContext,
 } from "@leitwerk-dev/process-sdk";
-import { drizzle } from "drizzle-orm/node-sqlite";
-import { expect, it, onTestFinished } from "vitest";
+import { expect, it } from "vitest";
 import { createWikiIntegration } from "../integration.js";
-import { createTopicWikiRepo } from "./store.js";
+import { createWikiFixture } from "./test-fixture.js";
 import { registerWikiTools } from "./tools.js";
 
 function fixture() {
-	const sqlite = new DatabaseSync(":memory:");
-	onTestFinished(() => sqlite.close());
-	sqlite.exec(`
-		CREATE TABLE wiki_topics (id TEXT PRIMARY KEY, key TEXT NOT NULL, data TEXT NOT NULL);
-		CREATE TABLE wiki_pages (id TEXT PRIMARY KEY, topic_id TEXT NOT NULL REFERENCES wiki_topics(id), data TEXT NOT NULL);
-		CREATE TABLE wiki_revisions (id TEXT PRIMARY KEY, page_id TEXT NOT NULL REFERENCES wiki_pages(id), data TEXT NOT NULL);
-	`);
-	const database = drizzle({ client: sqlite });
-	const wiki = createWikiIntegration(createTopicWikiRepo(database));
-	const topic = wiki.ensureTopic({
-		key: "shared-migration",
-		title: "Migration",
-		url: "https://tracker.test/1",
-		sourceRevision: "one",
-	});
+	const { store, topic, content: wikiContent } = createWikiFixture();
+	const { links: _links, ...pageContent } = wikiContent;
+	const wiki = createWikiIntegration(store);
 	const other = wiki.ensureTopic({ ...topic, key: "other-migration" });
 	const tools = new Map<string, IntegrationToolDefinition>();
 	registerWikiTools(
@@ -39,23 +25,11 @@ function fixture() {
 	const content = {
 		pageId: "shared-compatibility",
 		expectedRevision: 0,
-		title: "Use the compatible version",
-		markdown:
-			"Use version 3.8 for the inspected integration; older versions fail its compatibility check.",
-		applicability: "Other services using the same integration",
-		status: "observed",
-		evidence: [
-			{
-				repository: "team/service",
-				revision: "a".repeat(40),
-				path: "build.gradle.kts",
-				observation: "Inspected dependency constraint",
-			},
-		],
+		...pageContent,
 	};
 	const call = (name: string, args: Record<string, unknown>, context = ctx()) =>
 		tools.get(name)?.execute(context, args);
-	return { wiki, topic, other, ctx, content, call };
+	return { wiki, topic, other, ctx, content, call, tools };
 }
 
 it("shares solutions across processes without a provider and isolates other topics", async () => {
@@ -122,13 +96,48 @@ it("reconciles replays, rejects concurrent edits, and prevents deletion from bei
 		expectedRevision: 1,
 		markdown: "Refined compatibility solution",
 	};
-	await f.call("wiki_edit", edit, f.ctx("editor"));
+	for (let replay = 0; replay < 2; replay++)
+		expect(await f.call("wiki_edit", edit, f.ctx("editor"))).toMatchObject({
+			revision: 2,
+			title: f.content.title,
+			markdown: edit.markdown,
+			evidence: f.content.evidence,
+			instanceId: "editor",
+			turnRecordId: "turn-editor",
+		});
+	expect(f.wiki.history(f.topic.id, f.content.pageId)).toHaveLength(2);
 	await expect(f.call("wiki_edit", { ...edit, title: "Stale overwrite" })).rejects.toThrow(
 		"revision conflict",
 	);
-	await f.call("wiki_delete_group", { expectedRevision: f.wiki.getTopic(f.topic.id)?.revision });
+	const page = { pageId: f.content.pageId, expectedRevision: 1 };
+	await expect(f.call("wiki_delete", page)).rejects.toThrow("revision conflict");
+	expect(await f.call("wiki_delete", { ...page, expectedRevision: 2 })).toEqual({
+		deleted: true,
+		pageId: page.pageId,
+	});
+	expect(await f.call("wiki_read", page)).toMatchObject({ page: null });
+	await expect(f.call("wiki_share", f.content)).rejects.toThrow("deleted page");
+	await expect(f.call("wiki_edit", { ...edit, expectedRevision: 3 })).rejects.toThrow(
+		"unavailable or deleted",
+	);
+	const snapshot = (await f.call("wiki_index", {})) as { topic: { revision: number } };
+	await f.call("wiki_share", { ...f.content, pageId: "another" });
+	await expect(
+		f.call("wiki_delete_group", { expectedRevision: snapshot.topic.revision }),
+	).rejects.toThrow("group revision conflict");
+	const current = (await f.call("wiki_index", {})) as { topic: { revision: number } };
+	expect(await f.call("wiki_delete_group", { expectedRevision: current.topic.revision })).toEqual({
+		deleted: true,
+		topicId: f.topic.id,
+	});
 	await expect(f.call("wiki_share", { ...f.content, pageId: "replacement" })).rejects.toThrow(
 		"deleted",
 	);
 	expect(f.wiki.ensureTopic({ ...f.topic, sourceRevision: "new" }).deleted).toBe(true);
+	expect(f.wiki.listTopics()).toEqual([f.other]);
+	expect(f.wiki.listPages(f.topic.id)).toEqual([]);
+	expect(f.tools.get("wiki_delete_group")?.parameters).toMatchObject({
+		required: ["expectedRevision"],
+		additionalProperties: false,
+	});
 });

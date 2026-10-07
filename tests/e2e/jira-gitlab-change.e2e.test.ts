@@ -6,18 +6,6 @@ describe("Jira coordinated GitLab change", () => {
 		onTestFinished,
 	}) => {
 		const f = await jiraFixture(onTestFinished);
-		expect([...f.flow.process.turns.keys()]).toEqual([
-			"generate_plan",
-			"plan_decision",
-			"implement",
-			"simplify_implementation",
-			"apply_simplification",
-			"generate_commit_message",
-			"deliver_change",
-			"revise_from_merge_request_feedback",
-			"repair_gitlab_pipeline",
-			"ci_operator_action",
-		]);
 		f.setUnavailable(true);
 		expect((await f.pollDiscovery()).errors.join(" ")).toContain("admission failed");
 		expect(f.harness.ctx.deps.processes.listAll()).toHaveLength(0);
@@ -236,29 +224,6 @@ describe("Jira coordinated GitLab change", () => {
 						turn.turnId === "simplify_implementation" || turn.turnId === "apply_simplification",
 				),
 		).toBe(false);
-	}, 45000);
-	it("rejects an empty mapping union, unavailable repositories, and changed admission snapshots", async ({
-		onTestFinished,
-	}) => {
-		const f = await jiraFixture(onTestFinished);
-		const event = {
-			profile: "team",
-			issue: structuredClone(f.issue),
-			projects: ["100"],
-			triggerLabel: "use-leitwerk-beta",
-		};
-		const launch = await f.flow.launcher.resolve(event);
-		f.issue.fields.components = [];
-		await expect(f.flow.launcher.resolve(event)).rejects.toThrow("No repositories mapped");
-		f.issue.fields.components = event.issue.fields.components;
-		f.gitlab.state.projects[0].archived = true;
-		await expect(f.flow.launcher.resolve(event)).rejects.toThrow("must be active");
-		f.gitlab.state.projects[0].archived = false;
-		f.issue.fields.summary = "Changed just before admission";
-		const check = f.flow.launcher
-			.checks(event, launch)
-			.find((check) => check.id === "jira_eligibility");
-		await expect(check?.run({} as never)).rejects.toThrow("changed before admission");
 	}, 45000);
 });
 

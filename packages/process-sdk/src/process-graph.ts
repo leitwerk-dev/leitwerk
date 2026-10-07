@@ -80,7 +80,7 @@ function turnPublishedProducts(definition: TurnDefinition<unknown, unknown>): st
 			}
 		}
 	}
-	if (definition.kind === "human" || definition.kind === "llm" || definition.kind === "automatic") {
+	if (definition.kind !== "external") {
 		for (const action of Object.values(definition.externalActions ?? {})) {
 			if (action.publishInput) {
 				products.add(action.publishInput.productName);
@@ -96,7 +96,7 @@ function toTurnView(
 	const definition = binding.definition;
 	const publishedProducts = turnPublishedProducts(definition);
 	const transitionLabels =
-		definition.kind === "human" || definition.kind === "llm" || definition.kind === "automatic"
+		definition.kind !== "external"
 			? Object.fromEntries(
 					Object.entries(definition.externalActions ?? {}).flatMap(([id, action]) => {
 						const label = action.label ?? action.source.label;

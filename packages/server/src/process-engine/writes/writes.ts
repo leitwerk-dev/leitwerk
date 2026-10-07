@@ -35,33 +35,44 @@ import type { DeferredProcessExtensionEvent } from "./deferred-extension-events.
 export type DurableBroadcast = DurableWsFrameInput;
 
 /** @internal */
+type CreateWrite<T> = {
+	/** @internal */
+	kind: "create";
+	/** @internal */
+	input: T;
+};
+
+/** @internal */
+type UpdateWrite<T> = {
+	/** @internal */
+	kind: "update";
+	/** @internal */
+	id: string;
+	/** @internal */
+	input: T;
+};
+
+/** @internal */
+type DeleteWrite = {
+	/** @internal */
+	kind: "delete";
+	/** @internal */
+	id: string;
+};
+
+/** @internal */
 export type TurnRecordWrite =
-	| {
-			/** @internal */
-			kind: "create";
-			/** @internal */
-			input: CreateProcessTurnRecordInput;
-	  }
-	| {
-			/** @internal */
-			kind: "update";
-			/** @internal */
-			id: string;
-			/** @internal */
-			input: UpdateProcessTurnRecordInput;
-	  };
+	| CreateWrite<CreateProcessTurnRecordInput>
+	| UpdateWrite<UpdateProcessTurnRecordInput>;
 
 /** @internal */
 export type TurnStartWrite =
-	| {
-			/** @internal */
-			kind: "create";
-			/** @internal */
-			input: Omit<TurnStartRecord, "id" | "createdAt" | "updatedAt"> & {
+	| CreateWrite<
+			Omit<TurnStartRecord, "id" | "createdAt" | "updatedAt"> & {
 				/** @internal */
 				id?: string;
-			};
-	  }
+			}
+	  >
 	| {
 			/** @internal */
 			kind: "cas_state";
@@ -75,35 +86,13 @@ export type TurnStartWrite =
 
 /** @internal */
 export type TurnAnnotationWrite =
-	| {
-			/** @internal */
-			kind: "create";
-			/** @internal */
-			input: CreateProcessTurnAnnotationInput;
-	  }
-	| {
-			/** @internal */
-			kind: "update";
-			/** @internal */
-			id: string;
-			/** @internal */
-			input: UpdateProcessTurnAnnotationInput;
-	  }
-	| {
-			/** @internal */
-			kind: "delete";
-			/** @internal */
-			id: string;
-	  };
+	| CreateWrite<CreateProcessTurnAnnotationInput>
+	| UpdateWrite<UpdateProcessTurnAnnotationInput>
+	| DeleteWrite;
 
 /** Mapped-run writes, committed in order before turn starts. @internal */
 export type MappedRunWrite =
-	| {
-			/** @internal */
-			kind: "create";
-			/** @internal */
-			input: CreateMappedRunInput;
-	  }
+	| CreateWrite<CreateMappedRunInput>
 	| {
 			/** @internal */
 			kind: "complete_item";
@@ -116,12 +105,7 @@ export type MappedRunWrite =
 	  };
 
 /** @internal */
-export type LeafOutcomeSnapshotWrite = {
-	/** @internal */
-	kind: "create";
-	/** @internal */
-	input: CreateProcessLeafOutcomeSnapshotInput;
-};
+export type LeafOutcomeSnapshotWrite = CreateWrite<CreateProcessLeafOutcomeSnapshotInput>;
 
 /** @internal */
 export type WorkerIntent =
@@ -152,26 +136,9 @@ export type WorkerIntent =
 
 /** @internal */
 export type PendingExternalSourceFireWrite =
-	| {
-			/** @internal */
-			kind: "create";
-			/** @internal */
-			input: CreatePendingExternalSourceFireInput;
-	  }
-	| {
-			/** @internal */
-			kind: "update";
-			/** @internal */
-			id: string;
-			/** @internal */
-			input: UpdatePendingExternalSourceFireInput;
-	  }
-	| {
-			/** @internal */
-			kind: "delete";
-			/** @internal */
-			id: string;
-	  };
+	| CreateWrite<CreatePendingExternalSourceFireInput>
+	| UpdateWrite<UpdatePendingExternalSourceFireInput>
+	| DeleteWrite;
 
 /** @internal */
 export interface DecisionMetadata {

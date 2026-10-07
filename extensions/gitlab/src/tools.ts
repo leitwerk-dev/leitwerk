@@ -11,6 +11,9 @@ import {
 import type { GitLabIntegration } from "./capability.js";
 import { type GitLabClientLike, GitLabError, observeMergeRequest } from "./client.js";
 
+const hashIdentity = (identity: readonly unknown[]) =>
+	createHash("sha256").update(JSON.stringify(identity)).digest("hex");
+
 async function existingRemote<T>(read: () => Promise<T>): Promise<T | null> {
 	try {
 		return await read();
@@ -92,7 +95,7 @@ export function gitLabCommentMarker(input: {
 		input.writeKey,
 	];
 	if (input.discussionId) identity.push(input.discussionId);
-	return `<!-- leitwerk:gitlab:${createHash("sha256").update(JSON.stringify(identity)).digest("hex")} -->`;
+	return `<!-- leitwerk:gitlab:${hashIdentity(identity)} -->`;
 }
 /** @internal */
 export async function ensureGitLabComment(input: {
@@ -310,19 +313,15 @@ export async function ensureGitLabResolveDiscussion(input: {
 	signal?: AbortSignal;
 }): Promise<{ discussionId: string; resolved: boolean }> {
 	const { client, writes, instanceId, projectId, iid, writeKey, discussionId, signal } = input;
-	const digest = createHash("sha256")
-		.update(
-			JSON.stringify([
-				client.baseUrl,
-				projectId,
-				iid,
-				instanceId,
-				"resolve",
-				writeKey,
-				discussionId,
-			]),
-		)
-		.digest("hex");
+	const digest = hashIdentity([
+		client.baseUrl,
+		projectId,
+		iid,
+		instanceId,
+		"resolve",
+		writeKey,
+		discussionId,
+	]);
 	await writes.ensure(
 		{ writeType: "gitlab.discussion.resolve", dedupKey: digest },
 		{
@@ -357,9 +356,7 @@ export async function ensureGitLabSeenReaction(input: {
 	beforeWrite?: () => Promise<void>;
 }): Promise<void> {
 	const { client, writes, instanceId, projectId, iid, noteId, signal } = input;
-	const digest = createHash("sha256")
-		.update(JSON.stringify([client.baseUrl, projectId, iid, instanceId, "eyes", noteId]))
-		.digest("hex");
+	const digest = hashIdentity([client.baseUrl, projectId, iid, instanceId, "eyes", noteId]);
 	await writes.ensure(
 		{ writeType: "gitlab.reaction", dedupKey: digest },
 		{
@@ -526,27 +523,27 @@ export function registerGitLabTools(
 				if (name === "gitlab_observe_merge_request")
 					return observeMergeRequest(client, b.projectId, b.iid, ctx.signal);
 				if (name === "gitlab_get_changes") return client.getChanges(b.projectId, b.iid, ctx.signal);
+				const writeContext = {
+					client,
+					writes: ctx.externalWrites,
+					instanceId: ctx.process.id,
+					projectId: b.projectId,
+					iid: b.iid,
+					signal: ctx.signal,
+				};
 				if (name === "gitlab_update_comment")
 					return updateGitLabComment({
+						...writeContext,
 						beforeWrite: beforeWrite ? () => beforeWrite(ctx) : undefined,
-						client,
-						instanceId: ctx.process.id,
-						projectId: b.projectId,
-						iid: b.iid,
 						writeKey: stringArg(args, "writeKey"),
 						body: stringArg(args, "body"),
-						signal: ctx.signal,
 					});
 				if (name === "gitlab_inline_comment") {
 					const side = stringArg(args, "side");
 					if (side !== "new" && side !== "old")
 						throw new Error("GitLab inline comment side must be new or old");
 					return ensureGitLabInlineComment({
-						client,
-						writes: ctx.externalWrites,
-						instanceId: ctx.process.id,
-						projectId: b.projectId,
-						iid: b.iid,
+						...writeContext,
 						writeKey: stringArg(args, "writeKey"),
 						body: stringArg(args, "body"),
 						path: stringArg(args, "path"),
@@ -555,31 +552,20 @@ export function registerGitLabTools(
 						baseSha: stringArg(args, "baseSha"),
 						startSha: stringArg(args, "startSha"),
 						headSha: stringArg(args, "headSha"),
-						signal: ctx.signal,
 					});
 				}
 				if (name === "gitlab_comment" || name === "gitlab_reply")
 					return ensureGitLabComment({
-						client,
-						writes: ctx.externalWrites,
-						instanceId: ctx.process.id,
-						projectId: b.projectId,
-						iid: b.iid,
+						...writeContext,
 						writeKey: stringArg(args, "writeKey"),
 						body: stringArg(args, "body"),
 						...(name === "gitlab_reply" ? { discussionId: stringArg(args, "discussionId") } : {}),
-						signal: ctx.signal,
 					});
 				if (name === "gitlab_resolve_discussion")
 					return ensureGitLabResolveDiscussion({
-						client,
-						writes: ctx.externalWrites,
-						instanceId: ctx.process.id,
-						projectId: b.projectId,
-						iid: b.iid,
+						...writeContext,
 						writeKey: stringArg(args, "writeKey"),
 						discussionId: stringArg(args, "discussionId"),
-						signal: ctx.signal,
 					});
 				const observation = await observeMergeRequest(client, b.projectId, b.iid, ctx.signal);
 				if (!observation.pipeline || observation.pipeline.id !== numberArg(args, "pipelineId"))

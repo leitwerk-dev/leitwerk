@@ -141,13 +141,10 @@ export function createScopedSettingsService(input: {
 		["instance", { id: "instance", label: "Instance" }],
 		["repository", { id: "repository", label: "Repository" }],
 	]);
-	const discoveries = new Map<string, Array<() => Promise<readonly SettingsSubjectInput[]>>>();
-	const subjectFilters = new Map<
-		string,
-		Array<
-			NonNullable<Parameters<ScopedSettingsResolver["registerDiscovery"]>[2]>["includesSubject"]
-		>
-	>();
+	type DiscoveryProvider = NonNullable<
+		Parameters<ScopedSettingsResolver["registerDiscovery"]>[2]
+	> & { discover: () => Promise<readonly SettingsSubjectInput[]> };
+	const discoveries = new Map<string, DiscoveryProvider[]>();
 	for (const loaded of catalog.modules) {
 		const owner = loaded.module.manifest.id;
 		const declarations = loaded.module.scopedSettings;
@@ -206,6 +203,11 @@ export function createScopedSettingsService(input: {
 			label: "Instance",
 			context: {},
 		});
+
+	const choiceValues = (value: unknown): string[] =>
+		(Array.isArray(value) ? value : [value]).filter(
+			(entry): entry is string => typeof entry === "string",
+		);
 
 	function requireSubject(id: string): SettingsSubject {
 		const subject = repos.scopedSettings.getSubject(id);
@@ -505,12 +507,7 @@ export function createScopedSettingsService(input: {
 				if (definition.form.control === "model") choices = input.modelChoices?.() ?? [];
 				else if (definition.choiceLabel) {
 					const label = definition.choiceLabel;
-					const values = Array.isArray(effective.value)
-						? effective.value.filter((value): value is string => typeof value === "string")
-						: typeof effective.value === "string"
-							? [effective.value]
-							: [];
-					choices = values.map((value) => ({ value, label: label(value) }));
+					choices = choiceValues(effective.value).map((value) => ({ value, label: label(value) }));
 				}
 				if (definition.form.control === "model" && effective.value !== null) {
 					const selected = choices.find((choice) => choice.value === effective?.value);
@@ -548,12 +545,7 @@ export function createScopedSettingsService(input: {
 		if (definition.form.control === "model") return input.modelChoices?.() ?? [];
 		if (search.trim().length < (definition.form.search?.minimumLength ?? 0)) return [];
 		const context = contextForSubject(subject);
-		const value = resolveDefinition(definition, context).value;
-		const values = Array.isArray(value)
-			? value.filter((entry): entry is string => typeof entry === "string")
-			: typeof value === "string"
-				? [value]
-				: [];
+		const values = choiceValues(resolveDefinition(definition, context).value);
 		return (await definition.choices?.(context, { search, values })) ?? [];
 	}
 	function validateWrite({
@@ -605,15 +597,17 @@ export function createScopedSettingsService(input: {
 			scopes: [...scopes.values()],
 			subjects: subjects
 				.filter((subject) => {
-					const filters = subjectFilters.get(subject.scopeType);
-					if (!filters) return true;
+					const providers = discoveries.get(subject.scopeType);
+					if (!providers) return true;
 					const context = Object.fromEntries(
 						Object.entries(subject.context).flatMap(([scope, id]) => {
 							const parent = byId.get(id);
 							return parent ? [[scope, parent]] : [];
 						}),
 					);
-					return filters.some((includes) => !includes || includes(subject, context));
+					return providers.some(
+						({ includesSubject: includes }) => !includes || includes(subject, context),
+					);
 				})
 				.map((subject) => ({
 					...subject,
@@ -644,10 +638,9 @@ export function createScopedSettingsService(input: {
 		discover,
 		registerDiscovery(scopeType, discoverer, options) {
 			if (!scopes.has(scopeType)) throw new SettingsError(`Unknown scope '${scopeType}'`);
-			discoveries.set(scopeType, [...(discoveries.get(scopeType) ?? []), discoverer]);
-			subjectFilters.set(scopeType, [
-				...(subjectFilters.get(scopeType) ?? []),
-				options?.includesSubject,
+			discoveries.set(scopeType, [
+				...(discoveries.get(scopeType) ?? []),
+				{ discover: discoverer, includesSubject: options?.includesSubject },
 			]);
 		},
 		capture,
@@ -678,7 +671,7 @@ export function createScopedSettingsService(input: {
 		async refresh() {
 			discoverLocal();
 			for (const [scope, providers] of discoveries)
-				for (const provider of providers)
+				for (const { discover: provider } of providers)
 					for (const subject of await provider()) {
 						if (subject.scopeType !== scope)
 							throw new SettingsError("Discovery returned a different scope type");

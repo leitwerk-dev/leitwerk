@@ -245,26 +245,43 @@ it("clears removed group content on a live update while preserving an open draft
 	expect(test.target.textContent).not.toContain(page.title);
 });
 
-it("requires a fresh group confirmation when an entry changed before deletion", async () => {
-	const options = { index: true, conflict: true };
+it.each([
+	"group",
+	"entry",
+] as const)("requires a fresh %s confirmation after a deletion conflict", async (kind) => {
+	const group = kind === "group";
+	const options = { index: group, conflict: true };
 	const test = await fixture(options);
-	test.button("Delete group…").click();
-	await vi.waitFor(() => expect(test.button("Delete group and all entries")).toBeTruthy());
-	test.button("Delete group and all entries").click();
-	await vi.waitFor(() => expect(test.button("Refresh group before deleting")).toBeTruthy());
-	test.setGroup({ ...topic, revision: 4 });
-	test.button("Refresh group before deleting").click();
-	await vi.waitFor(() =>
-		expect(test.target.querySelector('[aria-label="Confirm wiki group deletion"]')).toBeNull(),
-	);
+	const open = group ? "Delete group…" : "Delete entry…";
+	const confirm = group ? "Delete group and all entries" : "Delete entry";
+	const refresh = `Refresh ${kind} before deleting`;
+	const revision = group ? 3 : 2;
+	const url = `/api/wiki/topics/${topic.id}${group ? "" : `/pages/${page.id}`}`;
+	test.button(open).click();
+	await vi.waitFor(() => expect(test.button(confirm)).toBeTruthy());
+	test.button(confirm).click();
+	await vi.waitFor(() => expect(test.button(refresh)).toBeTruthy());
+	if (group) test.setGroup({ ...topic, revision: 4 });
+	else test.setPages([{ ...page, revision: 3 }]);
+	test.button(refresh).click();
+	await vi.waitFor(() => {
+		if (group)
+			expect(test.target.querySelector('[aria-label="Confirm wiki group deletion"]')).toBeNull();
+		else expect(test.target.textContent).toContain("Revision 3");
+	});
+	expect(test.button(confirm)).toBeUndefined();
 	options.conflict = false;
-	test.button("Delete group…").click();
-	await vi.waitFor(() => expect(test.button("Delete group and all entries")).toBeTruthy());
-	test.button("Delete group and all entries").click();
-	await vi.waitFor(() => expect(test.target.textContent).toContain("No solution wikis yet"));
+	test.button(open).click();
+	await vi.waitFor(() => expect(test.button(confirm)).toBeTruthy());
+	test.button(confirm).click();
+	await vi.waitFor(() =>
+		expect(test.target.textContent).toContain(
+			group ? "No solution wikis yet" : "Entry unavailable",
+		),
+	);
 	expect(
 		test.requests.filter((request) => request.method === "DELETE").map((request) => request.path),
-	).toEqual([`/api/wiki/topics/${topic.id}?revision=3`, `/api/wiki/topics/${topic.id}?revision=4`]);
+	).toEqual([`${url}?revision=${revision}`, `${url}?revision=${revision + 1}`]);
 });
 
 it("confirms deletion with a revision and clears stale history on refresh", async () => {
@@ -297,30 +314,6 @@ it("keeps a conflicting deletion visible and refreshes on a topic invalidation",
 	test.setPages([]);
 	notifyWikiUpdated(topic.id);
 	await vi.waitFor(() => expect(test.target.textContent).toContain("No shared solutions yet"));
-});
-
-it("requires a fresh confirmation after a deletion conflict", async () => {
-	const options = { conflict: true };
-	const test = await fixture(options);
-	test.button("Delete entry…").click();
-	await vi.waitFor(() => expect(test.button("Delete entry")).toBeTruthy());
-	test.button("Delete entry").click();
-	await vi.waitFor(() => expect(test.button("Refresh entry before deleting")).toBeTruthy());
-	test.setPages([{ ...page, revision: 3 }]);
-	test.button("Refresh entry before deleting").click();
-	await vi.waitFor(() => expect(test.target.textContent).toContain("Revision 3"));
-	expect(test.button("Delete entry")).toBeUndefined();
-	options.conflict = false;
-	test.button("Delete entry…").click();
-	await vi.waitFor(() => expect(test.button("Delete entry")).toBeTruthy());
-	test.button("Delete entry").click();
-	await vi.waitFor(() => expect(test.target.textContent).toContain("Entry unavailable"));
-	expect(
-		test.requests.filter((request) => request.method === "DELETE").map((request) => request.path),
-	).toEqual([
-		`/api/wiki/topics/${topic.id}/pages/${page.id}?revision=2`,
-		`/api/wiki/topics/${topic.id}/pages/${page.id}?revision=3`,
-	]);
 });
 
 it("lists epic wikis without leaking another topic's page content", async () => {

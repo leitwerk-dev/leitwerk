@@ -43,17 +43,11 @@ export function markdownToJira(markdown: string): string {
 			output.push(`h${heading[1]?.length}. ${convertInline(heading[2] ?? "")}`);
 			continue;
 		}
-		const bullet = line.match(/^(\s*)[-*+]\s+(.+)$/);
-		if (bullet) {
+		const list = line.match(/^(\s*)(?:([-*+])|\d+[.)])\s+(.+)$/);
+		if (list) {
+			const marker = list[2] ? "*" : "#";
 			output.push(
-				`${"*".repeat(Math.floor((bullet[1]?.length ?? 0) / 2) + 1)} ${convertInline(bullet[2] ?? "")}`,
-			);
-			continue;
-		}
-		const numbered = line.match(/^(\s*)\d+[.)]\s+(.+)$/);
-		if (numbered) {
-			output.push(
-				`${"#".repeat(Math.floor((numbered[1]?.length ?? 0) / 2) + 1)} ${convertInline(numbered[2] ?? "")}`,
+				`${marker.repeat(Math.floor((list[1]?.length ?? 0) / 2) + 1)} ${convertInline(list[3] ?? "")}`,
 			);
 			continue;
 		}

@@ -22,7 +22,6 @@ import {
 	getExternalActionTransitionTrigger,
 	getExternalSourceTransitionId,
 	isExternalTurnDefinition,
-	isHumanTurnDefinition,
 } from "@leitwerk-dev/process-sdk";
 import { generateId, now } from "./db/repo-helpers.js";
 import type { PendingExternalSourceFire, RepositoryBundle } from "./db/repositories.js";
@@ -447,9 +446,6 @@ export function createExternalSourceService(
 			return armed;
 		}
 
-		if (!isHumanTurnDefinition(turnDef) && turnDef.kind !== "automatic" && turnDef.kind !== "llm") {
-			return [];
-		}
 		for (const [externalActionId, action] of Object.entries(turnDef.externalActions ?? {})) {
 			if (action.when && !action.when({ ...context })) {
 				continue;
@@ -535,18 +531,13 @@ export function createExternalSourceService(
 		}
 		for (const [turnId, binding] of processDef.turns) {
 			const turnDef = binding.definition;
-			if (
-				isHumanTurnDefinition(turnDef) ||
-				turnDef.kind === "automatic" ||
-				turnDef.kind === "llm"
-			) {
+			if (turnDef.kind !== "external") {
 				for (const [externalActionId, action] of Object.entries(turnDef.externalActions ?? {})) {
 					if (getExternalActionArmingId({ turnId, externalActionId }) === armingId) {
 						return { turnId, externalActionId, sourceKind: action.source.kind };
 					}
 				}
-			}
-			if (isExternalTurnDefinition(turnDef)) {
+			} else {
 				for (const [index, transition] of turnDef.transitions.entries()) {
 					const id = getExternalSourceTransitionId({
 						turnId,

@@ -1,7 +1,35 @@
 import type { ProcessInstance, ProcessTurnRecord, TurnStartRecord } from "@leitwerk-dev/domain";
 import type { ProcessGraphRegistry } from "../../process-graph.js";
 import { buildTurnSelectionWrites } from "./build-turn-selection-writes.js";
-import { appendProcessEvent, isWriteBuildFailure, type WriteBuildResult } from "./writes.js";
+import {
+	appendProcessEvent,
+	isWriteBuildFailure,
+	type WriteBuildResult,
+	type Writes,
+} from "./writes.js";
+
+/** Fence accepted and pending execution without choosing the next business position. @internal */
+export function supersedeExecution(
+	writes: Writes,
+	record: ProcessTurnRecord | null,
+	start?: TurnStartRecord | null,
+	recordedAt?: string,
+): void {
+	writes.mappedRunWrites.push({ kind: "abort_active" });
+	if (start?.state.kind === "starting")
+		writes.turnStartWrites.push({
+			kind: "cas_state",
+			id: start.id,
+			expectedKind: "starting",
+			state: { kind: "superseded", start: start.state.start },
+		});
+	if (record?.status === "running")
+		writes.turnRecordWrites.push({
+			kind: "update",
+			id: record.id,
+			input: { status: "superseded", endedAt: recordedAt ?? new Date().toISOString() },
+		});
+}
 
 export function buildAbortProcessWrites(input: {
 	processGraphs: ProcessGraphRegistry;
@@ -20,25 +48,7 @@ export function buildAbortProcessWrites(input: {
 		return writes;
 	}
 
-	writes.mappedRunWrites.push({ kind: "abort_active" });
-	if (input.currentWorkerStart?.state.kind === "starting") {
-		writes.turnStartWrites.push({
-			kind: "cas_state",
-			id: input.currentWorkerStart.id,
-			expectedKind: "starting",
-			state: { kind: "superseded", start: input.currentWorkerStart.state.start },
-		});
-	}
-	if (input.activeTurnRecord?.status === "running") {
-		writes.turnRecordWrites.push({
-			kind: "update",
-			id: input.activeTurnRecord.id,
-			input: {
-				status: "superseded",
-				endedAt: input.recordedAt ?? new Date().toISOString(),
-			},
-		});
-	}
+	supersedeExecution(writes, input.activeTurnRecord, input.currentWorkerStart, input.recordedAt);
 
 	// Without a selected turn, abort has no turn_selected event to attribute.
 	if (input.process.selectedTurnId === null) {

@@ -285,13 +285,10 @@ export function createJiraGitLabLauncher() {
 				}
 				for (const repo of projects) {
 					if (repo.archived || !repo.default_branch) continue;
-					if (repo.http_url_to_repo)
-						choices.push({
-							value: JSON.stringify({ origin: client.baseUrl, projectId: repo.id, gitlabProfile }),
-							label: `${repo.path_with_namespace} · ${gitlabProfile} / HTTPS`,
-						});
-					if (!repo.ssh_url_to_repo) continue;
-					for (const sshProfile of ssh?.profiles() ?? [])
+					for (const sshProfile of [
+						...(repo.http_url_to_repo ? [undefined] : []),
+						...(repo.ssh_url_to_repo ? (ssh?.profiles() ?? []) : []),
+					])
 						choices.push({
 							value: JSON.stringify({
 								origin: client.baseUrl,
@@ -299,7 +296,7 @@ export function createJiraGitLabLauncher() {
 								gitlabProfile,
 								sshProfile,
 							}),
-							label: `${repo.path_with_namespace} · ${gitlabProfile} / ${sshProfile}`,
+							label: `${repo.path_with_namespace} · ${gitlabProfile} / ${sshProfile ?? "HTTPS"}`,
 						});
 				}
 			}

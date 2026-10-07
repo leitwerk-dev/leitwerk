@@ -147,18 +147,11 @@ branches, pinned MR identities, and durable external writes. MR observations cor
 repository, MR, and source revision. Human feedback settles for two minutes. Each
 repository receives up to three automatic CI repairs before operator action.
 Conflicts reuse the shared rebase and original-head push-lease implementation.
-The shared GitLab maintenance service observes preparing MRs, CI, target branches
-and labels without worker allocation or Deliver attempts. Settled feedback and
-actionable conflicts invoke Address Feedback directly; current-revision CI failures
-invoke Fix CI. The process retains all ten business turns.
-
-Responsibility adds `leitwerk-active` to each MR and retains it while green CI awaits
-later feedback. Merge replaces active with `leitwerk-done` on that MR. Removing active
-stops only that MR and leaves it open; other MRs continue. Removal during work or an
-operator wait fences the worker and its late outcomes. Remove/re-add between polls
-ends the old activation. Restart adopts existing bindings and activation receipts
-without resetting cursors, budgets or history. Unavailable label reads retry without
-cancellation.
+[Shared GitLab MR maintenance](../gitlab/README.md#shared-mr-maintenance) supplies
+feedback/CI routing, ownership labels, fencing, and restart recovery without adding
+business turns. Removing `leitwerk-active` stops only that MR and leaves it open;
+other MRs continue. The outcome table below defines coordinated completion and
+Jira label policy.
 
 | External evidence | Route / outcome |
 | --- | --- |

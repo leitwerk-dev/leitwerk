@@ -9,6 +9,7 @@ import {
 	type CoreServerSetupDeps,
 	createCapabilityToken,
 	type ExternalActionSource,
+	type ProcessObservationUpdate,
 	type ServerExtensionAPI,
 } from "@leitwerk-dev/process-sdk";
 import { emptyPollResult, parseDurationMs } from "@leitwerk-dev/watcher-utils";
@@ -245,6 +246,8 @@ export function createGitLabMaintenance(
 			process.currentExecution,
 		]);
 	const repo = deps.externalWrites as ExternalWriteLogRepoLike;
+	const observe = (expected: ProcessInstance, update: Omit<ProcessObservationUpdate, "expected">) =>
+		deps.commands.applyProcessObservation(expected.id, { expected, ...update });
 	const context = (
 		process: ProcessInstance,
 		policy: GitLabMaintainedProcess<unknown, unknown>,
@@ -300,26 +303,26 @@ export function createGitLabMaintenance(
 	const live = (process: ProcessInstance) =>
 		!["completed", "aborted"].includes(process.lifecycleStatus);
 	const unchangedWork = (fresh: ProcessInstance, expected: ProcessInstance) =>
-		fresh.paramsJson === expected.paramsJson &&
-		fresh.stateJson === expected.stateJson &&
-		fresh.planRevision === expected.planRevision &&
-		fresh.selectedTurnId === expected.selectedTurnId &&
-		fresh.lifecycleStatus === expected.lifecycleStatus &&
-		JSON.stringify(fresh.currentExecution) === JSON.stringify(expected.currentExecution);
+		workKey(fresh) === workKey(expected);
 	const same = (expected: ProcessInstance) => {
 		const fresh = deps.processes.getById(expected.id);
 		return (
 			!!fresh &&
-			fresh.paramsJson === expected.paramsJson &&
-			fresh.stateJson === expected.stateJson &&
-			fresh.planRevision === expected.planRevision &&
-			fresh.selectedTurnId === expected.selectedTurnId &&
-			fresh.lifecycleStatus === expected.lifecycleStatus &&
+			unchangedWork(fresh, expected) &&
 			JSON.stringify(fresh.metadata?.gitlabMaintenance) ===
-				JSON.stringify(expected.metadata?.gitlabMaintenance) &&
-			JSON.stringify(fresh.currentExecution) === JSON.stringify(expected.currentExecution)
+				JSON.stringify(expected.metadata?.gitlabMaintenance)
 		);
 	};
+	const scheduleNext = (
+		key: string,
+		process: ProcessInstance,
+		settings: GitLabMaintenanceSettings,
+	) =>
+		due.set(key, {
+			at: now() + parseDurationMs(settings.pollInterval ?? "30s", 30_000),
+			failures: 0,
+			inputs: workKey(deps.processes.getById(process.id) ?? process),
+		});
 	const service: GitLabMaintenance = {
 		register(policy) {
 			if (
@@ -363,8 +366,7 @@ export function createGitLabMaintenance(
 					cursor: settings.cursor ?? 0,
 					pendingFeedback: [],
 				};
-				const saved = await deps.commands.applyProcessObservation(process.id, {
-					expected: process,
+				const saved = await observe(process, {
 					projectsJson: JSON.stringify(ctx.projects),
 					metadata: { gitlabMaintenance: { ...maintenanceRecords(process), [projectKey]: record } },
 					preserveUpdatedAt: true,
@@ -478,8 +480,7 @@ export function createGitLabMaintenance(
 							stopped && live(process)
 								? completionStatus({ ...ctx, state }, policy, records)
 								: undefined;
-						const saved = await deps.commands.applyProcessObservation(process.id, {
-							expected: process,
+						const saved = await observe(process, {
 							projectsJson: JSON.stringify(ctx.projects),
 							metadata: { gitlabMaintenance: records },
 							...(state !== ctx.state ? { state } : {}),
@@ -502,6 +503,17 @@ export function createGitLabMaintenance(
 						if (!saved.ok) continue;
 						let fresh = deps.processes.getById(process.id);
 						if (!fresh) continue;
+						const remoteWriteContext = <T extends object>(payload: T) => ({
+							client,
+							writes: ctx.externalWrites,
+							instanceId: process.id,
+							projectId: binding.projectId,
+							iid: binding.iid,
+							...payload,
+							signal: ctx.signal,
+							beforeWrite: () =>
+								service.assertOwnership(fresh?.id ?? "", binding.projectKey, ctx.signal),
+						});
 						await ensureGitLabMaintenanceLabels({
 							client,
 							writes: ctx.externalWrites,
@@ -517,11 +529,7 @@ export function createGitLabMaintenance(
 							signal: ctx.signal,
 						});
 						if (!live(fresh) || record.status !== "active") {
-							due.set(key, {
-								at: now() + parseDurationMs(settings.pollInterval ?? "30s", 30_000),
-								failures: 0,
-								inputs: workKey(deps.processes.getById(process.id) ?? process),
-							});
+							scheduleNext(key, process, settings);
 							continue;
 						}
 						ctx = context(fresh, policy);
@@ -544,17 +552,7 @@ export function createGitLabMaintenance(
 							: [];
 						for (const note of feedback) {
 							await service.assertOwnership(fresh.id, binding.projectKey, ctx.signal);
-							await ensureGitLabSeenReaction({
-								client,
-								writes: ctx.externalWrites,
-								instanceId: fresh.id,
-								projectId: binding.projectId,
-								iid: binding.iid,
-								noteId: note.id,
-								signal: ctx.signal,
-								beforeWrite: () =>
-									service.assertOwnership(fresh?.id ?? "", binding.projectKey, ctx.signal),
-							});
+							await ensureGitLabSeenReaction(remoteWriteContext({ noteId: note.id }));
 						}
 						const ready = gitLabFeedbackReadyAt(feedback, settings.quietPeriodMs ?? 120_000);
 						const targetIntegrated =
@@ -582,8 +580,7 @@ export function createGitLabMaintenance(
 						record.observation = observed;
 						record.pendingFeedback = feedback;
 						const observedRecords = { ...maintenanceRecords(fresh), [binding.projectKey]: record };
-						const updated = await deps.commands.applyProcessObservation(fresh.id, {
-							expected: fresh,
+						const updated = await observe(fresh, {
 							projectsJson: JSON.stringify(ctx.projects),
 							metadata: { gitlabMaintenance: observedRecords },
 							...(!fresh.currentExecution && decision.state !== ctx.state && !decision.action
@@ -625,26 +622,13 @@ export function createGitLabMaintenance(
 						ctx = context(fresh, policy);
 						for (const message of eligible ? (policy.messages?.(ctx, binding) ?? []) : []) {
 							await service.assertOwnership(fresh.id, binding.projectKey, ctx.signal);
-							await ensureGitLabComment({
-								client,
-								writes: ctx.externalWrites,
-								instanceId: fresh.id,
-								projectId: binding.projectId,
-								iid: binding.iid,
-								...message,
-								signal: ctx.signal,
-								beforeWrite: () =>
-									service.assertOwnership(fresh?.id ?? "", binding.projectKey, ctx.signal),
-							});
+							await ensureGitLabComment(remoteWriteContext(message));
 						}
 						const settledState = eligible
 							? (policy.settled?.(ctx, binding) ?? ctx.state)
 							: ctx.state;
 						if (!fresh.currentExecution && settledState !== ctx.state)
-							await deps.commands.applyProcessObservation(fresh.id, {
-								expected: fresh,
-								state: settledState,
-							});
+							await observe(fresh, { state: settledState });
 						fresh = deps.processes.getById(process.id);
 						if (
 							fresh &&
@@ -656,8 +640,7 @@ export function createGitLabMaintenance(
 							const retry = asUnknownRecord(fresh.metadata?.gitlabMaintenanceRetry) ?? {};
 							const attempts = Number(retry.attempts ?? 0);
 							if (retry.executionId !== fresh.currentExecution.id) {
-								await deps.commands.applyProcessObservation(fresh.id, {
-									expected: fresh,
+								await observe(fresh, {
 									metadata: {
 										gitlabMaintenanceRetry: {
 											attempts,
@@ -674,8 +657,7 @@ export function createGitLabMaintenance(
 								Number(retry.nextAt) <= now()
 							) {
 								await service.assertOwnership(fresh.id, binding.projectKey, ctx.signal);
-								const saved = await deps.commands.applyProcessObservation(fresh.id, {
-									expected: fresh,
+								const saved = await observe(fresh, {
 									metadata: {
 										gitlabMaintenanceRetry: { ...retry, attempts: attempts + 1, attempted: true },
 									},
@@ -688,17 +670,12 @@ export function createGitLabMaintenance(
 							fresh.selectedTurnId === policy.idleTurnId &&
 							fresh.metadata?.gitlabMaintenanceRetry
 						) {
-							await deps.commands.applyProcessObservation(fresh.id, {
-								expected: fresh,
+							await observe(fresh, {
 								metadata: { gitlabMaintenanceRetry: null },
 								preserveUpdatedAt: true,
 							});
 						}
-						due.set(key, {
-							at: now() + parseDurationMs(settings.pollInterval ?? "30s", 30_000),
-							failures: 0,
-							inputs: workKey(deps.processes.getById(process.id) ?? process),
-						});
+						scheduleNext(key, process, settings);
 					} catch (error) {
 						const message =
 							error instanceof Error ? error.message : "GitLab maintenance unavailable";
@@ -713,10 +690,7 @@ export function createGitLabMaintenance(
 							const records = structuredClone(maintenanceRecords(fresh));
 							if (records[binding.projectKey]) {
 								records[binding.projectKey].refreshError = message;
-								await deps.commands.applyProcessObservation(fresh.id, {
-									expected: fresh,
-									metadata: { gitlabMaintenance: records },
-								});
+								await observe(fresh, { metadata: { gitlabMaintenance: records } });
 							}
 						}
 						result.errors.push(`${key}:${message}`);
@@ -743,17 +717,13 @@ export function createGitLabMaintenance(
 							pureStatus ??
 							(live(current) && (await policy.cancelled?.(ctx)) ? "aborted" : undefined);
 						if (status && live(current)) {
-							const ended = await deps.commands.applyProcessObservation(current.id, {
-								expected: current,
-								lifecycleStatus: status,
-							});
+							const ended = await observe(current, { lifecycleStatus: status });
 							if (!ended.ok) continue;
 							current = deps.processes.getById(current.id);
 						}
 						if (current && (status || !live(current))) {
 							await policy.complete?.(context(current, policy), maintenanceRecords(current));
-							await deps.commands.applyProcessObservation(current.id, {
-								expected: current,
+							await observe(current, {
 								metadata: { gitlabMaintenanceCompleted: true },
 							});
 						}

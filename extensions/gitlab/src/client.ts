@@ -372,6 +372,12 @@ function parseIgnoredCommentUsers(raw: unknown): string[] {
 const projectPath = (id: number | string) => `/projects/${encodeURIComponent(id)}`;
 const mrPath = (id: number, iid: number) => `${projectPath(id)}/merge_requests/${iid}`;
 
+function nextGitLabPage(response: Response, page: number, count: number, perPage = 100) {
+	const next = response.headers.get("x-next-page");
+	if (next === "" || (next === null && count < perPage)) return null;
+	return next === null ? page + 1 : Number(next);
+}
+
 /** GitLab v4 API. Errors deliberately omit response bodies, headers and tokens. */
 /** @public */
 export class GitLabClient {
@@ -466,9 +472,8 @@ export class GitLabClient {
 			const batch = await this.json<T[]>(response);
 			if (!Array.isArray(batch)) throw new Error("Invalid GitLab list response");
 			rows.push(...batch);
-			const next = response.headers.get("x-next-page");
-			if (next === "" || (next === null && batch.length < 100)) return rows;
-			const nextPage = next === null ? page + 1 : Number(next);
+			const nextPage = nextGitLabPage(response, page, batch.length);
+			if (nextPage === null) return rows;
 			if (!Number.isInteger(nextPage) || nextPage <= page)
 				throw new Error("Invalid GitLab pagination");
 			page = nextPage;
@@ -706,13 +711,7 @@ export class GitLabClient {
 			)
 		)
 			throw new Error("Invalid GitLab code search response");
-		const next = response.headers.get("x-next-page");
-		const nextPage =
-			next === "" || (next === null && rows.length < perPage)
-				? null
-				: next === null
-					? page + 1
-					: Number(next);
+		const nextPage = nextGitLabPage(response, page, rows.length, perPage);
 		if (nextPage !== null && (!Number.isSafeInteger(nextPage) || nextPage <= page))
 			throw new Error("Invalid GitLab pagination");
 		return {

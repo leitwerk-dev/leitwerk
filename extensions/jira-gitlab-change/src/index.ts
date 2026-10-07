@@ -1,19 +1,15 @@
 import { createRepositoryChangeProcess } from "@leitwerk-dev/coding";
 import {
 	createRepositoryChangePublication,
-	type PublicationSource,
 	readPublicationState,
 } from "@leitwerk-dev/coding/repository-change-publication";
 import type { RepositoryChangeState } from "@leitwerk-dev/coding/repository-change-state";
 import { gitSshIntegration } from "@leitwerk-dev/git-ssh";
 import {
 	createGitLabPublicationAdapter,
-	type GitLabDeliveryObservation,
 	type GitLabMergeRequest,
-	gitlabExternal,
 	gitlabIntegration,
-	gitlabPublicationEvidenceForRequest,
-	gitlabPublicationSource,
+	gitlabPublicationRequest,
 	gitlabRepositoryCredentials,
 } from "@leitwerk-dev/gitlab";
 import {
@@ -50,52 +46,7 @@ export function createJiraGitLabChange(options: {
 	docker: boolean;
 }) {
 	const launcher = createJiraGitLabLauncher();
-	const sources: PublicationSource<JiraGitLabParams>[] = [
-		{
-			id: "gitlab_merge_requests",
-			kind: "observation",
-			label: "GitLab merge request evidence",
-			source: gitlabExternal.mergeRequests(({ params, state }) => ({
-				repositories: params.repositories.flatMap((repo) => {
-					const c = remote(state, repo.key);
-					return c.prNumber && c.headSha && !c.delivery.terminalPullRequest
-						? [{ projectKey: repo.key, ...gitlabPublicationSource(repo, c) }]
-						: [];
-				}),
-			})),
-			read({ params, state, event }) {
-				const observed = event as GitLabDeliveryObservation;
-				const repo = params.repositories.find((repo) => repo.key === observed.projectKey);
-				if (
-					!repo ||
-					observed.mr.project_id !== repo.projectId ||
-					observed.mr.source_project_id !== repo.projectId ||
-					observed.mr.target_project_id !== repo.projectId ||
-					observed.mr.source_branch !== repo.workBranch ||
-					observed.mr.target_branch !== repo.baseBranch
-				)
-					throw new Error("Uncorrelated GitLab repository evidence");
-				return {
-					...gitlabPublicationEvidenceForRequest(remote(state, repo.key), observed),
-					projectKey: repo.key,
-				};
-			},
-		},
-		{
-			id: "source_cancelled",
-			kind: "observation",
-			label: "Jira source cancelled",
-			source: jiraIssuePolicy(({ params }) => ({
-				profile: params.jiraProfile,
-				baseUrl: params.jiraBaseUrl,
-				issueId: params.issueId,
-				triggerLabel: params.jiraTriggerLabel,
-				mode: "cancelled",
-			})),
-			read: () => ({ kind: "observed" }),
-		},
-	];
-	const adapter = createGitLabPublicationAdapter(sources, namespace);
+	const adapter = createGitLabPublicationAdapter<JiraGitLabParams>([], namespace);
 	adapter.ensureRequest = async (ctx) => {
 		const { url } = (await ctx.callIntegrationTool("jira_ensure_remote_link", {
 			projectKey: "repo",
@@ -106,12 +57,7 @@ export function createJiraGitLabChange(options: {
 			title: `${ctx.params.issueKey}: ${ctx.params.issue.fields.summary}`,
 			body: `Implements [${ctx.params.issueKey}](${ctx.params.issueUrl})\n\n[Leitwerk process](${url})`,
 		})) as GitLabMergeRequest;
-		return {
-			number: mr.iid,
-			html_url: mr.web_url,
-			merged: mr.state === "merged",
-			merge_commit_sha: mr.merge_commit_sha,
-		};
+		return gitlabPublicationRequest(mr);
 	};
 	adapter.repositories = (params) =>
 		params.repositories.map((repo) => ({

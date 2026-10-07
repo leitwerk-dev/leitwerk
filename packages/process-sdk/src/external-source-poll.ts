@@ -87,28 +87,7 @@ export interface ExternalSourcePollReporter {
 	isCurrent(kind: string, armed: Arming): boolean;
 }
 /** A captured generation and resolved identity must still be armed after provider I/O. @internal */
-function sameSubscription(
-	captured: {
-		/** @internal */
-		id: string;
-		/** @internal */
-		instanceId: string;
-		/** @internal */
-		generation?: string;
-		/** @internal */
-		resolved: unknown;
-	},
-	current: {
-		/** @internal */
-		id: string;
-		/** @internal */
-		instanceId: string;
-		/** @internal */
-		generation?: string;
-		/** @internal */
-		resolved: unknown;
-	},
-): boolean {
+function sameSubscription(captured: Arming, current: Arming): boolean {
 	return (
 		current.id === captured.id &&
 		current.instanceId === captured.instanceId &&

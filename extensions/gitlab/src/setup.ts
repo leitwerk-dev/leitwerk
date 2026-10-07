@@ -1,5 +1,6 @@
 import {
 	coreHostCapabilities,
+	type IntegrationToolExecutionContext,
 	repositorySettingsIdentity,
 	type ServerExtensionAPI,
 	scopedSettingsCapability,
@@ -60,39 +61,27 @@ export function setupGitLabIntegration(
 	const deps = api.get(coreHostCapabilities.serverSetup);
 	if (!deps || Array.isArray(deps)) return;
 	const maintenance = createGitLabMaintenance(api, deps, integration, options.now);
+	const assertOwnership = async (ctx: IntegrationToolExecutionContext) => {
+		if (maintenance.ownsProcess(ctx.process.processId))
+			await maintenance.assertOwnership(ctx.process.id, ctx.project?.key ?? "repo", ctx.signal);
+	};
+	const guardedWrites = new Set([
+		"gitlab_ensure_merge_request",
+		"gitlab_comment",
+		"gitlab_reply",
+		"gitlab_inline_comment",
+		"gitlab_resolve_discussion",
+		"gitlab_acknowledge_feedback",
+	]);
 	const guardedApi: ServerExtensionAPI = {
 		...api,
 		tool(definition) {
 			api.tool({
 				...definition,
 				async execute(ctx, args) {
-					if (
-						maintenance.ownsProcess(ctx.process.processId) &&
-						[
-							"gitlab_ensure_merge_request",
-							"gitlab_comment",
-							"gitlab_reply",
-							"gitlab_inline_comment",
-							"gitlab_update_comment",
-							"gitlab_resolve_discussion",
-							"gitlab_acknowledge_feedback",
-						].includes(definition.name)
-					)
-						await maintenance.assertOwnership(
-							ctx.process.id,
-							ctx.project?.key ?? "repo",
-							ctx.signal,
-						);
 					const guarded =
-						maintenance.ownsProcess(ctx.process.processId) &&
-						[
-							"gitlab_ensure_merge_request",
-							"gitlab_comment",
-							"gitlab_reply",
-							"gitlab_inline_comment",
-							"gitlab_resolve_discussion",
-							"gitlab_acknowledge_feedback",
-						].includes(definition.name);
+						maintenance.ownsProcess(ctx.process.processId) && guardedWrites.has(definition.name);
+					if (guarded || definition.name === "gitlab_update_comment") await assertOwnership(ctx);
 					const result = await definition.execute(
 						guarded
 							? {
@@ -103,11 +92,7 @@ export function setupGitLabIntegration(
 											ctx.externalWrites.ensure(identity, {
 												...operation,
 												execute: async () => {
-													await maintenance.assertOwnership(
-														ctx.process.id,
-														ctx.project?.key ?? "repo",
-														ctx.signal,
-													);
+													await assertOwnership(ctx);
 													return operation.execute();
 												},
 											}),
@@ -116,24 +101,13 @@ export function setupGitLabIntegration(
 							: ctx,
 						args,
 					);
-					if (
-						maintenance.ownsProcess(ctx.process.processId) &&
-						definition.name === "gitlab_ensure_merge_request"
-					)
-						await maintenance.assertOwnership(
-							ctx.process.id,
-							ctx.project?.key ?? "repo",
-							ctx.signal,
-						);
+					if (definition.name === "gitlab_ensure_merge_request") await assertOwnership(ctx);
 					return result;
 				},
 			});
 		},
 	};
-	registerGitLabTools(guardedApi, integration, async (ctx) => {
-		if (maintenance.ownsProcess(ctx.process.processId))
-			await maintenance.assertOwnership(ctx.process.id, ctx.project?.key ?? "repo", ctx.signal);
-	});
+	registerGitLabTools(guardedApi, integration, assertOwnership);
 	registerGitLabTicketCreation(
 		api,
 		integration,
@@ -149,8 +123,7 @@ export function setupGitLabIntegration(
 			required: ["projectKey"],
 		},
 		async execute(ctx) {
-			if (maintenance.ownsProcess(ctx.process.processId))
-				await maintenance.assertOwnership(ctx.process.id, ctx.project?.key ?? "repo", ctx.signal);
+			await assertOwnership(ctx);
 			return { ok: true };
 		},
 	});

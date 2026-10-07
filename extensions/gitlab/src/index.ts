@@ -97,6 +97,7 @@ export {
 	createGitLabPublicationAdapter,
 	type GitLabPublicationParams,
 	gitlabPublicationEvidenceForRequest,
+	gitlabPublicationRequest,
 	gitlabPublicationSource,
 } from "./publication.js";
 export {

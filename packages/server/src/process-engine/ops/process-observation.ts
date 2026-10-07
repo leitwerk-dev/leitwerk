@@ -4,6 +4,7 @@ import { resolveCurrentExecutionTurnRecordId } from "../../process-execution.js"
 import { accept, reject } from "../decision.js";
 import { defineOperation } from "../operation.js";
 import { writeTurnWait } from "../turn-wait-state.js";
+import { supersedeExecution } from "../writes/build-process-abort-writes.js";
 import { reserveSelectedTurnStart } from "../writes/reserve-selected-turn-start.js";
 import {
 	appendProcessEvent,
@@ -60,24 +61,11 @@ export const ApplyProcessObservation = defineOperation<
 				return reject("invalid_transition", "Maintenance recovery turn is unavailable");
 			const recordId = resolveCurrentExecutionTurnRecordId(process, deps.turnStarts);
 			const record = recordId ? deps.turnRecords.getById(recordId) : null;
-			if (record?.status === "running")
-				writes.turnRecordWrites.push({
-					kind: "update",
-					id: record.id,
-					input: { status: "superseded", endedAt: new Date().toISOString() },
-				});
 			const start =
 				process.currentExecution?.kind === "worker_start"
 					? deps.turnStarts.getById(process.currentExecution.id)
 					: null;
-			if (start?.state.kind === "starting")
-				writes.turnStartWrites.push({
-					kind: "cas_state",
-					id: start.id,
-					expectedKind: "starting",
-					state: { kind: "superseded", start: start.state.start },
-				});
-			writes.mappedRunWrites.push({ kind: "abort_active" });
+			supersedeExecution(writes, record, start);
 			for (const execution of deps.futureExecutions.listByInstance(process.id)) {
 				const plan = planCancelScheduledAction(execution, process.id);
 				if (plan) writes.futureExecutionPlans.push(plan);

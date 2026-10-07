@@ -338,7 +338,8 @@ export function validateAutomaticTurnDefinition<
 	];
 }
 
-function validateExternalActions<TParams, TState>(
+/** Intrinsic checks shared by standalone turn validation and route compilation. @internal */
+export function validateExternalActions<TParams, TState>(
 	kind: string,
 	turnId: string,
 	actions: HumanTurnDefinition<TParams, TState>["externalActions"],
@@ -346,11 +347,15 @@ function validateExternalActions<TParams, TState>(
 	const errors: string[] = [];
 	for (const [externalActionId, externalAction] of Object.entries(actions ?? {})) {
 		if (externalActionId.trim() === "") {
-			errors.push(`${kind} turn '${turnId}' contains an external action with an empty id`);
+			errors.push(
+				kind === "Human"
+					? `Human turn '${turnId}' declares an empty external action id`
+					: `${kind} turn '${turnId}' contains an external action with an empty id`,
+			);
 		}
 		if (externalAction.id !== externalActionId) {
 			errors.push(
-				`${kind} turn '${turnId}' external action '${externalActionId}' has mismatched id '${externalAction.id}'`,
+				`${kind} turn '${turnId}' external action '${externalActionId}' has mismatched ${kind === "Human" ? "spec " : ""}id '${externalAction.id}'`,
 			);
 		}
 		if (externalAction.source.kind.trim() === "") {
@@ -364,7 +369,7 @@ function validateExternalActions<TParams, TState>(
 			(externalAction.lifecycleStatus !== undefined ? 1 : 0);
 		if (targetCount !== 1) {
 			errors.push(
-				`${kind} turn '${turnId}' external action '${externalActionId}' must declare exactly one target`,
+				`${kind} turn '${turnId}' external action '${externalActionId}' must declare exactly one target${kind === "Human" ? " via 'to', 'complete', or 'lifecycleStatus'" : ""}`,
 			);
 		}
 		if (externalAction.publishInput) {

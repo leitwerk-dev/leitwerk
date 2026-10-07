@@ -228,6 +228,7 @@ it("admits unchanged issues when Jira plugin and viewing metadata change between
 });
 
 it.each([
+	{ summary: "Changed just before admission" },
 	{ description: "A changed requirement" },
 	{ updated: "2026-10-05T22:00:00.000Z" },
 	{ labels: ["use-leitwerk", "leitwerk-skip-plan-decision"] },
@@ -342,12 +343,15 @@ it("rejects a retained wiki from another issue or installation, including contex
 	expect(f.services.wiki.listTopics()).toHaveLength(3);
 });
 
-it("ordinary tickets use a deduplicated component union and reject empty or conflicting selections", async () => {
+it("ordinary tickets use a deduplicated component union and reject inactive, empty or conflicting selections", async () => {
 	const f = fixture();
 	f.child.id = "12";
 	f.jira.issues.set("12", f.child);
 	f.mappings.push(f.mappings[0]);
 	expect((await f.resolve()).params.repositories.map((repo) => repo.projectId)).toEqual([1, 2]);
+	f.gitlab.state.projects[0].archived = true;
+	await expect(f.resolve()).rejects.toThrow("must be active");
+	f.gitlab.state.projects[0].archived = false;
 	f.mappings.push(JSON.stringify({ ...JSON.parse(f.mappings[0]), gitlabProfile: "other" }));
 	await expect(f.resolve()).rejects.toThrow("Conflicting profiles");
 	f.child.fields.components = [];

@@ -24,10 +24,7 @@ export function createGitLabRepositoryCatalog(
 			projects?: readonly GitLabProject[];
 			pending?: Promise<readonly GitLabProject[]>;
 			known: Map<number, GitLabProject>;
-			searches: Map<
-				string,
-				{ projects?: readonly GitLabProject[]; pending?: Promise<readonly GitLabProject[]> }
-			>;
+			searches: Map<string, Promise<readonly GitLabProject[]>>;
 		}
 	>();
 	function entry(profile: string) {
@@ -66,28 +63,22 @@ export function createGitLabRepositoryCatalog(
 				return cached.projects
 					.filter((project) => project.path_with_namespace.toLowerCase().includes(query))
 					.slice(0, 100);
-			let result = cached.searches.get(query);
-			if (!result) {
-				result = {};
-				cached.searches.set(query, result);
-			}
-			if (result.projects) return result.projects;
-			if (result.pending) return result.pending;
+			const result = cached.searches.get(query);
+			if (result) return result;
 			const scan = Promise.resolve()
 				.then(() => client.searchProjects(query))
 				.then((projects) => {
 					const snapshot = structuredClone(projects);
-					result.projects = snapshot;
-					if (cached.searches.get(query) === result)
+					if (cached.searches.get(query) === scan)
 						for (const project of snapshot) cached.known.set(project.id, project);
 					return snapshot;
+				})
+				.catch((error) => {
+					if (cached.searches.get(query) === scan) cached.searches.delete(query);
+					throw error;
 				});
-			result.pending = scan;
-			try {
-				return await scan;
-			} finally {
-				result.pending = undefined;
-			}
+			cached.searches.set(query, scan);
+			return scan;
 		},
 		peek(profile, projectId) {
 			const { cached } = entry(profile);

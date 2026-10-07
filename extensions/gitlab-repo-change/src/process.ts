@@ -13,7 +13,6 @@ import {
 	gitlabExternal,
 	gitlabIssueWatcherSource,
 	gitlabPublicationEvidenceForRequest,
-	gitlabPublicationSource,
 } from "@leitwerk-dev/gitlab";
 import type { ExtensionProcessDefinition, ServerExtensionAPI } from "@leitwerk-dev/process-sdk";
 import type { createGitLabRepoChangeLauncher } from "./launcher.js";
@@ -52,16 +51,6 @@ export function createGitLabRepoChangeProcess(
 	docker: boolean,
 ) {
 	const sources: PublicationSource<GitLabRepoChangeParams>[] = [
-		{
-			id: "gitlab_merge_request",
-			kind: "observation",
-			label: "GitLab merge request evidence",
-			source: gitlabExternal.mergeRequest(({ params, state }) =>
-				gitlabPublicationSource(params, remote(state)),
-			),
-			read: ({ state, event }) =>
-				gitlabPublicationEvidence(state, event as GitLabDeliveryObservation),
-		},
 		{
 			id: "source_cancelled",
 			kind: "cancelled",

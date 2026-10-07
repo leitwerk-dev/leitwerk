@@ -44,90 +44,23 @@ function fixture() {
 		},
 		turn: { id: "accepted-turn" },
 	} as IntegrationToolExecutionContext;
-	const content = {
-		pageId: "solution",
-		expectedRevision: 0,
-		title: "Solution",
-		markdown: "Original",
-		applicability: "Version one",
-		status: "observed",
-		evidence: [
-			{
-				repository: "team/service",
-				revision: "a".repeat(40),
-				path: "README.md",
-				observation: "Inspected repository",
-			},
-		],
-	};
 	return {
 		store,
 		topic,
 		ctx,
 		client,
 		issue,
-		content,
-		tools: collector.tools,
 		call: (name: string, args: Record<string, unknown>) =>
 			collector.tools.get(name)!.execute(ctx, args),
 	};
 }
 
-it("edits selected content, preserves evidence, records accepted-turn provenance, and handles retries", async () => {
+it("does not recreate a deleted Jira source wiki during refresh", async () => {
 	const f = fixture();
-	await f.call("wiki_share", f.content);
-	const edit = { pageId: "solution", expectedRevision: 1, markdown: "Corrected guidance" };
-	expect(await f.call("wiki_edit", edit)).toMatchObject({
-		revision: 2,
-		markdown: "Corrected guidance",
-		title: "Solution",
-		evidence: f.content.evidence,
-		instanceId: f.ctx.process.id,
-		turnRecordId: f.ctx.turn.id,
-	});
-	expect(await f.call("wiki_edit", edit)).toMatchObject({ revision: 2 });
-	expect(f.store.history(f.topic.id, "solution")).toHaveLength(2);
-	await expect(f.call("wiki_edit", { ...edit, title: "A stale correction" })).rejects.toThrow(
-		"revision conflict",
-	);
-	await expect(f.call("wiki_delete", { pageId: "solution", expectedRevision: 1 })).rejects.toThrow(
-		"revision conflict",
-	);
-	expect(await f.call("wiki_delete", { pageId: "solution", expectedRevision: 2 })).toEqual({
-		deleted: true,
-		pageId: "solution",
-	});
-	expect(await f.call("wiki_read", { pageId: "solution" })).toMatchObject({ page: null });
-	await expect(f.call("wiki_share", f.content)).rejects.toThrow("deleted page");
-	await expect(f.call("wiki_edit", { ...edit, expectedRevision: 3 })).rejects.toThrow(
-		"unavailable or deleted",
-	);
-});
-
-it("deletes a complete group only after reading its current revision, without allowing recreation", async () => {
-	const f = fixture();
-	await f.call("wiki_share", f.content);
-	const snapshot = (await f.call("wiki_index", {})) as { topic: { revision: number } };
-	await f.call("wiki_share", { ...f.content, pageId: "another" });
-	await expect(
-		f.call("wiki_delete_group", { expectedRevision: snapshot.topic.revision }),
-	).rejects.toThrow("group revision conflict");
-	const current = (await f.call("wiki_index", {})) as { topic: { revision: number } };
-	expect(await f.call("wiki_delete_group", { expectedRevision: current.topic.revision })).toEqual({
-		deleted: true,
-		topicId: f.topic.id,
-	});
-	expect(f.store.listTopics()).toEqual([]);
-	expect(f.store.listPages(f.topic.id)).toEqual([]);
-	await expect(f.call("wiki_share", { ...f.content, pageId: "recreated" })).rejects.toThrow(
-		"group was deleted",
-	);
+	await f.call("wiki_delete_group", { expectedRevision: f.topic.revision });
 	expect(ensureIssueWiki(f.store, f.client, f.issue).deleted).toBe(true);
 	expect(f.store.getTopic(f.topic.id)?.deletion?.turnRecordId).toBe("accepted-turn");
-	expect(f.tools.get("wiki_delete_group")?.parameters).toMatchObject({
-		required: ["expectedRevision"],
-		additionalProperties: false,
-	});
+	await expect(f.call("wiki_index", {})).rejects.toThrow("group was deleted");
 });
 
 it("requires current revisions and a valid source binding for mutations", async () => {

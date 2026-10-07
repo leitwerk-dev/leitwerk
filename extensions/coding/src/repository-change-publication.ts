@@ -398,6 +398,29 @@ const initialPublicationState: PublicationState = {
 /** @public */
 export const publicationObject = (value: unknown) => asUnknownRecord(value) ?? {};
 
+/** Shared coordination metadata for worker publication and server maintenance. @internal */
+export function createPublicationSelection(namespace: () => string) {
+	return {
+		/** @internal */
+		activeKey: (state: RepositoryChangeState) =>
+			publicationObject(state.extensionState?.[`${namespace()}.coordination`]).activeKey as
+				| string
+				| undefined,
+		/** @internal */
+		select: (state: RepositoryChangeState, key: string): RepositoryChangeState => ({
+			...state,
+			extensionState: {
+				...state.extensionState,
+				[`${namespace()}.coordination`]: { activeKey: key },
+			},
+		}),
+	};
+}
+
+/** @internal */
+export const publicationFinished = (current: PublicationState): boolean =>
+	!!(current.stopped || current.noChanges || current.delivery.terminalPullRequest);
+
 /** @public */
 export function readPublicationState(
 	state: RepositoryChangeState,
@@ -539,20 +562,10 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 ) {
 	const ids = adapter.ids;
 	const publication = flow.fragment<P, RepositoryChangeState>(`${adapter.namespace}-publication`);
-	const activeKey = (state: RepositoryChangeState) =>
-		publicationObject(state.extensionState?.[`${adapter.namespace}.coordination`]).activeKey as
-			| string
-			| undefined;
+	const { activeKey, select } = createPublicationSelection(() => adapter.namespace);
 	const namespace = (state: RepositoryChangeState) =>
 		adapter.repositories ? `${adapter.namespace}:${activeKey(state)}` : adapter.namespace;
 	const remote = (state: RepositoryChangeState) => readPublicationState(state, namespace(state));
-	const select = (state: RepositoryChangeState, key: string): RepositoryChangeState => ({
-		...state,
-		extensionState: {
-			...state.extensionState,
-			[`${adapter.namespace}.coordination`]: { activeKey: key },
-		},
-	});
 	const repositoryContext = (ctx: PublicationContext<P>): PublicationContext<P> => {
 		if (!adapter.repositories) return ctx;
 		const selected = adapter
@@ -748,18 +761,13 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 			if (!repositories.length) throw new Error("No repositories are bound");
 			const results = () =>
 				repositories.map(({ key }) => ({ key, current: remote(select(state, key)) }));
-			const finished = () =>
-				results().every(
-					({ current }) =>
-						current.stopped || current.noChanges || current.delivery.terminalPullRequest,
-				);
+			const finished = () => results().every(({ current }) => publicationFinished(current));
 			// Terminal facts take precedence over cancellation, including after interrupted publication.
 			const reconcileTerminals = async () => {
 				for (const { key } of repositories) {
 					state = select(state, key);
 					const current = remote(state);
-					if (current.stopped || current.delivery.terminalPullRequest || current.noChanges)
-						continue;
+					if (publicationFinished(current)) continue;
 					const terminal = await adapter.observeTerminal?.(
 						repositoryContext({ ...ctx, state }),
 						current,
@@ -776,12 +784,7 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 			let cancelled = false;
 			for (const { key } of repositories) {
 				state = select(state, key);
-				if (
-					remote(state).stopped ||
-					remote(state).noChanges ||
-					remote(state).delivery.terminalPullRequest
-				)
-					continue;
+				if (publicationFinished(remote(state))) continue;
 				if (await adapter.sourceCancelled?.({ ...ctx, state })) {
 					await reconcileTerminals();
 					cancelled = !finished();

@@ -56,29 +56,15 @@ starts with `{ profile, projectId }`; the server pins the MR `iid` after creatio
 A lost creation response or a restart before binding recovers the same request.
 Existing MR-bound integration tools still require the pinned IID.
 
-Human discussion feedback settles for two minutes. Shared GitLab maintenance
-acknowledges it with an eyes reaction, invokes Address Feedback directly, and
-reconciles discussion replies. CI
-repair reads failed jobs and bounded traces for the current MR pipeline. Synthetic
-merge pipelines must contain the tracked source revision; newer pending pipelines
-supersede older terminal results. After three automatic CI cycles the operator
-chooses retry, resume waiting, or abort. Successful or absent CI continues waiting.
-Confirmed merge conflicts use the shared rebase implementation and original-head
-push lease. Unknown mergeability does not trigger a repair.
+The process uses [shared GitLab MR maintenance](../gitlab/README.md#shared-mr-maintenance)
+for feedback, CI observations, ownership labels, fencing, and recovery. Deliver runs
+only for initial publication and changed adjustments; maintenance adds no business
+turns. Removing `leitwerk-active` aborts this single-MR process and leaves the MR open.
 
-Deliver executes only for initial publication and changed adjustments. Preparing
-MRs, CI, target-head and label updates refresh durable observations without worker
-allocation or turn records. A no-change repair acknowledges its feedback and resumes
-observation without another Deliver execution. The workflow retains ten business
-turns; maintenance adds none.
-
-Published MRs receive `leitwerk-active`, retained while CI is green and later
-feedback is awaited. Merge replaces it with `leitwerk-done`. Removing active aborts
-this single-MR process and leaves the MR open. Running work and operator waits are
-monitored; publication, replies, reactions and late worker outcomes are fenced after
-removal. A remove/re-add pair ends the old activation. Restart adopts live bindings
-and receipts while preserving cursors, budgets and history. Label-read failures retry
-without cancellation. Closure and stopping do not add done.
+After three automatic CI repair cycles the operator chooses retry, resume waiting,
+or abort. CI repair uses failed jobs and bounded traces from the current MR pipeline;
+see [pipeline selection](../gitlab/README.md#public-interface). Confirmed conflicts
+use the shared rebase implementation and original-head push lease.
 
 Merge completes delivery. Unmerged closure aborts it. A source issue loses its
 trigger, gains the done label, receives a comment, and closes after merge. Unmerged

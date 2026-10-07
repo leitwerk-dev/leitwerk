@@ -1,22 +1,21 @@
 import {
 	applyPublicationEvidence,
+	createPublicationSelection,
 	type PublicationContext,
 	type PublicationEvidence,
-	type PublicationParams,
-	type PublicationRequest,
-	type PublicationState,
 	patchPublicationState,
+	publicationFinished,
 	type RepositoryChangePublicationAdapter,
 	readPublicationState,
 } from "@leitwerk-dev/coding/repository-change-publication";
 import type { RepositoryChangeState } from "@leitwerk-dev/coding/repository-change-state";
 import { conflictKey } from "@leitwerk-dev/coding/repository-rebase";
 import type { ExtensionProcessDefinition, ServerExtensionAPI } from "@leitwerk-dev/process-sdk";
-import type { GitLabDeliveryObservation } from "./external.js";
 import { type GitLabMaintenanceContext, registerGitLabMaintainedProcess } from "./maintenance.js";
 import {
 	type GitLabPublicationParams,
 	gitlabPublicationEvidenceForRequest,
+	gitlabPublicationRequest,
 } from "./publication.js";
 
 /** The publication adapter retains repair policy and budgets; maintenance owns its delivery edges. @internal */
@@ -35,18 +34,15 @@ export function registerGitLabPublicationMaintenance<P extends GitLabPublication
 	const patch = (
 		ctx: GitLabMaintenanceContext<P, RepositoryChangeState>,
 		key: string,
-		value: Partial<PublicationState>,
+		value: Parameters<typeof patchPublicationState>[2],
 	) => patchPublicationState(ctx.state, namespace(key), value);
-	const select = (state: RepositoryChangeState, key: string): RepositoryChangeState =>
-		adapter.repositories
-			? {
-					...state,
-					extensionState: {
-						...state.extensionState,
-						[`${adapter.namespace}.coordination`]: { activeKey: key },
-					},
-				}
-			: state;
+	const selection = createPublicationSelection(() => adapter.namespace);
+	const select = (state: RepositoryChangeState, key: string) =>
+		adapter.repositories ? selection.select(state, key) : state;
+	const repositories = (ctx: GitLabMaintenanceContext<P, RepositoryChangeState>) =>
+		adapter.repositories?.(ctx.params) ?? [{ key: "repo", params: ctx.params }];
+	const results = (ctx: GitLabMaintenanceContext<P, RepositoryChangeState>) =>
+		repositories(ctx).map(({ key }) => ({ key, current: current(ctx, key) }));
 	const workerContext = (
 		ctx: GitLabMaintenanceContext<P, RepositoryChangeState>,
 		key: string,
@@ -67,12 +63,6 @@ export function registerGitLabPublicationMaintenance<P extends GitLabPublication
 			callIntegrationTool: (name: string, args: Record<string, unknown>) =>
 				ctx.callIntegrationTool(name, { ...args, projectKey: key }),
 		}) as unknown as PublicationContext<P>;
-	const request = (observation: GitLabDeliveryObservation): PublicationRequest => ({
-		number: observation.mr.iid,
-		html_url: observation.mr.web_url,
-		merged: observation.mr.state === "merged",
-		merge_commit_sha: observation.mr.merge_commit_sha,
-	});
 	registerGitLabMaintainedProcess(api, {
 		processId: process.id,
 		paramsCodec: process.paramsCodec,
@@ -83,14 +73,7 @@ export function registerGitLabPublicationMaintenance<P extends GitLabPublication
 			ci: "maintenance_ci",
 		},
 		idleTurnId: adapter.ids.deliver,
-		currentBinding: (ctx) =>
-			adapter.repositories
-				? (
-						ctx.state.extensionState?.[`${adapter.namespace}.coordination`] as
-							| { activeKey?: string }
-							| undefined
-					)?.activeKey
-				: "repo",
+		currentBinding: (ctx) => (adapter.repositories ? selection.activeKey(ctx.state) : "repo"),
 		settings: (ctx, binding) => ({
 			cursor: current(ctx, binding.projectKey).conversationCursor,
 			quietPeriodMs: 120_000,
@@ -100,8 +83,7 @@ export function registerGitLabPublicationMaintenance<P extends GitLabPublication
 			const key = binding.projectKey;
 			let value = current(ctx, key);
 			const p = params(ctx, key);
-			if (value.stopped || value.delivery.terminalPullRequest || value.noChanges)
-				return { state: ctx.state };
+			if (publicationFinished(value)) return { state: ctx.state };
 			if (
 				ctx.process.selectedTurnId === adapter.ids.deliver &&
 				!ctx.process.currentExecution &&
@@ -160,27 +142,25 @@ export function registerGitLabPublicationMaintenance<P extends GitLabPublication
 			if (evidence.kind === "terminal")
 				return {
 					state: patch(ctx, key, {
-						delivery: { ...value.delivery, terminalPullRequest: evidence.request },
+						delivery: { terminalPullRequest: evidence.request },
 					}),
 				};
-			if (evidence.kind === "feedback") {
-				const applied = applyPublicationEvidence(p as PublicationParams, value, evidence);
-				// Dispatching work does not consume the batch. Publication/no-change acknowledgement does.
-				applied.conversationCursor = value.conversationCursor;
-				applied.repairPending = true;
-				return { state: select(patch(ctx, key, applied), key), action: "feedback" };
-			}
-			if (evidence.kind === "conflict")
-				return {
-					state: select(
-						patch(ctx, key, {
-							...applyPublicationEvidence(p, value, evidence),
-							repairPending: true,
-						}),
-						key,
-					),
-					action: "conflict",
-				};
+			const dispatch = (action: string, operator = false) => ({
+				state: select(
+					patch(ctx, key, {
+						...applyPublicationEvidence(p, value, evidence, !operator),
+						repairPending: !operator,
+						// Dispatch does not consume feedback; publication/no-change acknowledgement does.
+						...(evidence.kind === "feedback"
+							? { conversationCursor: value.conversationCursor }
+							: {}),
+					}),
+					key,
+				),
+				action,
+			});
+			if (evidence.kind === "feedback" || evidence.kind === "conflict")
+				return dispatch(evidence.kind);
 			// Labels, mergeability and target-head changes do not create a new CI failure.
 			// Keeping the last pipeline status also admits a retry that runs and fails again.
 			if (
@@ -191,16 +171,7 @@ export function registerGitLabPublicationMaintenance<P extends GitLabPublication
 						(evidence.pipeline.project_id ?? binding.projectId))
 			) {
 				const operator = value.ciRecoveryCycles >= 3;
-				return {
-					state: select(
-						patch(ctx, key, {
-							...applyPublicationEvidence(p, value, evidence, !operator),
-							repairPending: !operator,
-						}),
-						key,
-					),
-					action: operator ? "maintenance_operator" : "ci",
-				};
+				return dispatch(operator ? "maintenance_operator" : "ci", operator);
 			}
 			return {
 				state: patch(ctx, key, {
@@ -225,18 +196,10 @@ export function registerGitLabPublicationMaintenance<P extends GitLabPublication
 				repairPending: false,
 				feedbackIds: [],
 				pendingEvidence: null,
-				delivery: {
-					...current(ctx, binding.projectKey).delivery,
-					adjustment: null,
-					feedbackResult: null,
-				},
+				delivery: { adjustment: null, feedbackResult: null },
 			});
 			// Adopt an interrupted legacy repair without replaying its consumed CI evidence or budget.
-			const activeKey = (
-				ctx.state.extensionState?.[`${adapter.namespace}.coordination`] as
-					| { activeKey?: string }
-					| undefined
-			)?.activeKey;
+			const activeKey = selection.activeKey(ctx.state);
 			if (
 				ctx.process.currentExecution &&
 				ctx.process.selectedTurnId === adapter.ids.ciRepair &&
@@ -250,10 +213,7 @@ export function registerGitLabPublicationMaintenance<P extends GitLabPublication
 			patch(ctx, binding.projectKey, {
 				repairPending: false,
 				pendingEvidence: null,
-				delivery: {
-					...current(ctx, binding.projectKey).delivery,
-					terminalPullRequest: request(observed),
-				},
+				delivery: { terminalPullRequest: gitlabPublicationRequest(observed.mr) },
 			}),
 		messages(ctx, binding) {
 			const value = current(ctx, binding.projectKey);
@@ -286,7 +246,7 @@ export function registerGitLabPublicationMaintenance<P extends GitLabPublication
 					...value.feedbackIds.map((note) => note.id),
 				),
 				feedbackIds: [],
-				delivery: { ...value.delivery, stage: "awaiting", adjustment: null, feedbackResult: null },
+				delivery: { stage: "awaiting", adjustment: null, feedbackResult: null },
 			});
 		},
 		cancelled: (ctx) =>
@@ -296,37 +256,24 @@ export function registerGitLabPublicationMaintenance<P extends GitLabPublication
 				) ?? false,
 			),
 		completion(ctx) {
-			const repositories = adapter.repositories?.(ctx.params) ?? [
-				{ key: "repo", params: ctx.params },
-			];
-			const results = repositories.map(({ key }) => ({ key, current: current(ctx, key) }));
-			const finished = results.every(
-				({ current }) =>
-					current.noChanges || current.stopped || current.delivery.terminalPullRequest,
-			);
-			if (!finished) return undefined;
-			const changed = results.filter(({ current }) => !current.noChanges);
+			const observed = results(ctx);
+			if (!observed.every(({ current }) => publicationFinished(current))) return undefined;
+			const changed = observed.filter(({ current }) => !current.noChanges);
 			return changed.length > 0 &&
 				changed.every(({ current }) => !current.delivery.terminalPullRequest?.merged)
 				? "aborted"
 				: "completed";
 		},
 		async complete(ctx) {
-			const repositories = adapter.repositories?.(ctx.params) ?? [
-				{ key: "repo", params: ctx.params },
-			];
-			const results = repositories.map(({ key }) => ({ key, current: current(ctx, key) }));
+			const observed = results(ctx);
 			if (adapter.reconcileAll)
 				await adapter.reconcileAll(
-					workerContext(ctx, repositories[0].key),
-					results,
-					!results.every(
-						({ current }) =>
-							current.noChanges || current.stopped || current.delivery.terminalPullRequest,
-					),
+					workerContext(ctx, observed[0].key),
+					observed,
+					!observed.every(({ current }) => publicationFinished(current)),
 				);
 			else
-				for (const { key, current } of results)
+				for (const { key, current } of observed)
 					if (current.delivery.terminalPullRequest)
 						await adapter.reconcileTerminal(
 							workerContext(ctx, key),

@@ -36,7 +36,8 @@ export interface GitLabPublicationParams extends PublicationParams {
 	/** @internal */
 	doneLabel?: string | null;
 }
-const request = (mr: GitLabMergeRequest): PublicationRequest => ({
+/** @internal */
+export const gitlabPublicationRequest = (mr: GitLabMergeRequest): PublicationRequest => ({
 	number: mr.iid,
 	html_url: mr.web_url,
 	merged: mr.state === "merged",
@@ -87,7 +88,7 @@ export function gitlabPublicationEvidenceForRequest(
 	const key = { observationKey: event.observationKey };
 	if (event.mr.iid !== current.prNumber) throw new Error("Stale GitLab merge request evidence");
 	if (event.mr.state === "merged" || event.mr.state === "closed")
-		return { kind: "terminal", request: request(event.mr), ...key };
+		return { kind: "terminal", request: gitlabPublicationRequest(event.mr), ...key };
 	if (event.mr.sha !== current.headSha) return { kind: "observed", ...key };
 	if (event.conflict) return { kind: "conflict", conflict: event.conflict, ...key };
 	if (event.feedback?.length)
@@ -175,7 +176,7 @@ export function createGitLabPublicationAdapter<P extends GitLabPublicationParams
 		identity: (ctx) =>
 			resolvePullRequestGitIdentity(ctx, "gitlab", ctx.params.gitlabProfile, false),
 		async ensureRequest(ctx) {
-			return request(
+			return gitlabPublicationRequest(
 				await callFor(ctx)<GitLabMergeRequest>("gitlab_ensure_merge_request", describeRequest(ctx)),
 			);
 		},
@@ -184,7 +185,7 @@ export function createGitLabPublicationAdapter<P extends GitLabPublicationParams
 			if (!current.prNumber && !(project?.metadata?.gitlab as { iid?: number } | undefined)?.iid)
 				return null;
 			const { mr } = await callFor(ctx)<GitLabDeliveryObservation>("gitlab_observe_merge_request");
-			return mr.state === "opened" ? null : request(mr);
+			return mr.state === "opened" ? null : gitlabPublicationRequest(mr);
 		},
 		reconcileTerminal: (ctx, _current, pr) => finalizeIssue(ctx, pr),
 		unchanged: (ctx) => finalizeIssue(ctx, null),
