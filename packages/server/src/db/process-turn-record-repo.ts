@@ -8,7 +8,7 @@ import type {
 	TurnId,
 	WorkerErrorClass,
 } from "@leitwerk-dev/domain";
-import { asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, isNull, ne, sql } from "drizzle-orm";
 import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core";
 import type { LeitwerkDb } from "./database.js";
 import { generateId, mappedItemRef, now } from "./repo-helpers.js";
@@ -145,23 +145,56 @@ export function createProcessTurnRecordRepo(db: LeitwerkDb) {
 				.map(rowToProcessTurnRecord);
 		},
 
+		/** Only absent summaries need repair; don't read every retained turn at startup. @internal */
+		listMissingSummaries(instanceId: string): ProcessTurnRecord[] {
+			return db
+				.select(getTableColumns(s.turnRecords))
+				.from(s.turnRecords)
+				.leftJoin(s.turnSummaries, eq(s.turnSummaries.turnRecordId, s.turnRecords.id))
+				.where(and(eq(s.turnRecords.instanceId, instanceId), isNull(s.turnSummaries.turnRecordId)))
+				.all()
+				.map(rowToProcessTurnRecord);
+		},
+		/** A stable page, even when new turns arrive or timestamps tie. @internal */
+		listPage(
+			instanceId: string,
+			before?: Pick<ProcessTurnRecord, "startedAt" | "id">,
+			limit = 40,
+		): ProcessTurnRecord[] {
+			return db
+				.select()
+				.from(s.turnRecords)
+				.where(
+					and(
+						eq(s.turnRecords.instanceId, instanceId),
+						before
+							? sql`(${s.turnRecords.startedAt}, ${s.turnRecords.id}) < (${before.startedAt}, ${before.id})`
+							: undefined,
+					),
+				)
+				.orderBy(desc(s.turnRecords.startedAt), desc(s.turnRecords.id))
+				.limit(limit)
+				.all()
+				.map(rowToProcessTurnRecord)
+				.reverse();
+		},
+
 		/** @internal */
 		getLatestSucceededPrimaryByInstance(instanceId: string): ProcessTurnRecord | null {
 			const row = db
 				.select()
 				.from(s.turnRecords)
-				.where(eq(s.turnRecords.instanceId, instanceId))
+				.where(
+					and(
+						eq(s.turnRecords.instanceId, instanceId),
+						eq(s.turnRecords.status, "succeeded"),
+						eq(s.turnRecords.pathType, "primary"),
+						ne(s.turnRecords.resultPiEntryId, ""),
+					),
+				)
 				.orderBy(desc(s.turnRecords.startedAt))
-				.all()
-				.map(rowToProcessTurnRecord)
-				.find(
-					(run) =>
-						run.status === "succeeded" &&
-						run.pathType === "primary" &&
-						typeof run.resultPiEntryId === "string" &&
-						run.resultPiEntryId.length > 0,
-				);
-			return row ?? null;
+				.get();
+			return row ? rowToProcessTurnRecord(row) : null;
 		},
 
 		/** @internal */

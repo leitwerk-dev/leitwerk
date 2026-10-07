@@ -1,8 +1,9 @@
 import type { ProcessTurnAnnotation, TurnAnnotationReference } from "@leitwerk-dev/domain";
 import { parseTurnAnnotationReferences } from "@leitwerk-dev/domain";
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, getTableColumns, sql } from "drizzle-orm";
 import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core";
 import type { LeitwerkDb } from "./database.js";
+import { type HistoryWindow, historyWindow } from "./history-window.js";
 import { generateId, now, parseJsonRecord } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
@@ -65,6 +66,24 @@ function rowToProcessTurnAnnotation(
 
 /** @internal */
 export function createProcessTurnAnnotationRepo(db: LeitwerkDb) {
+	const list = (instanceId: string, window: HistoryWindow | undefined, compact: boolean) =>
+		db
+			.select({
+				...getTableColumns(s.turnAnnotations),
+				payloadJson: compact
+					? sql<string>`json_remove(${s.turnAnnotations.payloadJson}, '$.event')`
+					: s.turnAnnotations.payloadJson,
+			})
+			.from(s.turnAnnotations)
+			.where(
+				and(
+					eq(s.turnAnnotations.instanceId, instanceId),
+					historyWindow(s.turnAnnotations.createdAt, window),
+				),
+			)
+			.orderBy(asc(s.turnAnnotations.createdAt))
+			.all()
+			.map(rowToProcessTurnAnnotation);
 	return {
 		/** @internal */
 		create(input: CreateProcessTurnAnnotationInput): ProcessTurnAnnotation {
@@ -111,14 +130,13 @@ export function createProcessTurnAnnotationRepo(db: LeitwerkDb) {
 		},
 
 		/** @internal */
-		listByInstance(instanceId: string): ProcessTurnAnnotation[] {
-			return db
-				.select()
-				.from(s.turnAnnotations)
-				.where(eq(s.turnAnnotations.instanceId, instanceId))
-				.orderBy(asc(s.turnAnnotations.createdAt))
-				.all()
-				.map(rowToProcessTurnAnnotation);
+		listByInstance(instanceId: string, window?: HistoryWindow): ProcessTurnAnnotation[] {
+			return list(instanceId, window, false);
+		},
+
+		/** Keep presentation and observation fields without the raw source event. @internal */
+		listForTimeline(instanceId: string, window?: HistoryWindow): ProcessTurnAnnotation[] {
+			return list(instanceId, window, true);
 		},
 
 		/** @internal */

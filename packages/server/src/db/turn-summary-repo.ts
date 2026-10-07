@@ -3,7 +3,7 @@ import type {
 	PrimaryPathUiSnapshot,
 	TurnTracePreview,
 } from "@leitwerk-dev/protocol";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { LeitwerkDb } from "./database.js";
 import { sessionSummaries, turnSummaries } from "./schema.js";
 
@@ -60,12 +60,21 @@ export function createTurnSummaryRepo(db: LeitwerkDb) {
 				.run();
 		},
 		/** @internal */
-		listByInstance(instanceId: string): Record<string, CompactTurnSummary> {
+		listByInstance(
+			instanceId: string,
+			turnRecordIds?: string[],
+		): Record<string, CompactTurnSummary> {
+			if (turnRecordIds?.length === 0) return {};
 			return Object.fromEntries(
 				db
 					.select()
 					.from(turnSummaries)
-					.where(eq(turnSummaries.instanceId, instanceId))
+					.where(
+						and(
+							eq(turnSummaries.instanceId, instanceId),
+							turnRecordIds ? inArray(turnSummaries.turnRecordId, turnRecordIds) : undefined,
+						),
+					)
 					.all()
 					.map((row) => [row.turnRecordId, JSON.parse(row.summaryJson) as CompactTurnSummary]),
 			);

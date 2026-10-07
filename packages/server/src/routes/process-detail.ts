@@ -119,11 +119,14 @@ export function registerProcessDetailRoutes(app: FastifyInstance, deps: RouteDep
 		);
 	}
 
-	app.get<{ Params: { instanceId: string } }>(
+	app.get<{ Params: { instanceId: string }; Querystring: { beforeTurnRecordId?: string } }>(
 		"/api/processes/:instanceId/ui-snapshot",
 		async (req, reply) => {
 			const startedAt = performance.now();
-			const snapshot = await uiSnapshotAssembler.assemble(req.params.instanceId);
+			const snapshot = await uiSnapshotAssembler.assemble(
+				req.params.instanceId,
+				req.query.beforeTurnRecordId,
+			);
 			reply.header(
 				"Server-Timing",
 				`ui-snapshot;dur=${(performance.now() - startedAt).toFixed(1)}`,

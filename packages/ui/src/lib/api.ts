@@ -545,9 +545,12 @@ export async function fetchProcessDiagnostics(instanceId: string): Promise<Proce
 	);
 }
 
-export async function fetchProcessDetail(instanceId: string): Promise<ProcessDetailData> {
+export async function fetchProcessDetail(
+	instanceId: string,
+	beforeTurnRecordId?: string,
+): Promise<ProcessDetailData> {
 	return requestStatusJson(
-		`/api/processes/${encodeURIComponent(instanceId)}/ui-snapshot`,
+		`/api/processes/${encodeURIComponent(instanceId)}/ui-snapshot${beforeTurnRecordId ? `?beforeTurnRecordId=${encodeURIComponent(beforeTurnRecordId)}` : ""}`,
 		"Couldn't load this process",
 		"Malformed process UI snapshot response",
 	);

@@ -111,13 +111,6 @@ function makeBrowseResponse(
 	};
 }
 
-function response(body: unknown): Response {
-	return new Response(JSON.stringify(body), {
-		status: 200,
-		headers: { "content-type": "application/json" },
-	});
-}
-
 function browseFetches(): string[] {
 	return fetchMock.mock.calls
 		.map(([input]) => String(input))
@@ -136,10 +129,10 @@ beforeEach(() => {
 		if (url.startsWith("/api/processes/browse")) {
 			const next = browseResponses.shift();
 			if (!next) throw new Error("Missing queued browse response");
-			return response(next);
+			return Response.json(next);
 		}
 		if (url === "/api/processes/overview") {
-			return response({ processes: [], futureExecutions: [], truncated: false });
+			return Response.json({ processes: [], futureExecutions: [], truncated: false });
 		}
 		throw new Error(`Unexpected request: ${url}`);
 	});

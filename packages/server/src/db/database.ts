@@ -363,6 +363,12 @@ function addTablesMigration(
 		},
 	};
 }
+const HISTORY_INDEXES = [
+	"idx_turn_records_page",
+	"idx_turn_annotations_created",
+	"idx_worker_leases_started",
+	"idx_worker_leases_exited",
+] as const;
 
 const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
 	addTablesMigration(
@@ -911,6 +917,26 @@ const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
 			for (const table of [schema.processInstances, schema.turnRecords]) {
 				for (const statement of generateCreateIndexDDL(table)) sqlite.exec(statement);
 			}
+		},
+	},
+	{
+		id: "20261005_add_process_history_indexes",
+		tableNames: [],
+		legacyIndexNames: [...HISTORY_INDEXES, "idx_leaf_outcomes_anchored"],
+		matches(sqlite) {
+			const indexes = existingSchemaObjects(sqlite, "index");
+			return (
+				hasExistingSchema(sqlite) &&
+				(indexes.has("idx_leaf_outcomes_anchored") ||
+					HISTORY_INDEXES.some((name) => !indexes.has(name)))
+			);
+		},
+		apply(sqlite) {
+			sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_turn_records_page ON turn_records(instance_id, started_at, id);
+CREATE INDEX IF NOT EXISTS idx_turn_annotations_created ON turn_annotations(instance_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_worker_leases_started ON worker_leases(instance_id, started_at);
+CREATE INDEX IF NOT EXISTS idx_worker_leases_exited ON worker_leases(instance_id, exited_at);
+DROP INDEX IF EXISTS idx_leaf_outcomes_anchored;`);
 		},
 	},
 ];
