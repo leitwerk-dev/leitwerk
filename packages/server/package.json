@@ -24,8 +24,8 @@
 		"start": "node dist/main.js"
 	},
 	"dependencies": {
-		"@earendil-works/pi-ai": "^0.86.0",
-		"@earendil-works/pi-coding-agent": "^0.86.0",
+		"@earendil-works/pi-ai": "^0.87.0",
+		"@earendil-works/pi-coding-agent": "^0.87.0",
 		"@fastify/cookie": "11.1.2",
 		"@fastify/websocket": "^11.2.0",
 		"@leitwerk-dev/domain": "0.3.1",
