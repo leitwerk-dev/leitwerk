@@ -2,8 +2,10 @@ import type { StartupObservation } from "@leitwerk-dev/domain";
 import { eq } from "drizzle-orm";
 import type { LeitwerkDb } from "./database.js";
 import * as s from "./schema.js";
+/** @internal */
 export function createStartupObservationRepo(db: LeitwerkDb) {
 	return {
+		/** @internal */
 		record(observation: StartupObservation): boolean {
 			if (
 				!Number.isFinite(Date.parse(observation.observedAt)) ||
@@ -28,6 +30,7 @@ export function createStartupObservationRepo(db: LeitwerkDb) {
 					.run().changes > 0
 			);
 		},
+		/** @internal */
 		listByLease(workerLeaseId: string): StartupObservation[] {
 			return db
 				.select()

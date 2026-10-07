@@ -7,6 +7,7 @@ import type { QueuedProcessInputLike } from "@leitwerk-dev/process-sdk";
 import type { InputDelivery } from "@leitwerk-dev/worker-protocol";
 import type { RepositoryBundle } from "./db/repositories.js";
 import type { WorkerSupervisor } from "./supervisor/worker-supervisor.js";
+/** @internal */
 export interface QueuedProcessInput extends QueuedProcessInputLike {}
 
 export interface ProcessInputDispatchDeps {

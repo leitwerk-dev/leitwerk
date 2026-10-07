@@ -15,6 +15,7 @@ type ResolvedLlmTurnStart = Extract<ResolvedTurnStart, { kind: "llm" }>;
 
 type JsonRecord = Record<string, unknown>;
 
+/** @internal */
 export type ManagedPiResourceManifest = PiResourceManifest;
 
 function fail(message: string): never {

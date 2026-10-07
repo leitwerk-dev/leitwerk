@@ -18,14 +18,17 @@ if (!registryHolder[registryKey]) {
 }
 const registry = registryHolder[registryKey];
 
+/** @internal */
 export function markDefinedProcess(value: object): void {
 	registry.definedProcesses.add(value);
 }
 
+/** @internal */
 export function isDefinedProcess(value: unknown): boolean {
 	return typeof value === "object" && value !== null && registry.definedProcesses.has(value);
 }
 
+/** @internal */
 export function setProcessTurnTransitions(
 	binding: object,
 	transitions: readonly ProcessTurnTransition[],
@@ -36,6 +39,7 @@ export function setProcessTurnTransitions(
 	);
 }
 
+/** @internal */
 export function getProcessTurnTransitions(
 	binding: ProcessTurnBinding<unknown> | undefined,
 ): readonly ProcessTurnTransition[] {

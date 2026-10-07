@@ -12,9 +12,13 @@ const AUTO_BRANCH_RANDOM_HEX_LENGTH = 3;
 const DEFAULT_GIT_TIMEOUT_MS = 15_000;
 const execFileAsync = promisify(execFile);
 
+/** @internal */
 export interface ResolveBaseBranchShaInput {
+	/** @internal */
 	repoLocator: string;
+	/** @internal */
 	baseBranch: string;
+	/** @internal */
 	timeoutMs?: number;
 }
 
@@ -36,6 +40,7 @@ function normalizedBranchWords(value: string): string[] {
 	);
 }
 
+/** @internal */
 export function slugifyBranchSourceForBranch(sourceText: string): string {
 	const words = normalizedBranchWords(sourceText).slice(0, DEFAULT_PROMPT_WORD_COUNT);
 	const normalized = words.join("-");
@@ -51,6 +56,7 @@ function normalizeSha(value: string): string {
 	return sha;
 }
 
+/** @public */
 export function generateAutoWorkBranchRandomHex(): string {
 	return randomBytes(2).toString("hex").slice(0, AUTO_BRANCH_RANDOM_HEX_LENGTH);
 }
@@ -65,6 +71,7 @@ function normalizeRandomHex(value: string): string {
 	return normalized;
 }
 
+/** @internal */
 export function buildAutoWorkBranch(
 	sourceText: string,
 	baseBranchSha: string,
@@ -77,10 +84,12 @@ export function buildAutoWorkBranch(
 }
 
 /** Builds the same safe branch shape when authenticated remote SHA lookup must wait for a worker. */
+/** @internal */
 export function gitShaLikeDigestFromSeed(seed: string): string {
 	return createHash("sha256").update(seed).digest("hex");
 }
 
+/** @public */
 export function buildAutoWorkBranchFromSeed(
 	sourceText: string,
 	seed: string,
@@ -101,6 +110,7 @@ function outputToString(value: unknown): string {
 	return typeof value === "string" ? value : Buffer.isBuffer(value) ? value.toString("utf8") : "";
 }
 
+/** @internal */
 export async function resolveBaseBranchSha(input: ResolveBaseBranchShaInput): Promise<string> {
 	const repoLocator = trimToNull(input.repoLocator);
 	if (!repoLocator) {

@@ -1,4 +1,5 @@
 /** Accept finite numbers and non-blank numeric strings, without coercing other values. */
+/** @internal */
 export function readFiniteNumber(value: unknown): number | null {
 	if (typeof value === "number" && Number.isFinite(value)) {
 		return value;

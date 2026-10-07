@@ -3,13 +3,19 @@ import path from "node:path";
 import { expandPiAgentDir } from "@leitwerk-dev/process-sdk/pi-config";
 import type { LeitwerkConfig } from "../config/config-types.js";
 
+/** @internal */
 export interface WorkerTreePaths {
+	/** @internal */
 	primaryTreeFile: string;
+	/** @internal */
 	workspaceRoot: string;
+	/** @internal */
 	piResourceBundlesDir: string;
+	/** @internal */
 	resume: boolean;
 }
 
+/** @internal */
 export type WorkerStorageLayout = (instanceId: string) => WorkerTreePaths;
 
 function normalizeContainerMountPath(mountPath: string): string {
@@ -26,8 +32,11 @@ function joinContainerPath(mountPath: string, ...segments: string[]): string {
 	return path.posix.join(normalized, ...segments);
 }
 
+/** @internal */
 export function createLocalWorkerStorageLayout(input: {
+	/** @internal */
 	processWorkspacesDir: string;
+	/** @internal */
 	treeFilesDir: string;
 }): WorkerStorageLayout {
 	return (instanceId) => {
@@ -48,7 +57,9 @@ export function createLocalWorkerStorageLayout(input: {
 	};
 }
 
+/** @internal */
 export function createProcessVolumeWorkerStorageLayout(input: {
+	/** @internal */
 	mountPath: string;
 }): WorkerStorageLayout {
 	return () => ({
@@ -74,6 +85,7 @@ export function resolveWorkerPiAgentDir(config: LeitwerkConfig, mountPath?: stri
 		: expandPiAgentDir(config.pi.agent_dir);
 }
 
+/** @internal */
 export function createWorkerStorageLayout(config: LeitwerkConfig): WorkerStorageLayout {
 	if (config.workers.runner === "docker" || config.workers.runner === "kubernetes") {
 		return createProcessVolumeWorkerStorageLayout({

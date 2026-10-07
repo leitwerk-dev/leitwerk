@@ -6,18 +6,37 @@ import {
 } from "@leitwerk-dev/worker-protocol";
 import { verifyWorkerConnectToken } from "./worker-connect-token.js";
 
+/** @internal */
 export interface WorkerWebSocketLike {
+	/** @internal */
 	readyState: number;
+	/** @internal */
 	send(data: string): void;
+	/** @internal */
 	close(code?: number, reason?: string): void;
+	/** @internal */
 	on(event: "message", handler: (raw: Buffer | string | ArrayBuffer | Buffer[]) => void): void;
-	on(event: "close", handler: (event?: { code?: number; reason?: string }) => void): void;
+	/** @internal */
+	on(
+		event: "close",
+		handler: (event?: {
+			/** @internal */
+			code?: number;
+			/** @internal */
+			reason?: string;
+		}) => void,
+	): void;
+	/** @internal */
 	on(event: "error", handler: (error: unknown) => void): void;
 }
 
+/** @internal */
 export interface WorkerWebSocketCallbacks {
+	/** @internal */
 	onEnvelope(envelope: IpcEnvelope): void;
+	/** @internal */
 	onInvalidOutput(): void;
+	/** @internal */
 	onRuntimeError(error: unknown): void;
 }
 
@@ -66,8 +85,14 @@ function authenticate(entry: PendingWorkerConnection, text: string): boolean {
 	return verifyWorkerConnectToken(text, entry.tokenHash);
 }
 
+/** @internal */
 export function createWorkerWebSocketIpcManager(
-	options: { authTimeoutMs?: number; maxBufferedMessages?: number } = {},
+	options: {
+		/** @internal */
+		authTimeoutMs?: number;
+		/** @internal */
+		maxBufferedMessages?: number;
+	} = {},
 ) {
 	const pending = new Map<string, PendingWorkerConnection>();
 	const authTimeoutMs = options.authTimeoutMs ?? 5_000;
@@ -151,30 +176,40 @@ export function createWorkerWebSocketIpcManager(
 	}
 
 	return {
+		/** @internal */
 		setUnknownWorkerConnectionsRetryable(enabled: boolean): void {
 			retryUnknownWorkerConnections = enabled;
 		},
+		/** @internal */
 		verifyWorkerToken({
 			instanceId,
 			workerId,
 			token,
 		}: {
+			/** @internal */
 			instanceId: string;
+			/** @internal */
 			workerId: string;
+			/** @internal */
 			token: string;
 		}) {
 			const entry = pending.get(connectionKey(instanceId, workerId));
 			return entry ? verifyWorkerConnectToken(token, entry.tokenHash) : false;
 		},
+		/** @internal */
 		registerWorker({
 			instanceId,
 			workerId,
 			callbacks,
 			tokenHash,
 		}: {
+			/** @internal */
 			instanceId: string;
+			/** @internal */
 			workerId: string;
+			/** @internal */
 			callbacks: WorkerWebSocketCallbacks;
+			/** @internal */
 			tokenHash: string;
 		}) {
 			pending.set(connectionKey(instanceId, workerId), {
@@ -188,15 +223,31 @@ export function createWorkerWebSocketIpcManager(
 				outbound: [],
 			});
 		},
+		/** @internal */
 		bindSocket({
 			instanceId,
 			workerId,
 			socket,
 		}: {
+			/** @internal */
 			instanceId: string;
+			/** @internal */
 			workerId: string;
+			/** @internal */
 			socket: WorkerWebSocketLike;
-		}): { ok: true } | { ok: false; error: string; code: number } {
+		}):
+			| {
+					/** @internal */
+					ok: true;
+			  }
+			| {
+					/** @internal */
+					ok: false;
+					/** @internal */
+					error: string;
+					/** @internal */
+					code: number;
+			  } {
 			const key = connectionKey(instanceId, workerId);
 			const entry = pending.get(key);
 			if (!entry) {
@@ -267,6 +318,7 @@ export function createWorkerWebSocketIpcManager(
 
 			return { ok: true };
 		},
+		/** @internal */
 		send(instanceId: string, workerId: string, message: ServerToWorkerMessage) {
 			const entry = pending.get(connectionKey(instanceId, workerId));
 			if (!entry) {
@@ -286,6 +338,7 @@ export function createWorkerWebSocketIpcManager(
 			}
 			queueOutbound(entry, data);
 		},
+		/** @internal */
 		unregister(instanceId: string, workerId: string, reason: string) {
 			const key = connectionKey(instanceId, workerId);
 			const entry = pending.get(key);
@@ -306,4 +359,5 @@ export function createWorkerWebSocketIpcManager(
 	};
 }
 
+/** @internal */
 export type WorkerWebSocketIpcManager = ReturnType<typeof createWorkerWebSocketIpcManager>;

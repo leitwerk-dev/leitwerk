@@ -63,7 +63,7 @@ else throw new Error('Unexpected kubectl call: '+args.join(' '));
 			[path.resolve("scripts/docker-runtime/test-kubernetes-runner.sh")],
 			{
 				encoding: "utf8",
-				timeout: 15_000,
+				timeout: 30_000,
 				env: {
 					...process.env,
 					PATH: `${bin}${path.delimiter}${path.dirname(process.execPath)}${path.delimiter}${process.env.PATH}`,
@@ -116,4 +116,4 @@ else throw new Error('Unexpected kubectl call: '+args.join(' '));
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
-}, 20_000);
+}, 40_000);

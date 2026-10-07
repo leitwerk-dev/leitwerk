@@ -15,6 +15,7 @@ let cachedGitBinary: string | null = null;
  * to the bare `"git"` name when no PATH entry matches so spawning still works
  * and surfaces a clear error from the child process itself.
  */
+/** @public */
 export function resolveGitBinary(): string {
 	if (cachedGitBinary) {
 		return cachedGitBinary;
@@ -35,6 +36,7 @@ export function resolveGitBinary(): string {
 }
 
 /** Reset the cached resolution. Intended for tests that mutate PATH. */
+/** @internal */
 export function resetGitBinaryCache(): void {
 	cachedGitBinary = null;
 }

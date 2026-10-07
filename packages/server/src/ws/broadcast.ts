@@ -10,22 +10,29 @@ import {
 	type WsPayloadByType,
 } from "@leitwerk-dev/protocol";
 
+/** @internal */
 export interface WsClientLike {
+	/** @internal */
 	readyState: number;
+	/** @internal */
 	send(data: string): void;
+	/** @internal */
 	on(event: string, handler: () => void): void;
 }
 
 export type { WsDurability, WsFrame };
 
+/** @internal */
 export function createBroadcaster() {
 	const clients = new Set<WsClientLike>();
 
+	/** @internal */
 	function addClient(ws: WsClientLike) {
 		clients.add(ws);
 		ws.on("close", () => clients.delete(ws));
 	}
 
+	/** @internal */
 	function broadcast(frame: WsFrame) {
 		const data = JSON.stringify(frame);
 		for (const client of clients) {
@@ -35,6 +42,7 @@ export function createBroadcaster() {
 		}
 	}
 
+	/** @internal */
 	function sendDurable<T extends KnownDurableWsFrameType>(
 		type: T,
 		payload: WsPayloadByType[T],
@@ -48,6 +56,7 @@ export function createBroadcaster() {
 		broadcast(frame);
 	}
 
+	/** @internal */
 	function sendEphemeral<T extends KnownEphemeralWsFrameType>(
 		type: T,
 		payload: WsPayloadByType[T],
@@ -61,7 +70,17 @@ export function createBroadcaster() {
 		broadcast(frame);
 	}
 
-	return { addClient, broadcast, sendDurable, sendEphemeral };
+	return {
+		/** @internal */
+		addClient,
+		/** @internal */
+		broadcast,
+		/** @internal */
+		sendDurable,
+		/** @internal */
+		sendEphemeral,
+	};
 }
 
+/** @internal */
 export type Broadcaster = ReturnType<typeof createBroadcaster>;

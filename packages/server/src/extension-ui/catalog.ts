@@ -40,19 +40,29 @@ interface RawExtensionUiBrowserModuleManifestEntry {
 	browserApiVersion?: unknown;
 }
 
+/** @internal */
 export type ExtensionUiRendererDescriptor = Omit<LeafOutcomeRendererDescriptor, "ok" | "moduleUrl">;
+/** @internal */
 export type ExtensionUiRendererLookup = Omit<LeafOutcomeRendererDescriptor, "ok">;
 export type ExtensionUiBrowserModuleDescriptor = Omit<BrowserUiExtensionDescriptor, "moduleUrl">;
+/** @internal */
 export type ExtensionUiBrowserModuleLookup = BrowserUiExtensionDescriptor;
 
+/** @internal */
 export interface ExtensionUiAssetRoot {
+	/** @internal */
 	extensionManifestId: string;
+	/** @internal */
 	assetRootDir: string;
 }
 
+/** @internal */
 export interface ExtensionUiCatalog {
+	/** @internal */
 	getRenderer(rendererId: string): ExtensionUiRendererLookup | null;
+	/** @internal */
 	listBrowserModules(): readonly ExtensionUiBrowserModuleLookup[];
+	/** @internal */
 	getAssetRoot(extensionManifestId: string): ExtensionUiAssetRoot | null;
 }
 
@@ -254,10 +264,13 @@ function parseManifestBrowserModuleEntries(
 	});
 }
 
+/** @internal */
 export interface BuildExtensionUiCatalogOptions {
+	/** @internal */
 	runtimeLane?: LeitwerkRuntimeLane;
 }
 
+/** @internal */
 export async function buildExtensionUiCatalog(
 	loadedModules: readonly LoadedExtensionModule[],
 	options: BuildExtensionUiCatalogOptions = {},
@@ -371,6 +384,7 @@ export async function buildExtensionUiCatalog(
 	return createCatalog(rendererDescriptors, browserModules, assetRoots);
 }
 
+/** @internal */
 export function resolveExtensionUiAssetPath(
 	catalog: ExtensionUiCatalog,
 	extensionManifestId: string,
@@ -391,6 +405,7 @@ export function resolveExtensionUiAssetPath(
 	}
 }
 
+/** @internal */
 export function inferExtensionUiAssetContentType(pathname: string): string {
 	switch (path.extname(pathname).toLowerCase()) {
 		case ".js":

@@ -1,5 +1,6 @@
 import type { EventBus } from "./types.js";
 
+/** @internal */
 export function createEventBus<
 	TEventMap extends object = Record<string, unknown>,
 >(): EventBus<TEventMap> {

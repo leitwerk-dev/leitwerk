@@ -17,30 +17,49 @@ export interface WorkerTurnIpcRecorderDeps
 	eventIngestor: ReturnType<typeof createWorkerEventIngestor>;
 }
 
+/** @internal */
 export interface WorkerTurnIpcRecorderCallbacks {
+	/** @internal */
 	onTurnOutcomeRecorded?: (
 		instanceId: string,
 		turnId: string,
 		outcome: string,
 		params: Record<string, unknown>,
 	) => void;
+	/** @internal */
 	onTurnTerminalRecorded?: (instanceId: string, workerId: string, turnRecordId: string) => void;
+	/** @internal */
 	onTurnFailedRecorded?: (input: {
+		/** @internal */
 		instanceId: string;
+		/** @internal */
 		workerId: string;
+		/** @internal */
 		turnRecordId: string;
+		/** @internal */
 		turnId: string;
+		/** @internal */
 		turnType: WorkerTurnFailedPayload["turnType"];
+		/** @internal */
 		errorSummary: string;
+		/** @internal */
 		errorClass?: WorkerTurnFailedPayload["errorClass"];
+		/** @internal */
 		failureCode?: WorkerTurnFailedPayload["failureCode"];
 	}) => void;
+	/** @internal */
 	onTurnTerminalRecordingFailed?: (input: {
+		/** @internal */
 		instanceId: string;
+		/** @internal */
 		workerId: string;
+		/** @internal */
 		turnRecordId: string;
+		/** @internal */
 		terminalType: "outcome" | "failure";
+		/** @internal */
 		code: string;
+		/** @internal */
 		message: string;
 	}) => void;
 }

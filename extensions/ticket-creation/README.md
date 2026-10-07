@@ -24,3 +24,14 @@ uses the server's durable external-write log with the execution idempotency key.
 that ticket and records its receipt without creating another. If receipt recording
 is interrupted, replay the same execution key after restarting. Serve the returned local receipt URLs from the
 composition's controls. There is no production HTTP fallback.
+
+## API support
+
+The following exported declarations are `@public`:
+
+- `@leitwerk-dev/ticket-creation`: `TicketCreationParams`, `default`, `ticketCreationProcess`.
+
+Members have individual classifications; these exports do not make every member
+public. Both `@public` and `@internal` APIs remain usable and fully typed. Source
+annotations are authoritative; see the [SDK compatibility
+policy](../../docs/process-sdk.md#api-compatibility).

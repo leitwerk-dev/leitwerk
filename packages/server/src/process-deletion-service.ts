@@ -9,13 +9,38 @@ import type { SessionTransferService } from "./session-transfer-service.js";
 import type { WorkerSupervisor } from "./supervisor/worker-supervisor.js";
 import type { Broadcaster } from "./ws/broadcast.js";
 
+/** @internal */
 export type ProcessDeletionResult =
-	| { ok: true }
-	| { ok: false; kind: "not_found" }
-	| { ok: false; kind: "abort_failed"; failure: EngineFailure<void> }
-	| { ok: false; kind: "cleanup_failed"; message: string };
+	| {
+			/** @internal */
+			ok: true;
+	  }
+	| {
+			/** @internal */
+			ok: false;
+			/** @internal */
+			kind: "not_found";
+	  }
+	| {
+			/** @internal */
+			ok: false;
+			/** @internal */
+			kind: "abort_failed";
+			/** @internal */
+			failure: EngineFailure<void>;
+	  }
+	| {
+			/** @internal */
+			ok: false;
+			/** @internal */
+			kind: "cleanup_failed";
+			/** @internal */
+			message: string;
+	  };
 
+/** @internal */
 export interface ProcessDeletionService {
+	/** @internal */
 	deleteProcess(instanceId: string, actor: Actor): Promise<ProcessDeletionResult>;
 }
 

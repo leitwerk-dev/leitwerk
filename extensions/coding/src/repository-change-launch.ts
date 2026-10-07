@@ -7,33 +7,58 @@ import type {
 	UiLauncherDefinition,
 } from "@leitwerk-dev/process-sdk";
 
+/** @internal */
 export type RepositoryChangeLaunchKind = "requested_change" | "imported_plan";
 
+/** @public */
 export interface RepositoryChangeParamsBase {
+	/** @public */
 	repoLocator: string;
+	/** @public */
 	baseBranch: string;
+	/** @public */
 	workBranch: string;
+	/** @public */
 	prompt: string;
+	/** @internal */
 	launchKind: RepositoryChangeLaunchKind;
+	/** @internal */
 	importedPlanMarkdown?: string;
 }
 
+/** @public */
 export type RepositoryChangeLaunchParams<TExtra extends object = Record<never, never>> = TExtra &
 	Omit<RepositoryChangeParamsBase, "launchKind" | "importedPlanMarkdown"> &
 	(
-		| { launchKind: "requested_change" }
-		| { launchKind: "imported_plan"; importedPlanMarkdown: string }
+		| {
+				/** @public */
+				launchKind: "requested_change";
+		  }
+		| {
+				/** @public */
+				launchKind: "imported_plan";
+				/** @internal */
+				importedPlanMarkdown: string;
+		  }
 	);
 
+/** @public */
 export interface NormalizedRepositoryChangeParamsInput {
+	/** @internal */
 	launchKind: string;
+	/** @internal */
 	repoLocator: string;
+	/** @internal */
 	baseBranch: string;
+	/** @internal */
 	workBranch: string;
+	/** @internal */
 	prompt: string;
+	/** @internal */
 	importedPlanMarkdown: string;
 }
 
+/** @public */
 export function repositoryChangeParamsRecord(
 	value: unknown,
 	displayName: string,
@@ -44,6 +69,7 @@ export function repositoryChangeParamsRecord(
 	return value as Record<string, unknown>;
 }
 
+/** @public */
 export function normalizeRepositoryChangeParamsInput(
 	value: unknown,
 	displayName: string,
@@ -60,8 +86,11 @@ export function normalizeRepositoryChangeParamsInput(
 	};
 }
 
+/** @public */
 export function createRepositoryChangeParamsCodec<T extends RepositoryChangeParamsBase>(input: {
+	/** @public */
 	displayName: string;
+	/** @public */
 	normalize(
 		value: unknown,
 	): NormalizedRepositoryChangeParamsInput & Omit<T, keyof RepositoryChangeParamsBase>;
@@ -79,31 +108,58 @@ export function createRepositoryChangeParamsCodec<T extends RepositoryChangePara
 	};
 }
 
+/** @internal */
 export interface RepositoryChangeLaunchPlannerInput {
+	/** @internal */
 	input: Record<string, unknown>;
+	/** @internal */
 	metadata?: Record<string, unknown> | null;
 }
 
+/** @internal */
 export type RepositoryChangeLaunchResolution<T extends RepositoryChangeParamsBase> =
-	| { ok: true; launchConfig: ProcessLaunchConfig<T> }
-	| { ok: false; errors: readonly LauncherValidationError[] };
+	| {
+			/** @internal */
+			ok: true;
+			/** @internal */
+			launchConfig: ProcessLaunchConfig<T>;
+	  }
+	| {
+			/** @internal */
+			ok: false;
+			/** @internal */
+			errors: readonly LauncherValidationError[];
+	  };
 
+/** @internal */
 export interface RepositoryChangeLaunchPlanner<T extends RepositoryChangeParamsBase> {
+	/** @internal */
 	plan(input: RepositoryChangeLaunchPlannerInput): RepositoryChangeLaunchResolution<T>;
 }
 
+/** @internal */
 export function formatRepositoryChangeLaunchErrors(
 	errors: readonly LauncherValidationError[],
 ): string {
 	return errors.map((error) => `${error.fieldId ?? "launch"}: ${error.message}`).join("; ");
 }
 
+/** @internal */
 export function createRepositoryChangeLaunchPlanner<T extends RepositoryChangeParamsBase>(config: {
+	/** @internal */
 	processId: string;
-	normalize(input: Record<string, unknown>): T & { importedPlanMarkdown?: string };
+	/** @internal */
+	normalize(input: Record<string, unknown>): T & {
+		/** @internal */
+		importedPlanMarkdown?: string;
+	};
+	/** @internal */
 	validateRepoLocator(repoLocator: string): string | null;
+	/** @internal */
 	validate?(input: Record<string, unknown>, params: T): readonly LauncherValidationError[];
+	/** @internal */
 	prepare?(params: T): T;
+	/** @internal */
 	deferWithoutWorkBranch?: boolean;
 }): RepositoryChangeLaunchPlanner<T> {
 	return {
@@ -181,13 +237,21 @@ export function createRepositoryChangeLaunchPlanner<T extends RepositoryChangePa
 	};
 }
 
+/** @internal */
 export function createRepositoryChangeUiLauncher<T extends RepositoryChangeParamsBase>(config: {
+	/** @internal */
 	id: string;
+	/** @internal */
 	formId: string;
+	/** @internal */
 	title: string;
+	/** @internal */
 	workBranchDescription: string;
+	/** @internal */
 	sshCredentials?: boolean;
+	/** @internal */
 	resolveRelaunchInput?: UiLauncherDefinition<T>["resolveRelaunchInput"];
+	/** @internal */
 	resolveLaunchConfig: UiLauncherDefinition<T>["resolveLaunchConfig"];
 }): ProcessLauncherDefinition<T> {
 	return {

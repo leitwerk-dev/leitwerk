@@ -1,6 +1,7 @@
 import { trimToNull } from "./string-normalize.js";
 import { asUnknownRecord, isUnknownRecord } from "./unknown-record.js";
 
+/** @public */
 export const PROCESS_SEMANTIC_ENTRY_REF_KEYS = [
 	"plan",
 	"review",
@@ -8,13 +9,18 @@ export const PROCESS_SEMANTIC_ENTRY_REF_KEYS = [
 	"rootEntry",
 ] as const;
 
+/** @public */
 export type ProcessSemanticEntryRefKey = (typeof PROCESS_SEMANTIC_ENTRY_REF_KEYS)[number];
 
+/** @internal */
 export interface SemanticEntryRef {
+	/** @internal */
 	entryId: string;
+	/** @internal */
 	turnRecordId: string | null;
 }
 
+/** @internal */
 export function areSemanticEntryRefsEqual(
 	left: SemanticEntryRef | null | undefined,
 	right: SemanticEntryRef | null | undefined,
@@ -25,15 +31,19 @@ export function areSemanticEntryRefsEqual(
 	);
 }
 
+/** @internal */
 export type ProcessProductRef = SemanticEntryRef;
+/** @internal */
 export type ProcessProductRefs = Record<string, ProcessProductRef>;
 
 const PRODUCT_NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
 
+/** @internal */
 export function isValidProcessProductName(value: string): boolean {
 	return PRODUCT_NAME_PATTERN.test(value);
 }
 
+/** @internal */
 export function assertValidProcessProductName(value: string): void {
 	if (!isValidProcessProductName(value)) {
 		throw new Error(
@@ -53,17 +63,24 @@ export function assertValidProcessProductName(value: string): void {
  * - `review` during successful review turns; it remains the current review until
  *   another review turn replaces it
  */
+/** @internal */
 export interface ProcessSemanticEntryRefs {
+	/** @internal */
 	plan: SemanticEntryRef | null;
+	/** @internal */
 	review: SemanticEntryRef | null;
+	/** @internal */
 	currentPrimaryPathLeaf: SemanticEntryRef | null;
+	/** @internal */
 	rootEntry: SemanticEntryRef | null;
 }
 
+/** @internal */
 export function isProcessSemanticEntryRefKey(value: string): value is ProcessSemanticEntryRefKey {
 	return (PROCESS_SEMANTIC_ENTRY_REF_KEYS as readonly string[]).includes(value);
 }
 
+/** @internal */
 export function parseSemanticEntryRef(value: unknown): SemanticEntryRef | null {
 	const record = asUnknownRecord(value);
 	const entryId = trimToNull(record?.entryId);
@@ -76,6 +93,7 @@ export function parseSemanticEntryRef(value: unknown): SemanticEntryRef | null {
 	};
 }
 
+/** @internal */
 export function createEmptyProcessSemanticEntryRefs(): ProcessSemanticEntryRefs {
 	return {
 		plan: null,
@@ -85,10 +103,12 @@ export function createEmptyProcessSemanticEntryRefs(): ProcessSemanticEntryRefs 
 	};
 }
 
+/** @internal */
 export function createEmptyProcessProductRefs(): ProcessProductRefs {
 	return {};
 }
 
+/** @internal */
 export function parseProcessProductRefs(value: unknown): ProcessProductRefs {
 	if (!isUnknownRecord(value)) return createEmptyProcessProductRefs();
 	const refs: ProcessProductRefs = {};
@@ -104,6 +124,7 @@ export function parseProcessProductRefs(value: unknown): ProcessProductRefs {
 	return refs;
 }
 
+/** @internal */
 export function parseProcessSemanticEntryRefs(value: unknown): ProcessSemanticEntryRefs {
 	const record = asUnknownRecord(value) ?? {};
 	return {

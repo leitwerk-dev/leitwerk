@@ -1,3 +1,4 @@
+/** @public */
 export async function waitForValue<T>(
 	read: () => T | Promise<T>,
 	predicate: (value: T) => boolean,

@@ -10,46 +10,106 @@ import {
 	type TelegramTextUpdate,
 } from "./types.js";
 
+/** @internal */
 export interface FakeTelegramTopic {
+	/** @internal */
 	chatId: string;
+	/** @internal */
 	name: string;
+	/** @internal */
 	messageThreadId: number;
 }
 
+/** @internal */
 export interface FakeTelegramTopicEdit {
+	/** @internal */
 	chatId: string;
+	/** @internal */
 	messageThreadId: number;
+	/** @internal */
 	name: string;
 }
 
+/** @internal */
 export interface FakeTelegramTopicClose {
+	/** @internal */
 	chatId: string;
+	/** @internal */
 	messageThreadId: number;
 }
 
+/** @internal */
 export interface FakeTelegramAnswerCallback {
+	/** @internal */
 	callbackQueryId: string;
+	/** @internal */
 	text?: string;
+	/** @internal */
 	showAlert?: boolean;
 }
 
+/** @internal */
 export type FakeTelegramOperation =
-	| { kind: "createForumTopic"; input: FakeTelegramTopic }
-	| { kind: "editForumTopic"; input: FakeTelegramTopicEdit }
-	| { kind: "closeForumTopic"; input: FakeTelegramTopicClose }
-	| { kind: "sendMessage"; input: TelegramSendMessageInput }
-	| { kind: "sendPhoto"; input: TelegramSendFileInput }
-	| { kind: "sendDocument"; input: TelegramSendFileInput }
-	| { kind: "answerCallbackQuery"; input: FakeTelegramAnswerCallback };
+	| {
+			/** @internal */
+			kind: "createForumTopic";
+			/** @internal */
+			input: FakeTelegramTopic;
+	  }
+	| {
+			/** @internal */
+			kind: "editForumTopic";
+			/** @internal */
+			input: FakeTelegramTopicEdit;
+	  }
+	| {
+			/** @internal */
+			kind: "closeForumTopic";
+			/** @internal */
+			input: FakeTelegramTopicClose;
+	  }
+	| {
+			/** @internal */
+			kind: "sendMessage";
+			/** @internal */
+			input: TelegramSendMessageInput;
+	  }
+	| {
+			/** @internal */
+			kind: "sendPhoto";
+			/** @internal */
+			input: TelegramSendFileInput;
+	  }
+	| {
+			/** @internal */
+			kind: "sendDocument";
+			/** @internal */
+			input: TelegramSendFileInput;
+	  }
+	| {
+			/** @internal */
+			kind: "answerCallbackQuery";
+			/** @internal */
+			input: FakeTelegramAnswerCallback;
+	  };
 
+/** @internal */
 export class FakeTelegramClient extends BaseTelegramClientEventRegistrar implements TelegramClient {
+	/** @internal */
 	readonly operations: FakeTelegramOperation[] = [];
+	/** @internal */
 	readonly createdTopics: FakeTelegramTopic[] = [];
+	/** @internal */
 	readonly editedTopics: FakeTelegramTopicEdit[] = [];
+	/** @internal */
 	readonly closedTopics: FakeTelegramTopicClose[] = [];
+	/** @internal */
 	readonly sentMessages: TelegramSendMessageInput[] = [];
+	/** @internal */
 	readonly sentPhotos: TelegramSendFileInput[] = [];
+	/** @internal */
 	readonly sentDocuments: TelegramSendFileInput[] = [];
+	/** @internal */
 	readonly answeredCallbacks: FakeTelegramAnswerCallback[] = [];
 	private nextThreadId = 100;
 	private nextMessageId = 1;
@@ -57,20 +117,25 @@ export class FakeTelegramClient extends BaseTelegramClientEventRegistrar impleme
 	private sendPhotoFailures: Error[] = [];
 	private sendDocumentFailures: Error[] = [];
 	private sendMessageFailure: { remainingSuccessfulSends: number; error: Error } | null = null;
+	/** @internal */
 	started = false;
 
+	/** @internal */
 	async start(): Promise<void> {
 		this.started = true;
 	}
 
+	/** @internal */
 	async stop(): Promise<void> {
 		this.started = false;
 	}
 
+	/** @internal */
 	failNextCreateForumTopic(error = new Error("createForumTopic failed")): void {
 		this.createForumTopicFailures.push(error);
 	}
 
+	/** @internal */
 	failSendMessageAfter(successfulSends: number, error = new Error("sendMessage failed")): void {
 		this.sendMessageFailure = {
 			remainingSuccessfulSends: Math.max(0, successfulSends),
@@ -78,18 +143,26 @@ export class FakeTelegramClient extends BaseTelegramClientEventRegistrar impleme
 		};
 	}
 
+	/** @internal */
 	failNextSendPhoto(error = new Error("sendPhoto failed")): void {
 		this.sendPhotoFailures.push(error);
 	}
 
+	/** @internal */
 	failNextSendDocument(error = new Error("sendDocument failed")): void {
 		this.sendDocumentFailures.push(error);
 	}
 
+	/** @internal */
 	async createForumTopic(input: {
+		/** @internal */
 		chatId: string;
+		/** @internal */
 		name: string;
-	}): Promise<{ messageThreadId: number }> {
+	}): Promise<{
+		/** @internal */
+		messageThreadId: number;
+	}> {
 		const failure = this.createForumTopicFailures.shift();
 		if (failure) {
 			throw failure;
@@ -104,16 +177,19 @@ export class FakeTelegramClient extends BaseTelegramClientEventRegistrar impleme
 		return { messageThreadId: topic.messageThreadId };
 	}
 
+	/** @internal */
 	async editForumTopic(input: FakeTelegramTopicEdit): Promise<void> {
 		this.operations.push({ kind: "editForumTopic", input });
 		this.editedTopics.push(input);
 	}
 
+	/** @internal */
 	async closeForumTopic(input: FakeTelegramTopicClose): Promise<void> {
 		this.operations.push({ kind: "closeForumTopic", input });
 		this.closedTopics.push(input);
 	}
 
+	/** @internal */
 	async sendMessage(input: TelegramSendMessageInput): Promise<TelegramSentMessage> {
 		const failure = this.sendMessageFailure;
 		if (failure) {
@@ -128,6 +204,7 @@ export class FakeTelegramClient extends BaseTelegramClientEventRegistrar impleme
 		return { messageId: this.nextMessageId++ };
 	}
 
+	/** @internal */
 	async sendPhoto(input: TelegramSendFileInput): Promise<TelegramSentMessage> {
 		const failure = this.sendPhotoFailures.shift();
 		if (failure) throw failure;
@@ -136,6 +213,7 @@ export class FakeTelegramClient extends BaseTelegramClientEventRegistrar impleme
 		return { messageId: this.nextMessageId++ };
 	}
 
+	/** @internal */
 	async sendDocument(input: TelegramSendFileInput): Promise<TelegramSentMessage> {
 		const failure = this.sendDocumentFailures.shift();
 		if (failure) throw failure;
@@ -144,23 +222,28 @@ export class FakeTelegramClient extends BaseTelegramClientEventRegistrar impleme
 		return { messageId: this.nextMessageId++ };
 	}
 
+	/** @internal */
 	async answerCallbackQuery(input: FakeTelegramAnswerCallback): Promise<void> {
 		this.operations.push({ kind: "answerCallbackQuery", input });
 		this.answeredCallbacks.push(input);
 	}
 
+	/** @internal */
 	async simulateText(update: TelegramTextUpdate): Promise<void> {
 		await Promise.all([...this.textHandlers].map((handler) => handler(update)));
 	}
 
+	/** @internal */
 	async simulateCallback(update: TelegramCallbackUpdate): Promise<void> {
 		await Promise.all([...this.callbackHandlers].map((handler) => handler(update)));
 	}
 
+	/** @internal */
 	async simulateForumTopicCreated(update: TelegramForumTopicCreatedUpdate): Promise<void> {
 		await Promise.all([...this.forumTopicCreatedHandlers].map((handler) => handler(update)));
 	}
 
+	/** @internal */
 	async simulateForumTopicClosed(update: TelegramForumTopicClosedUpdate): Promise<void> {
 		await Promise.all([...this.forumTopicClosedHandlers].map((handler) => handler(update)));
 	}

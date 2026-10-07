@@ -4,6 +4,7 @@ import type {
 } from "./http-contracts.js";
 import type { PrimaryPathActiveTurnSnapshot } from "./primary-path-snapshot.js";
 
+/** @internal */
 export function timelinePresentationForTurnType(
 	turnType: ProcessTimelineTurnSummary["turnType"],
 ): ProcessTimelineTurnPresentation {
@@ -12,14 +13,18 @@ export function timelinePresentationForTurnType(
 	return turnType === "automatic" ? "automatic_turn" : "llm_turn";
 }
 
+/** @internal */
 export function buildActiveTimelineTurnSummary(
 	activeTurn: Pick<
 		PrimaryPathActiveTurnSnapshot,
 		"turnRecordId" | "turnId" | "turnType" | "pathType" | "startedAt" | "assistant"
 	>,
 	input: {
+		/** @internal */
 		summary: string;
+		/** @internal */
 		output: string;
+		/** @internal */
 		actionSource?: ProcessTimelineTurnSummary["actionSource"];
 	} = { summary: `Current step: ${activeTurn.turnId}`, output: activeTurn.assistant.text.trim() },
 ): ProcessTimelineTurnSummary {

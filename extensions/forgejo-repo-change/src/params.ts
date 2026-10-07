@@ -6,40 +6,61 @@ import {
 } from "@leitwerk-dev/coding/repository-change-launch";
 import { trimString } from "@leitwerk-dev/domain";
 
+/** @public */
 interface ForgejoRepoChangeCommonParams {
+	/** @internal */
 	forgejoProfile: string;
+	/** @internal */
 	woodpeckerProfile: string;
+	/** @internal */
 	sshCredentialRef: string;
+	/** @internal */
 	owner: string;
+	/** @internal */
 	repo: string;
 }
 
+/** @public */
 export interface ForgejoIssueOriginParams {
+	/** @internal */
 	origin: "issue";
+	/** @internal */
 	issueNumber: number;
+	/** @internal */
 	issueUrl: string;
+	/** @internal */
 	triggerLabel: string;
+	/** @internal */
 	doneLabel: string;
 }
 
+/** @public */
 export interface ForgejoUiOriginParams {
+	/** @internal */
 	origin: "ui";
+	/** @internal */
 	issueNumber: null;
+	/** @internal */
 	issueUrl: null;
+	/** @internal */
 	triggerLabel: null;
+	/** @internal */
 	doneLabel: null;
 }
 
+/** @public */
 export type ForgejoRepoChangeParams = RepositoryChangeLaunchParams<
 	ForgejoRepoChangeCommonParams & (ForgejoIssueOriginParams | ForgejoUiOriginParams)
 >;
 
+/** @internal */
 export function isIssueOrigin(
 	params: ForgejoRepoChangeParams,
 ): params is ForgejoRepoChangeParams & ForgejoIssueOriginParams {
 	return params.origin === "issue";
 }
 
+/** @internal */
 export const forgejoRepoChangeParamsCodec =
 	createRepositoryChangeParamsCodec<ForgejoRepoChangeParams>({
 		displayName: "Forgejo Repo Change",

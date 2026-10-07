@@ -4,19 +4,31 @@ import type { LeitwerkDb } from "./database.js";
 import { now } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
+/** @internal */
 export interface AuthSessionRecord {
+	/** @internal */
 	idHash: string;
+	/** @internal */
 	actor: Actor;
+	/** @internal */
 	createdAt: string;
+	/** @internal */
 	expiresAt: string;
 }
 
+/** @internal */
 export interface AuthLoginFlowRecord {
+	/** @internal */
 	idHash: string;
+	/** @internal */
 	providerId: string;
+	/** @internal */
 	state: string;
+	/** @internal */
 	pkceVerifier: string;
+	/** @internal */
 	createdAt: string;
+	/** @internal */
 	expiresAt: string;
 }
 
@@ -34,9 +46,18 @@ function sessionRowToRecord(row: typeof s.authSessions.$inferSelect): AuthSessio
 	};
 }
 
+/** @internal */
 export function createAuthSessionRepo(db: LeitwerkDb) {
 	return {
-		create(input: { idHash: string; actor: Actor; expiresAt: string }): AuthSessionRecord {
+		/** @internal */
+		create(input: {
+			/** @internal */
+			idHash: string;
+			/** @internal */
+			actor: Actor;
+			/** @internal */
+			expiresAt: string;
+		}): AuthSessionRecord {
 			const ts = now();
 			const values = {
 				idHash: input.idHash,
@@ -50,6 +71,7 @@ export function createAuthSessionRepo(db: LeitwerkDb) {
 			return sessionRowToRecord(values);
 		},
 
+		/** @internal */
 		getValid(idHash: string, atIso: string = now()): AuthSessionRecord | null {
 			const row = db
 				.select()
@@ -59,11 +81,13 @@ export function createAuthSessionRepo(db: LeitwerkDb) {
 			return row ? sessionRowToRecord(row) : null;
 		},
 
+		/** @internal */
 		delete(idHash: string): boolean {
 			const result = db.delete(s.authSessions).where(eq(s.authSessions.idHash, idHash)).run();
 			return result.changes > 0;
 		},
 
+		/** @internal */
 		deleteExpired(atIso: string = now()): number {
 			const result = db.delete(s.authSessions).where(lt(s.authSessions.expiresAt, atIso)).run();
 			return Number(result.changes);
@@ -71,13 +95,20 @@ export function createAuthSessionRepo(db: LeitwerkDb) {
 	};
 }
 
+/** @internal */
 export function createAuthLoginFlowRepo(db: LeitwerkDb) {
 	return {
+		/** @internal */
 		create(input: {
+			/** @internal */
 			idHash: string;
+			/** @internal */
 			providerId: string;
+			/** @internal */
 			state: string;
+			/** @internal */
 			pkceVerifier: string;
+			/** @internal */
 			expiresAt: string;
 		}): AuthLoginFlowRecord {
 			const values = {
@@ -92,6 +123,7 @@ export function createAuthLoginFlowRepo(db: LeitwerkDb) {
 			return values;
 		},
 
+		/** @internal */
 		getValid(idHash: string, atIso: string = now()): AuthLoginFlowRecord | null {
 			const row = db
 				.select()
@@ -101,11 +133,13 @@ export function createAuthLoginFlowRepo(db: LeitwerkDb) {
 			return row ?? null;
 		},
 
+		/** @internal */
 		delete(idHash: string): boolean {
 			const result = db.delete(s.authLoginFlows).where(eq(s.authLoginFlows.idHash, idHash)).run();
 			return result.changes > 0;
 		},
 
+		/** @internal */
 		deleteExpired(atIso: string = now()): number {
 			const result = db.delete(s.authLoginFlows).where(lt(s.authLoginFlows.expiresAt, atIso)).run();
 			return Number(result.changes);

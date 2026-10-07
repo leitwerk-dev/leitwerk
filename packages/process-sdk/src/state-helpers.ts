@@ -9,16 +9,21 @@ import {
 } from "@leitwerk-dev/domain";
 import type { Codec } from "./extension-api.js";
 
+/** @public */
 export interface StructuralProcessState {
+	/** @internal */
 	semanticEntryRefs: ProcessSemanticEntryRefs;
+	/** @internal */
 	productRefs: ProcessProductRefs;
 }
 
+/** @internal */
 export const structuralStateCodec: Codec<StructuralProcessState> = {
 	parse: parseStructuralProcessState,
 	serialize: (value) => value,
 };
 
+/** @public */
 export function createEmptyStructuralProcessState(): StructuralProcessState {
 	return {
 		semanticEntryRefs: createEmptyProcessSemanticEntryRefs(),
@@ -26,6 +31,7 @@ export function createEmptyStructuralProcessState(): StructuralProcessState {
 	};
 }
 
+/** @public */
 export function parseStructuralProcessState(value: unknown): StructuralProcessState {
 	const record = asUnknownRecord(value) ?? {};
 	return {

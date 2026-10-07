@@ -7,10 +7,12 @@ import type { WorkerExitInfo, WorkerUnit, WorkerUnitRef } from "./types.js";
  * `WorkerUnit.onExit` callbacks. This utility captures the identical map +
  * fire/wrap logic and leaves only the unit-keying to each runner.
  */
+/** @internal */
 export class UnitExitNotifier {
 	private readonly listeners = new Map<string, Array<(info: WorkerExitInfo) => void>>();
 	private readonly exited = new Map<string, WorkerExitInfo>();
 
+	/** @internal */
 	onExit(key: string, listener: (info: WorkerExitInfo) => void): void {
 		const exit = this.exited.get(key);
 		if (exit) {
@@ -22,6 +24,7 @@ export class UnitExitNotifier {
 		this.listeners.set(key, list);
 	}
 
+	/** @internal */
 	fireExit(key: string, info: WorkerExitInfo): void {
 		if (this.exited.has(key)) return;
 		this.exited.set(key, info);
@@ -31,10 +34,14 @@ export class UnitExitNotifier {
 		for (const listener of list.splice(0)) listener(info);
 	}
 
+	/** @internal */
 	wrapUnit<T extends WorkerUnitRef>(
 		ref: T,
 		key: string,
-		options?: { replacementHandoff?: WorkerUnit["replacementHandoff"] },
+		options?: {
+			/** @internal */
+			replacementHandoff?: WorkerUnit["replacementHandoff"];
+		},
 	): WorkerUnit {
 		return {
 			...ref,

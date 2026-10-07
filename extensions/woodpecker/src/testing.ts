@@ -3,27 +3,48 @@ import type { WoodpeckerClientLike } from "./capability.js";
 import type { WoodpeckerPipeline, WoodpeckerRepository } from "./client.js";
 import { boundedLogTail } from "./logs.js";
 
+/** @public */
 export interface LocalWoodpeckerRepository {
+	/** @public */
 	repository: WoodpeckerRepository;
-	pipelines: Array<WoodpeckerPipeline & { logs: string; controlKey?: string }>;
+	/** @public */
+	pipelines: Array<
+		WoodpeckerPipeline & {
+			/** @internal */
+			logs: string;
+			/** @internal */
+			controlKey?: string;
+		}
+	>;
 }
+/** @public */
 export interface LocalWoodpeckerState {
+	/** @public */
 	version: 1;
+	/** @public */
 	sequence: number;
+	/** @public */
 	repositories: LocalWoodpeckerRepository[];
 }
+/** @public */
 export interface LocalWoodpeckerOptions {
+	/** @public */
 	root: string;
+	/** @public */
 	baseUrl: string;
+	/** @public */
 	now?: () => number;
+	/** @public */
 	nextId?: () => number;
 }
 
 /** Local CI state is independent of the repository's Git host. */
+/** @public */
 export class LocalWoodpeckerAdapter extends LocalProviderStore<
 	LocalWoodpeckerState,
 	LocalWoodpeckerOptions
 > {
+	/** @public */
 	constructor(options: LocalWoodpeckerOptions) {
 		super(options, "woodpecker.json", {
 			version: 1,
@@ -31,6 +52,7 @@ export class LocalWoodpeckerAdapter extends LocalProviderStore<
 			repositories: [],
 		});
 	}
+	/** @public */
 	seed(fullName: string, id?: number) {
 		const existing = this.state.repositories.find((r) => r.repository.full_name === fullName);
 		if (existing) return existing;
@@ -40,14 +62,21 @@ export class LocalWoodpeckerAdapter extends LocalProviderStore<
 		this.save();
 		return repo;
 	}
+	/** @public */
 	publish(
 		repo: LocalWoodpeckerRepository,
 		input: {
+			/** @public */
 			branch: string;
+			/** @public */
 			commit: string;
+			/** @public */
 			status: string;
+			/** @public */
 			logs: string;
+			/** @internal */
 			event?: string;
+			/** @internal */
 			controlKey?: string;
 		},
 	) {
@@ -69,18 +98,40 @@ export class LocalWoodpeckerAdapter extends LocalProviderStore<
 		const number = this.id();
 		const pipeline = {
 			...input,
+			/** @internal */
 			id: number,
+			/** @public */
 			number,
+			/** @internal */
 			event: input.event ?? "push",
+			/** @internal */
 			created_at: Math.floor((this.options.now?.() ?? Date.now()) / 1000),
+			/** @internal */
 			workflows: [
-				{ id: 1, name: "local", steps: [{ id: 1, name: "validation", state: input.status }] },
+				{
+					/** @internal */
+					id: 1,
+					/** @internal */
+					name: "local",
+					/** @internal */
+					steps: [
+						{
+							/** @internal */
+							id: 1,
+							/** @internal */
+							name: "validation",
+							/** @internal */
+							state: input.status,
+						},
+					],
+				},
 			],
 		};
 		repo.pipelines.push(pipeline);
 		this.save();
 		return pipeline;
 	}
+	/** @public */
 	client(): WoodpeckerClientLike {
 		const repo = (id: number) => {
 			const value = this.state.repositories.find((r) => r.repository.id === id);

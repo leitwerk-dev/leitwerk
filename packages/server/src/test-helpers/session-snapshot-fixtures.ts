@@ -4,6 +4,7 @@ import { createFileBackedProcessSessionSnapshotStore } from "../process-session-
 import { createProjectedSessionSnapshotStore } from "../session-summary-projection.js";
 
 /** Accept fixture snapshots through the same persisted projection as worker uploads. */
+/** @internal */
 export async function writeProcessSessionSnapshot(
 	ctx: Pick<AppContext, "db" | "config">,
 	instanceId: string,

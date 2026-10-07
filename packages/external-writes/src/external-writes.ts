@@ -1,31 +1,47 @@
 import type { ExternalWriteType } from "@leitwerk-dev/domain";
 
+/** @public */
 export interface WriteIdentity {
+	/** @internal */
 	writeType: ExternalWriteType;
+	/** @internal */
 	dedupKey: string;
 }
 
+/** @public */
 export interface ExternalWriteLogRecordInput {
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	writeType: ExternalWriteType;
+	/** @public */
 	dedupKey: string;
+	/** @internal */
 	metadata?: Record<string, unknown>;
 }
 
+/** @public */
 export interface ExternalWriteLogRepoLike {
+	/** @public */
 	hasDedupKey(dedupKey: string): boolean;
+	/** @public */
 	record(input: ExternalWriteLogRecordInput): unknown;
 }
 
+/** @public */
 export interface EnsureWriteResult {
+	/** @internal */
 	performed: boolean;
+	/** @internal */
 	dedupKey: string;
 }
 
+/** @public */
 export function createWriteIdentity(writeType: ExternalWriteType, dedupKey: string): WriteIdentity {
 	return { writeType, dedupKey };
 }
 
+/** @internal */
 export function recordWriteIfMissing(
 	repo: ExternalWriteLogRepoLike,
 	instanceId: string,
@@ -53,6 +69,7 @@ export function recordWriteIfMissing(
 	return { performed: true, dedupKey: identity.dedupKey };
 }
 
+/** @public */
 export async function ensureWrite(
 	repo: ExternalWriteLogRepoLike,
 	instanceId: string,

@@ -293,6 +293,7 @@ function createActionFormSessionId(): string {
 	return randomBytes(4).toString("hex");
 }
 
+/** @internal */
 export class TelegramBridge {
 	private readonly store: ProcessThreadStore;
 	private readonly sessions = new Map<string, PendingTelegramSession>();
@@ -311,11 +312,16 @@ export class TelegramBridge {
 		{ pathType: ProcessTurnRecordPathType; turnId: string }
 	>();
 
+	/** @internal */
 	constructor(
 		private readonly input: {
+			/** @internal */
 			config: TelegramExtensionConfig;
+			/** @internal */
 			deps: CoreServerSetupDeps;
+			/** @internal */
 			client: TelegramClient;
+			/** @internal */
 			logger?: ServerExtensionLogger;
 		},
 	) {
@@ -327,6 +333,7 @@ export class TelegramBridge {
 		input.client.onForumTopicClosed((update) => this.handleForumTopicClosed(update));
 	}
 
+	/** @internal */
 	async start(): Promise<void> {
 		for (const instanceId of this.store.rebuildFromEvents()) {
 			this.threadEligibleInstanceIds.add(instanceId);
@@ -361,11 +368,14 @@ export class TelegramBridge {
 		}
 	}
 
+	/** @internal */
 	async stop(): Promise<void> {
 		await this.input.client.stop();
 	}
 
+	/** @internal */
 	register(events: {
+		/** @internal */
 		on<K extends keyof ServerExtensionEventMap & string>(
 			event: K,
 			handler: (payload: ServerExtensionEventMap[K]) => void | Promise<void>,

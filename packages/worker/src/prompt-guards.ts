@@ -7,12 +7,18 @@ import {
 } from "./pi-adapter.js";
 import { toErrorMessage } from "./turn-execution-error.js";
 
+/** @internal */
 export type PromptGuardTimer = ReturnType<typeof setTimeout>;
 
+/** @internal */
 export interface PromptGuardScheduler {
+	/** @internal */
 	setTimeout(handler: () => void, delayMs: number): PromptGuardTimer;
+	/** @internal */
 	clearTimeout(timer: PromptGuardTimer): void;
+	/** @internal */
 	sleep(delayMs: number): Promise<void>;
+	/** @internal */
 	now(): Date;
 }
 

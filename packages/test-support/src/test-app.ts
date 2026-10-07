@@ -10,28 +10,43 @@ import type { FastifyInstance } from "fastify";
 import { FakeLlmProvider } from "./fakes/fake-llm.js";
 import { createInProcessWorkerSpawn } from "./in-process-worker.js";
 
+/** @internal */
 export interface TestAppBase {
+	/** @internal */
 	server: FastifyInstance;
+	/** @internal */
 	ctx: AppContext;
+	/** @internal */
 	address: string;
+	/** @internal */
 	llm: FakeLlmProvider;
+	/** @internal */
 	close: () => Promise<void>;
 }
 
+/** @internal */
 export type TestApp<TResources extends Record<string, unknown> = Record<string, never>> =
 	TestAppBase & TResources;
 
+/** @internal */
 export interface TestAppOptions<
 	TResources extends Record<string, unknown> = Record<string, never>,
 > {
+	/** @internal */
 	extensionCatalog: ExtensionCatalog | Promise<ExtensionCatalog>;
+	/** @internal */
 	preProvidedCapabilities?: readonly ProvidedCapability[];
+	/** @internal */
 	resources?: TResources;
+	/** @internal */
 	listen?: boolean;
+	/** @internal */
 	inProcessWorkers?: boolean;
+	/** @internal */
 	configureConfig?: (config: LeitwerkConfig) => void;
 }
 
+/** @internal */
 export async function createTestApp<
 	TResources extends Record<string, unknown> = Record<string, never>,
 >(opts: TestAppOptions<TResources>): Promise<TestApp<TResources>> {

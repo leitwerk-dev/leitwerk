@@ -1,16 +1,24 @@
 import type { CapabilityToken } from "./capabilities.js";
 
+/** @internal */
 export interface ProvidedCapability<T = unknown> {
+	/** @internal */
 	token: CapabilityToken<T>;
+	/** @internal */
 	value: T;
 }
 
+/** @internal */
 export interface CapabilityAccessor {
+	/** @internal */
 	provide<T>(token: CapabilityToken<T>, value: T): void;
+	/** @internal */
 	get<T>(token: CapabilityToken<T>): T | T[] | undefined;
+	/** @internal */
 	require<T>(token: CapabilityToken<T>): T | T[];
 }
 
+/** @internal */
 export function createCapabilityAccessor(
 	provided: readonly ProvidedCapability[] = [],
 ): CapabilityAccessor {

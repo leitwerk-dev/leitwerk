@@ -28,23 +28,37 @@ import {
 	type WsEventPayloadRecord,
 } from "./ws-event-payloads.js";
 
+/** @internal */
 export interface MutableLiveTurnProjection {
+	/** @internal */
 	assistant: PrimaryPathStreamingAssistantSnapshot;
+	/** @internal */
 	toolCalls: PrimaryPathToolCallSnapshot[];
+	/** @internal */
 	traceItems: PrimaryPathTraceItemSnapshot[];
+	/** @internal */
 	usage: UsageSnapshot | null;
+	/** @internal */
 	toolCallsById: Map<string, PrimaryPathToolCallSnapshot>;
+	/** @internal */
 	openToolCallIdsByName: Map<string, string[]>;
+	/** @internal */
 	nextFallbackOrdinal: number;
 }
 
+/** @internal */
 export interface AppliedLiveTurnProjectionEvent {
+	/** @internal */
 	canonicalData: WsEventPayloadRecord;
+	/** @internal */
 	timestamp: string;
+	/** @internal */
 	toolCallId: string | null;
+	/** @internal */
 	toolName: string | null;
 }
 
+/** @internal */
 export const PRIMARY_PATH_OPERATIONAL_PI_EVENT_TYPES = [
 	"pi.error",
 	"pi.retry.start",
@@ -100,9 +114,13 @@ function retryEndFallbackMessage(data: WsEventPayloadRecord): string {
 		: "Retry sequence ended.";
 }
 
+/** @internal */
 export function buildPrimaryPathOperationalTraceItem(input: {
+	/** @internal */
 	eventType: string;
+	/** @internal */
 	data: WsEventPayloadRecord;
+	/** @internal */
 	fallbackTimestamp: string;
 }): PrimaryPathOperationalTraceItemSnapshot | null {
 	if (!PRIMARY_PATH_OPERATIONAL_PI_EVENT_TYPE_SET.has(input.eventType)) {
@@ -283,6 +301,7 @@ function ensureToolTraceItem(projection: MutableLiveTurnProjection, toolCallId: 
 	});
 }
 
+/** @internal */
 export function createMutableLiveTurnProjection(): MutableLiveTurnProjection {
 	return {
 		assistant: {
@@ -299,10 +318,15 @@ export function createMutableLiveTurnProjection(): MutableLiveTurnProjection {
 	};
 }
 
+/** @internal */
 export function snapshotLiveTurnProjection(projection: MutableLiveTurnProjection): {
+	/** @internal */
 	assistant: PrimaryPathStreamingAssistantSnapshot;
+	/** @internal */
 	toolCalls: PrimaryPathToolCallSnapshot[];
+	/** @internal */
 	traceItems: PrimaryPathTraceItemSnapshot[];
+	/** @internal */
 	usage: UsageSnapshot | null;
 } {
 	return {
@@ -313,11 +337,15 @@ export function snapshotLiveTurnProjection(projection: MutableLiveTurnProjection
 	};
 }
 
+/** @internal */
 export function applyPiEventToLiveTurnProjection(
 	projection: MutableLiveTurnProjection,
 	input: {
+		/** @internal */
 		eventType: string;
+		/** @internal */
 		data: WsEventPayloadRecord;
+		/** @internal */
 		fallbackTimestamp: string;
 	},
 ): AppliedLiveTurnProjectionEvent {
@@ -414,6 +442,7 @@ function compareProcessEventsChronologically(left: ProcessEvent, right: ProcessE
 	return left.id.localeCompare(right.id);
 }
 
+/** @internal */
 export function buildLiveTurnProjectionFromEvents(
 	events: readonly ProcessEvent[],
 ): MutableLiveTurnProjection {

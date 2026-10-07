@@ -14,52 +14,138 @@ import type {
 	UiLauncherSummary,
 } from "@leitwerk-dev/process-sdk";
 
+/** @internal */
 export type LaunchFieldValue = string | number | boolean;
 
+/** @internal */
 export type LaunchModelStep =
-	| { kind: "default"; key: "default"; label: string }
-	| { kind: "turn"; key: string; turnId: string; label: string };
+	| {
+			/** @internal */
+			kind: "default";
+			/** @internal */
+			key: "default";
+			/** @internal */
+			label: string;
+	  }
+	| {
+			/** @internal */
+			kind: "turn";
+			/** @internal */
+			key: string;
+			/** @internal */
+			turnId: string;
+			/** @internal */
+			label: string;
+	  };
 
+/** @internal */
 export interface PendingLaunchModelEdit {
+	/** @internal */
 	stepIndex: number;
 }
 
+/** @internal */
 export interface PendingLaunchSession {
+	/** @internal */
 	kind: "launch";
+	/** @internal */
 	launcherId: string;
+	/** @internal */
 	fieldIndex: number;
+	/** @internal */
 	fieldOrder: readonly string[];
+	/** @internal */
 	values: Record<string, LaunchFieldValue>;
+	/** @internal */
 	modelConfig: LaunchModelConfigInputLike;
+	/** @internal */
 	modelConfigTouched: boolean;
+	/** @internal */
 	modelEdit: PendingLaunchModelEdit | null;
+	/** @internal */
 	expiresAt: number;
 }
 
+/** @internal */
 export type LaunchFieldStepResult =
-	| { ok: true; done: false; field: LauncherFieldDefinition }
-	| { ok: true; done: true; values: Record<string, LaunchFieldValue> }
-	| { ok: false; prompt: string };
+	| {
+			/** @internal */
+			ok: true;
+			/** @internal */
+			done: false;
+			/** @internal */
+			field: LauncherFieldDefinition;
+	  }
+	| {
+			/** @internal */
+			ok: true;
+			/** @internal */
+			done: true;
+			/** @internal */
+			values: Record<string, LaunchFieldValue>;
+	  }
+	| {
+			/** @internal */
+			ok: false;
+			/** @internal */
+			prompt: string;
+	  };
 
+/** @internal */
 export type LaunchModelStepResult =
-	| { ok: true; done: false; step: LaunchModelStep }
-	| { ok: true; done: true }
-	| { ok: false; prompt: string };
+	| {
+			/** @internal */
+			ok: true;
+			/** @internal */
+			done: false;
+			/** @internal */
+			step: LaunchModelStep;
+	  }
+	| {
+			/** @internal */
+			ok: true;
+			/** @internal */
+			done: true;
+	  }
+	| {
+			/** @internal */
+			ok: false;
+			/** @internal */
+			prompt: string;
+	  };
 
+/** @internal */
 export type LaunchModelStepAction =
-	| { action: "set"; value: string }
-	| { action: "inherit" }
-	| { action: "skip" };
+	| {
+			/** @internal */
+			action: "set";
+			/** @internal */
+			value: string;
+	  }
+	| {
+			/** @internal */
+			action: "inherit";
+	  }
+	| {
+			/** @internal */
+			action: "skip";
+	  };
 
+/** @internal */
 export type LaunchFieldOptionsById = Record<
 	string,
 	readonly LauncherFieldOptionDefinition[] | undefined
 >;
 
+/** @internal */
 export function createLaunchSession(input: {
+	/** @internal */
 	launcher: UiLauncherSummary;
+	/** @internal */
 	defaults?: Record<string, unknown>;
+	/** @internal */
 	now?: number;
+	/** @internal */
 	ttlMs?: number;
 }): PendingLaunchSession {
 	const values: Record<string, LaunchFieldValue> = {};
@@ -82,14 +168,17 @@ export function createLaunchSession(input: {
 	};
 }
 
+/** @internal */
 export function buildLaunchInput(session: PendingLaunchSession): PendingLaunchSession["values"] {
 	return { ...session.values };
 }
 
+/** @internal */
 export function buildLaunchModelConfig(session: PendingLaunchSession): LaunchModelConfigInputLike {
 	return normalizeLaunchModelConfigInput(session.modelConfig);
 }
 
+/** @internal */
 export function seedLaunchModelConfigFromPlan(
 	session: PendingLaunchSession,
 	launchPlan: ProcessLaunchPlan,
@@ -105,6 +194,7 @@ export function seedLaunchModelConfigFromPlan(
 	});
 }
 
+/** @internal */
 export function hasLaunchModelControls(
 	schema: LauncherModelConfigSchemaLike | null | undefined,
 ): schema is LauncherModelConfigSchemaLike {
@@ -123,6 +213,7 @@ function buildLaunchModelStepOrder(schema: LauncherModelConfigSchemaLike): Launc
 	];
 }
 
+/** @internal */
 export function beginLaunchModelEdit(
 	session: PendingLaunchSession,
 	schema: LauncherModelConfigSchemaLike,
@@ -131,6 +222,7 @@ export function beginLaunchModelEdit(
 	return { ok: true, done: false, step: buildLaunchModelStepOrder(schema)[0] as LaunchModelStep };
 }
 
+/** @internal */
 export function currentLaunchModelStep(
 	session: PendingLaunchSession,
 	schema: LauncherModelConfigSchemaLike,
@@ -139,10 +231,12 @@ export function currentLaunchModelStep(
 	return buildLaunchModelStepOrder(schema)[session.modelEdit.stepIndex] ?? null;
 }
 
+/** @internal */
 export function finishLaunchModelEdit(session: PendingLaunchSession): void {
 	session.modelEdit = null;
 }
 
+/** @internal */
 export function currentLaunchField(
 	session: PendingLaunchSession,
 	launcher: UiLauncherSummary,
@@ -153,10 +247,12 @@ export function currentLaunchField(
 		: null;
 }
 
+/** @internal */
 export function isLaunchSessionComplete(session: PendingLaunchSession): boolean {
 	return session.fieldIndex >= session.fieldOrder.length;
 }
 
+/** @internal */
 export function getLaunchFieldOptions(
 	field: LauncherFieldDefinition,
 	dynamicOptionsById: LaunchFieldOptionsById,
@@ -165,11 +261,17 @@ export function getLaunchFieldOptions(
 	return dynamicOptionsById[field.id] ?? field.options ?? [];
 }
 
+/** @internal */
 export function buildLaunchFieldPrompt(input: {
+	/** @internal */
 	field: LauncherFieldDefinition;
+	/** @internal */
 	currentValue?: LaunchFieldValue;
+	/** @internal */
 	options?: readonly LauncherFieldOptionDefinition[];
+	/** @internal */
 	recentValues?: readonly string[];
+	/** @internal */
 	maxOptionsInPrompt?: number;
 }): string {
 	const { field } = input;
@@ -208,9 +310,13 @@ export function buildLaunchFieldPrompt(input: {
 	return lines.join("\n");
 }
 
+/** @internal */
 export function buildLaunchModelSummary(input: {
+	/** @internal */
 	schema: LauncherModelConfigSchemaLike;
+	/** @internal */
 	session: PendingLaunchSession;
+	/** @internal */
 	preview?: LauncherModelConfigPreviewLike | null;
 }): string {
 	const config = buildLaunchModelConfig(input.session);
@@ -234,11 +340,17 @@ export function buildLaunchModelSummary(input: {
 	return lines.join("\n");
 }
 
+/** @internal */
 export function buildLaunchModelStepPrompt(input: {
+	/** @internal */
 	step: LaunchModelStep;
+	/** @internal */
 	schema: LauncherModelConfigSchemaLike;
+	/** @internal */
 	session: PendingLaunchSession;
+	/** @internal */
 	preview?: LauncherModelConfigPreviewLike | null;
+	/** @internal */
 	maxOptionsInPrompt?: number;
 }): string {
 	const currentOverride = getLaunchModelStepOverride(input.session, input.step);
@@ -262,6 +374,7 @@ export function buildLaunchModelStepPrompt(input: {
 	return lines.join("\n");
 }
 
+/** @internal */
 export function applyLaunchModelStepText(
 	session: PendingLaunchSession,
 	schema: LauncherModelConfigSchemaLike,
@@ -287,6 +400,7 @@ export function applyLaunchModelStepText(
 		: launchModelStepError(step, schema, session);
 }
 
+/** @internal */
 export function applyLaunchModelStepAction(
 	session: PendingLaunchSession,
 	schema: LauncherModelConfigSchemaLike,
@@ -316,6 +430,7 @@ function advanceLaunchField(
 		: { ok: true, done: true, values: buildLaunchInput(session) };
 }
 
+/** @internal */
 export function applyLaunchFieldText(
 	session: PendingLaunchSession,
 	launcher: UiLauncherSummary,
@@ -348,6 +463,7 @@ export function applyLaunchFieldText(
 	return advanceLaunchField(session, launcher);
 }
 
+/** @internal */
 export function applyLaunchFieldValue(
 	session: PendingLaunchSession,
 	launcher: UiLauncherSummary,
@@ -374,6 +490,7 @@ export function applyLaunchFieldValue(
 	return advanceLaunchField(session, launcher);
 }
 
+/** @internal */
 export function moveLaunchSessionToValidationField(
 	session: PendingLaunchSession,
 	launcher: UiLauncherSummary,
@@ -397,8 +514,11 @@ function buildFieldOrder(launcher: UiLauncherSummary): string[] {
 	];
 }
 
+/** @internal */
 export function buildLaunchReview(input: {
+	/** @internal */
 	launcher: UiLauncherSummary;
+	/** @internal */
 	session: PendingLaunchSession;
 }): string {
 	const lines = [`Ready to start ${input.launcher.label}.`, "", "Launcher config:"];

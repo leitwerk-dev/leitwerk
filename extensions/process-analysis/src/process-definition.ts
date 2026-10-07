@@ -21,7 +21,9 @@ import {
 import { processAnalysisDownloadSnapshotTool } from "./tools.js";
 
 const turnIds = {
+	/** @internal */
 	analyzeProcess: "analyze_process",
+	/** @internal */
 	analysisDecision: "analysis_decision",
 } as const;
 const products = { analysis: "analysis" } as const;
@@ -99,6 +101,7 @@ const decisionTurn = humanTurn<ProcessAnalysisParams, ProcessAnalysisState>({
 	},
 });
 
+/** @internal */
 export function createProcessAnalysisProcess() {
 	return flow
 		.process<ProcessAnalysisParams, ProcessAnalysisState>("process_analysis_process")
@@ -177,6 +180,8 @@ export function createProcessAnalysisProcess() {
 		.define();
 }
 
+/** @internal */
 export const processAnalysisProcess = createProcessAnalysisProcess();
 
+/** @internal */
 export const processAnalysisTurnIds = turnIds;

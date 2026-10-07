@@ -1,6 +1,7 @@
 import type { ServerExtensionAPI, WorkerExtensionAPI } from "@leitwerk-dev/process-sdk";
 import type { ExtensionCatalog } from "./extension-loader.js";
 
+/** @internal */
 export async function setupServerExtensions(
 	catalog: Pick<ExtensionCatalog, "modules">,
 	api: ServerExtensionAPI,
@@ -12,6 +13,7 @@ export async function setupServerExtensions(
 	}
 }
 
+/** @internal */
 export async function setupWorkerExtensions(
 	catalog: Pick<ExtensionCatalog, "modules">,
 	api: WorkerExtensionAPI,

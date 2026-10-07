@@ -2,15 +2,22 @@ import type { TurnId } from "@leitwerk-dev/domain";
 import type { WorkerProcessAPI, WorkerTurnHandler } from "./extension-api.js";
 import { cloneMap, registerUnique } from "./registry-utils.js";
 
+/** @internal */
 export interface BuiltWorkerProcessDefinition<TParams = unknown, TState = unknown> {
+	/** @internal */
 	startTurnId: TurnId | null;
+	/** @internal */
 	turns: ReadonlyMap<TurnId, WorkerTurnHandler<TParams, TState>>;
 }
 
+/** @internal */
 export function createWorkerProcessBuilder<TParams = unknown, TState = unknown>(): WorkerProcessAPI<
 	TParams,
 	TState
-> & { getDefinition(): BuiltWorkerProcessDefinition<TParams, TState> } {
+> & {
+	/** @internal */
+	getDefinition(): BuiltWorkerProcessDefinition<TParams, TState>;
+} {
 	const turns = new Map<TurnId, WorkerTurnHandler<TParams, TState>>();
 	let startTurnId: TurnId | null = null;
 

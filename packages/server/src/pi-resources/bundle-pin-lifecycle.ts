@@ -2,8 +2,13 @@ import type { ProcessInstance } from "@leitwerk-dev/domain";
 import type { RepositoryBundle } from "../db/repositories.js";
 import type { PiResourceBundleCache } from "./bundle-cache.js";
 
+/** @internal */
 export interface PiResourceBundlePinReconciler {
-	reconcile(process: ProcessInstance): { missingDigest: string | null };
+	/** @internal */
+	reconcile(process: ProcessInstance): {
+		/** @internal */
+		missingDigest: string | null;
+	};
 }
 
 function pinnedDigest(
@@ -23,8 +28,10 @@ function pinnedDigest(
 }
 
 /** Keeps only the current live LLM start's resource bundle retained in this server. */
+/** @internal */
 export function createPiResourceBundlePinReconciler(
 	deps: Pick<RepositoryBundle, "turnStarts" | "turnRecords"> & {
+		/** @internal */
 		bundleCache: PiResourceBundleCache;
 	},
 ): PiResourceBundlePinReconciler {

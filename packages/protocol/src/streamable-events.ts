@@ -1,3 +1,4 @@
+/** @internal */
 export const STREAMABLE_WORKER_EVENT_TYPES = [
 	"pi.stream.delta",
 	"pi.turn.start",
@@ -13,10 +14,12 @@ export const STREAMABLE_WORKER_EVENT_TYPES = [
 	"pi.compaction.end",
 ] as const;
 
+/** @internal */
 export type StreamableWorkerEventType = (typeof STREAMABLE_WORKER_EVENT_TYPES)[number];
 
 const STREAMABLE_EVENT_TYPES = new Set<string>(STREAMABLE_WORKER_EVENT_TYPES);
 
+/** @internal */
 export function isStreamableEvent(eventType: string): eventType is StreamableWorkerEventType {
 	return STREAMABLE_EVENT_TYPES.has(eventType);
 }

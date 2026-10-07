@@ -11,21 +11,30 @@ import {
 	validateProcessActionSchedulingDefinition,
 } from "./turn-semantics.js";
 
+/** @internal */
 export type ServerTurnOutcomeHandler<TParams = unknown, TState = unknown> = (
 	event: ProcessTurnOutcomeEvent,
 	ctx: ServerProcessContext<TParams, TState>,
 ) => void | Promise<void>;
 
+/** @internal */
 export interface BuiltServerProcessDefinition<TParams = unknown, TState = unknown> {
+	/** @internal */
 	actions: ReadonlyMap<string, ProcessActionDefinition<TParams, TState>>;
+	/** @internal */
 	turnOutcomeHandlers: ReadonlyMap<string, readonly ServerTurnOutcomeHandler<TParams, TState>[]>;
+	/** @internal */
 	cleanupHandlers: readonly ProcessCleanupHandler<TParams, TState>[];
 }
 
+/** @internal */
 export function createServerProcessBuilder<TParams = unknown, TState = unknown>(): ServerProcessAPI<
 	TParams,
 	TState
-> & { getDefinition(): BuiltServerProcessDefinition<TParams, TState> } {
+> & {
+	/** @internal */
+	getDefinition(): BuiltServerProcessDefinition<TParams, TState>;
+} {
 	const actions = new Map<string, ProcessActionDefinition<TParams, TState>>();
 	const turnOutcomeHandlers = new Map<string, ServerTurnOutcomeHandler<TParams, TState>[]>();
 	const cleanupHandlers: ProcessCleanupHandler<TParams, TState>[] = [];

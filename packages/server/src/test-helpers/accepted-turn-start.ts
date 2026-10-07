@@ -1,13 +1,18 @@
 import type { AppContext } from "../app.js";
 
+/** @internal */
 export function createAcceptedLlmTurn(
 	ctx: AppContext | null,
 	input: Parameters<AppContext["deps"]["turnRecords"]["create"]>[0] & {
+		/** @internal */
 		id: string;
+		/** @internal */
 		turnType: "llm";
 	},
 	options: Parameters<typeof createAcceptedLlmTurnStart>[3] & {
+		/** @internal */
 		current?: boolean;
+		/** @internal */
 		workerId?: string;
 	} = {},
 ) {
@@ -36,14 +41,35 @@ export function createAcceptedLlmTurn(
 	return record;
 }
 
+/** @internal */
 export function createAcceptedLlmTurnStart(
 	ctx: AppContext,
-	input: { id: string; instanceId: string; turnId: string },
+	input: {
+		/** @internal */
+		id: string;
+		/** @internal */
+		instanceId: string;
+		/** @internal */
+		turnId: string;
+	},
 	acceptedWorkerLeaseId: string,
 	options: {
+		/** @internal */
 		id?: string;
-		model?: { profileId: string; providerId: string; modelId: string; thinkingLevel: "off" };
+		/** @internal */
+		model?: {
+			/** @internal */
+			profileId: string;
+			/** @internal */
+			providerId: string;
+			/** @internal */
+			modelId: string;
+			/** @internal */
+			thinkingLevel: "off";
+		};
+		/** @internal */
 		piResourceSnapshotDigest?: string;
+		/** @internal */
 		workerRuntimeProfileId?: string;
 	} = {},
 ) {

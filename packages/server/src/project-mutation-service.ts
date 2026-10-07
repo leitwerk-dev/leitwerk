@@ -9,27 +9,41 @@ import type { PostCommitEffect } from "./effects/post-commit-effect.js";
 import { runPostCommitEffectList } from "./effects/post-commit-runner.js";
 import type { Broadcaster } from "./ws/broadcast.js";
 
+/** @internal */
 export type ProjectUpdatedFrameInput = Extract<DurableWsFrameInput, { type: "project.updated" }>;
 
+/** @internal */
 export interface ProjectMutationCommit {
+	/** @internal */
 	project: ProcessProject | null;
+	/** @internal */
 	effects: PostCommitEffect[];
 }
 
+/** @internal */
 export interface ProjectMutationService {
+	/** @internal */
 	create(input: CreateProcessProjectInput): ProcessProject;
+	/** @internal */
 	update(id: string, input: UpdateProcessProjectInput): ProcessProject | null;
+	/** @internal */
 	getById(id: string): ProcessProject | null;
+	/** @internal */
 	getByInstanceAndKey(instanceId: string, key: string): ProcessProject | null;
+	/** @internal */
 	listByInstance(instanceId: string): ProcessProject[];
 }
 
+/** @internal */
 export interface ProjectMutationServiceDeps
 	extends Pick<RepositoryBundle, "projects" | "transaction"> {
+	/** @internal */
 	broadcaster: Broadcaster;
+	/** @internal */
 	onProjectMutated?: (project: ProcessProject) => void;
 }
 
+/** @internal */
 export function buildProjectUpdatedFrame(project: ProcessProject): ProjectUpdatedFrameInput {
 	return {
 		type: "project.updated",
@@ -51,18 +65,24 @@ export function buildProjectUpdatedFrame(project: ProcessProject): ProjectUpdate
 	};
 }
 
+/** @internal */
 export function buildProjectUpdatedEffect(project: ProcessProject): PostCommitEffect {
 	return { kind: "broadcast", frame: buildProjectUpdatedFrame(project) };
 }
 
+/** @internal */
 export function commitProjectCreate(
 	deps: Pick<RepositoryBundle, "projects">,
 	input: CreateProcessProjectInput,
-): ProjectMutationCommit & { project: ProcessProject } {
+): ProjectMutationCommit & {
+	/** @internal */
+	project: ProcessProject;
+} {
 	const project = deps.projects.create(input);
 	return { project, effects: [buildProjectUpdatedEffect(project)] };
 }
 
+/** @internal */
 export function commitProjectUpdate(
 	deps: Pick<RepositoryBundle, "projects">,
 	id: string,
@@ -88,6 +108,7 @@ function runProjectMutationPostCommitEffects(
 	);
 }
 
+/** @internal */
 export function createProjectMutationService(
 	deps: ProjectMutationServiceDeps,
 ): ProjectMutationService {

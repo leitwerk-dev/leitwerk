@@ -8,9 +8,17 @@ import {
 	type SemanticEntryRef,
 } from "@leitwerk-dev/domain";
 
+/** @internal */
 export type EntryRefPatch = Record<
 	string,
-	{ entryId: string; turnRecordId?: string | null } | null | undefined
+	| {
+			/** @internal */
+			entryId: string;
+			/** @internal */
+			turnRecordId?: string | null;
+	  }
+	| null
+	| undefined
 >;
 
 export function mergeEntryRefPatchIntoStateJson(

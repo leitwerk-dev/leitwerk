@@ -1,8 +1,11 @@
 import type { PrimaryPathEntrySnapshot } from "@leitwerk-dev/protocol";
 import { parsePiSessionTreeContent, type ReadonlyPiSessionTree } from "./pi-session-tree.js";
 
+/** @internal */
 export interface ParsedInstanceTree {
+	/** @internal */
 	entriesById: Map<string, PrimaryPathEntrySnapshot>;
+	/** @internal */
 	labelsByEntryId: Map<string, string>;
 }
 

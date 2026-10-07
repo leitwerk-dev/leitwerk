@@ -13,16 +13,24 @@ import {
 } from "./process-definition.js";
 import { leaveFeedbackToolRenderer } from "./turns/poem-creator.js";
 
+/** @internal */
 export interface SinglePromptExtensionConfig {
+	/** @internal */
 	file_triggers?: {
+		/** @internal */
 		poll_interval?: string;
+		/** @internal */
 		poem_review_path?: string;
+		/** @internal */
 		complete_prompt_path?: string;
 	};
 }
 
+/** @internal */
 export const manifest = {
+	/** @internal */
 	id: "showcase-processes",
+	/** @internal */
 	version: "0.1.0",
 } as const;
 
@@ -32,6 +40,7 @@ const fileTriggerDefaults = {
 	complete_prompt_path: "/tmp/complete-prompt",
 };
 
+/** @public */
 const singlePromptExtension: LeitwerkExtensionModule = {
 	manifest,
 	setupCatalog(api) {

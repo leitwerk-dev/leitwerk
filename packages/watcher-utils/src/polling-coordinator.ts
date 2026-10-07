@@ -1,28 +1,44 @@
 import { createPollLoop, type PollResult, type PollResultWithErrors } from "./poll-loop.js";
 
+/** @internal */
 export interface PollingLogger {
+	/** @internal */
 	warn(payload: Record<string, unknown>, message?: string): void;
+	/** @internal */
 	error(payload: Record<string, unknown>, message?: string): void;
 }
 
+/** @internal */
 export interface PollingRegistration<T extends PollResultWithErrors> {
+	/** @internal */
 	id: string;
+	/** @internal */
 	pollOnce(): Promise<T>;
+	/** @internal */
 	isEnabled(): boolean;
+	/** @internal */
 	pollInterval(): string;
+	/** @internal */
 	defaultIntervalMs?: number;
 }
 
+/** @internal */
 export interface RegisteredPoller<T extends PollResultWithErrors = PollResult> {
+	/** @internal */
 	poll(): Promise<T>;
 }
 
+/** @internal */
 export interface PollingCoordinator {
+	/** @internal */
 	create<T extends PollResultWithErrors>(registration: PollingRegistration<T>): RegisteredPoller<T>;
+	/** @internal */
 	start(): void;
+	/** @internal */
 	stop(): void;
 }
 
+/** @internal */
 export function createPollingCoordinator(logger: PollingLogger): PollingCoordinator {
 	const loops = new Map<string, ReturnType<typeof createPollLoop>>();
 	let sealed = false;

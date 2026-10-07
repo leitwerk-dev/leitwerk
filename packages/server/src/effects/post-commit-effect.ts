@@ -12,8 +12,10 @@ import {
 } from "../process-engine/writes/deferred-extension-events.js";
 import type { WorkerIntent } from "../process-engine/writes/writes.js";
 
+/** @internal */
 export interface WorkerReconcileEffectChange extends ProcessTurnSelectionChange {}
 
+/** @internal */
 export type FutureExecutionUpdatedOperation = "created" | "updated" | "deleted";
 
 export function buildExtensionEventEffect<K extends ServerExtensionEventName>(
@@ -27,36 +29,73 @@ export function buildExtensionEventEffect<K extends ServerExtensionEventName>(
 	};
 }
 
+/** @internal */
 export type PostCommitEffect =
-	| { kind: "broadcast"; frame: DurableWsFrameInput }
 	| {
+			/** @internal */
+			kind: "broadcast";
+			/** @internal */
+			frame: DurableWsFrameInput;
+	  }
+	| {
+			/** @internal */
 			kind: "future_execution_updated";
+			/** @internal */
 			futureExecution: Pick<FutureExecution, "id" | "kind" | "instanceId">;
+			/** @internal */
 			operation: FutureExecutionUpdatedOperation;
 	  }
 	| {
+			/** @internal */
 			kind: "dispatch_inputs";
+			/** @internal */
 			instanceId: string;
+			/** @internal */
 			inputs: ProcessInput[];
+			/** @internal */
 			spawnIfMissing: boolean;
 	  }
-	| { kind: "worker"; instanceId: string; effect: WorkerIntent }
 	| {
-			kind: "worker_reconcile";
+			/** @internal */
+			kind: "worker";
+			/** @internal */
 			instanceId: string;
+			/** @internal */
+			effect: WorkerIntent;
+	  }
+	| {
+			/** @internal */
+			kind: "worker_reconcile";
+			/** @internal */
+			instanceId: string;
+			/** @internal */
 			processId: string;
+			/** @internal */
 			change: WorkerReconcileEffectChange;
 	  }
-	| { kind: "extension_event"; event: DeferredProcessExtensionEvent }
 	| {
+			/** @internal */
+			kind: "extension_event";
+			/** @internal */
+			event: DeferredProcessExtensionEvent;
+	  }
+	| {
+			/** @internal */
 			kind: "queue_process_title";
+			/** @internal */
 			processId: string;
+			/** @internal */
 			launchPlan: ProcessLaunchPlan;
+			/** @internal */
 			launchRunId?: string;
 	  }
 	| {
+			/** @internal */
 			kind: "queue_future_execution_title";
+			/** @internal */
 			futureExecutionId: string;
+			/** @internal */
 			launchPlan: ProcessLaunchPlan;
+			/** @internal */
 			expectedPayloadJson?: string;
 	  };

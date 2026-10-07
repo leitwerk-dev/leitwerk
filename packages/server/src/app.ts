@@ -126,53 +126,92 @@ import { createToolApprovalGate } from "./tool-approval-gate.js";
 import { defaultWorkerRuntimeProfile } from "./worker-runtime-profile-selection.js";
 import { type Broadcaster, createBroadcaster } from "./ws/broadcast.js";
 
+/** @public */
 export interface AppOptions {
+	/** @internal */
 	host?: string;
+	/** @internal */
 	port?: number;
+	/** @public */
 	config?: LeitwerkConfig;
+	/** @internal */
 	db?: LeitwerkDb;
+	/** @internal */
 	logger?: boolean;
+	/** @internal */
 	extensionCatalog?: ExtensionCatalog | Promise<ExtensionCatalog>;
+	/** @internal */
 	resolvedExtensionEntries?: readonly DiscoveredExtensionEntry[];
+	/** @public */
 	extensionLoadingStartDir?: string;
 	/** Runtime lane override for extension UI assets. */
+	/** @internal */
 	extensionUiRuntimeLane?: LeitwerkRuntimeLane;
 	/** Pre-provided capabilities injected before extensions are set up (e.g. fake adapters for testing). */
+	/** @internal */
 	preProvidedCapabilities?: readonly ProvidedCapability[];
+	/** @internal */
 	processTitleGenerator?: ProcessTitleGenerator;
 	/** Test/custom seam for supplying a concrete container runner implementation. */
+	/** @internal */
 	workerRunnerRuntime?: {
+		/** @internal */
 		runner: WorkerRunner;
+		/** @internal */
 		volume?: ProcessVolume;
+		/** @internal */
 		exporter: ProcessStateExporter;
+		/** @internal */
 		webSocketIpc?: WorkerWebSocketIpcManager;
 	};
 	/** Local runner spawn seam for tests/dev only. */
+	/** @public */
 	localWorkerSpawnImpl?: typeof spawn;
 	/** Test seam shared by local Docker admission and worker startup. */
+	/** @public */
 	localWorkerDockerPreflightImpl?: (timeoutMs: number) => Promise<void>;
 	/** Credential-store seam. Declared credential providers default unavailable until it is wired. */
+	/** @internal */
 	modelProviderCredentialStatus?: ModelProviderCredentialStatusResolver;
 }
 
+/** @public */
 export interface AppContext {
+	/** @public */
 	app: FastifyInstance;
+	/** @internal */
 	db: LeitwerkDb;
+	/** @internal */
 	broadcaster: Broadcaster;
+	/** @internal */
 	config: LeitwerkConfig;
+	/** @public */
 	deps: RouteDeps;
+	/** @public */
 	extensionCatalog: ExtensionCatalog;
+	/** @internal */
 	modelProviderRegistry: ModelProviderRegistry;
+	/** @internal */
 	modelProviderServerAdapters: ModelProviderServerAdapterRegistry;
+	/** @internal */
 	modelStatusCache: ModelStatusCache;
+	/** @internal */
 	extensionUiCatalog: ExtensionUiCatalog;
+	/** @internal */
 	processGraphs: ProcessGraphRegistry;
+	/** @internal */
 	extensionHost: ExtensionHost;
+	/** @internal */
 	projectMutations: ProjectMutationService;
+	/** @internal */
 	ipcHandler: IpcHandler;
+	/** @public */
 	supervisor: WorkerSupervisor;
+	/** @public */
 	startBackgroundServices(): Promise<void>;
+	/** @public */
 	stopBackgroundServices(): Promise<void>;
+	/** @internal */
 	isReady(): boolean;
 }
 
@@ -304,11 +343,13 @@ async function createConfiguredWorkerRunnerRuntime(input: {
 	return { ...created, webSocketIpc: input.webSocketIpc };
 }
 
+/** @internal */
 export async function createApp(opts: AppOptions = {}): Promise<FastifyInstance> {
 	const ctx = await createAppContext(opts);
 	return ctx.app;
 }
 
+/** @public */
 export async function createAppContext(opts: AppOptions = {}): Promise<AppContext> {
 	const startupStartedAt = performance.now();
 	let previousStartupMark = startupStartedAt;

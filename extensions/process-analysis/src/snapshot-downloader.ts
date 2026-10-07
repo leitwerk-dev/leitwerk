@@ -32,10 +32,18 @@ async function writeJson(file: string, value: unknown): Promise<void> {
 	await writeFile(file, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
+/** @internal */
 export function resolveProcessSnapshotDirectory(input: {
+	/** @internal */
 	analysisProcessId: string;
+	/** @internal */
 	processRef: string;
-}): { baseDir: string; ref: ReturnType<typeof resolveProcessRef> } {
+}): {
+	/** @internal */
+	baseDir: string;
+	/** @internal */
+	ref: ReturnType<typeof resolveProcessRef>;
+} {
 	const runtime = getProcessAnalysisRuntime();
 	if (!runtime.processWorkspacesDir) throw new Error("processWorkspacesDir is not configured");
 	const ref = resolveProcessRef({
@@ -49,8 +57,11 @@ export function resolveProcessSnapshotDirectory(input: {
 	};
 }
 
+/** @internal */
 export async function downloadProcessSnapshot(input: {
+	/** @internal */
 	analysisProcessId: string;
+	/** @internal */
 	processRef: string;
 }): Promise<ProcessAnalysisSnapshotState> {
 	const { baseDir, ref } = resolveProcessSnapshotDirectory(input);

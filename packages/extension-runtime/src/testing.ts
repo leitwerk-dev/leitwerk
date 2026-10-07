@@ -20,66 +20,96 @@ import {
 	type LoadedExtensionModule,
 } from "./extension-loader.js";
 
+/** @internal */
 export interface TestExtensionModuleOptions {
+	/** @internal */
 	packageName?: string;
+	/** @internal */
 	packageDir?: string;
+	/** @internal */
 	entryPath?: string;
 }
 
+/** @internal */
 export interface CreateTestProcessContextOptions<TParams = unknown, TState = unknown> {
+	/** @internal */
 	process?: ProcessInstance;
+	/** @internal */
 	projects?: readonly ProcessProject[];
+	/** @internal */
 	params?: TParams;
+	/** @internal */
 	state?: TState;
+	/** @internal */
 	workspaceRoot?: string;
+	/** @internal */
 	turnResultMarkdownBySemanticRef?: WorkerProcessContext<
 		TParams,
 		TState
 	>["turnResultMarkdownBySemanticRef"];
+	/** @internal */
 	turnResultMarkdownByProduct?: WorkerProcessContext<
 		TParams,
 		TState
 	>["turnResultMarkdownByProduct"];
 }
 
+/** @internal */
 export interface CreateTestServerProcessContextOptions<TParams = unknown, TState = unknown>
 	extends CreateTestProcessContextOptions<TParams, TState> {
+	/** @internal */
 	transition?: ServerProcessContext<TParams, TState>["transition"];
+	/** @internal */
 	emitEvent?: ServerProcessContext<TParams, TState>["emitEvent"];
+	/** @internal */
 	readSemanticTurnResultMarkdown?: ServerProcessContext<
 		TParams,
 		TState
 	>["readSemanticTurnResultMarkdown"];
+	/** @internal */
 	readProductTurnResultMarkdown?: ServerProcessContext<
 		TParams,
 		TState
 	>["readProductTurnResultMarkdown"];
+	/** @internal */
 	queueInput?: ServerProcessContext<TParams, TState>["queueInput"];
+	/** @internal */
 	applyLifecycleEffects?: ServerProcessContext<TParams, TState>["applyLifecycleEffects"];
 }
 
+/** @internal */
 export interface WorkerTurnCall {
+	/** @internal */
 	turnId: string;
+	/** @internal */
 	options?: TurnOptions;
 }
 
+/** @internal */
 export interface RunWorkerTurnForTestOptions<TParams = unknown, TState = unknown>
 	extends CreateTestProcessContextOptions<TParams, TState> {
+	/** @internal */
 	turn?: (
 		turnId: string,
 		def: LlmTurnDefinition<string, TParams, TState>,
 		options: TurnOptions | undefined,
 		callIndex: number,
 	) => Promise<TurnResult<string>> | TurnResult<string>;
+	/** @internal */
 	turnResults?: readonly TurnResult<string>[];
 }
 
+/** @internal */
 export interface RunWorkerTurnForTestResult {
+	/** @internal */
 	turnCalls: readonly WorkerTurnCall[];
+	/** @internal */
 	completed: readonly WorkerCompleteInput<string>[];
+	/** @internal */
 	parkReasons: readonly (string | undefined)[];
 }
 
+/** @internal */
 export function createLoadedExtensionModuleForTest(
 	module: LeitwerkExtensionModule,
 	options: TestExtensionModuleOptions = {},
@@ -93,12 +123,14 @@ export function createLoadedExtensionModuleForTest(
 	};
 }
 
+/** @public */
 export async function buildExtensionCatalogFromModules(
 	modules: readonly LeitwerkExtensionModule[],
 ): Promise<ExtensionCatalog> {
 	return buildExtensionCatalog(modules.map((module) => createLoadedExtensionModuleForTest(module)));
 }
 
+/** @internal */
 export function createTestProcessInstance(
 	overrides: Partial<ProcessInstance> = {},
 ): ProcessInstance {
@@ -133,6 +165,7 @@ export function createTestProcessInstance(
 	};
 }
 
+/** @internal */
 export function createTestProcessProject(overrides: Partial<ProcessProject> = {}): ProcessProject {
 	return {
 		id: "prj_test",
@@ -152,6 +185,7 @@ export function createTestProcessProject(overrides: Partial<ProcessProject> = {}
 	};
 }
 
+/** @internal */
 export function createTestServerProcessContext<TParams = unknown, TState = unknown>(
 	options: CreateTestServerProcessContextOptions<TParams, TState> = {},
 ): ServerProcessContext<TParams, TState> {
@@ -169,6 +203,7 @@ export function createTestServerProcessContext<TParams = unknown, TState = unkno
 	};
 }
 
+/** @internal */
 export function createTestWorkerProcessContext<TParams = unknown, TState = unknown>(
 	options: CreateTestProcessContextOptions<TParams, TState> = {},
 ): WorkerProcessContext<TParams, TState> {
@@ -183,6 +218,7 @@ export function createTestWorkerProcessContext<TParams = unknown, TState = unkno
 	};
 }
 
+/** @internal */
 export function buildWorkerProcessForTest<TParams = unknown, TState = unknown>(
 	process: ExtensionProcessDefinition<TParams, TState>,
 ): BuiltWorkerProcessDefinition<TParams, TState> | undefined {
@@ -194,6 +230,7 @@ export function buildWorkerProcessForTest<TParams = unknown, TState = unknown>(
 	return builder.getDefinition();
 }
 
+/** @internal */
 export function buildServerProcessForTest<TParams = unknown, TState = unknown>(
 	process: ExtensionProcessDefinition<TParams, TState>,
 ): BuiltServerProcessDefinition<TParams, TState> | undefined {
@@ -211,6 +248,7 @@ export {
 	buildUiProcessDefinition as buildUiProcessForTest,
 } from "@leitwerk-dev/process-sdk";
 
+/** @internal */
 export async function runWorkerTurnForTest<TParams = unknown, TState = unknown>(
 	handler: WorkerTurnHandler<TParams, TState>,
 	options: RunWorkerTurnForTestOptions<TParams, TState> = {},
@@ -262,6 +300,7 @@ export async function runWorkerTurnForTest<TParams = unknown, TState = unknown>(
 	};
 }
 
+/** @internal */
 export async function runWorkerProcessTurnForTest<TParams = unknown, TState = unknown>(
 	process: ExtensionProcessDefinition<TParams, TState>,
 	turnId: string,

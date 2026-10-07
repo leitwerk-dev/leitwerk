@@ -202,7 +202,9 @@ function activateSkill(
 }
 
 function catalogView(db: LeitwerkDb): {
+	/** @internal */
 	availableSkills: SkillCatalogItem[];
+	/** @internal */
 	installedSkills: InstalledSkillCatalogItem[];
 } {
 	const candidates = db.select().from(skillCatalogEntries).all();
@@ -279,8 +281,10 @@ function catalogView(db: LeitwerkDb): {
 	return { availableSkills, installedSkills };
 }
 
+/** @internal */
 export function createSkillRepo(db: LeitwerkDb) {
 	return {
+		/** @internal */
 		listAvailable(): SkillOptionSummary[] {
 			return db
 				.select({ id: skills.id, label: skills.label, description: skills.description })
@@ -289,6 +293,7 @@ export function createSkillRepo(db: LeitwerkDb) {
 				.orderBy(asc(skills.label), asc(skills.id))
 				.all();
 		},
+		/** @internal */
 		resolveActive(ids: readonly string[]): SkillSelection[] {
 			const activeSkills = db
 				.select({ id: skills.id, revisionId: skillRevisions.id })
@@ -318,6 +323,7 @@ export function createSkillRepo(db: LeitwerkDb) {
 			for (const id of ids) add(id);
 			return [...resolved.values()];
 		},
+		/** @internal */
 		reconcile(imported: readonly ImportedSkill[]): void {
 			const timestamp = now();
 			db.update(skills)
@@ -334,6 +340,7 @@ export function createSkillRepo(db: LeitwerkDb) {
 				.run();
 			for (const item of imported) activateSkill(db, item, "configuration", timestamp);
 		},
+		/** @internal */
 		backfillDependencies(): void {
 			for (const revision of db.select().from(skillRevisions).all()) {
 				recordRevisionDependencies(
@@ -343,6 +350,7 @@ export function createSkillRepo(db: LeitwerkDb) {
 				);
 			}
 		},
+		/** @internal */
 		markUnconfiguredCatalogEntries(configuredRepositoryIds: readonly string[]): void {
 			db.update(skillCatalogEntries)
 				.set({ available: false })
@@ -350,6 +358,7 @@ export function createSkillRepo(db: LeitwerkDb) {
 				.run();
 			pruneNeverInstalledCatalogEntries(db);
 		},
+		/** @internal */
 		mergeCatalog(repositoryId: string, imported: readonly ImportedRepositorySkill[]): void {
 			const timestamp = now();
 			db.update(skillCatalogEntries)
@@ -377,6 +386,7 @@ export function createSkillRepo(db: LeitwerkDb) {
 			}
 			pruneNeverInstalledCatalogEntries(db);
 		},
+		/** @internal */
 		registerCatalogEntry(repositoryId: string, skillId: string): string {
 			const candidates = db
 				.select()
@@ -445,6 +455,7 @@ export function createSkillRepo(db: LeitwerkDb) {
 				throw new Error(`Remote skill '${repositoryId}/${skillId}' was not installed`);
 			return revisionId;
 		},
+		/** @internal */
 		remove(skillId: string): boolean {
 			const current = db.select().from(skills).where(eq(skills.id, skillId)).get();
 			if (!current?.activeRevisionId || current.registrationKind !== "catalog") return false;
@@ -454,9 +465,11 @@ export function createSkillRepo(db: LeitwerkDb) {
 				.run();
 			return true;
 		},
+		/** @internal */
 		catalog() {
 			return catalogView(db);
 		},
+		/** @internal */
 		getCatalogDetail(repositoryId: string, skillId: string): SkillCatalogDetail | null {
 			const item = catalogView(db).availableSkills.find(
 				(candidate) => candidate.repositoryId === repositoryId && candidate.id === skillId,
@@ -482,6 +495,7 @@ export function createSkillRepo(db: LeitwerkDb) {
 				processes: processUsage(db, skillId),
 			};
 		},
+		/** @internal */
 		getInstalledDetail(skillId: string): InstalledSkillCatalogDetail | null {
 			const item = catalogView(db).installedSkills.find((candidate) => candidate.id === skillId);
 			if (!item) return null;
@@ -512,10 +526,19 @@ export function createSkillRepo(db: LeitwerkDb) {
 				revisions,
 			};
 		},
+		/** @internal */
 		recordInvocations(input: {
+			/** @internal */
 			instanceId: string;
+			/** @internal */
 			turnRecordId: string;
-			invocations: readonly { skillId: string; invokedAt: string }[];
+			/** @internal */
+			invocations: readonly {
+				/** @internal */
+				skillId: string;
+				/** @internal */
+				invokedAt: string;
+			}[];
 		}): void {
 			const selections = db
 				.select()

@@ -1,8 +1,12 @@
+/** @internal */
 export interface UniqueRegistrationOptions<TValue> {
+	/** @internal */
 	duplicateMessage: string;
+	/** @internal */
 	validate?: (value: TValue) => void;
 }
 
+/** @internal */
 export function registerUnique<TKey, TValue>(
 	registry: Map<TKey, TValue>,
 	key: TKey,
@@ -16,10 +20,12 @@ export function registerUnique<TKey, TValue>(
 	registry.set(key, value);
 }
 
+/** @internal */
 export function cloneMap<TKey, TValue>(registry: ReadonlyMap<TKey, TValue>): Map<TKey, TValue> {
 	return new Map(registry);
 }
 
+/** @internal */
 export function cloneArrayValueMap<TKey, TValue>(
 	registry: ReadonlyMap<TKey, readonly TValue[]>,
 ): Map<TKey, readonly TValue[]> {

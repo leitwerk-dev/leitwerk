@@ -13,28 +13,49 @@ import type { LeitwerkDb } from "./database.js";
 import { generateId, now } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
+/** @internal */
 export interface CreateProcessTurnRecordInput extends UpdateProcessTurnRecordInput {
+	/** @internal */
 	id?: string;
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	turnId: TurnId;
+	/** @internal */
 	pathType?: ProcessTurnRecordPathType;
+	/** @internal */
 	startedAt?: string;
 }
 
+/** @internal */
 export interface UpdateProcessTurnRecordInput {
+	/** @internal */
 	turnType?: ProcessTurnType;
+	/** @internal */
 	status?: ProcessTurnRecordStatus;
+	/** @internal */
 	attemptNumber?: number;
+	/** @internal */
 	parentTurnRecordId?: string | null;
+	/** @internal */
 	turnStartRecordId?: string | null;
+	/** @internal */
 	acceptedWorkerLeaseId?: string | null;
+	/** @internal */
 	forkPiEntryId?: string | null;
+	/** @internal */
 	resultPiEntryId?: string | null;
+	/** @internal */
 	modelProfileId?: string | null;
+	/** @internal */
 	modelSelectionProvenance?: ModelSelectionProvenance | null;
+	/** @internal */
 	turnResultMarkdown?: string | null;
+	/** @internal */
 	errorSummary?: string | null;
+	/** @internal */
 	errorClass?: WorkerErrorClass | null;
+	/** @internal */
 	endedAt?: string | null;
 }
 
@@ -68,8 +89,10 @@ function rowToProcessTurnRecord(row: typeof s.turnRecords.$inferSelect): Process
 	};
 }
 
+/** @public */
 export function createProcessTurnRecordRepo(db: LeitwerkDb) {
 	return {
+		/** @internal */
 		create(input: CreateProcessTurnRecordInput): ProcessTurnRecord {
 			const id = input.id ?? generateId("trn");
 			const values = {
@@ -98,11 +121,13 @@ export function createProcessTurnRecordRepo(db: LeitwerkDb) {
 			return rowToProcessTurnRecord(values);
 		},
 
+		/** @internal */
 		getById(id: string): ProcessTurnRecord | null {
 			const row = db.select().from(s.turnRecords).where(eq(s.turnRecords.id, id)).get();
 			return row ? rowToProcessTurnRecord(row) : null;
 		},
 
+		/** @public */
 		listByInstance(instanceId: string): ProcessTurnRecord[] {
 			return db
 				.select()
@@ -113,6 +138,7 @@ export function createProcessTurnRecordRepo(db: LeitwerkDb) {
 				.map(rowToProcessTurnRecord);
 		},
 
+		/** @internal */
 		getLatestSucceededPrimaryByInstance(instanceId: string): ProcessTurnRecord | null {
 			const row = db
 				.select()
@@ -131,6 +157,7 @@ export function createProcessTurnRecordRepo(db: LeitwerkDb) {
 			return row ?? null;
 		},
 
+		/** @internal */
 		update(id: string, input: UpdateProcessTurnRecordInput): ProcessTurnRecord | null {
 			const setValues: SQLiteUpdateSetSource<typeof s.turnRecords> = {
 				turnType: input.turnType,

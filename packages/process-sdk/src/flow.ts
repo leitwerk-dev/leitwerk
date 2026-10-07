@@ -54,9 +54,12 @@ import {
 } from "./process-graph.js";
 import type { OutcomeToolParameterSpec, PiBuiltInToolName, ProcessPiConfig } from "./types.js";
 
+/** @public */
 type MaybePromise<T> = T | Promise<T>;
 
+/** @internal */
 export const DEFAULT_PLAN_RESULT_OUTCOME_ID = "plan_saved" as const;
+/** @internal */
 export const DEFAULT_FLOW_PRODUCT_NAME = "default" as const;
 const ASSISTANT_OUTPUT_TURN_RESULT = { mode: "assistant_output", required: true } as const;
 const OUTCOME_TOOL_MARKDOWN_PARAMETER_NAME = "markdown" as const;
@@ -66,48 +69,72 @@ const OUTCOME_TOOL_ARGUMENT_TURN_RESULT = {
 	required: true,
 } as const;
 
+/** @public */
 export interface FlowLlmTurn<
 	TParams = unknown,
 	TState = unknown,
 	TOutcome extends string = string,
 > {
+	/** @public */
 	id: TurnId;
+	/** @public */
 	definition: LlmTurnDefinition<TOutcome, TParams, TState>;
 }
 
+/** @public */
 export interface FlowAutomaticTurn<
 	TParams = unknown,
 	TState = unknown,
 	TOutcome extends string = string,
 > {
+	/** @public */
 	id: TurnId;
+	/** @public */
 	definition: AutomaticTurnDefinition<TOutcome, TParams, TState>;
 }
 
+/** @public */
 export interface FlowHumanTurn<TParams = unknown, TState = unknown> {
+	/** @public */
 	id: TurnId;
+	/** @public */
 	definition: HumanTurnDefinition<TParams, TState>;
 }
 
+/** @public */
 export interface FlowExternalTurn<TParams = unknown, TState = unknown> {
+	/** @public */
 	id: TurnId;
+	/** @public */
 	definition: ExternalTurnDefinition<TParams, TState>;
 }
 
+/** @public */
 export type FlowTurn<TParams = unknown, TState = unknown> =
 	| FlowLlmTurn<TParams, TState, string>
 	| FlowAutomaticTurn<TParams, TState, string>
 	| FlowHumanTurn<TParams, TState>
 	| FlowExternalTurn<TParams, TState>
-	| { id: TurnId; definition: TurnDefinition<TParams, TState> };
+	| {
+			/** @public */
+			id: TurnId;
+			/** @public */
+			definition: TurnDefinition<TParams, TState>;
+	  };
 
+/** @internal */
 export interface PlanFieldOptions {
+	/** @internal */
 	description?: string;
+	/** @internal */
 	requiredErrorCode?: string;
 }
 
+/** @internal */
 export interface PlanAcceptanceCriteriaOptions extends PlanFieldOptions {
+	/** @internal */
 	minItems?: number;
+	/** @internal */
 	minItemsErrorCode?: string;
 }
 
@@ -115,69 +142,120 @@ export interface PlanSavedStateInput<TParams = unknown, TState = unknown> {
 	effect: ProcessOutcomeEffect<TParams, TState>;
 }
 
+/** @public */
 export interface FlowRepoContext {
+	/** @internal */
 	key: string;
+	/** @public */
 	fsPath: string;
+	/** @internal */
 	workspaceClonePath: string;
+	/** @public */
 	baseBranch: string;
+	/** @public */
 	workBranch: string;
+	/** @internal */
 	locator: string;
 }
 
+/** @public */
 export interface FlowRepoLookup {
+	/** @public */
 	get(key: string): FlowRepoContext;
+	/** @internal */
 	optional(key: string): FlowRepoContext | undefined;
+	/** @internal */
 	all(): FlowRepoContext[];
 }
 
+/** @public */
 export type FlowPromptContext<
 	TParams = unknown,
 	TState = unknown,
 	TConsumedProducts extends string = string,
 	TPrepared = undefined,
 > = {
+	/** @internal */
 	process: ProcessInstance;
+	/** @internal */
 	projects: readonly ProcessProject[];
+	/** @public */
 	params: TParams;
+	/** @public */
 	state: TState;
+	/** @internal */
 	workspaceRoot?: string;
+	/** @internal */
 	prompts: {
+		/** @internal */
 		initial: string;
 	};
+	/** @public */
 	input: Readonly<Partial<Record<TConsumedProducts, string>>>;
+	/** @internal */
 	repo: FlowRepoLookup;
-} & ([TPrepared] extends [undefined] ? { prepared?: undefined } : { prepared: TPrepared });
+} & ([TPrepared] extends [undefined]
+	? {
+			/** @internal */
+			prepared?: undefined;
+		}
+	: {
+			/** @internal */
+			prepared: TPrepared;
+		});
 
+/** @public */
 export interface FlowAutomaticRunContext<TParams = unknown, TState = unknown> {
+	/** @public */
 	process: ProcessInstance;
+	/** @public */
 	projects: readonly ProcessProject[];
+	/** @public */
 	params: TParams;
+	/** @public */
 	state: TState;
+	/** @public */
 	workspaceRoot?: string;
+	/** @public */
 	repo: FlowRepoLookup;
+	/** @public */
 	callIntegrationTool(name: string, args: Record<string, unknown>): Promise<unknown>;
+	/** @public */
 	reportProgress(report: TurnProgressReport): void;
 }
 
+/** @public */
 export type FlowLlmPreparationContext<
 	TParams = unknown,
 	TState = unknown,
 > = FlowAutomaticRunContext<TParams, TState>;
 
+/** @public */
 interface FlowOutcomeEffectContext<TParams = unknown, TState = unknown> {
+	/** @public */
 	process: ProcessInstance;
+	/** @internal */
 	projects: readonly ProcessProject[];
+	/** @internal */
 	params: TParams;
+	/** @public */
 	state: TState;
-	output: { content: string | null } | null;
+	/** @internal */
+	output: {
+		/** @internal */
+		content: string | null;
+	} | null;
 }
 
+/** @public */
 export interface FlowLlmOutcomeEffectContext<TParams = unknown, TState = unknown>
 	extends FlowOutcomeEffectContext<TParams, TState> {}
 
+/** @public */
 export interface FlowAutomaticOutcomeEffectContext<TParams = unknown, TState = unknown>
 	extends FlowOutcomeEffectContext<TParams, TState> {}
 
+/** @internal */
 export interface FlowExternalSourceContext<
 	TParams = unknown,
 	TState = unknown,
@@ -185,17 +263,24 @@ export interface FlowExternalSourceContext<
 	TInput extends Record<string, unknown> = Record<string, unknown>,
 > extends ExternalSourceEffectContext<TParams, TState, TEvent, TInput> {}
 
+/** @public */
 type FlowOutcomeEffectInput<TParams, TState, TContext> = {
+	/** @public */
 	ctx: TContext;
+	/** @public */
 	event: ProcessOutcomeExecution<TParams, TState>["event"];
+	/** @internal */
 	turnId: TurnId;
+	/** @internal */
 	outcome: string;
 };
 
+/** @public */
 type FlowOutcomeEffect<TParams, TState, TContext> = (
 	input: FlowOutcomeEffectInput<TParams, TState, TContext>,
 ) => MaybePromise<ProcessEffectPlan<TState> | undefined>;
 
+/** @public */
 type FlowOutcomeStateEffect<TParams, TState, TContext> = (
 	input: FlowOutcomeEffectInput<TParams, TState, TContext>,
 ) => MaybePromise<TState>;
@@ -383,6 +468,7 @@ function createFlowContextBase<TParams, TState>(ctx: ProcessRuntimeTurnContext<T
 	};
 }
 
+/** @internal */
 export function createFlowPromptContext<
 	TParams,
 	TState,
@@ -422,6 +508,7 @@ export function createFlowPromptContext<
 	} as FlowPromptContext<TParams, TState, TConsumedProducts, TPrepared>;
 }
 
+/** @internal */
 export function createFlowAutomaticRunContext<TParams, TState>(
 	ctx: ProcessRuntimeTurnContext<TParams, TState>,
 ): FlowAutomaticRunContext<TParams, TState> {
@@ -462,10 +549,14 @@ function wrapOutcomeCallback<TParams, TState, TResult>(
 		});
 }
 
+/** @public */
 class RouteAndEffectBuilder<TParams, TState, TContext> {
+	/** @internal */
 	protected target: FlowTargetSpec = null;
+	/** @internal */
 	protected flowEffect: FlowOutcomeEffect<TParams, TState, TContext> | undefined;
 
+	/** @internal */
 	protected setTarget(next: FlowTargetSpec): this {
 		if (this.target && next) {
 			throw new Error("Flow route already declares a target");
@@ -474,55 +565,83 @@ class RouteAndEffectBuilder<TParams, TState, TContext> {
 		return this;
 	}
 
+	/** @public */
 	to(turnId: TurnId): this {
 		return this.setTarget({ kind: "to", turnId });
 	}
 
+	/** @public */
 	complete(): this {
 		return this.setTarget({ kind: "complete" });
 	}
 
+	/** @public */
 	lifecycleStatus(status: ProcessTurnTerminalLifecycleStatus): this {
 		return this.setTarget({ kind: "lifecycleStatus", status });
 	}
 
+	/** @internal */
 	stay(): this {
 		this.target = null;
 		return this;
 	}
 
+	/** @public */
 	state(fn: FlowOutcomeStateEffect<TParams, TState, TContext>): this {
 		this.flowEffect = async (input) => ({ state: await fn(input) });
 		return this;
 	}
 
+	/** @public */
 	effect(fn: FlowOutcomeEffect<TParams, TState, TContext>): this {
 		this.flowEffect = fn;
 		return this;
 	}
 
+	/** @internal */
 	hasRoute(): boolean {
 		return this.target !== null;
 	}
 
+	/** @internal */
 	protected buildRouteTarget(): {
+		/** @internal */
 		to?: TurnId;
+		/** @internal */
 		complete?: boolean;
+		/** @internal */
 		lifecycleStatus?: ProcessTurnTerminalLifecycleStatus;
 	} {
 		return buildRouteTargetSpec(this.target);
 	}
 }
 
+/** @internal */
 export type FlowTargetSpec =
-	| { kind: "to"; turnId: TurnId }
-	| { kind: "complete" }
-	| { kind: "lifecycleStatus"; status: ProcessTurnTerminalLifecycleStatus }
+	| {
+			/** @internal */
+			kind: "to";
+			/** @internal */
+			turnId: TurnId;
+	  }
+	| {
+			/** @internal */
+			kind: "complete";
+	  }
+	| {
+			/** @internal */
+			kind: "lifecycleStatus";
+			/** @internal */
+			status: ProcessTurnTerminalLifecycleStatus;
+	  }
 	| null;
 
 export function buildRouteTargetSpec(target: FlowTargetSpec): {
+	/** @internal */
 	to?: TurnId;
+	/** @internal */
 	complete?: boolean;
+	/** @internal */
 	lifecycleStatus?: ProcessTurnTerminalLifecycleStatus;
 } {
 	if (!target) {
@@ -537,20 +656,29 @@ export function buildRouteTargetSpec(target: FlowTargetSpec): {
 	return { lifecycleStatus: target.status };
 }
 
+/** @public */
 interface ParameterOptions extends Partial<Omit<OutcomeToolParameterSpec, "type" | "description">> {
+	/** @public */
 	description?: string;
+	/** @internal */
 	requiredErrorCode?: string;
 }
 
+/** @internal */
 interface ArrayParameterOptions extends ParameterOptions {
+	/** @internal */
 	items?: OutcomeToolParameterSpec["items"];
 }
 
+/** @internal */
 interface EnumParameterOptions extends ParameterOptions {
+	/** @internal */
 	values?: readonly string[];
 }
 
+/** @public */
 interface MarkdownParameterOptions extends ParameterOptions {
+	/** @public */
 	publish?: true;
 }
 
@@ -558,17 +686,23 @@ function isStringArray(value: unknown): value is readonly string[] {
 	return Array.isArray(value) && value.every((entry) => typeof entry === "string");
 }
 
+/** @public */
 class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends RouteAndEffectBuilder<
 	TParams,
 	TState,
 	TContext
 > {
+	/** @internal */
 	protected outcomeDescription: string | null = null;
+	/** @internal */
 	protected parameters: Record<string, OutcomeToolParameterSpec> = {};
+	/** @internal */
 	protected publishedMarkdownParameter: string | null = null;
+	/** @internal */
 	protected summaryParameter: string | null = null;
 
 	/** Optional concise result publication, separate from the full Markdown. */
+	/** @public */
 	resultSummary(name = "resultSummary"): this {
 		this.summaryParameter = name;
 		return this.parameter(name, {
@@ -577,20 +711,25 @@ class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends RouteAndEff
 		});
 	}
 
+	/** @internal */
 	protected publishedMarkdownFields() {
 		return this.publishedMarkdownParameter
 			? {
+					/** @internal */
 					publishedProduct: this.publishedMarkdownParameter,
+					/** @internal */
 					turnResultMarkdownParameter: this.publishedMarkdownParameter,
 				}
 			: {};
 	}
 
+	/** @public */
 	description(text: string): this {
 		this.outcomeDescription = text;
 		return this;
 	}
 
+	/** @internal */
 	parameter(name: string, spec: OutcomeToolParameterSpec): this {
 		if (name.trim() === "") {
 			throw new Error("Outcome parameter name must be non-empty");
@@ -628,10 +767,12 @@ class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends RouteAndEff
 		});
 	}
 
+	/** @internal */
 	string(name: string, options: string | ParameterOptions = {}): this {
 		return this.typedParameter(name, "string", options);
 	}
 
+	/** @public */
 	markdown(name: string, options: string | MarkdownParameterOptions = {}): this {
 		const resolved = typeof options === "string" ? { description: options } : options;
 		const { publish, ...parameterOptions } = resolved;
@@ -649,34 +790,42 @@ class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends RouteAndEff
 		});
 	}
 
+	/** @public */
 	requiredString(name: string, options: string | ParameterOptions = {}): this {
 		return this.typedParameter(name, "string", this.withRequired(name, options));
 	}
 
+	/** @internal */
 	number(name: string, options: string | ParameterOptions = {}): this {
 		return this.typedParameter(name, "number", options);
 	}
 
+	/** @internal */
 	requiredNumber(name: string, options: string | ParameterOptions = {}): this {
 		return this.typedParameter(name, "number", this.withRequired(name, options));
 	}
 
+	/** @internal */
 	boolean(name: string, options: string | ParameterOptions = {}): this {
 		return this.typedParameter(name, "boolean", options);
 	}
 
+	/** @internal */
 	requiredBoolean(name: string, options: string | ParameterOptions = {}): this {
 		return this.typedParameter(name, "boolean", this.withRequired(name, options));
 	}
 
+	/** @internal */
 	stringArray(name: string, options: string | ArrayParameterOptions = {}): this {
 		return this.typedParameter(name, "array", options);
 	}
 
+	/** @internal */
 	requiredStringArray(name: string, options: string | ArrayParameterOptions = {}): this {
 		return this.typedParameter(name, "array", this.withRequired(name, options));
 	}
 
+	/** @internal */
 	enum(name: string, valuesOrOptions: readonly string[] | EnumParameterOptions): this {
 		const resolved: EnumParameterOptions = isStringArray(valuesOrOptions)
 			? { values: [...valuesOrOptions] }
@@ -690,15 +839,18 @@ class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends RouteAndEff
 		});
 	}
 
+	/** @public */
 	object(name: string, options: string | ParameterOptions = {}): this {
 		return this.typedParameter(name, "object", options);
 	}
 
+	/** @internal */
 	array(name: string, options: string | ArrayParameterOptions = {}): this {
 		return this.typedParameter(name, "array", options);
 	}
 }
 
+/** @public */
 export class OutcomeToolBuilder<
 	TParams = unknown,
 	TState = unknown,
@@ -720,6 +872,7 @@ export class OutcomeToolBuilder<
 		  }
 		| undefined;
 
+	/** @public */
 	routeByState(
 		branches: Record<string, TurnId>,
 		choose: (
@@ -736,6 +889,7 @@ export class OutcomeToolBuilder<
 		return this;
 	}
 
+	/** @internal */
 	build(): ProcessToolOutcomeSpec<TParams, TState> {
 		if (!this.outcomeDescription) {
 			throw new Error("LLM outcome tool must declare .description(...)");
@@ -765,6 +919,7 @@ export class OutcomeToolBuilder<
 	}
 }
 
+/** @public */
 export class AutomaticOutcomeBuilder<
 	TParams = unknown,
 	TState = unknown,
@@ -775,12 +930,14 @@ export class AutomaticOutcomeBuilder<
 > {
 	private waits = false;
 
+	/** @public */
 	wait(): this {
 		if (this.hasRoute()) throw new Error("Waiting outcome cannot declare another route");
 		this.waits = true;
 		return this;
 	}
 
+	/** @internal */
 	build(): ProcessToolOutcomeSpec<TParams, TState> {
 		if (!this.outcomeDescription) {
 			throw new Error("Automatic outcome must declare .description(...)");
@@ -808,6 +965,7 @@ export class AutomaticOutcomeBuilder<
 	}
 }
 
+/** @internal */
 export class PlanResultBuilder<TParams = unknown, TState = unknown> extends RouteAndEffectBuilder<
 	TParams,
 	TState,
@@ -818,11 +976,13 @@ export class PlanResultBuilder<TParams = unknown, TState = unknown> extends Rout
 	private acceptanceCriteriaSpec: OutcomeToolParameterSpec | null = null;
 	private reviewTurnId: TurnId | null = null;
 
+	/** @internal */
 	description(text: string): this {
 		this.resultDescription = text;
 		return this;
 	}
 
+	/** @internal */
 	summary(options: string | PlanFieldOptions = {}): this {
 		const resolved = typeof options === "string" ? { description: options } : options;
 		this.summarySpec = textField({
@@ -832,6 +992,7 @@ export class PlanResultBuilder<TParams = unknown, TState = unknown> extends Rout
 		return this;
 	}
 
+	/** @internal */
 	acceptanceCriteria(options: string | PlanAcceptanceCriteriaOptions = {}): this {
 		const resolved = typeof options === "string" ? { description: options } : options;
 		this.acceptanceCriteriaSpec = stringArrayField({
@@ -843,11 +1004,13 @@ export class PlanResultBuilder<TParams = unknown, TState = unknown> extends Rout
 		return this;
 	}
 
+	/** @internal */
 	review(turnId: TurnId): this {
 		this.reviewTurnId = turnId;
 		return this.setTarget({ kind: "to", turnId });
 	}
 
+	/** @internal */
 	buildOutcome(): ProcessToolOutcomeSpec<TParams, TState> {
 		if (!this.summarySpec) {
 			throw new Error("plan result must declare .summary(...)");
@@ -879,12 +1042,15 @@ export class PlanResultBuilder<TParams = unknown, TState = unknown> extends Rout
 	}
 }
 
+/** @public */
 abstract class TurnEndBuilder<TParams, TState>
 	extends RouteAndEffectBuilder<TParams, TState, FlowLlmOutcomeEffectContext<TParams, TState>>
 	implements FlowLlmTurn<TParams, TState, string>
 {
+	/** @internal */
 	protected abstract readonly builderName: string;
 
+	/** @internal */
 	constructor(
 		private readonly outcomeId: string,
 		private readonly parent?: FlowLlmTurn<TParams, TState, string>,
@@ -897,14 +1063,17 @@ abstract class TurnEndBuilder<TParams, TState>
 		return this.parent;
 	}
 
+	/** @internal */
 	get id(): TurnId {
 		return this.turn.id;
 	}
 
+	/** @internal */
 	get definition(): LlmTurnDefinition<string, TParams, TState> {
 		return this.turn.definition;
 	}
 
+	/** @internal */
 	protected buildResult(): ProcessTurnEndSpec<TParams, TState, string> {
 		const effect = this.flowEffect ? wrapOutcomeCallback(this.flowEffect) : undefined;
 		return {
@@ -915,52 +1084,69 @@ abstract class TurnEndBuilder<TParams, TState>
 	}
 }
 
+/** @public */
 export class PublishedResultBuilder<TParams = unknown, TState = unknown> extends TurnEndBuilder<
 	TParams,
 	TState
 > {
+	/** @internal */
 	protected readonly builderName = "Published result";
 
+	/** @internal */
 	buildTurnEnd(): ProcessTurnEndSpec<TParams, TState, string> {
 		return this.buildResult();
 	}
 }
 
+/** @public */
 export class LlmTurnEndBuilder<TParams = unknown, TState = unknown> extends TurnEndBuilder<
 	TParams,
 	TState
 > {
+	/** @internal */
 	protected readonly builderName = "LLM turn end";
 
+	/** @internal */
 	constructor(outcomeId: string, parent?: FlowLlmTurn<TParams, TState, string>) {
 		super(outcomeId, parent);
 		if (outcomeId.trim() === "") throw new Error("LLM turn end outcome must be non-empty");
 	}
 
+	/** @internal */
 	build(): ProcessTurnEndSpec<TParams, TState, string> {
 		return this.buildResult();
 	}
 }
 
+/** @public */
 type LlmPromptBuilder<TParams, TState, TConsumedProducts extends string, TPrepared> = (
 	ctx: FlowPromptContext<TParams, TState, TConsumedProducts, TPrepared>,
 ) => MaybePromise<string>;
 
+/** @public */
 abstract class DescribedTurnBuilder {
+	/** @internal */
 	protected turnDescription: string | null = null;
 
-	constructor(protected readonly turnId: TurnId) {}
+	/** @internal */
+	constructor(
+		/** @internal */
+		protected readonly turnId: TurnId,
+	) {}
 
+	/** @internal */
 	get id(): TurnId {
 		return this.turnId;
 	}
 
+	/** @public */
 	description(description: string): this {
 		this.turnDescription = description;
 		return this;
 	}
 }
 
+/** @public */
 export class LlmFlowBuilder<
 		TParams = unknown,
 		TState = unknown,
@@ -996,30 +1182,36 @@ export class LlmFlowBuilder<
 	private endResult: LlmTurnEndBuilder<TParams, TState> | null = null;
 	private outcomeToolBuilders = new Map<string, OutcomeToolBuilder<TParams, TState>>();
 
+	/** @internal */
 	get definition(): LlmTurnDefinition<string, TParams, TState> {
 		return this.buildDefinition();
 	}
 
+	/** @internal */
 	modelPurpose(purpose: LlmModelPurpose): this {
 		this.modelPurposeValue = purpose;
 		return this;
 	}
 
+	/** @public */
 	tools(...tools: readonly PiBuiltInToolName[]): this {
 		this.availableTools = tools;
 		return this;
 	}
 
+	/** @public */
 	integrationTools(...tools: readonly string[]): this {
 		this.availableIntegrationTools = tools.map((tool) => tool.trim());
 		return this;
 	}
 
+	/** @public */
 	resolveIntegrationTools(resolver: (params: TParams, state: TState) => readonly string[]): this {
 		this.integrationToolResolver = resolver;
 		return this;
 	}
 
+	/** @public */
 	prepare<TNextPrepared>(
 		fn: (ctx: FlowLlmPreparationContext<TParams, TState>) => MaybePromise<TNextPrepared>,
 	): LlmFlowBuilder<TParams, TState, TConsumedProducts, TNextPrepared> {
@@ -1028,11 +1220,13 @@ export class LlmFlowBuilder<
 	}
 
 	/** Enable durable operator questions for this LLM turn. */
+	/** @public */
 	askQuestions(): this {
 		this.questionsEnabled = true;
 		return this;
 	}
 
+	/** @public */
 	freshPrimary(): this {
 		this.branchType = "primary";
 		this.context = "fresh";
@@ -1041,6 +1235,7 @@ export class LlmFlowBuilder<
 		return this;
 	}
 
+	/** @internal */
 	freshSeededPrimary(): this {
 		this.branchType = "primary";
 		this.context = "fresh_seeded";
@@ -1049,12 +1244,14 @@ export class LlmFlowBuilder<
 		return this;
 	}
 
+	/** @public */
 	fullPrimary(): this {
 		this.branchType = "primary";
 		this.context = "full";
 		return this;
 	}
 
+	/** @internal */
 	rootBranchReview(): this {
 		this.branchType = "root_branch";
 		this.context = "full";
@@ -1062,6 +1259,7 @@ export class LlmFlowBuilder<
 		return this;
 	}
 
+	/** @public */
 	continueFromPrimaryLeaf(): this {
 		this.startFrom = {
 			kind: "semantic_ref",
@@ -1071,6 +1269,7 @@ export class LlmFlowBuilder<
 		return this;
 	}
 
+	/** @internal */
 	continueFromReviewBranch(): this {
 		this.startFrom = {
 			kind: "semantic_ref",
@@ -1080,6 +1279,7 @@ export class LlmFlowBuilder<
 		return this;
 	}
 
+	/** @internal */
 	continueFromProductBranch(
 		productName: string,
 		fallback: ProcessTurnStartSelection = { kind: "current_leaf" },
@@ -1087,6 +1287,7 @@ export class LlmFlowBuilder<
 		return this.startFromProductBranch(productName, fallback);
 	}
 
+	/** @internal */
 	startFromReviewBranch(): this {
 		this.startFrom = {
 			kind: "semantic_ref",
@@ -1096,6 +1297,7 @@ export class LlmFlowBuilder<
 		return this;
 	}
 
+	/** @internal */
 	startFromProductBranch(
 		productName: string,
 		fallback: ProcessTurnStartSelection = { kind: "session_root" },
@@ -1108,11 +1310,13 @@ export class LlmFlowBuilder<
 		return this;
 	}
 
+	/** @internal */
 	startFromRoot(): this {
 		this.startFrom = { kind: "session_root" };
 		return this;
 	}
 
+	/** @public */
 	consume<TProductName extends string>(
 		productName: TProductName,
 	): LlmFlowBuilder<TParams, TState, TConsumedProducts | TProductName, TPrepared> {
@@ -1125,6 +1329,7 @@ export class LlmFlowBuilder<
 		>;
 	}
 
+	/** @public */
 	optionalConsume<TProductName extends string>(
 		productName: TProductName,
 	): LlmFlowBuilder<TParams, TState, TConsumedProducts | TProductName, TPrepared> {
@@ -1137,6 +1342,7 @@ export class LlmFlowBuilder<
 		>;
 	}
 
+	/** @public */
 	publish(productName: string): PublishedResultBuilder<TParams, TState> {
 		const normalized = normalizeProductName(productName);
 		if (this.publishedResult) {
@@ -1150,6 +1356,7 @@ export class LlmFlowBuilder<
 		return builder;
 	}
 
+	/** @public */
 	end(outcomeId: string): LlmTurnEndBuilder<TParams, TState> {
 		if (this.endResult) {
 			throw new Error(`LLM turn '${this.turnId}' declares duplicate .end(...) completion`);
@@ -1164,6 +1371,7 @@ export class LlmFlowBuilder<
 		return this.endResult;
 	}
 
+	/** @public */
 	buildPrompt(fn: LlmPromptBuilder<TParams, TState, TConsumedProducts, TPrepared>): this {
 		this.promptBuilder = (ctx) =>
 			fn(
@@ -1174,11 +1382,13 @@ export class LlmFlowBuilder<
 		return this;
 	}
 
+	/** @public */
 	prompt(prompt: (ctx: ProcessRuntimeTurnContext<TParams, TState>) => MaybePromise<string>): this {
 		this.promptBuilder = prompt;
 		return this;
 	}
 
+	/** @public */
 	outcomeTool(
 		id: string,
 		configure: (
@@ -1241,6 +1451,7 @@ export class LlmFlowBuilder<
 		};
 	}
 
+	/** @internal */
 	producesPlan(
 		configure: (plan: PlanResultBuilder<TParams, TState>) => PlanResultBuilder<TParams, TState>,
 	): FlowLlmTurn<TParams, TState, typeof DEFAULT_PLAN_RESULT_OUTCOME_ID> {
@@ -1361,10 +1572,13 @@ type StoredExternalActionBuilder<TParams, TState> = ExternalActionBuilder<
 	Record<string, unknown>
 >;
 
+/** @public */
 abstract class ExternalActionTurnBuilder<TParams, TState> extends DescribedTurnBuilder {
+	/** @internal */
 	protected abstract readonly turnKind: "Automatic" | "Human";
 	private externalActionBuilders = new Map<string, StoredExternalActionBuilder<TParams, TState>>();
 
+	/** @public */
 	externalAction<
 		TEvent = unknown,
 		TInput extends Record<string, unknown> = Record<string, unknown>,
@@ -1389,6 +1603,7 @@ abstract class ExternalActionTurnBuilder<TParams, TState> extends DescribedTurnB
 		return this;
 	}
 
+	/** @internal */
 	protected buildExternalActions():
 		| Record<string, ProcessHumanTurnExternalActionSpec<TParams, TState>>
 		| undefined {
@@ -1400,10 +1615,12 @@ abstract class ExternalActionTurnBuilder<TParams, TState> extends DescribedTurnB
 	}
 }
 
+/** @public */
 export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 	extends ExternalActionTurnBuilder<TParams, TState>
 	implements FlowAutomaticTurn<TParams, TState, string>
 {
+	/** @internal */
 	protected readonly turnKind = "Automatic";
 	private runFn:
 		| ((ctx: FlowAutomaticRunContext<TParams, TState>) => MaybePromise<WorkerCompleteInput<string>>)
@@ -1411,10 +1628,12 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 	private outcomeBuilders = new Map<string, AutomaticOutcomeBuilder<TParams, TState>>();
 	private availableIntegrationTools: readonly string[] = [];
 
+	/** @internal */
 	get definition(): AutomaticTurnDefinition<string, TParams, TState> {
 		return this.buildDefinition();
 	}
 
+	/** @public */
 	run(
 		fn: (
 			ctx: FlowAutomaticRunContext<TParams, TState>,
@@ -1424,11 +1643,13 @@ export class AutomaticFlowBuilder<TParams = unknown, TState = unknown>
 		return this;
 	}
 
+	/** @public */
 	integrationTools(...tools: readonly string[]): this {
 		this.availableIntegrationTools = tools.map((tool) => tool.trim());
 		return this;
 	}
 
+	/** @public */
 	outcome(
 		id: string,
 		configure: (
@@ -1487,61 +1708,74 @@ function inferAcceptanceState(actionId: string): ProcessHumanTurnActionSpec["acc
 	return "neutral";
 }
 
+/** @public */
 export class HumanActionBuilder<TParams = unknown, TState = unknown> {
 	private spec: Record<string, unknown> = {};
 
+	/** @internal */
 	constructor(private readonly actionId: string) {}
 
+	/** @public */
 	label(label: string): this {
 		this.spec.label = label;
 		return this;
 	}
 
+	/** @internal */
 	description(description: string): this {
 		this.spec.description = description;
 		return this;
 	}
 
+	/** @public */
 	acceptanceState(state: ProcessHumanTurnActionSpec<TParams, TState>["acceptanceState"]): this {
 		this.spec.acceptanceState = state;
 		return this;
 	}
 
+	/** @public */
 	form(form: FormDefinition): this {
 		this.spec.form = form;
 		return this;
 	}
 
+	/** @public */
 	to(turnId: TurnId): this {
 		this.spec.to = turnId;
 		return this;
 	}
 
+	/** @internal */
 	complete(): this {
 		this.spec.complete = true;
 		return this;
 	}
 
+	/** @public */
 	lifecycleStatus(status: ProcessTurnTerminalLifecycleStatus): this {
 		this.spec.lifecycleStatus = status;
 		return this;
 	}
 
+	/** @internal */
 	trigger(trigger: string): this {
 		this.spec.trigger = trigger;
 		return this;
 	}
 
+	/** @internal */
 	schedulable(value = true): this {
 		this.spec.schedulable = value;
 		return this;
 	}
 
+	/** @public */
 	effect(effect: ProcessHumanTurnActionSpec<TParams, TState>["effect"]): this {
 		this.spec.effect = effect;
 		return this;
 	}
 
+	/** @internal */
 	build(): ProcessHumanTurnActionSpec<TParams, TState> {
 		return {
 			label:
@@ -1555,6 +1789,7 @@ export class HumanActionBuilder<TParams = unknown, TState = unknown> {
 	}
 }
 
+/** @public */
 export class ExternalActionBuilder<
 	TParams = unknown,
 	TState = unknown,
@@ -1563,41 +1798,55 @@ export class ExternalActionBuilder<
 > {
 	private spec: Partial<ProcessHumanTurnExternalActionSpec<TParams, TState, TEvent, TInput>>;
 
+	/** @internal */
 	constructor(actionId: string, source: ExternalActionSource<TParams, TState, TEvent, TInput>) {
 		this.spec = { id: actionId, source };
 	}
 
+	/** @public */
 	label(label: string): this {
 		this.spec.label = label;
 		return this;
 	}
 
+	/** @public */
 	description(description: string): this {
 		this.spec.description = description;
 		return this;
 	}
 
+	/** @public */
 	when(condition: NonNullable<ProcessHumanTurnExternalActionSpec<TParams, TState>["when"]>): this {
 		this.spec.when = condition;
 		return this;
 	}
 
+	/** @public */
 	to(turnId: TurnId): this {
 		this.spec.to = turnId;
 		return this;
 	}
 
+	/** @internal */
 	complete(): this {
 		this.spec.complete = true;
 		return this;
 	}
 
+	/** @public */
 	lifecycleStatus(status: ProcessTurnTerminalLifecycleStatus): this {
 		this.spec.lifecycleStatus = status;
 		return this;
 	}
 
-	publishInput(productName: string, options: { inputField: string }): this {
+	/** @internal */
+	publishInput(
+		productName: string,
+		options: {
+			/** @internal */
+			inputField: string;
+		},
+	): this {
 		this.spec.publishInput = {
 			productName: normalizeProductName(productName),
 			inputField: options.inputField,
@@ -1605,20 +1854,24 @@ export class ExternalActionBuilder<
 		return this;
 	}
 
+	/** @public */
 	effect(effect: ExternalSourceEffect<TParams, TState, TEvent, TInput>): this {
 		this.spec.effect = effect;
 		return this;
 	}
 
+	/** @internal */
 	build(): ProcessHumanTurnExternalActionSpec<TParams, TState, TEvent, TInput> {
 		return this.spec as ProcessHumanTurnExternalActionSpec<TParams, TState, TEvent, TInput>;
 	}
 }
 
+/** @public */
 export class HumanFlowBuilder<TParams = unknown, TState = unknown>
 	extends ExternalActionTurnBuilder<TParams, TState>
 	implements FlowHumanTurn<TParams, TState>
 {
+	/** @internal */
 	protected readonly turnKind = "Human";
 	private reviewProductName: string | undefined;
 	private reviewSemanticRef: ProcessSemanticEntryRefKey | undefined;
@@ -1627,6 +1880,7 @@ export class HumanFlowBuilder<TParams = unknown, TState = unknown>
 	private notes: HumanTurnDefinition<TParams, TState>["notesFields"] | undefined;
 	private actions = new Map<string, HumanActionBuilder<TParams, TState>>();
 
+	/** @public */
 	get definition(): HumanTurnDefinition<TParams, TState> {
 		if (!this.turnDescription) {
 			throw new Error(`Human turn '${this.turnId}' must declare .description(...)`);
@@ -1647,6 +1901,7 @@ export class HumanFlowBuilder<TParams = unknown, TState = unknown>
 		};
 	}
 
+	/** @public */
 	reviewProduct(productName: string): this {
 		const normalized = normalizeProductName(productName);
 		this.reviewProductName = normalized;
@@ -1655,21 +1910,25 @@ export class HumanFlowBuilder<TParams = unknown, TState = unknown>
 		return this;
 	}
 
+	/** @public */
 	operatorAttention(attention: HumanTurnOperatorAttention): this {
 		this.operatorAttentionValue = attention;
 		return this;
 	}
 
+	/** @internal */
 	commentary(commentary: string): this {
 		this.turnCommentary = commentary;
 		return this;
 	}
 
+	/** @internal */
 	notesFields(notes: HumanTurnDefinition<TParams, TState>["notesFields"]): this {
 		this.notes = notes;
 		return this;
 	}
 
+	/** @public */
 	action(
 		actionId: string,
 		configure: (
@@ -1686,6 +1945,7 @@ export class HumanFlowBuilder<TParams = unknown, TState = unknown>
 	}
 }
 
+/** @public */
 export class ExternalRouteBuilder<
 	TParams = unknown,
 	TState = unknown,
@@ -1695,15 +1955,18 @@ export class ExternalRouteBuilder<
 {
 	private externalEffect: ExternalSourceEffect<TParams, TState, TEvent, TInput> | undefined;
 	private target: FlowTargetSpec = null;
+	/** @internal */
 	constructor(
 		private readonly parent: ExternalFlowBuilder<TParams, TState>,
 		private readonly source: ExternalActionSource<TParams, TState, TEvent, TInput>,
 	) {}
 
+	/** @internal */
 	get id(): TurnId {
 		return this.parent.id;
 	}
 
+	/** @internal */
 	get definition(): ExternalTurnDefinition<TParams, TState> {
 		return this.parent.definition;
 	}
@@ -1716,22 +1979,29 @@ export class ExternalRouteBuilder<
 		return this;
 	}
 
+	/** @public */
 	to(turnId: TurnId): this {
 		return this.setTarget({ kind: "to", turnId });
 	}
 
+	/** @internal */
 	complete(): this {
 		return this.setTarget({ kind: "complete" });
 	}
 
+	/** @internal */
 	lifecycleStatus(status: ProcessTurnTerminalLifecycleStatus): this {
 		return this.setTarget({ kind: "lifecycleStatus", status });
 	}
 
+	/** @internal */
 	state(
 		fn: (input: {
+			/** @internal */
 			ctx: FlowExternalSourceContext<TParams, TState, TEvent, TInput>;
+			/** @internal */
 			event: TEvent;
+			/** @internal */
 			input: TInput;
 		}) => MaybePromise<TState>,
 	): this {
@@ -1741,10 +2011,14 @@ export class ExternalRouteBuilder<
 		return this;
 	}
 
+	/** @internal */
 	effect(
 		fn: (input: {
+			/** @internal */
 			ctx: FlowExternalSourceContext<TParams, TState, TEvent, TInput>;
+			/** @internal */
 			event: TEvent;
+			/** @internal */
 			input: TInput;
 		}) => MaybePromise<ProcessEffectPlan<TState> | undefined>,
 	): this {
@@ -1752,15 +2026,23 @@ export class ExternalRouteBuilder<
 		return this;
 	}
 
+	/** @internal */
 	build() {
 		return {
+			/** @internal */
 			source: this.source,
 			...buildRouteTargetSpec(this.target),
-			...(this.externalEffect ? { effect: this.externalEffect } : {}),
+			...(this.externalEffect
+				? {
+						/** @internal */
+						effect: this.externalEffect,
+					}
+				: {}),
 		};
 	}
 }
 
+/** @public */
 export class ExternalFlowBuilder<TParams = unknown, TState = unknown>
 	extends DescribedTurnBuilder
 	implements FlowExternalTurn<TParams, TState>
@@ -1768,6 +2050,7 @@ export class ExternalFlowBuilder<TParams = unknown, TState = unknown>
 	private routeBuilders: ExternalRouteBuilder<TParams, TState, unknown, Record<string, unknown>>[] =
 		[];
 
+	/** @internal */
 	get definition(): ExternalTurnDefinition<TParams, TState> {
 		if (!this.turnDescription) {
 			this.turnDescription =
@@ -1783,6 +2066,7 @@ export class ExternalFlowBuilder<TParams = unknown, TState = unknown>
 		};
 	}
 
+	/** @public */
 	from<TEvent = unknown, TInput extends Record<string, unknown> = Record<string, unknown>>(
 		source: ExternalActionSource<TParams, TState, TEvent, TInput>,
 	): ExternalRouteBuilder<TParams, TState, TEvent, TInput> {
@@ -1794,6 +2078,7 @@ export class ExternalFlowBuilder<TParams = unknown, TState = unknown>
 	}
 }
 
+/** @public */
 type Hook<TApi> = (api: TApi) => void;
 
 function chainHooks<TApi>(hooks: readonly Hook<TApi>[]): Hook<TApi> {
@@ -1802,33 +2087,44 @@ function chainHooks<TApi>(hooks: readonly Hook<TApi>[]): Hook<TApi> {
 	};
 }
 
+/** @public */
 export abstract class FlowComponentBuilder<TParams = unknown, TState = unknown> {
+	/** @internal */
 	readonly turns: FlowTurn<TParams, TState>[] = [];
+	/** @internal */
 	readonly serverHooks: Hook<ServerProcessAPI<TParams, TState>>[] = [];
+	/** @internal */
 	readonly uiHooks: Hook<UiProcessAPI<TParams, TState>>[] = [];
+	/** @internal */
 	readonly launcherHooks: Hook<ProcessLauncherAPI<TParams>>[] = [];
+	/** @internal */
 	readonly watcherHooks: Hook<ProcessWatcherAPI<TParams>>[] = [];
 
+	/** @public */
 	turn(turn: FlowTurn<TParams, TState>): this {
 		this.turns.push(turn);
 		return this;
 	}
 
+	/** @internal */
 	server(hook: Hook<ServerProcessAPI<TParams, TState>>): this {
 		this.serverHooks.push(hook);
 		return this;
 	}
 
+	/** @internal */
 	action(definition: ProcessActionDefinition<TParams, TState>): this {
 		this.serverHooks.push((api) => api.action(definition));
 		return this;
 	}
 
+	/** @internal */
 	ui(hook: Hook<UiProcessAPI<TParams, TState>>): this {
 		this.uiHooks.push(hook);
 		return this;
 	}
 
+	/** @public */
 	launcher(
 		definitionOrHook: ProcessLauncherDefinition<TParams> | Hook<ProcessLauncherAPI<TParams>>,
 	): this {
@@ -1840,6 +2136,7 @@ export abstract class FlowComponentBuilder<TParams = unknown, TState = unknown> 
 		return this;
 	}
 
+	/** @public */
 	watcher<TEvent = unknown, TConfig = unknown>(
 		definitionOrHook:
 			| ProcessWatcherDefinition<TParams, TEvent, TConfig>
@@ -1854,12 +2151,15 @@ export abstract class FlowComponentBuilder<TParams = unknown, TState = unknown> 
 	}
 }
 
+/** @public */
 export class FlowFragmentBuilder<TParams = unknown, TState = unknown> extends FlowComponentBuilder<
 	TParams,
 	TState
 > {
+	/** @internal */
 	readonly name: string;
 
+	/** @internal */
 	constructor(name: string) {
 		super();
 		if (name.trim() === "") {
@@ -1869,6 +2169,7 @@ export class FlowFragmentBuilder<TParams = unknown, TState = unknown> extends Fl
 	}
 }
 
+/** @public */
 export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends FlowComponentBuilder<
 	TParams,
 	TState
@@ -1887,6 +2188,7 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 	private developmentTools = false;
 	private docker = false;
 
+	/** @internal */
 	constructor(processId: string) {
 		super();
 		if (processId.trim() === "") {
@@ -1895,17 +2197,20 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 		this.processId = processId;
 	}
 
+	/** @public */
 	displayName(displayName: string): this {
 		this.processDisplayName = displayName;
 		return this;
 	}
 
+	/** @public */
 	entry(turnId: TurnId): this {
 		this.entryTurnId = turnId;
 		return this;
 	}
 
 	/** Declare an additional turn that launchers may select as the first turn. */
+	/** @internal */
 	alternateEntry(turnId: TurnId): this {
 		this.alternateEntryTurnIds.push(turnId);
 		return this;
@@ -1916,22 +2221,31 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 	 * through. Flow diagrams render this as the main line. Must start at the entry
 	 * turn and reference only declared turns without repeats.
 	 */
+	/** @public */
 	happyPath(...turnIds: readonly TurnId[]): this {
 		this.happyPathTurnIds = turnIds;
 		return this;
 	}
 
-	codecs(input: { params: Codec<TParams>; state: Codec<TState> }): this {
+	/** @public */
+	codecs(input: {
+		/** @public */
+		params: Codec<TParams>;
+		/** @public */
+		state: Codec<TState>;
+	}): this {
 		this.paramsCodec = input.params;
 		this.stateCodec = input.state;
 		return this;
 	}
 
+	/** @public */
 	initialState(fn: (params: TParams) => TState): this {
 		this.initialStateFn = fn;
 		return this;
 	}
 
+	/** @public */
 	repositoryCredentials(
 		fn: NonNullable<ProcessDefinition<TParams, TState>["repositoryCredentials"]>,
 	): this {
@@ -1940,6 +2254,7 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 	}
 
 	/** Resolve new process-volume capacity on the server; operator configuration wins. */
+	/** @internal */
 	resolveStorageSize(
 		fn: NonNullable<ProcessDefinition<TParams, TState>["resolveStorageSize"]>,
 	): this {
@@ -1947,18 +2262,26 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 		return this;
 	}
 
+	/** @public */
 	piConfig(config: ProcessPiConfig): this {
 		this.processPiConfig = config;
 		return this;
 	}
 
 	/** Declare runner-provided process runtime capabilities. */
-	runtime(capabilities: { developmentTools?: boolean; docker?: boolean }): this {
+	/** @public */
+	runtime(capabilities: {
+		/** @internal */
+		developmentTools?: boolean;
+		/** @public */
+		docker?: boolean;
+	}): this {
 		this.developmentTools = capabilities.developmentTools === true;
 		this.docker = capabilities.docker === true;
 		return this;
 	}
 
+	/** @internal */
 	use(fragment: FlowFragmentBuilder<TParams, TState>): this {
 		this.turns.push(...fragment.turns);
 		this.serverHooks.push(...fragment.serverHooks);
@@ -1968,6 +2291,7 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 		return this;
 	}
 
+	/** @public */
 	define(): ProcessDefinition<TParams, TState> {
 		if (!this.processDisplayName) {
 			throw new Error(`Flow process '${this.processId}' must declare .displayName(...)`);
@@ -2030,28 +2354,35 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 	}
 }
 
+/** @public */
 export const flow = {
+	/** @public */
 	llm<TParams = unknown, TState = unknown>(turnId: TurnId): LlmFlowBuilder<TParams, TState> {
 		return new LlmFlowBuilder<TParams, TState>(turnId);
 	},
+	/** @public */
 	automatic<TParams = unknown, TState = unknown>(
 		turnId: TurnId,
 	): AutomaticFlowBuilder<TParams, TState> {
 		return new AutomaticFlowBuilder<TParams, TState>(turnId);
 	},
+	/** @public */
 	human<TParams = unknown, TState = unknown>(turnId: TurnId): HumanFlowBuilder<TParams, TState> {
 		return new HumanFlowBuilder<TParams, TState>(turnId);
 	},
+	/** @public */
 	external<TParams = unknown, TState = unknown>(
 		turnId: TurnId,
 	): ExternalFlowBuilder<TParams, TState> {
 		return new ExternalFlowBuilder<TParams, TState>(turnId);
 	},
+	/** @public */
 	fragment<TParams = unknown, TState = unknown>(
 		name: string,
 	): FlowFragmentBuilder<TParams, TState> {
 		return new FlowFragmentBuilder<TParams, TState>(name);
 	},
+	/** @public */
 	process<TParams = unknown, TState = unknown>(
 		processId: string,
 	): FlowProcessBuilder<TParams, TState> {

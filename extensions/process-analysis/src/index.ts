@@ -4,11 +4,15 @@ import { processAnalysisProcess } from "./process-definition.js";
 import { configureProcessAnalysisRuntime } from "./server-runtime.js";
 import { registerProcessAnalysisTools } from "./tools.js";
 
+/** @internal */
 export const manifest = {
+	/** @internal */
 	id: "process-analysis",
+	/** @internal */
 	version: "0.1.0",
 } as const;
 
+/** @public */
 const processAnalysisExtension: LeitwerkExtensionModule = {
 	manifest,
 	setupCatalog(api) {

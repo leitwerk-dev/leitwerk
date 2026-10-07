@@ -9,25 +9,37 @@ import type { EngineErrorCode } from "./types.js";
 
 export type Reaction = PostCommitEffect;
 
+/** @internal */
 export interface Decision<TData = void> {
+	/** @internal */
 	ok: true;
+	/** @internal */
 	writes: Writes;
+	/** @internal */
 	data: TData;
+	/** @internal */
 	metadata?: DecisionMetadata;
 	/**
 	 * Used when operation data is only known after the durable commit. For example,
 	 * queued inputs receive durable sequence numbers while recording.
 	 */
+	/** @internal */
 	deriveData?: (commit: RecordCommit) => TData;
 }
 
+/** @internal */
 export interface RejectedDecision<TData = unknown> {
+	/** @internal */
 	ok: false;
+	/** @internal */
 	code: EngineErrorCode;
+	/** @internal */
 	message: string;
+	/** @internal */
 	data?: TData;
 }
 
+/** @internal */
 export type DecideResult<TData> = Decision<TData> | RejectedDecision<TData>;
 
 export function accept<TData = void>(

@@ -9,20 +9,33 @@ import type { LeitwerkDb } from "./database.js";
 import { generateId, now, parseMetadata } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
+/** @internal */
 export interface CreateProcessProjectInput extends UpdateProcessProjectInput {
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	key: string;
+	/** @internal */
 	repoLocator: string;
+	/** @internal */
 	baseBranch: string;
 }
 
+/** @public */
 export interface UpdateProcessProjectInput {
+	/** @internal */
 	repoLocator?: string;
+	/** @internal */
 	workBranch?: string | null;
+	/** @internal */
 	externalId?: string | null;
+	/** @internal */
 	externalUrl?: string | null;
+	/** @public */
 	metadata?: Record<string, unknown> | null;
+	/** @internal */
 	pipelineStatus?: string | null;
+	/** @internal */
 	baseBranch?: string;
 }
 
@@ -44,8 +57,10 @@ function rowToProcessProject(row: typeof s.processProjects.$inferSelect): Proces
 	};
 }
 
+/** @public */
 export function createProcessProjectRepo(db: LeitwerkDb) {
 	return {
+		/** @internal */
 		create(input: CreateProcessProjectInput): ProcessProject {
 			const id = generateId("prj");
 			const ts = now();
@@ -70,11 +85,13 @@ export function createProcessProjectRepo(db: LeitwerkDb) {
 			return rowToProcessProject(values);
 		},
 
+		/** @internal */
 		getById(id: string): ProcessProject | null {
 			const row = db.select().from(s.processProjects).where(eq(s.processProjects.id, id)).get();
 			return row ? rowToProcessProject(row) : null;
 		},
 
+		/** @public */
 		listByInstance(instanceId: string): ProcessProject[] {
 			return db
 				.select()
@@ -84,6 +101,7 @@ export function createProcessProjectRepo(db: LeitwerkDb) {
 				.map(rowToProcessProject);
 		},
 
+		/** @internal */
 		listByInstances(instanceIds: readonly string[]): ProcessProject[] {
 			if (instanceIds.length === 0) {
 				return [];
@@ -96,6 +114,7 @@ export function createProcessProjectRepo(db: LeitwerkDb) {
 				.map(rowToProcessProject);
 		},
 
+		/** @internal */
 		getByInstanceAndKey(instanceId: string, key: string): ProcessProject | null {
 			const row = db
 				.select()
@@ -105,6 +124,7 @@ export function createProcessProjectRepo(db: LeitwerkDb) {
 			return row ? rowToProcessProject(row) : null;
 		},
 
+		/** @public */
 		update(id: string, input: UpdateProcessProjectInput): ProcessProject | null {
 			const previous = this.getById(id);
 			if (!previous) {

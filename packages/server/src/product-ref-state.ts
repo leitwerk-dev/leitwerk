@@ -3,6 +3,7 @@ import type { WorkerInputConsumedPayload } from "@leitwerk-dev/worker-protocol";
 
 import { mergeEntryRefPatchIntoStateJson } from "./entry-ref-patch.js";
 
+/** @internal */
 export type ProcessProductRefPatch = Record<string, ProcessProductRef | null | undefined>;
 
 export function mergeProductRefPatchIntoStateJson(

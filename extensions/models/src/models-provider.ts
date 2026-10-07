@@ -16,12 +16,17 @@ import {
 	getSupportedStandardProviders,
 } from "./provider-auth.js";
 
+/** @internal */
 export interface StandardProviderConfig {
+	/** @internal */
 	readonly baseUrl?: string;
+	/** @internal */
 	readonly models?: ReturnType<typeof normalizeStandardModels>;
 }
 
+/** @internal */
 export interface ApiKeyCredential {
+	/** @internal */
 	readonly apiKey: string;
 }
 
@@ -34,23 +39,39 @@ const positiveIntegerSchema = v.pipe(v.number(), v.integer(), v.minValue(1));
 const nonNegativeNumberSchema = v.pipe(v.number(), v.finite(), v.minValue(0));
 const thinkingLevelValueSchema = v.optional(v.nullable(nonEmptyStringSchema));
 const thinkingLevelMapSchema = v.strictObject({
+	/** @internal */
 	off: thinkingLevelValueSchema,
+	/** @internal */
 	minimal: thinkingLevelValueSchema,
+	/** @internal */
 	low: thinkingLevelValueSchema,
+	/** @internal */
 	medium: thinkingLevelValueSchema,
+	/** @internal */
 	high: thinkingLevelValueSchema,
+	/** @internal */
 	xhigh: thinkingLevelValueSchema,
+	/** @internal */
 	max: thinkingLevelValueSchema,
 });
 // Compatibility options use Pi's names so they can be copied from models.json.
+/** @internal */
 const compatibilitySchema = v.strictObject({
+	/** @internal */
 	supportsStore: v.optional(v.boolean()),
+	/** @internal */
 	supportsDeveloperRole: v.optional(v.boolean()),
+	/** @internal */
 	supportsReasoningEffort: v.optional(v.boolean()),
+	/** @internal */
 	supportsUsageInStreaming: v.optional(v.boolean()),
+	/** @internal */
 	maxTokensField: v.optional(v.picklist(["max_tokens", "max_completion_tokens"])),
+	/** @internal */
 	supportsStrictMode: v.optional(v.boolean()),
+	/** @internal */
 	requiresReasoningContentOnAssistantMessages: v.optional(v.boolean()),
+	/** @internal */
 	thinkingFormat: v.optional(
 		v.picklist([
 			"openai",
@@ -67,9 +88,13 @@ const compatibilitySchema = v.strictObject({
 	),
 });
 const modelCostSchema = v.strictObject({
+	/** @internal */
 	input: nonNegativeNumberSchema,
+	/** @internal */
 	output: nonNegativeNumberSchema,
+	/** @internal */
 	cacheRead: nonNegativeNumberSchema,
+	/** @internal */
 	cacheWrite: nonNegativeNumberSchema,
 });
 const baseUrlSchema = v.pipe(
@@ -82,23 +107,48 @@ const baseUrlSchema = v.pipe(
 		return url.toString().replace(/\/$/u, "");
 	}),
 );
+/** @internal */
 const customModelSchema = v.pipe(
 	v.strictObject({
+		/** @internal */
 		id: nonEmptyStringSchema,
+		/** @internal */
 		name: v.optional(nonEmptyStringSchema),
+		/** @internal */
 		reasoning: v.optional(v.boolean()),
+		/** @internal */
 		thinking_level_map: v.optional(thinkingLevelMapSchema),
+		/** @internal */
 		input: v.optional(v.pipe(v.array(v.picklist(["text", "image"])), v.minLength(1))),
+		/** @internal */
 		cost: v.optional(modelCostSchema),
+		/** @internal */
 		compat: v.optional(compatibilitySchema),
+		/** @internal */
 		context_window: v.optional(positiveIntegerSchema),
+		/** @internal */
 		max_tokens: v.optional(positiveIntegerSchema),
 	}),
 	v.transform(({ context_window, max_tokens, thinking_level_map, ...model }) => ({
 		...model,
-		...(thinking_level_map === undefined ? {} : { thinkingLevelMap: thinking_level_map }),
-		...(context_window === undefined ? {} : { contextWindow: context_window }),
-		...(max_tokens === undefined ? {} : { maxTokens: max_tokens }),
+		...(thinking_level_map === undefined
+			? {}
+			: {
+					/** @internal */
+					thinkingLevelMap: thinking_level_map,
+				}),
+		...(context_window === undefined
+			? {}
+			: {
+					/** @internal */
+					contextWindow: context_window,
+				}),
+		...(max_tokens === undefined
+			? {}
+			: {
+					/** @internal */
+					maxTokens: max_tokens,
+				}),
 	})),
 );
 const modelDefinitionsSchema = v.pipe(
@@ -125,17 +175,26 @@ const customGatewaySchema = v.strictObject({
 	models: modelDefinitionsSchema,
 });
 
+/** @internal */
 export type CustomModelDefinition = v.InferOutput<typeof customModelSchema>;
 
+/** @internal */
 export interface CustomGatewayConfig {
+	/** @internal */
 	readonly providerId: string;
+	/** @internal */
 	readonly baseUrl: string;
+	/** @internal */
 	readonly api: string;
+	/** @internal */
 	readonly keyless: boolean;
+	/** @internal */
 	readonly compat?: v.InferOutput<typeof compatibilitySchema>;
+	/** @internal */
 	readonly models: CustomModelDefinition[];
 }
 
+/** @internal */
 function normalizeStandardModels(
 	providerId: string,
 	models: CustomModelDefinition[],
@@ -147,15 +206,24 @@ function normalizeStandardModels(
 		if (!reference) throw new Error(`Provider '${providerId}' has no canonical API definition`);
 		return {
 			...model,
+			/** @internal */
 			provider: providerId,
+			/** @internal */
 			api: reference.api,
+			/** @internal */
 			baseUrl: baseUrl ?? reference.baseUrl,
+			/** @internal */
 			name: model.name ?? model.id,
+			/** @internal */
 			reasoning: model.reasoning ?? false,
+			/** @internal */
 			input: model.input ?? ["text" as const],
+			/** @internal */
 			cost: model.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 			// Match Pi's defaults for explicitly configured models.
+			/** @internal */
 			contextWindow: model.contextWindow ?? 128_000,
+			/** @internal */
 			maxTokens: model.maxTokens ?? 16_384,
 		};
 	});
@@ -187,6 +255,7 @@ function resolveSecret(value: unknown, location: string): string {
 	return resolved;
 }
 
+/** @internal */
 export function parseApiKeyCredential(value: unknown, providerId: string): ApiKeyCredential {
 	if (!isRecord(value)) throw new Error(`${providerId} credential must be an object`);
 	assertKnownFields(value, ["apiKey"], `${providerId} credential`);
@@ -197,10 +266,16 @@ function apiKeySecrets(credential: ApiKeyCredential | null): Readonly<Record<str
 	return credential ? { apiKey: credential.apiKey } : {};
 }
 
+/** @internal */
 export function parseStandardProviderConfig(
 	raw: unknown,
 	providerId: string,
-): { config: StandardProviderConfig; credential?: ApiKeyCredential } {
+): {
+	/** @internal */
+	config: StandardProviderConfig;
+	/** @internal */
+	credential?: ApiKeyCredential;
+} {
 	if (raw !== undefined && raw !== null && !isRecord(raw)) {
 		throw new Error("configuration must be an object");
 	}
@@ -247,6 +322,7 @@ function catalogModelStatuses(
 	);
 }
 
+/** @internal */
 export function evaluateStandardModelStatuses(
 	providerId: string,
 	ctx: ModelProviderModelsContext<StandardProviderConfig>,
@@ -263,6 +339,7 @@ export function evaluateStandardModelStatuses(
 	);
 }
 
+/** @internal */
 export function createStandardModelProvider(
 	providerId: string,
 ): ModelProviderDefinition<StandardProviderConfig, ApiKeyCredential> {
@@ -280,10 +357,16 @@ export function createStandardModelProvider(
 	});
 }
 
+/** @internal */
 export function parseCustomGatewayConfig(
 	providerId: string,
 	raw: unknown,
-): { config: CustomGatewayConfig; credential?: ApiKeyCredential } {
+): {
+	/** @internal */
+	config: CustomGatewayConfig;
+	/** @internal */
+	credential?: ApiKeyCredential;
+} {
 	const parsed = v.parse(customGatewaySchema, raw);
 	const keyless = parsed.api_key === false;
 	const apiKey =
@@ -303,6 +386,7 @@ export function parseCustomGatewayConfig(
 	};
 }
 
+/** @internal */
 export function createCustomGatewayProvider(
 	providerId: string,
 	keyless: boolean,
@@ -337,6 +421,7 @@ export function createCustomGatewayProvider(
 	});
 }
 
+/** @internal */
 export function resolveModelProviders(raw: unknown): readonly ModelProviderSetEntry[] {
 	if (raw !== undefined && raw !== null && !isRecord(raw)) {
 		throw new Error("configuration must be an object");

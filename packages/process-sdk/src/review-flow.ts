@@ -5,6 +5,7 @@ import type {
 	ReviewRequestedEvent,
 } from "./server-events.js";
 
+/** @internal */
 export function filterStringArray(value: unknown): string[] {
 	return Array.isArray(value)
 		? value.filter((entry): entry is string => typeof entry === "string")
@@ -26,8 +27,11 @@ function resolveOutcomeMarkdown(
 	return typeof value === "string" ? value : undefined;
 }
 
+/** @internal */
 export function buildPlanSavedEventPayload(input: {
+	/** @internal */
 	planRevision: number;
+	/** @internal */
 	event: Pick<ProcessTurnOutcomeEvent, "params" | "turnResultMarkdown">;
 }): Omit<PlanSavedEvent, "instanceId"> {
 	return {
@@ -38,6 +42,7 @@ export function buildPlanSavedEventPayload(input: {
 	};
 }
 
+/** @internal */
 export function buildReviewRequestedEventPayload(
 	event: Pick<ProcessTurnOutcomeEvent, "params">,
 ): Omit<ReviewRequestedEvent, "instanceId"> {
@@ -46,6 +51,7 @@ export function buildReviewRequestedEventPayload(
 	};
 }
 
+/** @internal */
 export function buildReviewCompletedEventPayload(
 	event: Pick<ProcessTurnOutcomeEvent, "outcome" | "params" | "turnResultMarkdown">,
 ): Omit<ReviewCompletedEvent, "instanceId"> {

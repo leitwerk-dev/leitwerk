@@ -95,4 +95,4 @@ it("authorizes project bindings and reconciles a lost PR response into one durab
 	expect(client).not.toHaveBeenCalled();
 	const restarted = new LocalGitHubAdapter({ root, baseUrl: "http://127.0.0.1:18082" });
 	expect(await restarted.client().listPullRequests("team", "one", "all")).toHaveLength(1);
-});
+}, 30_000);

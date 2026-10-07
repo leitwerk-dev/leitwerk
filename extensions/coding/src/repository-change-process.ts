@@ -38,30 +38,49 @@ import { buildReviewImplementationPrompt } from "./turns/review-implementation.j
 import { buildReviewPlanPrompt } from "./turns/review-plan.js";
 import { buildSimplifyImplementationPrompt } from "./turns/simplify-implementation.js";
 
+/** @public */
 export type RepositoryChangeParams = {
+	/** @internal */
 	launchKind: "requested_change" | "imported_plan";
+	/** @internal */
 	importedPlanMarkdown?: string;
 };
 
+/** @public */
 export interface RepositoryChangeProcessConfig<TParams extends RepositoryChangeParams> {
+	/** @public */
 	processId: string;
+	/** @public */
 	displayName: string;
+	/** @public */
 	paramsCodec: Codec<TParams>;
+	/** @public */
 	launcher?: ProcessLauncherDefinition<TParams>;
+	/** @public */
 	finalizeLabel: string;
+	/** @public */
 	finalizeForm: FormDefinition;
+	/** @public */
 	finalizationDescription: string;
+	/** @public */
 	repositoryCredentials?(input: {
+		/** @public */
 		params: TParams;
+		/** @internal */
 		projects: readonly RepositoryCredentialProject[];
 	}): readonly RepositoryCredentialRequirement[];
+	/** @public */
 	publication?: {
+		/** @public */
 		entryTurnId: string;
+		/** @public */
 		fragment: FlowFragmentBuilder<TParams, RepositoryChangeState>;
+		/** @public */
 		happyPath?: readonly string[];
 	};
 }
 
+/** @public */
 export function createRepositoryChangeProcess<TParams extends RepositoryChangeParams>(
 	config: RepositoryChangeProcessConfig<TParams>,
 ) {
@@ -767,13 +786,22 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		({
 			id,
 			...(process.turns.get(id)?.definition as HumanTurnDefinition),
-		}) as HumanTurnDefinition & { id: string };
+		}) as HumanTurnDefinition & {
+			/** @internal */
+			id: string;
+		};
 	return {
+		/** @public */
 		process,
+		/** @internal */
 		planDecision: decision(turnIds.planDecision),
+		/** @internal */
 		planReviewFeedback: decision(turnIds.planReviewFeedback),
+		/** @internal */
 		implementationDecision: decision(turnIds.implementationDecision),
+		/** @internal */
 		implementationReviewFeedback: decision(turnIds.implementationReviewFeedback),
+		/** @internal */
 		simplificationDecision: decision(turnIds.simplificationDecision),
 	};
 }

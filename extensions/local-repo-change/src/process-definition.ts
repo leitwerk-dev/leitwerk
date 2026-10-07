@@ -26,6 +26,7 @@ const definition = createRepositoryChangeProcess({
 	finalizationDescription: "Commit and merge",
 });
 
+/** @internal */
 export const localRepoChangeProcess = definition.process;
 export const planDecision = definition.planDecision;
 export const planReviewFeedback = definition.planReviewFeedback;

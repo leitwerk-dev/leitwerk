@@ -5,14 +5,20 @@ import type {
 } from "./extension-api.js";
 import { validateProcessLeafOutcomeDefinition } from "./leaf-outcomes.js";
 
+/** @internal */
 export interface BuiltUiProcessDefinition<TParams = unknown, TState = unknown> {
+	/** @internal */
 	leafOutcome: ProcessLeafOutcomeDefinition<TParams, TState> | null;
 }
 
+/** @internal */
 export function createUiProcessBuilder<TParams = unknown, TState = unknown>(): UiProcessAPI<
 	TParams,
 	TState
-> & { getDefinition(): BuiltUiProcessDefinition<TParams, TState> } {
+> & {
+	/** @internal */
+	getDefinition(): BuiltUiProcessDefinition<TParams, TState>;
+} {
 	let leafOutcome: ProcessLeafOutcomeDefinition<TParams, TState> | null = null;
 
 	return {
@@ -34,6 +40,7 @@ export function createUiProcessBuilder<TParams = unknown, TState = unknown>(): U
 	};
 }
 
+/** @internal */
 export function buildUiProcessDefinition<TParams = unknown, TState = unknown>(
 	process: ExtensionProcessDefinition<TParams, TState>,
 ): BuiltUiProcessDefinition<TParams, TState> | undefined {

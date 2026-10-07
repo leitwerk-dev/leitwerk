@@ -1,6 +1,7 @@
 import type { LaunchRun } from "@leitwerk-dev/domain";
 
 /** Accepts a launch-run request shape and waits for its admitted process commit. */
+/** @internal */
 export async function postImmediateLaunchRequest(
 	input: string | URL | Request,
 	init?: RequestInit,
@@ -16,6 +17,7 @@ export async function postImmediateLaunchRequest(
  * Admits an immediate launch through the public asynchronous HTTP contract and waits until the
  * process commit or a pre-commit failure is observable. Intended for integration-test setup.
  */
+/** @public */
 export async function postImmediateLaunch(
 	serverBaseUrl: string,
 	launcherId: string,

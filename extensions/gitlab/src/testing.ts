@@ -20,24 +20,41 @@ export type {
 } from "./client.js";
 export { setupGitLabIntegration } from "./index.js";
 
+/** @public */
 interface LocalState {
+	/** @internal */
 	projects: GitLabProject[];
+	/** @internal */
 	mrs: GitLabMergeRequest[];
+	/** @internal */
 	pipelines: GitLabPipeline[];
+	/** @public */
 	notes: Record<string, GitLabNote[]>;
+	/** @internal */
 	diffs: Record<string, GitLabDiff[]>;
+	/** @public */
 	feedback?: Record<string, GitLabFeedback[]>;
+	/** @public */
 	discussionNotes?: Record<string, GitLabNote[]>;
+	/** @public */
 	reactions?: Record<string, GitLabNoteReaction[]>;
 }
 /** Persistent GitLab test boundary. Repository URLs use local Git's file transport. */
+/** @public */
 export class LocalGitLabAdapter {
+	/** @public */
 	state: LocalState;
+	/** @public */
 	loseNextCommentResponse = false;
+	/** @public */
 	loseNextReplyResponse = false;
+	/** @public */
 	loseNextReactionResponse = false;
+	/** @public */
 	constructor(
+		/** @internal */
 		readonly root: string,
+		/** @internal */
 		readonly baseUrl = "https://gitlab.test",
 	) {
 		mkdirSync(root, { recursive: true });
@@ -46,6 +63,7 @@ export class LocalGitLabAdapter {
 			? JSON.parse(readFileSync(file, "utf8"))
 			: { projects: [], mrs: [], pipelines: [], notes: {}, diffs: {} };
 	}
+	/** @public */
 	save() {
 		writeFileSync(path.join(this.root, "gitlab.json"), JSON.stringify(this.state), { mode: 0o600 });
 	}
@@ -76,6 +94,7 @@ export class LocalGitLabAdapter {
 			{ encoding: "utf8" },
 		).trim();
 	}
+	/** @public */
 	addProject(name: string, bare: string): GitLabProject {
 		const project: GitLabProject = {
 			id: this.state.projects.length + 1,
@@ -88,6 +107,7 @@ export class LocalGitLabAdapter {
 		this.save();
 		return project;
 	}
+	/** @public */
 	openMr(project: GitLabProject, branch: string): GitLabMergeRequest {
 		const mr: GitLabMergeRequest = {
 			iid: this.state.mrs.length + 1,
@@ -107,6 +127,7 @@ export class LocalGitLabAdapter {
 		this.save();
 		return mr;
 	}
+	/** @public */
 	pipeline(mr: GitLabMergeRequest, status: string): GitLabPipeline {
 		const value: GitLabPipeline = {
 			id: this.state.pipelines.length + 1,
@@ -121,6 +142,7 @@ export class LocalGitLabAdapter {
 		this.save();
 		return value;
 	}
+	/** @public */
 	client(): GitLabClientLike {
 		const mr = (id: number, iid: number) => {
 			const m = this.state.mrs.find((m) => m.project_id === id && m.iid === iid);

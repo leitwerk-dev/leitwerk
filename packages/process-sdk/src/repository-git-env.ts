@@ -10,21 +10,25 @@ function wrapperKey(projectKey: string): string {
 }
 
 /** Worker-internal registration; the wrapper path is never copied to ordinary subprocesses. */
+/** @internal */
 export function setRepositoryGitSshWrapper(projectKey: string, wrapperPath: string): void {
 	process.env[wrapperKey(projectKey)] = wrapperPath;
 }
 
+/** @internal */
 export function clearRepositoryGitSshWrappers(): void {
 	for (const key of Object.keys(process.env)) {
 		if (key.startsWith(INTERNAL_REPOSITORY_GIT_SSH_ENV_PREFIX)) delete process.env[key];
 	}
 }
 
+/** @internal */
 export function setRepositoryGitHttpsHelper(projectKey: string, helperPath: string): void {
 	process.env[`${INTERNAL_REPOSITORY_GIT_HTTPS_ENV_PREFIX}${encodeURIComponent(projectKey)}`] =
 		helperPath;
 }
 
+/** @internal */
 export function clearRepositoryGitHttpsHelpers(): void {
 	for (const key of Object.keys(process.env)) {
 		if (key.startsWith(INTERNAL_REPOSITORY_GIT_HTTPS_ENV_PREFIX)) delete process.env[key];
@@ -32,6 +36,7 @@ export function clearRepositoryGitHttpsHelpers(): void {
 }
 
 /** Safe environment for a trusted Git invocation for one process project. */
+/** @public */
 export function repositoryGitSubprocessEnv(
 	projectKey: string,
 	overrides: SubprocessEnvInput = {},
@@ -60,6 +65,7 @@ export function repositoryGitSubprocessEnv(
 	return env;
 }
 
+/** @public */
 export function repositoryGitArgs(args: readonly string[]): string[] {
 	return ["-c", "core.hooksPath=/dev/null", ...args];
 }

@@ -4,19 +4,37 @@ import type { LeitwerkDb } from "./database.js";
 import { generateId, now } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
+/** @internal */
 export type ProcessTitleJob = typeof s.processTitleJobs.$inferSelect;
 
+/** @internal */
 export type EnqueueProcessTitleJobInput = {
+	/** @internal */
 	processDefinitionId: string;
+	/** @internal */
 	modelProfileId: string;
+	/** @internal */
 	prompt: string;
+	/** @internal */
 	maxAttempts: number;
+	/** @internal */
 	nextRunAt: string;
 } & (
-	| { processInstanceId: string; launchRunId?: string | null }
-	| { futureExecutionId: string; expectedPayloadJson: string }
+	| {
+			/** @internal */
+			processInstanceId: string;
+			/** @internal */
+			launchRunId?: string | null;
+	  }
+	| {
+			/** @internal */
+			futureExecutionId: string;
+			/** @internal */
+			expectedPayloadJson: string;
+	  }
 );
 
+/** @internal */
 export function createProcessTitleJobRepo(db: LeitwerkDb) {
 	function transition(
 		id: string,
@@ -34,6 +52,7 @@ export function createProcessTitleJobRepo(db: LeitwerkDb) {
 	}
 
 	return {
+		/** @internal */
 		enqueue(input: EnqueueProcessTitleJobInput): ProcessTitleJob {
 			const ts = now();
 			const target =
@@ -77,11 +96,13 @@ export function createProcessTitleJobRepo(db: LeitwerkDb) {
 				.get();
 		},
 
+		/** @internal */
 		getById(id: string): ProcessTitleJob | null {
 			const row = db.select().from(s.processTitleJobs).where(eq(s.processTitleJobs.id, id)).get();
 			return row ?? null;
 		},
 
+		/** @internal */
 		listByProcessInstance(processInstanceId: string): ProcessTitleJob[] {
 			return db
 				.select()
@@ -91,6 +112,7 @@ export function createProcessTitleJobRepo(db: LeitwerkDb) {
 				.all();
 		},
 
+		/** @internal */
 		listAll(): ProcessTitleJob[] {
 			return db
 				.select()
@@ -99,6 +121,7 @@ export function createProcessTitleJobRepo(db: LeitwerkDb) {
 				.all();
 		},
 
+		/** @internal */
 		listDuePending(asOf: string, limit: number): ProcessTitleJob[] {
 			return db
 				.select()
@@ -111,6 +134,7 @@ export function createProcessTitleJobRepo(db: LeitwerkDb) {
 				.all();
 		},
 
+		/** @internal */
 		markRunning(id: string): ProcessTitleJob | null {
 			return transition(id, ["pending"], {
 				status: "running",
@@ -119,18 +143,22 @@ export function createProcessTitleJobRepo(db: LeitwerkDb) {
 			});
 		},
 
+		/** @internal */
 		reschedule(id: string, nextRunAt: string, lastError: string): ProcessTitleJob | null {
 			return transition(id, ["running"], { status: "pending", nextRunAt, lastError });
 		},
 
+		/** @internal */
 		markCompleted(id: string): ProcessTitleJob | null {
 			return transition(id, ["running"], { status: "completed", lastError: null });
 		},
 
+		/** @internal */
 		markFailed(id: string, lastError: string): ProcessTitleJob | null {
 			return transition(id, ["running"], { status: "failed", lastError });
 		},
 
+		/** @internal */
 		markSuperseded(id: string): ProcessTitleJob | null {
 			return transition(id, ["pending", "running"], { status: "superseded" });
 		},

@@ -7,8 +7,10 @@ import { isPathInside } from "./format.js";
 
 const execFileAsync = promisify(execFile);
 
+/** @internal */
 type TransferProject = LeitwerkTransferManifestV1["projects"][number];
 
+/** @internal */
 export async function readProjectEvidence(
 	workspaceRoot: string,
 	projects: readonly TransferProject[],

@@ -1,14 +1,19 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 /** Application boundary for encrypted credential payloads. Callers supply deployment key material. */
+/** @internal */
 export interface CredentialCipher {
+	/** @internal */
 	encrypt(plaintext: string): string;
+	/** @internal */
 	decrypt(ciphertext: string): string;
 }
 
+/** @internal */
 export const PROVIDER_CREDENTIAL_KEY_ENV = "LEITWERK_CREDENTIAL_ENCRYPTION_KEY";
 
 /** A missing deployment key may inspect an empty table but can never read or write credentials. */
+/** @internal */
 export function createUnavailableCredentialCipher(): CredentialCipher {
 	const unavailable = (): never => {
 		throw new Error(
@@ -19,6 +24,7 @@ export function createUnavailableCredentialCipher(): CredentialCipher {
 }
 
 /** Parses an exact 32-byte Base64 deployment secret. */
+/** @internal */
 export function createCredentialCipherFromBase64(value: string): CredentialCipher {
 	const normalized = value.trim();
 	if (normalized === "") {
@@ -34,6 +40,7 @@ export function createCredentialCipherFromBase64(value: string): CredentialCiphe
 	return createAes256GcmCredentialCipher(key);
 }
 
+/** @internal */
 export function createCredentialCipherFromEnvironment(
 	environment: NodeJS.ProcessEnv = process.env,
 ): CredentialCipher | null {
@@ -41,6 +48,7 @@ export function createCredentialCipherFromEnvironment(
 	return value === undefined ? null : createCredentialCipherFromBase64(value);
 }
 
+/** @internal */
 export function createAes256GcmCredentialCipher(key: Buffer): CredentialCipher {
 	if (key.length !== 32) throw new Error("Credential encryption key must be 32 bytes");
 	return {

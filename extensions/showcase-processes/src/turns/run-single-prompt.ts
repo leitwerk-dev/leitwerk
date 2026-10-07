@@ -4,12 +4,14 @@ import {
 	REQUIRED_MARKDOWN_RESULT_TURN_RESULT,
 } from "@leitwerk-dev/process-sdk";
 
+/** @internal */
 export function buildSinglePromptInstruction(promptText: string): string {
 	return `Run the following one-shot operator prompt exactly once.
 
 ${promptText}`;
 }
 
+/** @internal */
 export function buildSinglePromptWithToolInstruction(promptText: string): string {
 	return `Run the following one-shot operator prompt exactly once.
 
@@ -18,6 +20,7 @@ ${promptText}
 When you are done, call the done tool with a short summary of the result.`;
 }
 
+/** @internal */
 export function createRunSinglePromptTurn(promptText: string): LlmTurnDefinition<"completed"> {
 	return llmTurn({
 		description: "Run a single operator-provided prompt and finish on turn end",
@@ -36,6 +39,7 @@ export function createRunSinglePromptTurn(promptText: string): LlmTurnDefinition
 	});
 }
 
+/** @internal */
 export function createRunSinglePromptWithToolTurn(promptText: string): LlmTurnDefinition<"done"> {
 	return llmTurn({
 		description: "Run a single operator-provided prompt and require the done tool",
@@ -61,10 +65,12 @@ export function createRunSinglePromptWithToolTurn(promptText: string): LlmTurnDe
 	});
 }
 
+/** @internal */
 export const runSinglePrompt = createRunSinglePromptTurn(
 	"Run the operator-provided single prompt.",
 );
 
+/** @internal */
 export const runSinglePromptWithTool = createRunSinglePromptWithToolTurn(
 	"Run the operator-provided single prompt.",
 );

@@ -3,6 +3,7 @@ import { existsSync, lstatSync, mkdirSync, readFileSync, rmSync } from "node:fs"
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 
+/** @internal */
 export function assertSandboxPath(root: string, candidate: string): void {
 	const relative = path.relative(root, candidate);
 	if (relative.startsWith(`..${path.sep}`) || relative === ".." || path.isAbsolute(relative))
@@ -14,12 +15,14 @@ export function assertSandboxPath(root: string, candidate: string): void {
 			throw new Error("Sandbox storage must not be a symlink");
 	}
 }
+/** @internal */
 export function sandboxDirectory(workspaceRoot: string): string {
 	const directory = path.join(workspaceRoot, ".leitwerk", "sandbox");
 	assertSandboxPath(workspaceRoot, directory);
 	mkdirSync(directory, { recursive: true, mode: 0o700 });
 	return directory;
 }
+/** @internal */
 export function processIdentity(pid: number): string | null {
 	if (!Number.isSafeInteger(pid) || pid <= 1) throw new Error("Invalid sandbox supervisor pid");
 	try {
@@ -31,9 +34,13 @@ export function processIdentity(pid: number): string | null {
 		throw error;
 	}
 }
+/** @internal */
 export async function resetSandbox(
 	workspaceRoot: string,
-	options: { shutdownTimeoutMs?: number } = {},
+	options: {
+		/** @internal */
+		shutdownTimeoutMs?: number;
+	} = {},
 ): Promise<void> {
 	const sandbox = sandboxDirectory(workspaceRoot);
 	const directories = ["scripted", "real"].map((mode) => path.join(sandbox, mode));

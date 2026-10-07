@@ -6,20 +6,26 @@ import type { ServerExtensionEventMap } from "@leitwerk-dev/process-sdk";
  * when IPC messages arrive or commands execute.
  */
 
+/** @internal */
 export type ExtensionEventHandler<T = unknown> = (payload: T) => void | Promise<void>;
 
+/** @internal */
 export interface ExtensionHost<TEventMap extends object = ServerExtensionEventMap> {
+	/** @internal */
 	on<K extends keyof TEventMap & string>(
 		event: K,
 		handler: ExtensionEventHandler<TEventMap[K]>,
 	): void;
+	/** @internal */
 	off<K extends keyof TEventMap & string>(
 		event: K,
 		handler: ExtensionEventHandler<TEventMap[K]>,
 	): void;
+	/** @internal */
 	emit<K extends keyof TEventMap & string>(event: K, payload: TEventMap[K]): Promise<void>;
 }
 
+/** @internal */
 export function createExtensionHost<
 	TEventMap extends object = ServerExtensionEventMap,
 >(): ExtensionHost<TEventMap> {

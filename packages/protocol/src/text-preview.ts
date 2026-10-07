@@ -1,14 +1,19 @@
+/** @internal */
 export interface TextPreview {
+	/** @internal */
 	text: string;
+	/** @internal */
 	truncated: boolean;
 }
 
+/** @internal */
 export function truncateTextPreview(value: string, maxLength: number): TextPreview {
 	return value.length <= maxLength
 		? { text: value, truncated: false }
 		: { text: value.slice(0, maxLength).trimEnd(), truncated: true };
 }
 
+/** @internal */
 export function buildTrailingLinePreview(
 	value: string,
 	lineCount: number,

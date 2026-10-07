@@ -8,9 +8,13 @@ import {
 	type ResultImageMimeType,
 } from "@leitwerk-dev/worker-protocol";
 
+/** @internal */
 export interface ResultImageMetadata {
+	/** @internal */
 	imageId: string;
+	/** @internal */
 	mimeType: ResultImageMimeType;
+	/** @internal */
 	byteSize: number;
 }
 
@@ -24,9 +28,15 @@ const MIME_BY_EXTENSION: Record<string, ResultImageMimeType> = {
 	jpg: "image/jpeg",
 	webp: "image/webp",
 };
+/** @internal */
 export class ResultImageStore {
+	/** @internal */
 	readonly rootDir: string;
-	constructor(input: { rootDir: string }) {
+	/** @internal */
+	constructor(input: {
+		/** @internal */
+		rootDir: string;
+	}) {
 		this.rootDir = path.resolve(input.rootDir);
 	}
 	private turnDir(instanceId: string, turnRecordId: string): string {
@@ -34,10 +44,15 @@ export class ResultImageStore {
 			throw new Error("Invalid result image storage id");
 		return path.join(this.rootDir, instanceId, turnRecordId);
 	}
+	/** @internal */
 	async put(input: {
+		/** @internal */
 		instanceId: string;
+		/** @internal */
 		turnRecordId: string;
+		/** @internal */
 		bytes: Buffer;
+		/** @internal */
 		mimeType: ResultImageMimeType;
 	}): Promise<ResultImageMetadata> {
 		const dir = this.turnDir(input.instanceId, input.turnRecordId);
@@ -54,13 +69,17 @@ export class ResultImageStore {
 		}
 		return { imageId, mimeType: input.mimeType, byteSize: input.bytes.length };
 	}
+	/** @internal */
 	async deleteProcess(instanceId: string): Promise<void> {
 		if (!isResultImageStorageSegment(instanceId))
 			throw new Error("Invalid result image storage id");
 		await rm(path.join(this.rootDir, instanceId), { recursive: true, force: true });
 	}
+	/** @internal */
 	async cleanupProcesses(input: {
+		/** @internal */
 		retainedInstanceIds: ReadonlySet<string>;
+		/** @internal */
 		expiredInstanceIds?: ReadonlySet<string>;
 	}): Promise<string[]> {
 		let entries: Dirent[];
@@ -83,11 +102,17 @@ export class ResultImageStore {
 		}
 		return removed;
 	}
+	/** @internal */
 	async get(
 		instanceId: string,
 		turnRecordId: string,
 		imageId: string,
-	): Promise<{ metadata: ResultImageMetadata; bytes: Buffer } | null> {
+	): Promise<{
+		/** @internal */
+		metadata: ResultImageMetadata;
+		/** @internal */
+		bytes: Buffer;
+	} | null> {
 		const extension = parseResultImageId(imageId)?.extension;
 		if (!extension) return null;
 		try {

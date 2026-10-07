@@ -8,33 +8,80 @@ import type {
 	ForgejoRepository,
 } from "./client.js";
 
+/** @public */
 export interface LocalForgejoRepository {
+	/** @public */
 	repository: ForgejoRepository;
+	/** @public */
 	issues: ForgejoIssue[];
+	/** @public */
 	pulls: ForgejoPullRequest[];
+	/** @public */
 	comments: Record<string, Array<ReturnType<LocalForgejoAdapter["newComment"]>>>;
+	/** @public */
 	feedback: Record<string, ForgejoFeedbackItem[]>;
+	/** @public */
 	labels: ForgejoLabel[];
-	reactions?: Array<{ id: number; feedbackId: number; kind: string; content: string }>;
-	replies?: Array<{ id: number; prNumber: number; feedbackId: number; kind: string }>;
+	/** @internal */
+	reactions?: Array<{
+		/** @internal */
+		id: number;
+		/** @internal */
+		feedbackId: number;
+		/** @internal */
+		kind: string;
+		/** @internal */
+		content: string;
+	}>;
+	/** @internal */
+	replies?: Array<{
+		/** @internal */
+		id: number;
+		/** @internal */
+		prNumber: number;
+		/** @internal */
+		feedbackId: number;
+		/** @internal */
+		kind: string;
+	}>;
 }
+/** @public */
 export interface LocalForgejoState {
+	/** @public */
 	version: 1;
+	/** @public */
 	sequence: number;
+	/** @public */
 	repositories: LocalForgejoRepository[];
+	/** @public */
 	failAfterIssueWrite: boolean;
+	/** @internal */
 	failAfterPullWrite?: boolean;
 }
+/** @public */
 export interface LocalForgejoOptions {
+	/** @public */
 	root: string;
+	/** @public */
 	baseUrl: string;
+	/** @public */
 	now?: () => number;
+	/** @public */
 	nextId?: () => number;
-	seeds?: Array<LocalRepositorySeed & { labels?: string[] }>;
+	/** @internal */
+	seeds?: Array<
+		LocalRepositorySeed & {
+			/** @internal */
+			labels?: string[];
+		}
+	>;
 }
 /** Persistent local Forgejo. Register its client through setupForgejoIntegration. */
+/** @public */
 export class LocalForgejoAdapter extends LocalForgeStore<LocalForgejoState, LocalForgejoOptions> {
+	/** @internal */
 	readonly baseUrl: string;
+	/** @public */
 	constructor(options: LocalForgejoOptions) {
 		super(options, "forgejo.json", {
 			version: 1,
@@ -50,12 +97,19 @@ export class LocalForgejoAdapter extends LocalForgeStore<LocalForgejoState, Loca
 		this.state.failAfterPullWrite ??= false;
 		for (const seed of options.seeds ?? []) this.seed(seed);
 	}
+	/** @internal */
 	repo(owner: string, name: string) {
 		const repo = this.state.repositories.find((r) => r.repository.full_name === `${owner}/${name}`);
 		if (!repo) throw new Error("Unknown local Forgejo repository");
 		return repo;
 	}
-	seed(seed: LocalRepositorySeed & { labels?: string[] }) {
+	/** @public */
+	seed(
+		seed: LocalRepositorySeed & {
+			/** @public */
+			labels?: string[];
+		},
+	) {
 		const existing = this.state.repositories.find(
 			(r) => r.repository.full_name === `${seed.owner}/${seed.name}`,
 		);
@@ -74,9 +128,11 @@ export class LocalForgejoAdapter extends LocalForgeStore<LocalForgejoState, Loca
 		this.save();
 		return repo;
 	}
+	/** @internal */
 	head(repo: LocalForgejoRepository, ref: string) {
 		return this.git.head(repo.repository.ssh_url, ref);
 	}
+	/** @public */
 	client(): ForgejoClientLike {
 		return forgejoClient(this);
 	}

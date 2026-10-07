@@ -5,8 +5,10 @@ import {
 	prepareTransferArchive,
 } from "@leitwerk-dev/session-transfer";
 
+/** @internal */
 export const SESSION_TRANSFER_HELPER_ENTRY_PATH =
 	"/app/packages/worker-runners/dist/session-transfer-helper-cli.js";
+/** @internal */
 export const SESSION_TRANSFER_HELPER_MOUNT_PATH = "/state";
 
 interface HelperEnvironment {
@@ -73,6 +75,7 @@ async function readHelperSpec(environment: HelperEnvironment) {
 	return parseSessionTransferHelperSpec(await response.json());
 }
 
+/** @internal */
 export async function runSessionTransferHelper(): Promise<void> {
 	const environment = readEnvironment();
 	const spec = await readHelperSpec(environment);

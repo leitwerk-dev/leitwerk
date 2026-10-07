@@ -1,7 +1,11 @@
+/** @internal */
 export type RepoLocatorKind = "remote_url" | "local_path";
 
+/** @internal */
 export interface ParsedRepoLocator {
+	/** @internal */
 	kind: RepoLocatorKind;
+	/** @internal */
 	value: string;
 }
 
@@ -58,6 +62,7 @@ function isRemoteGitUrl(value: string): boolean {
 	}
 }
 
+/** @internal */
 export function detectRepoLocatorKind(value: string): RepoLocatorKind | null {
 	const trimmed = value.trim();
 	if (trimmed.length === 0) {
@@ -72,6 +77,7 @@ export function detectRepoLocatorKind(value: string): RepoLocatorKind | null {
 	return null;
 }
 
+/** @internal */
 export function parseRepoLocator(value: unknown): ParsedRepoLocator | null {
 	if (typeof value !== "string") {
 		return null;
@@ -84,10 +90,12 @@ export function parseRepoLocator(value: unknown): ParsedRepoLocator | null {
 	return { kind, value: trimmed };
 }
 
+/** @internal */
 export function isRepoLocator(value: unknown): value is string {
 	return parseRepoLocator(value) !== null;
 }
 
+/** @internal */
 export function assertRepoLocator(value: unknown, fieldName = "repoLocator"): string {
 	const parsed = parseRepoLocator(value);
 	if (!parsed) {

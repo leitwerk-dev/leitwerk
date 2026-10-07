@@ -26,24 +26,38 @@ const MAX_SOURCE_FIELDS = 6;
 const DEFAULT_TITLE_GENERATION_POLL_INTERVAL_MS = 1_000;
 const PI_AGENT_DIR_ENV = "PI_CODING_AGENT_DIR";
 
+/** @internal */
 type ProcessTitleRepos = Pick<RepositoryBundle, "futureExecutions" | "processes" | "titleJobs">;
 
+/** @internal */
 export interface ProcessTitleLogger {
+	/** @internal */
 	warn(message: string, details?: Record<string, unknown>): void;
 }
 
+/** @internal */
 export interface ProcessTitleGenerator {
+	/** @internal */
 	start?(): Promise<void>;
+	/** @internal */
 	queueProcessTitleGeneration(input: {
+		/** @internal */
 		processId: string;
+		/** @internal */
 		launchPlan: ProcessLaunchPlan;
+		/** @internal */
 		launchRunId?: string;
 	}): void;
+	/** @internal */
 	queueFutureExecutionTitleGeneration(input: {
+		/** @internal */
 		futureExecutionId: string;
+		/** @internal */
 		launchPlan: ProcessLaunchPlan;
+		/** @internal */
 		expectedPayloadJson?: string;
 	}): void;
+	/** @internal */
 	close?(): Promise<void>;
 }
 
@@ -52,34 +66,74 @@ interface ProcessTitleRuntimeDiagnosticSummary {
 	message: string;
 }
 
+/** @internal */
 interface ProcessTitleProviderOptions {
+	/** @internal */
 	timeoutMs?: number;
+	/** @internal */
 	maxRetries?: number;
+	/** @internal */
 	maxRetryDelayMs: number;
 }
 
+/** @internal */
 export type FutureExecutionTitleApplier = (input: {
+	/** @internal */
 	futureExecutionId: string;
+	/** @internal */
 	expectedPayloadJson: string;
+	/** @internal */
 	title: string;
 }) => Promise<
-	| { kind: "applied" }
-	| { kind: "applied_with_reaction_error"; error: string; code: string }
-	| { kind: "superseded" }
-	| { kind: "failed"; error: string }
+	| {
+			/** @internal */
+			kind: "applied";
+	  }
+	| {
+			/** @internal */
+			kind: "applied_with_reaction_error";
+			/** @internal */
+			error: string;
+			/** @internal */
+			code: string;
+	  }
+	| {
+			/** @internal */
+			kind: "superseded";
+	  }
+	| {
+			/** @internal */
+			kind: "failed";
+			/** @internal */
+			error: string;
+	  }
 >;
 
+/** @internal */
 export interface ProcessTitleGeneratorRuntimeDeps {
+	/** @internal */
 	generateTitle(input: {
+		/** @internal */
 		expandedAgentDir: string;
+		/** @internal */
 		provider: string;
+		/** @internal */
 		modelId: string;
+		/** @internal */
 		prompt: string;
+		/** @internal */
 		maxTokens: number;
+		/** @internal */
 		providerOptions: ProcessTitleProviderOptions;
 	}): Promise<string>;
-	defer(work: () => void): { unref?(): void };
+	/** @internal */
+	defer(work: () => void): {
+		/** @internal */
+		unref?(): void;
+	};
+	/** @internal */
 	now(): Date;
+	/** @internal */
 	pollIntervalMs: number;
 }
 
@@ -122,6 +176,7 @@ function getFutureExecutionTitleJobTarget(job: ProcessTitleJob): FutureExecution
 	};
 }
 
+/** @internal */
 export function normalizeProcessTitle(value: string | null | undefined): string | null {
 	const trimmed = trimToNull(value);
 	if (!trimmed) {
@@ -146,6 +201,7 @@ function normalizeSourceValue(value: string): string | null {
 	return truncateTextAtWordBoundary(trimmed.replace(/\s+/g, " "), MAX_SOURCE_VALUE_LENGTH);
 }
 
+/** @internal */
 export function buildProcessTitleSourceFields(
 	launchPlan: ProcessLaunchPlan,
 ): ProcessTitleSourceField[] {
@@ -168,6 +224,7 @@ export function buildProcessTitleSourceFields(
 	return [...normalized.values()];
 }
 
+/** @internal */
 export function buildProcessTitlePrompt(launchPlan: ProcessLaunchPlan): string | null {
 	const fields = buildProcessTitleSourceFields(launchPlan);
 	if (fields.length === 0) {
@@ -834,14 +891,23 @@ class DefaultProcessTitleGenerator implements ProcessTitleGenerator {
 	}
 }
 
+/** @internal */
 export function createProcessTitleGenerator(options: {
+	/** @internal */
 	config: LeitwerkConfig;
+	/** @internal */
 	repos: ProcessTitleRepos;
+	/** @internal */
 	broadcaster: Broadcaster;
+	/** @internal */
 	logger?: ProcessTitleLogger;
+	/** @internal */
 	runtime?: Partial<ProcessTitleGeneratorRuntimeDeps>;
+	/** @internal */
 	extensionHost?: ExtensionHost;
+	/** @internal */
 	futureExecutionTitleApplier?: FutureExecutionTitleApplier;
+	/** @internal */
 	getLaunchCoordinator?: () => LaunchCoordinator | undefined;
 }): ProcessTitleGenerator {
 	const runtime = { ...createDefaultRuntimeDeps(), ...options.runtime };

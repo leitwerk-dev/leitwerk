@@ -21,6 +21,11 @@ npm run test:e2e
 npm run build
 ```
 
+CI runs `npm run api:check` separately after the full gate; local `test:full`
+does not include it. To check locally, run `npm run build && npm run api:check`.
+It checks release tags and signature dependencies and verifies that public and
+internal declarations survive the build.
+
 ### Browser layout and behavior
 
 Install the browser engines once with `npx playwright install chromium firefox webkit`

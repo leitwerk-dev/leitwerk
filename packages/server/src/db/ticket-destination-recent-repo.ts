@@ -3,12 +3,19 @@ import type { LeitwerkDb } from "./database.js";
 import { generateId, now } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
+/** @internal */
 export interface TicketDestinationRecent {
+	/** @internal */
 	id: string;
+	/** @internal */
 	actorKey: string;
+	/** @internal */
 	toolName: string;
+	/** @internal */
 	destinationId: string;
+	/** @internal */
 	createdAt: string;
+	/** @internal */
 	updatedAt: string;
 }
 
@@ -16,8 +23,10 @@ function map(row: typeof s.ticketDestinationRecents.$inferSelect): TicketDestina
 	return { ...row };
 }
 
+/** @internal */
 export function createTicketDestinationRecentRepo(db: LeitwerkDb) {
 	return {
+		/** @internal */
 		list(actorKey: string, toolName: string, limit = 5): TicketDestinationRecent[] {
 			return db
 				.select()
@@ -37,10 +46,15 @@ export function createTicketDestinationRecentRepo(db: LeitwerkDb) {
 				.map(map);
 		},
 
+		/** @internal */
 		record(input: {
+			/** @internal */
 			actorKey: string;
+			/** @internal */
 			toolName: string;
+			/** @internal */
 			destinationId: string;
+			/** @internal */
 			limit?: number;
 		}): TicketDestinationRecent {
 			const match = and(

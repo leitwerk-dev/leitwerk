@@ -15,23 +15,37 @@ import type { LeitwerkDb } from "./database.js";
 import { generateId, now, parseMetadata, sqliteLikePatterns } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
+/** @internal */
 export interface ProcessLaunchIntent {
+	/** @internal */
 	launcherId: string;
+	/** @internal */
 	launcherInput: Record<string, unknown>;
 }
 
+/** @public */
 export interface CreateProcessInstanceInput extends ProcessCustomizableFields {
+	/** @public */
 	processId: string;
+	/** @public */
 	selectedTurnId?: TurnId | null;
+	/** @public */
 	lifecycleStatus?: ProcessLifecycleStatus;
+	/** @internal */
 	currentExecution?: CurrentExecutionRef;
+	/** @internal */
 	selectedTurnModelKind?: ModelSelectionKind | null;
+	/** @internal */
 	selectedTurnModelSource?: ProcessSelectedTurnModelSource | null;
+	/** @public */
 	paramsJson?: string | null;
+	/** @public */
 	stateJson?: string | null;
+	/** @internal */
 	launchIntent?: ProcessLaunchIntent;
 }
 
+/** @internal */
 export type ProcessOverviewStatusFilter =
 	| "all"
 	| "running"
@@ -40,26 +54,43 @@ export type ProcessOverviewStatusFilter =
 	| "aborted"
 	| "scheduled";
 
+/** @internal */
 export interface ProcessOverviewQuery {
+	/** @internal */
 	query?: string;
+	/** @internal */
 	processType?: string;
+	/** @internal */
 	status?: ProcessOverviewStatusFilter;
 }
 
+/** @internal */
 export interface ProcessOverviewWindowQuery extends ProcessOverviewQuery {
+	/** @internal */
 	limit: number;
+	/** @internal */
 	sortKey: "status" | "title" | "timeline";
+	/** @internal */
 	sortDirection: "asc" | "desc";
 }
 
+/** @public */
 export interface UpdateProcessInstanceInput extends ProcessCustomizableFields {
+	/** @internal */
 	selectedTurnId?: TurnId | null;
+	/** @internal */
 	lifecycleStatus?: ProcessLifecycleStatus;
+	/** @internal */
 	currentExecution?: CurrentExecutionRef;
+	/** @internal */
 	planRevision?: number;
+	/** @internal */
 	selectedTurnModelKind?: ModelSelectionKind | null;
+	/** @internal */
 	selectedTurnModelSource?: ProcessSelectedTurnModelSource | null;
+	/** @public */
 	paramsJson?: string | null;
+	/** @internal */
 	stateJson?: string | null;
 }
 
@@ -159,8 +190,10 @@ function rowToProcessInstance(row: typeof s.processInstances.$inferSelect): Proc
 	};
 }
 
+/** @public */
 export function createProcessInstanceRepo(db: LeitwerkDb) {
 	return {
+		/** @internal */
 		getLaunchIntent(instanceId: string): ProcessLaunchIntent | null {
 			const row = db
 				.select({ launchIntentJson: s.processInstances.launchIntentJson })
@@ -169,6 +202,7 @@ export function createProcessInstanceRepo(db: LeitwerkDb) {
 				.get();
 			return parseLaunchIntent(row?.launchIntentJson ?? null);
 		},
+		/** @public */
 		create(input: CreateProcessInstanceInput): ProcessInstance {
 			const id = generateId("agt");
 			const ts = now();
@@ -202,11 +236,13 @@ export function createProcessInstanceRepo(db: LeitwerkDb) {
 			return rowToProcessInstance({ ...values, planRevision: 0 });
 		},
 
+		/** @public */
 		getById(id: string): ProcessInstance | null {
 			const row = db.select().from(s.processInstances).where(eq(s.processInstances.id, id)).get();
 			return row ? rowToProcessInstance(row) : null;
 		},
 
+		/** @public */
 		listAll(): ProcessInstance[] {
 			return db
 				.select()
@@ -216,6 +252,7 @@ export function createProcessInstanceRepo(db: LeitwerkDb) {
 				.map(rowToProcessInstance);
 		},
 
+		/** @internal */
 		listCurrent(limit: number): ProcessInstance[] {
 			return db
 				.select()
@@ -227,6 +264,7 @@ export function createProcessInstanceRepo(db: LeitwerkDb) {
 				.map(rowToProcessInstance);
 		},
 
+		/** @internal */
 		countCurrent(): number {
 			return (
 				db
@@ -237,6 +275,7 @@ export function createProcessInstanceRepo(db: LeitwerkDb) {
 			);
 		},
 
+		/** @internal */
 		countOverview(input: ProcessOverviewQuery): number {
 			return (
 				db.select({ value: count() }).from(s.processInstances).where(overviewWhere(input)).get()
@@ -244,18 +283,30 @@ export function createProcessInstanceRepo(db: LeitwerkDb) {
 			);
 		},
 
+		/** @internal */
 		countOverviewByLifecycle(input: Pick<ProcessOverviewQuery, "query" | "processType">) {
 			return db
-				.select({ lifecycleStatus: s.processInstances.lifecycleStatus, value: count() })
+				.select({
+					/** @internal */
+					lifecycleStatus: s.processInstances.lifecycleStatus,
+					/** @internal */
+					value: count(),
+				})
 				.from(s.processInstances)
 				.where(overviewWhere({ ...input, status: "all" }))
 				.groupBy(s.processInstances.lifecycleStatus)
 				.all();
 		},
 
+		/** @internal */
 		listOverviewProcessTypes(input: Pick<ProcessOverviewQuery, "query" | "status">) {
 			return db
-				.select({ processId: s.processInstances.processId, value: count() })
+				.select({
+					/** @internal */
+					processId: s.processInstances.processId,
+					/** @internal */
+					value: count(),
+				})
 				.from(s.processInstances)
 				.where(overviewWhere(input))
 				.groupBy(s.processInstances.processId)
@@ -263,6 +314,7 @@ export function createProcessInstanceRepo(db: LeitwerkDb) {
 				.all();
 		},
 
+		/** @internal */
 		listOverviewWindow(input: ProcessOverviewWindowQuery): ProcessInstance[] {
 			const title = sql<string>`coalesce(${s.processInstances.title}, ${s.processInstances.externalId}, ${s.processInstances.id})`;
 			const status = sql<number>`case
@@ -290,6 +342,7 @@ export function createProcessInstanceRepo(db: LeitwerkDb) {
 				.map(rowToProcessInstance);
 		},
 
+		/** @internal */
 		setGeneratedTitleIfBlank(id: string, title: string): ProcessInstance | null {
 			const normalizedTitle = normalizeProcessTitleInput(title);
 			if (!normalizedTitle) {
@@ -308,6 +361,7 @@ export function createProcessInstanceRepo(db: LeitwerkDb) {
 			return result.changes > 0 ? this.getById(id) : null;
 		},
 
+		/** @public */
 		update(id: string, input: UpdateProcessInstanceInput): ProcessInstance | null {
 			const ts = now();
 			const setValues: SQLiteUpdateSetSource<typeof s.processInstances> = {
@@ -341,6 +395,7 @@ export function createProcessInstanceRepo(db: LeitwerkDb) {
 			return this.getById(id);
 		},
 
+		/** @internal */
 		delete(id: string): boolean {
 			const result = db.delete(s.processInstances).where(eq(s.processInstances.id, id)).run();
 			return result.changes > 0;

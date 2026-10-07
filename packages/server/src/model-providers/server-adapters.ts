@@ -5,32 +5,51 @@ import type { ModelProviderCredentialService } from "./credentials.js";
 import { resolveRegisteredProviderOptions } from "./provider-options.js";
 import type { ModelProviderRegistry, RegisteredModelProvider } from "./registry.js";
 
+/** @internal */
 export type BuiltinPiServerAdapterFactory = (
 	builtinProviderId: string,
 	provider: RegisteredModelProvider,
 ) => PiServerAdapter | Promise<PiServerAdapter>;
 
+/** @internal */
 export interface ModelProviderServerAdapterRegistry {
+	/** @internal */
 	get(providerId: string): PiServerAdapter | null;
+	/** @internal */
 	require(providerId: string): PiServerAdapter;
+	/** @internal */
 	generateText(input: {
+		/** @internal */
 		profileId: string;
+		/** @internal */
 		prompt: string;
+		/** @internal */
 		systemPrompt: string;
+		/** @internal */
 		maxTokens: number;
+		/** @internal */
 		request: {
+			/** @internal */
 			timeoutMs?: number;
+			/** @internal */
 			maxRetries?: number;
+			/** @internal */
 			maxRetryDelayMs: number;
 		};
 	}): Promise<string>;
 }
 
+/** @internal */
 export async function createModelProviderServerAdapterRegistry(input: {
+	/** @internal */
 	registry: ModelProviderRegistry;
+	/** @internal */
 	modelProfiles: readonly ModelProfileSnapshot[];
+	/** @internal */
 	credentials: ModelProviderCredentialService;
+	/** @internal */
 	createBuiltinAdapter: BuiltinPiServerAdapterFactory;
+	/** @internal */
 	loadExtensionAdapter?: (entryPath: string) => Promise<PiServerAdapter>;
 }): Promise<ModelProviderServerAdapterRegistry> {
 	const loadExtension = input.loadExtensionAdapter ?? importPiServerAdapter;

@@ -27,10 +27,15 @@ function map(row: typeof s.turnStartRecords.$inferSelect): TurnStartRecord {
 	};
 }
 
+/** @internal */
 export function createTurnStartRecordRepo(db: LeitwerkDb) {
 	return {
+		/** @internal */
 		create(
-			input: Omit<TurnStartRecord, "id" | "createdAt" | "updatedAt"> & { id?: string },
+			input: Omit<TurnStartRecord, "id" | "createdAt" | "updatedAt"> & {
+				/** @internal */
+				id?: string;
+			},
 		): TurnStartRecord {
 			const ts = now();
 			const id = input.id ?? generateId("tsr");
@@ -50,10 +55,12 @@ export function createTurnStartRecordRepo(db: LeitwerkDb) {
 			db.insert(s.turnStartRecords).values(value).run();
 			return map(value);
 		},
+		/** @internal */
 		getById(id: string): TurnStartRecord | null {
 			const value = db.select().from(s.turnStartRecords).where(eq(s.turnStartRecords.id, id)).get();
 			return value ? map(value) : null;
 		},
+		/** @internal */
 		listByInstance(instanceId: string): TurnStartRecord[] {
 			return db
 				.select()
@@ -62,9 +69,13 @@ export function createTurnStartRecordRepo(db: LeitwerkDb) {
 				.all()
 				.map(map);
 		},
+		/** @internal */
 		compareAndSetState(input: {
+			/** @internal */
 			id: string;
+			/** @internal */
 			expectedKind: TurnStartRecordState["kind"];
+			/** @internal */
 			state: TurnStartRecordState;
 		}): TurnStartRecord | null {
 			const current = this.getById(input.id);

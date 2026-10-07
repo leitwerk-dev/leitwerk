@@ -11,21 +11,33 @@ import {
 } from "./manifest.js";
 import { aggregateAgentsMd, collectSkills } from "./resource-aggregator.js";
 
+/** @internal */
 export interface GitOps {
+	/** @internal */
 	clone(repoLocator: string, targetDir: string): Promise<void>;
+	/** @internal */
 	checkout(repoDir: string, branch: string): Promise<void>;
+	/** @internal */
 	createBranch(repoDir: string, branchName: string, startPoint: string): Promise<void>;
+	/** @internal */
 	branchExists(repoDir: string, branchName: string): Promise<boolean>;
+	/** @internal */
 	getHeadSha(repoDir: string): Promise<string>;
+	/** @internal */
 	readFile(repoDir: string, filePath: string): Promise<string | null>;
+	/** @internal */
 	listFiles(repoDir: string, pattern: string): Promise<string[]>;
 }
 
+/** @internal */
 export type RunRootGitOps = GitOps & {
+	/** @internal */
 	writeFile(repoDir: string, filePath: string, content: string): Promise<void>;
+	/** @internal */
 	configureRepositoryCredentials?(
 		credentials: readonly import("@leitwerk-dev/worker-protocol").WorkerRepositoryCredential[],
 	): void;
+	/** @internal */
 	cleanupRepositoryCredentials?(): void;
 };
 

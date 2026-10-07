@@ -1,9 +1,14 @@
 import { execFileSync } from "node:child_process";
 
+/** @internal */
 export interface KubernetesEvidenceOptions {
+	/** @internal */
 	namespace: string;
+	/** @internal */
 	deployment: string;
+	/** @internal */
 	kubeconfig?: string;
+	/** @internal */
 	expectedServerImage?: string;
 }
 

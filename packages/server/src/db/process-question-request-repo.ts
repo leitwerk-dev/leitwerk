@@ -24,14 +24,21 @@ function map(row: typeof s.processQuestionRequests.$inferSelect): ProcessQuestio
 	};
 }
 
+/** @internal */
 export interface CreateQuestionRequestInput {
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	turnRecordId: string;
+	/** @internal */
 	toolCallId: string;
+	/** @internal */
 	questions: readonly NormalizedQuestion[];
+	/** @internal */
 	askedAt?: string;
 }
 
+/** @internal */
 export function createProcessQuestionRequestRepo(db: LeitwerkDb) {
 	const getById = (id: string): ProcessQuestionRequest | null => {
 		const row = db
@@ -55,11 +62,17 @@ export function createProcessQuestionRequestRepo(db: LeitwerkDb) {
 			.map(map);
 	};
 	return {
+		/** @internal */
 		getById,
+		/** @internal */
 		listByInstance: (instanceId: string) => list(instanceId),
+		/** @internal */
 		listOpen: (instanceId?: string) => list(instanceId, true),
+		/** @internal */
 		createIdempotent(input: CreateQuestionRequestInput): {
+			/** @internal */
 			kind: "created" | "replay";
+			/** @internal */
 			request: ProcessQuestionRequest;
 		} {
 			const existingRow = db
@@ -94,10 +107,15 @@ export function createProcessQuestionRequestRepo(db: LeitwerkDb) {
 				.get();
 			return { kind: "created", request: map(row) };
 		},
+		/** @internal */
 		answer(input: {
+			/** @internal */
 			id: string;
+			/** @internal */
 			answers: readonly string[];
+			/** @internal */
 			actor: Actor;
+			/** @internal */
 			answeredAt?: string;
 		}): ProcessQuestionRequest | null {
 			const row = db
@@ -118,6 +136,7 @@ export function createProcessQuestionRequestRepo(db: LeitwerkDb) {
 				.get();
 			return row ? map(row) : null;
 		},
+		/** @internal */
 		cancelOpenByTurn(instanceId: string, turnRecordId: string): number {
 			return Number(
 				db

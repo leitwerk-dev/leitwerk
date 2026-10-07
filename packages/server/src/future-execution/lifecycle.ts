@@ -43,74 +43,149 @@ export type {
 	PreparedLaunchResult,
 } from "./launch-lifecycle.js";
 
+/** @internal */
 export interface FutureExecutionLifecycleDeps extends FutureExecutionExecutorDeps {
+	/** @internal */
 	turnRecords: RepositoryBundle["turnRecords"];
+	/** @internal */
 	launcherService?: ProcessLauncherService;
+	/** @internal */
 	launcherRecentValues?: LauncherRecentValuesService;
+	/** @internal */
 	assertRuntimeAvailable?: (processId: string) => Promise<void>;
 }
 
+/** @internal */
 export interface FutureExecutionLifecycleOptions {
+	/** @internal */
 	now?: () => Date;
 }
 
+/** @internal */
 type LifecycleFailure =
-	| { kind: "invalid"; issues: readonly FutureExecutionIssue[] }
-	| { kind: "not_found"; target: "future_execution" | "launch" | "action" | "process" }
-	| { kind: "conflict"; issue: FutureExecutionIssue }
-	| { kind: "unavailable"; reason: string }
-	| { kind: "failed"; issue: FutureExecutionIssue };
+	| {
+			/** @internal */
+			kind: "invalid";
+			/** @internal */
+			issues: readonly FutureExecutionIssue[];
+	  }
+	| {
+			/** @internal */
+			kind: "not_found";
+			/** @internal */
+			target: "future_execution" | "launch" | "action" | "process";
+	  }
+	| {
+			/** @internal */
+			kind: "conflict";
+			/** @internal */
+			issue: FutureExecutionIssue;
+	  }
+	| {
+			/** @internal */
+			kind: "unavailable";
+			/** @internal */
+			reason: string;
+	  }
+	| {
+			/** @internal */
+			kind: "failed";
+			/** @internal */
+			issue: FutureExecutionIssue;
+	  };
 
+/** @internal */
 export type ActionMutationOutcome =
 	| {
+			/** @internal */
 			kind: "scheduled";
+			/** @internal */
 			execution: FutureExecution;
+			/** @internal */
 			instanceId: string;
+			/** @internal */
 			operation: "created" | "updated";
 	  }
 	| {
+			/** @internal */
 			kind: "executed";
+			/** @internal */
 			process: ProcessInstance;
+			/** @internal */
 			data?: Record<string, unknown>;
 	  }
 	| {
+			/** @internal */
 			kind: "committed_with_reaction_error";
+			/** @internal */
 			process: ProcessInstance;
+			/** @internal */
 			error: string;
+			/** @internal */
 			code?: string;
 	  }
 	| {
+			/** @internal */
 			kind: "committed_with_reaction_error";
+			/** @internal */
 			execution: FutureExecution;
+			/** @internal */
 			instanceId: string;
+			/** @internal */
 			operation: "created" | "updated";
+			/** @internal */
 			error: string;
+			/** @internal */
 			code: string;
 	  }
 	| LifecycleFailure;
 
+/** @internal */
 export type CancelFutureExecutionOutcome =
-	| { kind: "canceled"; execution: FutureExecution }
 	| {
-			kind: "committed_with_reaction_error";
+			/** @internal */
+			kind: "canceled";
+			/** @internal */
 			execution: FutureExecution;
+	  }
+	| {
+			/** @internal */
+			kind: "committed_with_reaction_error";
+			/** @internal */
+			execution: FutureExecution;
+			/** @internal */
 			error: string;
+			/** @internal */
 			code: string;
 	  }
-	| { kind: "not_found"; target: "future_execution" };
+	| {
+			/** @internal */
+			kind: "not_found";
+			/** @internal */
+			target: "future_execution";
+	  };
 
+/** @internal */
 export interface FutureExecutionDueItemOutcome {
+	/** @internal */
 	futureExecutionId: string;
+	/** @internal */
 	kind: FutureExecutionItemOutcome["kind"] | "unexpected_error";
+	/** @internal */
 	error?: string;
 }
 
+/** @internal */
 export interface FutureExecutionDueBatchOutcome {
+	/** @internal */
 	kind: "batch_completed";
+	/** @internal */
 	asOf: string;
+	/** @internal */
 	items: FutureExecutionDueItemOutcome[];
 }
 
+/** @internal */
 export interface NormalizedScheduledActionInput extends ParsedActionRequestBody {}
 
 type Resolved<T> = { ok: true; value: T } | { ok: false; issue: FutureExecutionIssue };
@@ -295,6 +370,7 @@ async function executeActionMutation(
 		: actionFailureOutcome(result);
 }
 
+/** @internal */
 export function createFutureExecutionLifecycle(
 	deps: FutureExecutionLifecycleDeps,
 	_options: FutureExecutionLifecycleOptions = {},
@@ -400,17 +476,24 @@ export function createFutureExecutionLifecycle(
 	}
 
 	return {
+		/** @internal */
 		prepareLaunch: launchLifecycle.prepareLaunch,
 
+		/** @internal */
 		commitPreparedLaunch: launchLifecycle.commitPreparedLaunch,
 
+		/** @internal */
 		reviseScheduledLaunch: launchLifecycle.reviseScheduledLaunch,
 
+		/** @internal */
 		async scheduleAction(
 			process: ProcessInstance,
 			actionId: string,
 			request: NormalizedScheduledActionInput,
-			opts?: { actor?: Actor },
+			opts?: {
+				/** @internal */
+				actor?: Actor;
+			},
 		): Promise<ActionMutationOutcome> {
 			const operationTime = nowFn();
 			const scheduleValidation = validateScheduleRequestInput(request.schedule, ["now", "once"]);
@@ -459,10 +542,14 @@ export function createFutureExecutionLifecycle(
 			});
 		},
 
+		/** @internal */
 		async reviseScheduledAction(
 			futureExecutionId: string,
 			request: NormalizedScheduledActionInput,
-			opts?: { actor?: Actor },
+			opts?: {
+				/** @internal */
+				actor?: Actor;
+			},
 		): Promise<ActionMutationOutcome> {
 			const operationTime = nowFn();
 			return runFutureExecutionExclusive(
@@ -550,6 +637,7 @@ export function createFutureExecutionLifecycle(
 			);
 		},
 
+		/** @internal */
 		async cancel(futureExecutionId: string): Promise<CancelFutureExecutionOutcome> {
 			return runFutureExecutionExclusive(deps.processOperations, futureExecutionId, async () => {
 				const execution = deps.futureExecutions.getById(futureExecutionId);
@@ -568,12 +656,17 @@ export function createFutureExecutionLifecycle(
 			});
 		},
 
+		/** @internal */
 		applyGeneratedFutureLaunchTitleIfUnchanged:
 			launchLifecycle.applyGeneratedFutureLaunchTitleIfUnchanged,
 
+		/** @internal */
 		async reconcileModelAvailability(input: {
+			/** @internal */
 			availability: ModelStatusCacheSnapshot;
+			/** @internal */
 			profileIds?: ReadonlySet<string>;
+			/** @internal */
 			asOf?: string;
 		}) {
 			const asOf = input.asOf ?? nowFn().toISOString();
@@ -597,23 +690,40 @@ export function createFutureExecutionLifecycle(
 				asOf,
 			});
 			return result.reaction.ok
-				? { kind: "reconciled", changed: result.changed, asOf }
-				: {
-						kind: "committed_with_reaction_error",
+				? {
+						/** @internal */
+						kind: "reconciled",
+						/** @internal */
 						changed: result.changed,
+						/** @internal */
 						asOf,
+					}
+				: {
+						/** @internal */
+						kind: "committed_with_reaction_error",
+						/** @internal */
+						changed: result.changed,
+						/** @internal */
+						asOf,
+						/** @internal */
 						error: result.reaction.message,
+						/** @internal */
 						code: result.reaction.code,
 					};
 		},
 
-		async reconcileMissedScheduleOccurrences(
-			asOf: string,
-		): Promise<{ kind: "occurrences_advanced"; asOf: string }> {
+		/** @internal */
+		async reconcileMissedScheduleOccurrences(asOf: string): Promise<{
+			/** @internal */
+			kind: "occurrences_advanced";
+			/** @internal */
+			asOf: string;
+		}> {
 			await executor.reconcileMissedCronRowsOnStartup(asOf);
 			return { kind: "occurrences_advanced", asOf };
 		},
 
+		/** @internal */
 		async runDueWork(asOf: string): Promise<FutureExecutionDueBatchOutcome> {
 			const blockedItems = await executeDueRows(
 				deps.futureExecutions.listBlockedCronDue(asOf),
@@ -633,4 +743,5 @@ export function createFutureExecutionLifecycle(
 	};
 }
 
+/** @internal */
 export type FutureExecutionLifecycle = ReturnType<typeof createFutureExecutionLifecycle>;

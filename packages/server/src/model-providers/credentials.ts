@@ -14,26 +14,40 @@ const MAX_SECRET_FIELDS = 64;
 const MAX_SECRET_KEY_LENGTH = 128;
 const MAX_SECRET_VALUE_LENGTH = 64 * 1024;
 
+/** @internal */
 type CredentialRepo = ReturnType<typeof createProviderCredentialRepo>;
 
+/** @internal */
 export interface ResolvedProviderCredential extends WorkerCredentialMaterial {}
 
+/** @internal */
 export interface ProviderCredentialUpdateResult {
+	/** @internal */
 	accepted: boolean;
+	/** @internal */
 	currentRevision: number | null;
+	/** @internal */
 	safeReason?: string;
 }
 
+/** @internal */
 export interface ModelProviderCredentialService {
+	/** @internal */
 	initialize(): void;
+	/** @internal */
 	status: ModelProviderCredentialStatusResolver;
+	/** @internal */
 	resolve(
 		providerId: string,
 		options?: Readonly<Record<string, string>>,
 	): ResolvedProviderCredential | null;
+	/** @internal */
 	compareAndSet(input: {
+		/** @internal */
 		providerId: string;
+		/** @internal */
 		expectedRevision: number;
+		/** @internal */
 		value: unknown;
 	}): ProviderCredentialUpdateResult;
 }
@@ -119,8 +133,11 @@ function materializeSecrets(
  * secret projection, and revision compare-and-set. Secret values never enter
  * model status, receipts, or durable turn records.
  */
+/** @internal */
 export function createModelProviderCredentialService(input: {
+	/** @internal */
 	registry: ModelProviderRegistry;
+	/** @internal */
 	repo: CredentialRepo;
 }): ModelProviderCredentialService {
 	const status: ModelProviderCredentialStatusResolver = (provider) => {

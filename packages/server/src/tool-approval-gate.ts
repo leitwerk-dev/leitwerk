@@ -6,11 +6,24 @@ import type {
 import type { RepositoryBundle } from "./db/repositories.js";
 import type { ProcessOperationCoordinator } from "./process-operation-coordinator.js";
 
+/** @internal */
 export type ToolApprovalDecision =
-	| { kind: "accepted" }
-	| { kind: "feedback"; feedback: string }
-	| { kind: "declined" };
+	| {
+			/** @internal */
+			kind: "accepted";
+	  }
+	| {
+			/** @internal */
+			kind: "feedback";
+			/** @internal */
+			feedback: string;
+	  }
+	| {
+			/** @internal */
+			kind: "declined";
+	  };
 
+/** @internal */
 type ToolApprovalRepos = Pick<
 	RepositoryBundle,
 	"processes" | "turnRecords" | "turnStarts" | "toolApprovalRequests" | "transaction"
@@ -43,11 +56,15 @@ function resolvedDecision(request: ProcessToolApprovalRequest): ToolApprovalDeci
 	return { kind: "declined" };
 }
 
+/** @internal */
 export function createToolApprovalGate(input: {
+	/** @internal */
 	repos: ToolApprovalRepos;
+	/** @internal */
 	processOperations: ProcessOperationCoordinator;
 }) {
 	const waiters = new Map<string, Set<(decision: ToolApprovalDecision) => void>>();
+	/** @internal */
 	function reconcile(instanceId: string): void {
 		for (const request of input.repos.toolApprovalRequests.listByInstance(instanceId)) {
 			const decision = resolvedDecision(request);
@@ -57,13 +74,21 @@ export function createToolApprovalGate(input: {
 		}
 	}
 	return {
+		/** @internal */
 		reconcile,
+		/** @internal */
 		async review(requestInput: {
+			/** @internal */
 			instanceId: string;
+			/** @internal */
 			turnRecordId: string;
+			/** @internal */
 			toolCallId: string;
+			/** @internal */
 			toolName: string;
+			/** @internal */
 			arguments: Record<string, unknown>;
+			/** @internal */
 			destination?: ProcessToolApprovalDestination;
 		}): Promise<ToolApprovalDecision> {
 			if (!isCurrentTurn(input.repos, requestInput)) return { kind: "declined" };
@@ -76,9 +101,11 @@ export function createToolApprovalGate(input: {
 				waiters.set(result.request.id, pending);
 			});
 		},
+		/** @internal */
 		listOpen(instanceId?: string): ProcessToolApprovalRequest[] {
 			return input.repos.toolApprovalRequests.listOpen(instanceId);
 		},
+		/** @internal */
 		async resolve(
 			instanceId: string,
 			requestId: string,
@@ -106,6 +133,7 @@ export function createToolApprovalGate(input: {
 			reconcile(instanceId);
 			return resolved;
 		},
+		/** @internal */
 		cancelTurn(instanceId: string, turnRecordId: string): number {
 			const changed = input.repos.toolApprovalRequests.cancelOpenByTurn(instanceId, turnRecordId);
 			reconcile(instanceId);
@@ -113,4 +141,5 @@ export function createToolApprovalGate(input: {
 		},
 	};
 }
+/** @internal */
 export type ToolApprovalGate = ReturnType<typeof createToolApprovalGate>;

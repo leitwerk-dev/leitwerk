@@ -10,11 +10,17 @@ import {
 import { type Broadcaster, createBroadcaster } from "../ws/broadcast.js";
 import { createDefaultTestProcessGraphRegistry } from "./process-fixtures.js";
 
+/** @internal */
 export interface TestDeps extends RepositoryBundle {
+	/** @internal */
 	db: LeitwerkDb;
+	/** @internal */
 	broadcaster: Broadcaster;
+	/** @internal */
 	processModelPolicy: ServerProcessModelPolicy;
+	/** @internal */
 	launchPlans: ProcessLaunchPlanServiceLike;
+	/** @internal */
 	getModelAvailabilitySnapshot: () => ModelStatusCacheSnapshot;
 }
 
@@ -38,7 +44,13 @@ export function createSelectedTurnStart(
 	return record;
 }
 
-export function createTestDeps(options: { sqlitePath?: string } = {}): TestDeps {
+/** @internal */
+export function createTestDeps(
+	options: {
+		/** @internal */
+		sqlitePath?: string;
+	} = {},
+): TestDeps {
 	const db = options.sqlitePath
 		? createDatabase({ sqlitePath: options.sqlitePath, enableWAL: false })
 		: createInMemoryDatabase();

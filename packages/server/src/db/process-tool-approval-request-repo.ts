@@ -36,6 +36,7 @@ function map(row: typeof s.processToolApprovalRequests.$inferSelect): ProcessToo
 	};
 }
 
+/** @internal */
 export function createProcessToolApprovalRequestRepo(db: LeitwerkDb) {
 	const list = (instanceId?: string, openOnly = false): ProcessToolApprovalRequest[] => {
 		const filters = [
@@ -51,17 +52,32 @@ export function createProcessToolApprovalRequestRepo(db: LeitwerkDb) {
 			.map(map);
 	};
 	return {
+		/** @internal */
 		listByInstance: (instanceId: string) => list(instanceId),
+		/** @internal */
 		listOpen: (instanceId?: string) => list(instanceId, true),
+		/** @internal */
 		createIdempotent(input: {
+			/** @internal */
 			instanceId: string;
+			/** @internal */
 			turnRecordId: string;
+			/** @internal */
 			toolCallId: string;
+			/** @internal */
 			toolName: string;
+			/** @internal */
 			arguments: Record<string, unknown>;
+			/** @internal */
 			destination?: ProcessToolApprovalDestination;
+			/** @internal */
 			requestedAt?: string;
-		}): { kind: "created" | "replay"; request: ProcessToolApprovalRequest } {
+		}): {
+			/** @internal */
+			kind: "created" | "replay";
+			/** @internal */
+			request: ProcessToolApprovalRequest;
+		} {
 			const existing = db
 				.select()
 				.from(s.processToolApprovalRequests)
@@ -100,11 +116,17 @@ export function createProcessToolApprovalRequestRepo(db: LeitwerkDb) {
 				.get();
 			return { kind: "created", request: map(row) };
 		},
+		/** @internal */
 		resolve(input: {
+			/** @internal */
 			id: string;
+			/** @internal */
 			status: Exclude<ToolApprovalStatus, "open" | "cancelled">;
+			/** @internal */
 			actor: Actor;
+			/** @internal */
 			feedback?: string;
+			/** @internal */
 			resolvedAt?: string;
 		}): ProcessToolApprovalRequest | null {
 			if (input.status === "feedback" && !input.feedback?.trim())
@@ -127,6 +149,7 @@ export function createProcessToolApprovalRequestRepo(db: LeitwerkDb) {
 				.get();
 			return row ? map(row) : null;
 		},
+		/** @internal */
 		cancelOpenByTurn(instanceId: string, turnRecordId: string): number {
 			const result = db
 				.update(s.processToolApprovalRequests)

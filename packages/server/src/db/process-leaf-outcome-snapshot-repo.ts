@@ -7,19 +7,33 @@ import type { LeitwerkDb } from "./database.js";
 import { generateId, now, parseJsonRecord } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
+/** @internal */
 export interface CreateProcessLeafOutcomeSnapshotInput {
+	/** @internal */
 	id?: string;
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	leafEntryId: string;
+	/** @internal */
 	turnRecordId?: string | null;
+	/** @internal */
 	rendererId?: string | null;
+	/** @internal */
 	schemaVersion?: number | null;
+	/** @internal */
 	props?: Record<string, unknown> | null;
+	/** @internal */
 	fallbackMarkdown?: string | null;
+	/** @internal */
 	status: ProcessLeafOutcomeSnapshotStatus;
+	/** @internal */
 	warningCode?: string | null;
+	/** @internal */
 	warningMessage?: string | null;
+	/** @internal */
 	anchoredAt: string;
+	/** @internal */
 	createdAt?: string;
 }
 
@@ -43,8 +57,10 @@ function rowToProcessLeafOutcomeSnapshot(
 	};
 }
 
+/** @internal */
 export function createProcessLeafOutcomeSnapshotRepo(db: LeitwerkDb) {
 	return {
+		/** @internal */
 		create(input: CreateProcessLeafOutcomeSnapshotInput): ProcessLeafOutcomeSnapshot {
 			const values = {
 				id: input.id ?? generateId("los"),
@@ -65,6 +81,7 @@ export function createProcessLeafOutcomeSnapshotRepo(db: LeitwerkDb) {
 			return rowToProcessLeafOutcomeSnapshot(values);
 		},
 
+		/** @internal */
 		listByInstance(instanceId: string): ProcessLeafOutcomeSnapshot[] {
 			return db
 				.select()
@@ -78,6 +95,7 @@ export function createProcessLeafOutcomeSnapshotRepo(db: LeitwerkDb) {
 				.map(rowToProcessLeafOutcomeSnapshot);
 		},
 
+		/** @internal */
 		getByInstanceAndLeafEntryId(
 			instanceId: string,
 			leafEntryId: string,

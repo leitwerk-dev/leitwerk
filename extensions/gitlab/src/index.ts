@@ -8,11 +8,21 @@ import { type GitLabIntegration, gitlabIntegration } from "./capability.js";
 import { GitLabClient, parseGitLabProfiles } from "./client.js";
 import { createGitLabProvider } from "./external.js";
 import { registerGitLabTools } from "./tools.js";
-export const manifest = { id: "gitlab", version: "0.1.9" } as const;
+/** @internal */
+export const manifest = {
+	/** @internal */
+	id: "gitlab",
+	/** @internal */
+	version: "0.1.9",
+} as const;
+/** @public */
 export function setupGitLabIntegration(
 	api: ServerExtensionAPI,
 	integration: GitLabIntegration,
-	options: { now?: () => number } = {},
+	options: {
+		/** @public */
+		now?: () => number;
+	} = {},
 ) {
 	api.provide(gitlabIntegration, integration);
 	const deps = api.get(coreHostCapabilities.serverSetup);
@@ -20,6 +30,7 @@ export function setupGitLabIntegration(
 	registerGitLabTools(api, integration, deps.externalWrites as ExternalWriteLogRepoLike);
 	return createGitLabProvider(deps, integration, options);
 }
+/** @public */
 const extension: LeitwerkExtensionModule = {
 	manifest,
 	setupServer(api, config) {

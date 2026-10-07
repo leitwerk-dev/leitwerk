@@ -11,13 +11,19 @@ import {
 	readTriggerFile,
 } from "@leitwerk-dev/watcher-utils";
 
+/** @internal */
 export interface FilesystemWatcherEvent {
+	/** @internal */
 	filePath: string;
+	/** @internal */
 	content: string;
 }
 
+/** @internal */
 export interface FilesystemWatcherConfig {
+	/** @internal */
 	pollInterval: string;
+	/** @internal */
 	filePath: string;
 }
 
@@ -35,6 +41,7 @@ function nonEmptyString(value: unknown, path: string): string {
 	return value;
 }
 
+/** @internal */
 export const filesystemWatcherSource = defineProcessWatcherSource<
 	FilesystemWatcherConfig,
 	FilesystemWatcherEvent
@@ -73,6 +80,7 @@ export const filesystemWatcherSource = defineProcessWatcherSource<
 	},
 });
 
+/** @internal */
 export function createFilesystemWatcherProvider(deps: CoreServerSetupDeps) {
 	const watchers = deps.processWatchers?.listBySource(filesystemWatcherSource) ?? [];
 	const pollers = watchers.map((watcher) =>
@@ -109,5 +117,8 @@ export function createFilesystemWatcherProvider(deps: CoreServerSetupDeps) {
 			},
 		}),
 	);
-	return { pollers };
+	return {
+		/** @internal */
+		pollers,
+	};
 }

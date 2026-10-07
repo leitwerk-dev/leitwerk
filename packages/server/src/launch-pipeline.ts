@@ -34,63 +34,141 @@ export const STARTUP_STEP_IDS = [
 	"start_first_turn",
 ] as const;
 
+/** @internal */
 export type LaunchStageFailure<TFailure> = {
+	/** @internal */
 	safeSummary: string;
+	/** @internal */
 	value: TFailure;
 };
 
+/** @internal */
 export type LaunchResolution<TResolved, TFailure> =
-	| { kind: "resolved"; value: TResolved }
-	| { kind: "skipped" }
-	| { kind: "failed"; failure: LaunchStageFailure<TFailure> };
+	| {
+			/** @internal */
+			kind: "resolved";
+			/** @internal */
+			value: TResolved;
+	  }
+	| {
+			/** @internal */
+			kind: "skipped";
+	  }
+	| {
+			/** @internal */
+			kind: "failed";
+			/** @internal */
+			failure: LaunchStageFailure<TFailure>;
+	  };
 
+/** @internal */
 export interface LaunchPipelineCheck {
+	/** @internal */
 	id: string;
+	/** @internal */
 	label: string;
+	/** @internal */
 	run(input: {
+		/** @internal */
 		signal: AbortSignal;
-		logger: { info(message: string): void; warn(message: string): void };
+		/** @internal */
+		logger: {
+			/** @internal */
+			info(message: string): void;
+			/** @internal */
+			warn(message: string): void;
+		};
 	}): Promise<void>;
 }
 
+/** @internal */
 export type LaunchCommit<TResult, TFailure> =
 	| {
+			/** @internal */
 			kind: "committed";
+			/** @internal */
 			result: TResult;
+			/** @internal */
 			process: ProcessInstance;
+			/** @internal */
 			startTurnId: string | null;
+			/** @internal */
 			reused: boolean;
 	  }
 	| {
+			/** @internal */
 			kind: "committed_with_reaction_error";
+			/** @internal */
 			result: TResult;
+			/** @internal */
 			process: ProcessInstance;
+			/** @internal */
 			startTurnId: string | null;
+			/** @internal */
 			safeSummary: string;
 	  }
-	| { kind: "failed"; failure: LaunchStageFailure<TFailure> };
+	| {
+			/** @internal */
+			kind: "failed";
+			/** @internal */
+			failure: LaunchStageFailure<TFailure>;
+	  };
 
+/** @internal */
 export interface LaunchAdapter<TResolved, TPrepared, TResult, TFailure> {
+	/** @internal */
 	resolve(): Promise<LaunchResolution<TResolved, TFailure>>;
+	/** @internal */
 	preparationChecks?(resolved: TResolved): readonly LaunchPipelineCheck[];
+	/** @internal */
 	preparationCheckFailure?(error: unknown, safeSummary: string): TFailure;
-	prepare(
-		resolved: TResolved,
-	): Promise<{ ok: true; value: TPrepared } | { ok: false; failure: LaunchStageFailure<TFailure> }>;
+	/** @internal */
+	prepare(resolved: TResolved): Promise<
+		| {
+				/** @internal */
+				ok: true;
+				/** @internal */
+				value: TPrepared;
+		  }
+		| {
+				/** @internal */
+				ok: false;
+				/** @internal */
+				failure: LaunchStageFailure<TFailure>;
+		  }
+	>;
+	/** @internal */
 	commit(
 		prepared: TPrepared,
-		ctx: { launchRunId: string },
+		ctx: {
+			/** @internal */
+			launchRunId: string;
+		},
 	): Promise<LaunchCommit<TResult, TFailure>>;
+	/** @internal */
 	unexpectedFailure?(error: unknown): LaunchStageFailure<TFailure>;
 }
 
+/** @internal */
 export type LaunchPipelineRunResult<TResult, TFailure> =
-	| { kind: "skipped" }
-	| { kind: "failed"; failure: LaunchStageFailure<TFailure> }
 	| {
+			/** @internal */
+			kind: "skipped";
+	  }
+	| {
+			/** @internal */
+			kind: "failed";
+			/** @internal */
+			failure: LaunchStageFailure<TFailure>;
+	  }
+	| {
+			/** @internal */
 			kind: "committed" | "committed_with_reaction_error";
+			/** @internal */
 			result: TResult;
+			/** @internal */
 			process: ProcessInstance;
+			/** @internal */
 			reused: boolean;
 	  };
 
@@ -113,14 +191,27 @@ export function presentPipelineResult<TResult, TFailure>(
 	};
 }
 
+/** @internal */
 export interface LaunchPipeline {
+	/** @internal */
 	open(input: {
+		/** @internal */
 		launcherId: string | null;
+		/** @internal */
 		idempotencyKey?: string | null;
+		/** @internal */
 		origin: LaunchRun["origin"];
+		/** @internal */
 		broadcast?: boolean;
-	}): { launchRunId: string; existing: boolean };
+	}): {
+		/** @internal */
+		launchRunId: string;
+		/** @internal */
+		existing: boolean;
+	};
+	/** @internal */
 	update(id: string, fn: (run: LaunchRun) => LaunchRun): LaunchRun;
+	/** @internal */
 	run<TResolved, TPrepared, TResult, TFailure>(
 		launchRunId: string,
 		adapter: LaunchAdapter<TResolved, TPrepared, TResult, TFailure>,

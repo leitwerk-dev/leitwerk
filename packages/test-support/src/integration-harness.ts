@@ -9,28 +9,43 @@ import {
 } from "@leitwerk-dev/server";
 import { createInProcessWorkerSpawn } from "./in-process-worker.js";
 
+/** @public */
 export interface IntegrationHarness<
 	TResources extends Record<string, unknown> = Record<string, never>,
 > {
+	/** @public */
 	ctx: AppContext;
+	/** @internal */
 	config: LeitwerkConfig;
+	/** @public */
 	address: string;
+	/** @internal */
 	resources: TResources;
 }
 
+/** @public */
 export interface IntegrationHarnessOptions<
 	TResources extends Record<string, unknown> = Record<string, never>,
 > {
+	/** @internal */
 	config?: LeitwerkConfig;
+	/** @public */
 	configOverride?: (config: LeitwerkConfig) => void;
+	/** @public */
 	appOverrides?: Partial<AppOptions>;
+	/** @internal */
 	listen?: boolean;
+	/** @internal */
 	inProcessWorkers?: boolean;
+	/** @public */
 	extensionCatalog: ExtensionCatalog | Promise<ExtensionCatalog>;
+	/** @internal */
 	preProvidedCapabilities?: readonly ProvidedCapability[];
+	/** @internal */
 	resources?: TResources;
 }
 
+/** @public */
 export async function createIntegrationHarness<
 	TResources extends Record<string, unknown> = Record<string, never>,
 >(opts: IntegrationHarnessOptions<TResources>): Promise<IntegrationHarness<TResources>> {

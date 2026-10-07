@@ -1,8 +1,12 @@
 import path from "node:path";
 
+/** @internal */
 export interface ProcessAnalysisRuntime {
+	/** @internal */
 	analysisCwd: string;
+	/** @internal */
 	serverBaseUrl: string;
+	/** @internal */
 	processWorkspacesDir: string | null;
 }
 
@@ -12,6 +16,7 @@ const runtime: ProcessAnalysisRuntime = {
 	processWorkspacesDir: null,
 };
 
+/** @internal */
 export function configureProcessAnalysisRuntime(overrides: Partial<ProcessAnalysisRuntime>): void {
 	runtime.analysisCwd = overrides.analysisCwd
 		? path.resolve(overrides.analysisCwd)
@@ -20,6 +25,7 @@ export function configureProcessAnalysisRuntime(overrides: Partial<ProcessAnalys
 	runtime.processWorkspacesDir = overrides.processWorkspacesDir ?? null;
 }
 
+/** @internal */
 export function getProcessAnalysisRuntime(): ProcessAnalysisRuntime {
 	return runtime;
 }

@@ -6,9 +6,13 @@ import { generateId, now } from "./repo-helpers.js";
 import * as s from "./schema.js";
 import { createTurnSummaryRepo } from "./turn-summary-repo.js";
 
+/** @internal */
 export interface CreateProcessEventInput {
+	/** @internal */
 	instanceId: string;
+	/** @internal */
 	eventType: string;
+	/** @internal */
 	data?: Record<string, unknown>;
 }
 
@@ -23,6 +27,7 @@ function rowToProcessEvent(row: typeof s.processEvents.$inferSelect): ProcessEve
 	};
 }
 
+/** @internal */
 export function createProcessEventRepo(db: LeitwerkDb) {
 	const summaries = createTurnSummaryRepo(db);
 	const listNewest = (where: SQL | undefined, limit: number): ProcessEvent[] =>
@@ -35,6 +40,7 @@ export function createProcessEventRepo(db: LeitwerkDb) {
 			.all()
 			.map(rowToProcessEvent);
 	return {
+		/** @internal */
 		create(input: CreateProcessEventInput): ProcessEvent {
 			const id = generateId("evt");
 			const ts = now();
@@ -72,6 +78,7 @@ export function createProcessEventRepo(db: LeitwerkDb) {
 			return rowToProcessEvent(values);
 		},
 
+		/** @internal */
 		latestSequence(instanceId: string): number {
 			return (
 				db
@@ -83,6 +90,7 @@ export function createProcessEventRepo(db: LeitwerkDb) {
 					.get()?.sequence ?? 0
 			);
 		},
+		/** @internal */
 		listByTurnRecord(instanceId: string, turnRecordId: string): ProcessEvent[] {
 			return db
 				.select()
@@ -97,6 +105,7 @@ export function createProcessEventRepo(db: LeitwerkDb) {
 				.all()
 				.map(rowToProcessEvent);
 		},
+		/** @internal */
 		latestByTurnRecordEventType(
 			instanceId: string,
 			turnRecordId: string,
@@ -117,13 +126,16 @@ export function createProcessEventRepo(db: LeitwerkDb) {
 				.get();
 			return row ? rowToProcessEvent(row) : null;
 		},
+		/** @internal */
 		summary(turnRecordId: string) {
 			return summaries.get(turnRecordId);
 		},
+		/** @internal */
 		listByInstance(instanceId: string, limit = 100): ProcessEvent[] {
 			return listNewest(eq(s.processEvents.instanceId, instanceId), limit);
 		},
 
+		/** @internal */
 		listByInstanceEventTypes(
 			instanceId: string,
 			eventTypes: readonly string[],
@@ -147,10 +159,16 @@ export function createProcessEventRepo(db: LeitwerkDb) {
 			return limit < 0 ? events : events.slice(0, limit);
 		},
 
+		/** @internal */
 		listByInstanceSince(
 			instanceId: string,
 			sinceCreatedAt: string,
-			options: { limit?: number; eventTypePrefix?: string } = {},
+			options: {
+				/** @internal */
+				limit?: number;
+				/** @internal */
+				eventTypePrefix?: string;
+			} = {},
 		): ProcessEvent[] {
 			const prefix =
 				typeof options.eventTypePrefix === "string" ? options.eventTypePrefix.trim() : "";
@@ -164,6 +182,7 @@ export function createProcessEventRepo(db: LeitwerkDb) {
 			);
 		},
 
+		/** @internal */
 		listByInstanceTurnRecordEventTypes(
 			instanceId: string,
 			turnRecordId: string,
@@ -188,6 +207,7 @@ export function createProcessEventRepo(db: LeitwerkDb) {
 				.map(rowToProcessEvent);
 		},
 
+		/** @internal */
 		listByInstanceSinceEventTypes(
 			instanceId: string,
 			sinceCreatedAt: string,

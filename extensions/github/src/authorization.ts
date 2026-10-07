@@ -16,6 +16,7 @@ export async function authorizedTrigger(
 	)
 		return null;
 	const issue = (await client.getIssue(owner, repo, number)) as GitHubIssue & {
+		/** @internal */
 		pull_request?: unknown;
 	};
 	if (
@@ -37,7 +38,14 @@ export async function authorizedTrigger(
 		!(await client.isOrganizationMember(last.actor.login))
 	)
 		return null;
-	return { issue, actor: last.actor.login, eventId: last.id };
+	return {
+		/** @internal */
+		issue,
+		/** @internal */
+		actor: last.actor.login,
+		/** @internal */
+		eventId: last.id,
+	};
 }
 
 export async function actionableFeedback(client: MembershipClient, feedback: GitHubFeedbackItem[]) {

@@ -1,11 +1,18 @@
 import type { ToolCallRendererDefinition } from "@leitwerk-dev/process-sdk";
 
+/** @internal */
 export const poemCreatorActionIds = {
+	/** @internal */
 	completePoem: "complete_poem",
+	/** @internal */
 	requestRevision: "request_poem_revision",
+	/** @internal */
 	runAutoReview: "run_poem_auto_review",
+	/** @internal */
 	acceptReview: "accept_poem_review",
+	/** @internal */
 	requestReviewChanges: "request_poem_review_changes",
+	/** @internal */
 	dismissReview: "dismiss_poem_review",
 } as const;
 
@@ -19,11 +26,13 @@ function formatGermanyDay(now: Date): string {
 	}).format(now);
 }
 
+/** @internal */
 export function buildDefaultPoemPrompt(now = new Date()): string {
 	const germanyDay = formatGermanyDay(now);
 	return `Write a short poem in Markdown that is either inspired by ${germanyDay} in Germany or by the craft of building cloud software. Keep it vivid, warm, and concise.`;
 }
 
+/** @internal */
 export function buildDraftPoemInstruction(promptText: string): string {
 	return `Write a short poem in Markdown that clearly responds to the operator's prompt.
 
@@ -39,6 +48,7 @@ Requirements:
 - only the primary branch should write or revise the poem directly`;
 }
 
+/** @internal */
 export function buildRevisePoemInstruction(revisionGuidance: string): string {
 	return `Continue from the current poem on this branch and revise it according to this request:
 
@@ -47,6 +57,7 @@ ${revisionGuidance}
 Preserve the parts of the current poem that the request does not ask you to change. Return the complete revised poem in the same Markdown format.`;
 }
 
+/** @internal */
 export function buildReviewPoemInstruction(promptText: string, poemDraftMarkdown: string): string {
 	return `Review the latest poem draft against the operator's prompt.
 
@@ -64,6 +75,7 @@ If the poem is strong, relevant, and well-formed Markdown, call no_issues with a
 If the poem misses the prompt, needs revision, or is awkwardly structured, call leave_feedback with a brief summary and concise plain-text feedback.`;
 }
 
+/** @internal */
 export const leaveFeedbackToolRenderer: ToolCallRendererDefinition = {
 	toolName: "leave_feedback",
 	title: "Feedback",

@@ -9,13 +9,18 @@ import {
 	type WorkspacePackage,
 } from "./workspace.js";
 
+/** @internal */
 export const COMPOSITION_ENV = "LEITWERK_COMPOSITION_PATH";
 
+/** @internal */
 export type ComposedPackage = WorkspacePackage;
 
+/** @internal */
 export interface DevelopmentComposition
 	extends Omit<WorkspaceComposition, "packages" | "declaredCoreRoot"> {
+	/** @internal */
 	leitwerkRoot: string;
+	/** @internal */
 	externalPackages: ComposedPackage[];
 }
 
@@ -63,6 +68,7 @@ function manifestArgument(argv: readonly string[]): string | undefined {
 	return undefined;
 }
 
+/** @internal */
 export function activateDevelopmentComposition(
 	leitwerkRoot = process.cwd(),
 	argv: readonly string[] = process.argv.slice(2),
@@ -78,6 +84,7 @@ export function activateDevelopmentComposition(
 	return composition;
 }
 
+/** @internal */
 export function loadActiveDevelopmentComposition(
 	leitwerkRoot = process.cwd(),
 ): DevelopmentComposition | null {
@@ -85,17 +92,27 @@ export function loadActiveDevelopmentComposition(
 	return manifestPath ? loadDevelopmentComposition(manifestPath, leitwerkRoot) : null;
 }
 
+/** @internal */
 export interface WorkspaceComposition {
+	/** @internal */
 	manifestPath: string;
+	/** @internal */
 	manifestDir: string;
+	/** @internal */
 	workspaceRoot: string;
+	/** @internal */
 	runtimeConfigPath: string;
+	/** @internal */
 	extensionDirs: string[];
+	/** @internal */
 	testRoots: string[];
+	/** @internal */
 	packages: ComposedPackage[];
+	/** @internal */
 	declaredCoreRoot?: string;
 }
 
+/** @internal */
 export function loadWorkspaceComposition(manifestPath: string): WorkspaceComposition {
 	const absoluteManifestPath = realpathSync(path.resolve(manifestPath));
 	const manifestDir = path.dirname(absoluteManifestPath);
@@ -150,6 +167,7 @@ export function loadWorkspaceComposition(manifestPath: string): WorkspaceComposi
 	};
 }
 
+/** @internal */
 export function loadDevelopmentComposition(
 	manifestPath: string,
 	executingLeitwerkRoot: string,
@@ -172,6 +190,7 @@ export function loadDevelopmentComposition(
 	};
 }
 
+/** @internal */
 export function externalPackageProjects(composition: DevelopmentComposition): string[] {
 	return composition.externalPackages
 		.map((entry) => path.join(entry.dir, "tsconfig.json"))

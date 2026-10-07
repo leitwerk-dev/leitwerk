@@ -4,14 +4,21 @@ import type { LeitwerkDb } from "./database.js";
 import { now } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
+/** @internal */
 export interface ProviderCredentialRecord {
+	/** @internal */
 	providerId: string;
+	/** @internal */
 	revision: number;
+	/** @internal */
 	payload: string;
+	/** @internal */
 	createdAt: string;
+	/** @internal */
 	updatedAt: string;
 }
 
+/** @internal */
 export function createProviderCredentialRepo(db: LeitwerkDb, cipher: CredentialCipher) {
 	const row = (value: typeof s.providerCredentials.$inferSelect): ProviderCredentialRecord => ({
 		providerId: value.providerId,
@@ -21,9 +28,11 @@ export function createProviderCredentialRepo(db: LeitwerkDb, cipher: CredentialC
 		updatedAt: value.updatedAt,
 	});
 	return {
+		/** @internal */
 		count(): number {
 			return db.select({ value: count() }).from(s.providerCredentials).get()?.value ?? 0;
 		},
+		/** @internal */
 		get(providerId: string): ProviderCredentialRecord | null {
 			const value = db
 				.select()
@@ -32,7 +41,13 @@ export function createProviderCredentialRepo(db: LeitwerkDb, cipher: CredentialC
 				.get();
 			return value ? row(value) : null;
 		},
-		create(input: { providerId: string; payload: string }): ProviderCredentialRecord {
+		/** @internal */
+		create(input: {
+			/** @internal */
+			providerId: string;
+			/** @internal */
+			payload: string;
+		}): ProviderCredentialRecord {
 			const ts = now();
 			const value = {
 				...input,
@@ -50,9 +65,13 @@ export function createProviderCredentialRepo(db: LeitwerkDb, cipher: CredentialC
 				updatedAt: ts,
 			};
 		},
+		/** @internal */
 		compareAndSet(input: {
+			/** @internal */
 			providerId: string;
+			/** @internal */
 			expectedRevision: number;
+			/** @internal */
 			payload: string;
 		}): ProviderCredentialRecord | null {
 			const ts = now();

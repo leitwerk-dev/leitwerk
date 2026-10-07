@@ -1,5 +1,6 @@
 import type { FlowPromptContext, StructuralProcessState } from "@leitwerk-dev/process-sdk";
 
+/** @internal */
 export function buildGeneratePlanPrompt(
 	ctx: FlowPromptContext<unknown, StructuralProcessState, never>,
 ): string {

@@ -1,13 +1,20 @@
+/** @internal */
 export interface ResolvedProcessRef {
+	/** @internal */
 	id: string;
+	/** @internal */
 	origin: string;
+	/** @internal */
 	apiUrl: string;
 }
 
 const ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 
+/** @internal */
 export function resolveProcessRef(input: {
+	/** @internal */
 	processRef: string;
+	/** @internal */
 	serverBaseUrl: string;
 }): ResolvedProcessRef {
 	const raw = input.processRef.trim();

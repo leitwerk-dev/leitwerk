@@ -7,19 +7,28 @@ import {
 import { createCapabilityToken, type LauncherValidationError } from "@leitwerk-dev/process-sdk";
 import { normalizeRemoteRepoChangeParamsInput, type RemoteRepoChangeParams } from "./params.js";
 
+/** @internal */
 export const remoteRepoChangeProcessId = "remote_repo_change_process" as const;
+/** @internal */
 export const remoteRepoChangeUiLauncherId = "remote_repo_change_process.ui_launcher" as const;
+/** @internal */
 export const remoteRepoChangeImportedPlanLauncherId =
 	"remote_repo_change_process.imported_plan" as const;
 
+/** @internal */
 export type RemoteRepoChangeLaunchPlannerInput = RepositoryChangeLaunchPlannerInput;
+/** @internal */
 export type RemoteRepoChangeLaunchResolution =
 	RepositoryChangeLaunchResolution<RemoteRepoChangeParams>;
+/** @internal */
 export interface RemoteRepoChangeLaunchPlanner {
+	/** @internal */
 	plan(input: RemoteRepoChangeLaunchPlannerInput): RemoteRepoChangeLaunchResolution;
 }
 
+/** @internal */
 export const remoteRepoChangeCapabilities = {
+	/** @internal */
 	launchPlanner: createCapabilityToken<RemoteRepoChangeLaunchPlanner>(
 		"remote-repo-change:launch-planner",
 	),
@@ -46,6 +55,7 @@ function paramsFromInput(input: Record<string, unknown>): RemoteRepoChangeParams
 	) as RemoteRepoChangeParams;
 }
 
+/** @internal */
 export const remoteRepoChangeLaunchPlanner: RemoteRepoChangeLaunchPlanner =
 	createRepositoryChangeLaunchPlanner({
 		processId: remoteRepoChangeProcessId,

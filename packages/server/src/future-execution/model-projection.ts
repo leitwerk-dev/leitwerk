@@ -27,6 +27,7 @@ export interface FutureModelProjectionDeps {
 	now?: () => Date;
 }
 
+/** @internal */
 export type FutureModelSelectionState = Pick<FutureExecution, "modelSelection" | "blockedReason">;
 
 type ModelEvaluationResult = ProcessModelPolicyEvaluation;
@@ -89,12 +90,17 @@ export function evaluateFutureModelSelection(input: {
 	);
 }
 
+/** @internal */
 export function projectLaunchPlanModelState(
 	plan: ProcessLaunchPlan,
 	input: {
+		/** @internal */
 		policy: ServerProcessModelPolicy;
+		/** @internal */
 		availability: ModelStatusCacheSnapshot;
+		/** @internal */
 		detectedAt?: string;
+		/** @internal */
 		existingBlockedReason?: FutureExecutionBlockReason | null;
 	},
 ): FutureModelSelectionState {

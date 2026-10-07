@@ -8,12 +8,19 @@ import type { SkillRepositoryConfig } from "../config/config-types.js";
 import type { RepositoryBundle } from "../db/repositories.js";
 import { importSkillRepository } from "./source-importer.js";
 
+/** @internal */
 export interface SkillCatalogService {
+	/** @internal */
 	refresh(): Promise<SkillsCatalogResponseBody>;
+	/** @internal */
 	list(): SkillsCatalogResponseBody;
+	/** @internal */
 	detail(repositoryId: string, skillId: string): SkillCatalogDetail | null;
+	/** @internal */
 	installedDetail(skillId: string): InstalledSkillCatalogDetail | null;
+	/** @internal */
 	register(repositoryId: string, skillId: string): string;
+	/** @internal */
 	remove(skillId: string): boolean;
 }
 

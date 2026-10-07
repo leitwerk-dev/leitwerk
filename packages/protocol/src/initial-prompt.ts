@@ -5,6 +5,7 @@ import type { FutureExecutionOverviewItem, FutureExecutionSummary } from "./http
 // for compact overview and detail read models. Process launchers use several
 // established field names; keep this priority list shared so server and browser
 // projections cannot drift.
+/** @internal */
 export const INITIAL_PROMPT_FIELD_PRIORITY = [
 	"initialPrompt",
 	"prompt",
@@ -26,6 +27,7 @@ function normalizePromptValue(value: string): string | null {
 	return normalized.length > 0 ? normalized : null;
 }
 
+/** @internal */
 export function truncatePromptPreview(
 	value: string | null | undefined,
 	maxLength = 180,
@@ -53,6 +55,7 @@ function readStringField(record: Record<string, unknown>, fieldName: string): st
 	return null;
 }
 
+/** @internal */
 export function extractInitialPromptFromValue(value: unknown): string | null {
 	if (!isRecord(value)) {
 		return null;
@@ -68,6 +71,7 @@ export function extractInitialPromptFromValue(value: unknown): string | null {
 	return null;
 }
 
+/** @internal */
 export function extractInitialPromptFromParamsJson(
 	paramsJson: string | null | undefined,
 ): string | null {
@@ -82,6 +86,7 @@ export function extractInitialPromptFromParamsJson(
 	}
 }
 
+/** @internal */
 export function extractInitialPromptPreviewFromParamsJson(
 	paramsJson: string | null | undefined,
 	maxLength = 180,
@@ -89,6 +94,7 @@ export function extractInitialPromptPreviewFromParamsJson(
 	return truncatePromptPreview(extractInitialPromptFromParamsJson(paramsJson), maxLength);
 }
 
+/** @internal */
 export function projectFutureExecutionOverview(
 	summary: FutureExecutionSummary,
 ): FutureExecutionOverviewItem {

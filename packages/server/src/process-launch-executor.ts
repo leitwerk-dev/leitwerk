@@ -59,6 +59,7 @@ export interface ProcessLaunchExecutorDeps
 	assertRuntimeAvailable?: (processId: string) => Promise<void>;
 }
 
+/** @internal */
 export type ProcessLaunchRelationInput = Omit<
 	ProcessRelation,
 	"kind" | "childInstanceId" | "createdAt"

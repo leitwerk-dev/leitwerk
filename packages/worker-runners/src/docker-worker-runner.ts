@@ -36,32 +36,47 @@ import {
 	parseWorkerUnitIdentity,
 } from "./worker-labels.js";
 
+/** @internal */
 export type DockerProcessVolumeMode = "bind" | "named_volume";
 
+/** @internal */
 export interface DockerProcessVolumeOptions {
+	/** @internal */
 	mode: DockerProcessVolumeMode;
 	/** Host root for per-process bind mounts (bind mode). */
+	/** @internal */
 	hostRoot: string;
 	/** Mount path injected into worker containers. */
+	/** @internal */
 	mountPath: string;
 	/** Prefix for named volumes (named_volume mode). */
+	/** @internal */
 	namedVolumePrefix?: string;
 }
 
+/** @internal */
 export interface DockerWorkerRunnerOptions {
+	/** @internal */
 	engine: DockerEngineClient;
+	/** @internal */
 	volume: DockerProcessVolumeOptions;
 	/** Shared private network attached to every worker container. */
+	/** @internal */
 	defaultNetwork: string;
 	/** Exact isolation used for Docker-requiring processes. Omit to make them unavailable. */
+	/** @internal */
 	privateDaemonIsolation?: "privileged" | "sysbox-runc";
 	/** Host CA bundle mounted read-only into workers and export helpers. */
+	/** @internal */
 	serverCaFile?: string;
 	/** Stable internal URL used by named-volume export helpers. */
+	/** @internal */
 	serverUrl?: string;
 	/** Trusted image containing the bundled session-transfer helper entrypoint. */
+	/** @internal */
 	exporterImage?: string;
 	/** Server-owned relay registry used by named-volume export helpers. */
+	/** @internal */
 	helperRelays?: ProcessStateExportHelperRelayProvider;
 }
 
@@ -145,9 +160,13 @@ function mapExit(info: DockerContainerExit): WorkerExitInfo {
  * container exits are observed via the engine's wait call and mapped into the
  * supervisor's existing failure paths through `onExit`.
  */
+/** @internal */
 export function createDockerWorkerRunner(options: DockerWorkerRunnerOptions): {
+	/** @internal */
 	runner: WorkerRunner<IsolatedStartWorkerInput>;
+	/** @internal */
 	volume: ProcessVolume;
+	/** @internal */
 	exporter: ProcessStateExporter;
 } {
 	if (

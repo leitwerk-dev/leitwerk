@@ -34,13 +34,19 @@ import {
 	buildSinglePromptWithToolInstruction,
 } from "./turns/run-single-prompt.js";
 
+/** @internal */
 interface PromptProcessParams {
+	/** @internal */
 	prompt: string;
 }
 
+/** @internal */
 interface PoemCreatorState extends StructuralProcessState {
+	/** @internal */
 	latestReviewMarkdown: string | null;
+	/** @internal */
 	latestReviewSummary: string | null;
+	/** @internal */
 	latestReviewOutcome: "no_issues" | "leave_feedback" | null;
 }
 
@@ -297,6 +303,7 @@ const poemReviewChangesForm: FormDefinition = {
 	submitLabel: "Request review changes",
 };
 
+/** @internal */
 export const singlePromptProcess = flow
 	.process<PromptProcessParams, StructuralProcessState>("single_prompt_process")
 	.displayName("Single Prompt")
@@ -357,6 +364,7 @@ export const singlePromptProcess = flow
 	})
 	.define();
 
+/** @internal */
 export const singlePromptWithToolProcess = flow
 	.process<PromptProcessParams, StructuralProcessState>("single_prompt_with_tool_process")
 	.displayName("Single Prompt + Done Tool")
@@ -544,6 +552,7 @@ function defineK8sSmokeProcess(args: {
 		.define();
 }
 
+/** @internal */
 export const k8sSmokeProcess = defineK8sSmokeProcess({
 	processId: "k8s_smoke_process",
 	displayName: "Kubernetes Smoke",
@@ -570,6 +579,7 @@ export const k8sSmokeProcess = defineK8sSmokeProcess({
 	}),
 });
 
+/** @internal */
 export const k8sSmokeSpecializedProcess = defineK8sSmokeProcess({
 	processId: "k8s_smoke_specialized_process",
 	displayName: "Kubernetes Specialized Smoke",
@@ -594,6 +604,7 @@ export const k8sSmokeSpecializedProcess = defineK8sSmokeProcess({
 	},
 });
 
+/** @internal */
 export const k8sSmokeLongProcess = defineK8sSmokeProcess({
 	processId: "k8s_smoke_long_process",
 	displayName: "Kubernetes Long Smoke",
@@ -616,6 +627,7 @@ export const k8sSmokeLongProcess = defineK8sSmokeProcess({
 	},
 });
 
+/** @internal */
 export const singlePromptExternalCompleteProcess = flow
 	.process<PromptProcessParams, StructuralProcessState>("single_prompt_external_complete_process")
 	.displayName("Single Prompt + External Complete")
@@ -801,6 +813,7 @@ const poemReviewFeedbackSpec = flow
 			})),
 	).definition;
 
+/** @internal */
 export const poemCreatorProcess = flow
 	.process<PromptProcessParams, PoemCreatorState>("poem_creator_process")
 	.displayName("Poem Creator")

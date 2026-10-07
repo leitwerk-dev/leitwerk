@@ -29,6 +29,7 @@ const definition = createRepositoryChangeProcess({
 	],
 });
 
+/** @internal */
 export const remoteRepoChangeProcess = definition.process;
 export const planDecision = definition.planDecision;
 export const planReviewFeedback = definition.planReviewFeedback;
