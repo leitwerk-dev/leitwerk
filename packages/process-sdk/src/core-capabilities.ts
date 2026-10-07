@@ -11,6 +11,7 @@ import type {
 	TurnId,
 	WorkerErrorClass,
 } from "@leitwerk-dev/domain";
+import type { PublicationStore } from "@leitwerk-dev/external-writes";
 import type {
 	KnownDurableWsFrameType,
 	KnownEphemeralWsFrameType,
@@ -75,12 +76,16 @@ export interface ProcessRepoLike {
 		input: {
 			/** @public */
 			selectedTurnId?: TurnId | null;
+			/** Lifecycle accompanying a startup compatibility migration. @public */
+			lifecycleStatus?: ProcessLifecycleStatus;
 			/** Encoded params rewritten by a startup compatibility migration. @public */
 			paramsJson?: string | null;
 			/** @public */
 			currentExecution?: ProcessInstance["currentExecution"];
 			/** @public */
 			stateJson?: string | null;
+			/** Scheduling metadata rewritten by a startup migration. @internal */
+			metadata?: ProcessInstance["metadata"];
 		},
 	): ProcessInstance | null;
 }
@@ -505,6 +510,8 @@ export interface ExternalObservationInput {
 	};
 	/** @public */
 	refreshError?: string;
+	/** Validated business state committed with this subscription generation, without a transition. @internal */
+	state?: unknown;
 }
 
 /** @public */
@@ -577,6 +584,11 @@ export interface QueuedProcessInputLike {
 
 /** @public */
 export interface ProcessEngineLike {
+	/** Commit background facts against the snapshot that was read, without a turn attempt. @internal */
+	applyProcessObservation(
+		instanceId: string,
+		input: ProcessObservationUpdate,
+	): Promise<ProcessEngineResultLike>;
 	/** @internal */
 	getDeferredProcessActivationSnapshots(
 		query: DeferredProcessActivationSnapshotQuery,
@@ -651,6 +663,28 @@ export interface ProcessEngineLike {
 			actor?: Actor;
 		},
 	): Promise<ProcessEngineResultLike>;
+}
+
+/** Server-owned compare-and-set for integration maintenance, including running turns. @internal */
+export interface ProcessObservationUpdate {
+	/** @internal */ expected: ProcessInstance;
+	/** @internal */ projectsJson?: string;
+	/** @internal */ state?: unknown;
+	/** Namespaced metadata merged with current scheduling metadata. @internal */ metadata?: Record<
+		string,
+		unknown
+	>;
+	/** @internal */ lifecycleStatus?: "completed" | "aborted";
+	/** Supersede an accepted or pending execution and return to an existing gated turn. @internal */ interrupt?: ProcessObservationInterruption;
+	/** @internal */ preserveUpdatedAt?: boolean;
+}
+
+/** @internal */
+export interface ProcessObservationInterruption {
+	/** @internal */
+	turnId: string;
+	/** @internal */
+	reason: string;
 }
 
 /** @internal */
@@ -825,6 +859,14 @@ export interface ProcessQuestionServiceLike {
 
 /** @public */
 export interface CoreServerSetupDeps {
+	/** Trusted server maintenance may reuse project-bound durable operations without a worker. @internal */
+	callIntegrationTool?(
+		process: ProcessInstance,
+		projectKey: string,
+		name: string,
+		args: Record<string, unknown>,
+		signal: AbortSignal,
+	): Promise<unknown>;
 	/** @internal */
 	serverBaseUrl: string;
 	/** @internal */
@@ -833,6 +875,8 @@ export interface CoreServerSetupDeps {
 	components: Record<string, ComponentConfigLike>;
 	/** Typed by consuming extensions via watcher-utils ExternalWriteLogRepoLike. @public */
 	externalWrites: unknown;
+	/** Cross-process publication reservations and receipts. @internal */
+	publications: PublicationStore;
 	/** @public */
 	processes: ProcessRepoLike;
 	/** @public */

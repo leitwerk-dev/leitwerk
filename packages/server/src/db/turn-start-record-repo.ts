@@ -6,6 +6,7 @@ import type {
 } from "@leitwerk-dev/domain";
 import { and, eq } from "drizzle-orm";
 import type { LeitwerkDb } from "./database.js";
+import { type HistoryWindow, historyWindow } from "./history-window.js";
 import { generateId, mappedItemRef, now, parsePersistedJson } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
@@ -65,11 +66,16 @@ export function createTurnStartRecordRepo(db: LeitwerkDb) {
 			return value ? map(value) : null;
 		},
 		/** @internal */
-		listByInstance(instanceId: string): TurnStartRecord[] {
+		listByInstance(instanceId: string, window?: HistoryWindow): TurnStartRecord[] {
 			return db
 				.select()
 				.from(s.turnStartRecords)
-				.where(eq(s.turnStartRecords.instanceId, instanceId))
+				.where(
+					and(
+						eq(s.turnStartRecords.instanceId, instanceId),
+						historyWindow(s.turnStartRecords.createdAt, window),
+					),
+				)
 				.all()
 				.map(map);
 		},

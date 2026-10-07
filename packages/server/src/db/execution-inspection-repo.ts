@@ -5,7 +5,7 @@ import type {
 	InspectionContextObservation,
 } from "@leitwerk-dev/domain";
 import type { InspectionConfigurationRevision } from "@leitwerk-dev/protocol";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { LeitwerkDb } from "./database.js";
 import { executionInspections, inspectionContents } from "./schema.js";
 
@@ -127,39 +127,36 @@ export function createExecutionInspectionRepo(db: LeitwerkDb) {
 				}));
 		},
 		/** Small origin/product references for compact lineage without loading prompts. @internal */
-		listContextFacts(instanceId: string): InspectionContextObservation[] {
+		listContextFacts(instanceId: string, turnRecordIds?: string[]): InspectionContextObservation[] {
+			if (turnRecordIds?.length === 0) return [];
 			return db
 				.select()
 				.from(executionInspections)
 				.where(
 					and(
 						eq(executionInspections.instanceId, instanceId),
+						turnRecordIds ? inArray(executionInspections.turnRecordId, turnRecordIds) : undefined,
 						sql`json_extract(${executionInspections.factJson}, '$.kind') IN ('supplied_context', 'product_consumed', 'entry_link')`,
 					),
 				)
 				.orderBy(asc(executionInspections.sequence))
 				.all()
-				.flatMap((row) => {
-					const fact = JSON.parse(row.factJson) as ExecutionInspectionCapture["fact"];
-					if (
-						fact.kind !== "supplied_context" &&
-						fact.kind !== "product_consumed" &&
-						fact.kind !== "entry_link"
-					)
-						return [];
-					return [
-						{
-							id: row.id,
-							turnRecordId: row.turnRecordId,
-							fact:
-								fact.kind === "supplied_context"
-									? {
-											...fact,
-											products: fact.products.map(({ content: _content, ...source }) => source),
-										}
-									: fact,
-						},
-					];
+				.map((row) => {
+					const fact = JSON.parse(row.factJson) as Extract<
+						ExecutionInspectionCapture["fact"],
+						{ kind: "supplied_context" | "product_consumed" | "entry_link" }
+					>;
+					return {
+						id: row.id,
+						turnRecordId: row.turnRecordId,
+						fact:
+							fact.kind === "supplied_context"
+								? {
+										...fact,
+										products: fact.products.map(({ content: _content, ...source }) => source),
+									}
+								: fact,
+					};
 				});
 		},
 	};

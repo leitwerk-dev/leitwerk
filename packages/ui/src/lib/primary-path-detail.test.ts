@@ -1,24 +1,45 @@
-import type { ProcessTurnAnnotation } from "@leitwerk-dev/domain";
+import type { ProcessTurnAnnotation, ProcessTurnRecord } from "@leitwerk-dev/domain";
 import {
-	type PrimaryPathSnapshot,
+	emptyCompactTurnSummary,
+	type PrimaryPathUiSnapshot,
 	type PrimaryPathWsFrame,
 	WS_PRIMARY_PATH_TYPES,
 } from "@leitwerk-dev/protocol";
 import { describe, expect, it } from "vitest";
 import { applyPrimaryPathFrame, getPrimaryPathActiveTurnOutput } from "./primary-path-detail.js";
+import {
+	replayPrimaryPathFramesAfterSnapshot,
+	shouldReplayPrimaryPathFrameAfterSnapshot,
+} from "./primary-path-replay.js";
 
-function createSnapshot(): PrimaryPathSnapshot {
+const timestamp = "2026-01-01T00:00:02.000Z";
+const turnRecord: ProcessTurnRecord = {
+	id: "trn_1",
+	instanceId: "agt_1",
+	turnId: "draft_poem",
+	turnType: "llm",
+	status: "running",
+	attemptNumber: 1,
+	parentTurnRecordId: null,
+	pathType: "primary",
+	forkPiEntryId: null,
+	resultPiEntryId: null,
+	turnResultMarkdown: null,
+	errorSummary: null,
+	errorClass: null,
+	startedAt: timestamp,
+	endedAt: null,
+	modelProfileId: null,
+};
+
+function createSnapshot(): PrimaryPathUiSnapshot {
 	return {
 		instanceId: "agt_1",
-		rebuiltAt: "2026-01-01T00:00:00Z",
-		primaryPathEntries: [
-			{
-				id: "root-user",
-				parentId: null,
-				type: "message",
-				timestamp: "2026-01-01T00:00:00Z",
-			},
-		],
+		rebuiltAt: timestamp,
+		throughEventSequence: 0,
+		entryCount: 1,
+		entriesOmitted: true,
+		primaryPathEntries: [{ id: "root-user", parentId: null, type: "message", timestamp }],
 		currentLeaf: { entryId: "root-user", turnRecordId: null },
 		semanticEntryRefs: {
 			rootEntry: { entryId: "root-user", turnRecordId: null },
@@ -28,11 +49,7 @@ function createSnapshot(): PrimaryPathSnapshot {
 		},
 		labels: {},
 		turnAnnotations: [],
-		detailRail: {
-			keyPoints: [],
-			futureTurns: [],
-			currentPosition: null,
-		},
+		detailRail: { keyPoints: [], futureTurns: [], currentPosition: null },
 		turnState: {
 			currentTurnRecordId: null,
 			workerState: "busy",
@@ -43,284 +60,239 @@ function createSnapshot(): PrimaryPathSnapshot {
 }
 
 function createFrame(
-	frame: Omit<PrimaryPathWsFrame, "protocol" | "durability" | "sentAt">,
+	frame: Omit<PrimaryPathWsFrame, "protocol" | "durability" | "sentAt" | "instanceId">,
+	durability: "durable" | "ephemeral" = "durable",
 ): PrimaryPathWsFrame {
 	return {
 		protocol: "leitwerk/ws/v1",
-		durability:
-			frame.type === WS_PRIMARY_PATH_TYPES.ASSISTANT_PARTIAL ||
-			frame.type === WS_PRIMARY_PATH_TYPES.USAGE_UPDATED ||
-			frame.type === WS_PRIMARY_PATH_TYPES.TOOL_CALL_STARTED ||
-			frame.type === WS_PRIMARY_PATH_TYPES.TOOL_CALL_COMPLETED
-				? "ephemeral"
-				: "durable",
-		sentAt: "2026-01-01T00:00:00Z",
+		durability,
+		sentAt: timestamp,
+		instanceId: "agt_1",
 		...frame,
 	};
 }
 
-describe("applyPrimaryPathFrame", () => {
-	it("applies turn start, assistant partials, tool calls, and assistant commit", () => {
-		let snapshot = createSnapshot();
-		snapshot = applyPrimaryPathFrame(
-			snapshot,
-			createFrame({
-				type: WS_PRIMARY_PATH_TYPES.TURN_STARTED,
-				instanceId: "agt_1",
-				payload: {
-					turnRecord: {
-						id: "trn_live_1",
-						instanceId: "agt_1",
-						turnId: "generate_plan",
-						turnType: "llm",
-						status: "running",
-						attemptNumber: 1,
-						parentTurnRecordId: null,
-						pathType: "primary",
-						forkPiEntryId: null,
-						resultPiEntryId: null,
-						turnResultMarkdown: null,
-						errorSummary: null,
-						startedAt: "2026-01-01T00:00:01Z",
-						endedAt: null,
-					},
+const start = createFrame({
+	type: WS_PRIMARY_PATH_TYPES.TURN_STARTED,
+	eventSequence: 1,
+	payload: { turnRecord },
+});
+function summaryFrame(
+	eventSequence: number,
+	turnRecordId = "trn_1",
+	throughEventSequence = eventSequence,
+) {
+	return createFrame(
+		{
+			type: WS_PRIMARY_PATH_TYPES.SUMMARY_UPDATED,
+			eventSequence,
+			payload: {
+				turnRecordId,
+				summary: {
+					...emptyCompactTurnSummary(),
+					throughEventSequence,
+					assistant: { text: "hello", thinking: "Thinking", lastUpdatedAt: timestamp },
 				},
-			}),
-		);
-		snapshot = applyPrimaryPathFrame(
-			snapshot,
-			createFrame({
-				type: WS_PRIMARY_PATH_TYPES.ASSISTANT_PARTIAL,
-				instanceId: "agt_1",
-				payload: {
-					turnRecordId: "trn_live_1",
-					piTurnId: "turn-1",
-					text: "Need to inspect the repo.\n",
-					streamType: "thinking",
-					timestamp: "2026-01-01T00:00:01.500Z",
-				},
-			}),
-		);
-		snapshot = applyPrimaryPathFrame(
-			snapshot,
-			createFrame({
-				type: WS_PRIMARY_PATH_TYPES.ASSISTANT_PARTIAL,
-				instanceId: "agt_1",
-				payload: {
-					turnRecordId: "trn_live_1",
-					piTurnId: "turn-1",
-					text: "Drafting plan",
-					streamType: "text",
-					timestamp: "2026-01-01T00:00:02Z",
-				},
-			}),
-		);
-		snapshot = applyPrimaryPathFrame(
-			snapshot,
-			createFrame({
-				type: WS_PRIMARY_PATH_TYPES.USAGE_UPDATED,
-				instanceId: "agt_1",
-				payload: {
-					turnRecordId: "trn_live_1",
-					piTurnId: "turn-1",
-					usage: {
-						input: 120,
-						output: 24,
-						cacheRead: 300,
-						cacheWrite: 40,
-						totalTokens: 484,
-						cost: {
-							input: 0.003,
-							output: 0.0024,
-							cacheRead: 0.0015,
-							cacheWrite: 0.001,
-							total: 0.0079,
-						},
-					},
-					timestamp: "2026-01-01T00:00:02.500Z",
-				},
-			}),
-		);
-		snapshot = applyPrimaryPathFrame(
-			snapshot,
-			createFrame({
-				type: WS_PRIMARY_PATH_TYPES.TOOL_CALL_STARTED,
-				instanceId: "agt_1",
-				payload: {
-					turnRecordId: "trn_live_1",
-					piTurnId: "turn-1",
-					toolCallId: "tool-1",
-					toolName: "run_tests",
-					arguments: { suite: "unit" },
-					timestamp: "2026-01-01T00:00:03Z",
-				},
-			}),
-		);
-		snapshot = applyPrimaryPathFrame(
-			snapshot,
-			createFrame({
-				type: WS_PRIMARY_PATH_TYPES.TOOL_CALL_COMPLETED,
-				instanceId: "agt_1",
-				payload: {
-					turnRecordId: "trn_live_1",
-					piTurnId: "turn-1",
-					toolCallId: "tool-1",
-					toolName: "run_tests",
-					result: { ok: true },
-					isError: false,
-					timestamp: "2026-01-01T00:00:04Z",
-				},
-			}),
-		);
+			},
+		},
+		"ephemeral",
+	);
+}
 
-		expect(snapshot.turnState.activeTurn).toMatchObject({
-			turnRecordId: "trn_live_1",
-			assistant: {
-				text: "Drafting plan",
-				thinking: "Need to inspect the repo.\n",
-			},
-			usage: {
-				input: 120,
-				output: 24,
-				cacheRead: 300,
-				cacheWrite: 40,
-				totalTokens: 484,
-				cost: {
-					input: 0.003,
-					output: 0.0024,
-					cacheRead: 0.0015,
-					cacheWrite: 0.001,
-					total: 0.0079,
-				},
-			},
-			toolCalls: [
-				expect.objectContaining({
-					toolCallId: "tool-1",
-					status: "completed",
-					result: { ok: true },
-				}),
-			],
+const commit = createFrame({
+	type: WS_PRIMARY_PATH_TYPES.ASSISTANT_COMMITTED,
+	eventSequence: 4,
+	payload: {
+		turnRecord: {
+			...turnRecord,
+			status: "succeeded",
+			resultPiEntryId: "assistant-poem",
+			endedAt: timestamp,
+		},
+		rootEntry: { entryId: "root-user", turnRecordId: null },
+		currentLeaf: { entryId: "assistant-poem", turnRecordId: "trn_1" },
+	},
+});
+
+describe("compact primary-path frames", () => {
+	it("applies turn start, bounded summaries, and correlated completion", () => {
+		const started = applyPrimaryPathFrame(createSnapshot(), start);
+		expect(started.turnState).toMatchObject({
+			currentTurnRecordId: "trn_1",
+			isStreaming: true,
+			activeTurn: { summaryPending: true },
 		});
-		expect(getPrimaryPathActiveTurnOutput(snapshot.turnState.activeTurn)).toBe("Drafting plan");
-
-		snapshot = applyPrimaryPathFrame(
-			snapshot,
-			createFrame({
-				type: WS_PRIMARY_PATH_TYPES.ASSISTANT_COMMITTED,
-				instanceId: "agt_1",
-				payload: {
-					turnRecord: {
-						id: "trn_live_1",
-						instanceId: "agt_1",
-						turnId: "generate_plan",
-						turnType: "llm",
-						status: "succeeded",
-						attemptNumber: 1,
-						parentTurnRecordId: null,
-						pathType: "primary",
-						forkPiEntryId: null,
-						resultPiEntryId: "assistant-plan",
-						turnResultMarkdown: "## Plan",
-						errorSummary: null,
-						startedAt: "2026-01-01T00:00:01Z",
-						endedAt: "2026-01-01T00:00:05Z",
-					},
-					rootEntry: { entryId: "root-user", turnRecordId: null },
-					currentLeaf: { entryId: "assistant-plan", turnRecordId: "trn_live_1" },
-				},
+		const snapshot = applyPrimaryPathFrame(started, summaryFrame(3));
+		expect(snapshot.turnState.activeTurn).toMatchObject({
+			turnRecordId: "trn_1",
+			summaryPending: false,
+			throughEventSequence: 3,
+		});
+		expect(getPrimaryPathActiveTurnOutput(snapshot.turnState.activeTurn)).toBe("hello");
+		expect(
+			getPrimaryPathActiveTurnOutput({
+				assistant: { text: "", thinking: "Thinking", lastUpdatedAt: timestamp },
 			}),
-		);
-
-		expect(snapshot.turnState.currentTurnRecordId).toBeNull();
-		expect(snapshot.turnState.activeTurn).toBeNull();
-		expect(snapshot.currentLeaf).toEqual({ entryId: "assistant-plan", turnRecordId: "trn_live_1" });
+		).toBe("");
+		const unrelatedCommit = createFrame({
+			type: WS_PRIMARY_PATH_TYPES.ASSISTANT_COMMITTED,
+			eventSequence: 4,
+			payload: { turnRecord: { ...turnRecord, id: "other" }, rootEntry: null, currentLeaf: null },
+		});
+		expect(applyPrimaryPathFrame(snapshot, unrelatedCommit)).toBe(snapshot);
+		const completed = applyPrimaryPathFrame(snapshot, commit);
+		expect(completed.turnState).toMatchObject({
+			currentTurnRecordId: null,
+			isStreaming: false,
+			activeTurn: null,
+		});
+		expect(completed.currentLeaf).toEqual({ entryId: "assistant-poem", turnRecordId: "trn_1" });
+		expect(completed.throughEventSequence).toBe(4);
+		expect(snapshot.turnState.activeTurn?.turnRecordId).toBe("trn_1");
 	});
 
-	it("does not surface thinking-only content as the main active-turn output", () => {
-		let snapshot = applyPrimaryPathFrame(
-			createSnapshot(),
-			createFrame({
-				type: WS_PRIMARY_PATH_TYPES.TURN_STARTED,
-				instanceId: "agt_1",
-				payload: {
-					turnRecord: {
-						id: "trn_live_thinking",
-						instanceId: "agt_1",
-						turnId: "generate_plan",
-						turnType: "llm",
-						status: "running",
-						attemptNumber: 1,
-						parentTurnRecordId: null,
-						pathType: "primary",
-						forkPiEntryId: null,
-						resultPiEntryId: null,
-						turnResultMarkdown: null,
-						errorSummary: null,
-						startedAt: "2026-01-01T00:10:00Z",
-						endedAt: null,
-					},
-				},
-			}),
+	it("rejects summaries without a matching turn or a newer sequence", () => {
+		const snapshot = applyPrimaryPathFrame(
+			applyPrimaryPathFrame(createSnapshot(), start),
+			summaryFrame(3),
 		);
-		snapshot = applyPrimaryPathFrame(
-			snapshot,
-			createFrame({
+		for (const frame of [summaryFrame(2), summaryFrame(4, "other"), summaryFrame(4, "trn_1", 2)])
+			expect(applyPrimaryPathFrame(snapshot, frame)).toBe(snapshot);
+		const empty = createSnapshot();
+		expect(applyPrimaryPathFrame(empty, summaryFrame(4))).toBe(empty);
+	});
+
+	it("ignores full-activity compatibility frames without advancing the compact boundary", () => {
+		const snapshot = applyPrimaryPathFrame(createSnapshot(), start);
+		for (const frame of [
+			{
 				type: WS_PRIMARY_PATH_TYPES.ASSISTANT_PARTIAL,
-				instanceId: "agt_1",
 				payload: {
-					turnRecordId: "trn_live_thinking",
-					piTurnId: "turn-thinking",
-					text: "Thinking through the implementation.\n",
-					streamType: "thinking",
-					timestamp: "2026-01-01T00:10:01Z",
+					turnRecordId: "trn_1",
+					piTurnId: null,
+					text: "raw text",
+					streamType: "text",
+					timestamp,
 				},
-			}),
-		);
-
-		expect(snapshot.turnState.activeTurn?.assistant.thinking).toBe(
-			"Thinking through the implementation.\n",
-		);
-		expect(getPrimaryPathActiveTurnOutput(snapshot.turnState.activeTurn)).toBe("");
+			},
+			{
+				type: WS_PRIMARY_PATH_TYPES.USAGE_UPDATED,
+				payload: {
+					turnRecordId: "trn_1",
+					piTurnId: null,
+					usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: null },
+					timestamp,
+				},
+			},
+			{
+				type: WS_PRIMARY_PATH_TYPES.TOOL_CALL_STARTED,
+				payload: {
+					turnRecordId: "trn_1",
+					piTurnId: null,
+					toolCallId: "tool",
+					toolName: "read",
+					arguments: {},
+					timestamp,
+				},
+			},
+			{
+				type: WS_PRIMARY_PATH_TYPES.TOOL_CALL_COMPLETED,
+				payload: {
+					turnRecordId: "trn_1",
+					piTurnId: null,
+					toolCallId: "tool",
+					toolName: "read",
+					result: "raw result",
+					isError: false,
+					timestamp,
+				},
+			},
+		] as const)
+			expect(
+				applyPrimaryPathFrame(snapshot, createFrame({ ...frame, eventSequence: 2 }, "ephemeral")),
+				frame.type,
+			).toBe(snapshot);
 	});
 
-	it("updates labels and turn annotations incrementally", () => {
+	it("updates labels, annotations, and leaf references without replacing active state", () => {
 		const annotation: ProcessTurnAnnotation = {
 			id: "tan_1",
 			instanceId: "agt_1",
 			annotationType: "turn_milestone",
 			annotationKey: "turn_milestone:trn_1",
 			references: [{ kind: "turn_record", turnRecordId: "trn_1", role: "subject" }],
-			payload: { turnId: "generate_plan" },
-			createdAt: "2026-01-01T00:00:00Z",
-			updatedAt: "2026-01-01T00:00:00Z",
+			payload: { turnId: "draft_poem" },
+			createdAt: timestamp,
+			updatedAt: timestamp,
 		};
-		let snapshot = applyPrimaryPathFrame(
-			createSnapshot(),
-			createFrame({
-				type: WS_PRIMARY_PATH_TYPES.TURN_ANNOTATION_CHANGED,
-				instanceId: "agt_1",
-				payload: {
-					change: "created",
-					annotation,
-				},
-			}),
-		);
+		let snapshot = applyPrimaryPathFrame(createSnapshot(), start);
+		const active = snapshot.turnState.activeTurn;
+		for (const label of ["approved-poem", null]) {
+			snapshot = applyPrimaryPathFrame(
+				snapshot,
+				createFrame({
+					type: WS_PRIMARY_PATH_TYPES.LABEL_CHANGED,
+					payload: { turnRecordId: null, piTurnId: null, targetId: "root-user", label, timestamp },
+				}),
+			);
+			expect(snapshot.labels).toEqual(label ? { "root-user": label } : {});
+		}
+		for (const change of ["created", "updated"] as const) {
+			snapshot = applyPrimaryPathFrame(
+				snapshot,
+				createFrame({
+					type: WS_PRIMARY_PATH_TYPES.TURN_ANNOTATION_CHANGED,
+					payload: { change, annotation },
+				}),
+			);
+			expect(snapshot.turnAnnotations).toEqual([annotation]);
+		}
 		snapshot = applyPrimaryPathFrame(
 			snapshot,
 			createFrame({
-				type: WS_PRIMARY_PATH_TYPES.LABEL_CHANGED,
-				instanceId: "agt_1",
-				payload: {
-					turnRecordId: null,
-					piTurnId: null,
-					targetId: "root-user",
-					label: "approved-plan",
-					timestamp: "2026-01-01T00:00:02Z",
-				},
+				type: WS_PRIMARY_PATH_TYPES.CHANGED,
+				payload: { rootEntry: null, currentLeaf: null },
 			}),
 		);
+		expect(snapshot.currentLeaf).toBeNull();
+		expect(snapshot.semanticEntryRefs.rootEntry).toBeNull();
+		expect(snapshot.turnState.activeTurn).toBe(active);
+	});
+});
 
-		expect(snapshot.turnAnnotations).toEqual([annotation]);
-		expect(snapshot.labels).toEqual({ "root-user": "approved-plan" });
+describe("primary-path replay", () => {
+	it("uses timestamps only for unsequenced metadata and sequences for activity", () => {
+		const snapshot = { ...createSnapshot(), throughEventSequence: 3 };
+		for (const [sentAt, expected] of [
+			["2026-01-01T00:00:01Z", false],
+			["2026-01-01T00:00:02Z", false],
+			["2026-01-01T00:00:03Z", true],
+		] as const)
+			expect(shouldReplayPrimaryPathFrameAfterSnapshot({ sentAt }, snapshot)).toBe(expected);
+		expect(
+			shouldReplayPrimaryPathFrameAfterSnapshot(
+				{ sentAt: "2026-01-01T00:00:01Z", eventSequence: 4 },
+				snapshot,
+			),
+		).toBe(true);
+		expect(
+			shouldReplayPrimaryPathFrameAfterSnapshot(
+				{ sentAt: "2026-01-01T00:00:03Z", eventSequence: 3 },
+				snapshot,
+			),
+		).toBe(false);
+	});
+
+	it("orders buffered frames and does not replay activity already in a detached snapshot", () => {
+		const snapshot = createSnapshot();
+		const result = replayPrimaryPathFramesAfterSnapshot(snapshot, [summaryFrame(3), start]);
+		expect(result.turnState.currentTurnRecordId).toBe("trn_1");
+		expect(result.turnState.activeTurn?.assistant.text).toBe("hello");
+		expect(snapshot.turnState.activeTurn).toBeNull();
+		const replayed = replayPrimaryPathFramesAfterSnapshot(result, [start, summaryFrame(3)]);
+		expect(replayed).toEqual(result);
+		expect(replayed.turnState.activeTurn?.assistant).not.toBe(
+			result.turnState.activeTurn?.assistant,
+		);
 	});
 });

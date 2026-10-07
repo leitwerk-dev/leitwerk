@@ -2,6 +2,7 @@ import type { WorkerBootstrapReceipt, WorkerLease, WorkerState } from "@leitwerk
 import { and, asc, eq, isNull } from "drizzle-orm";
 import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core";
 import type { LeitwerkDb } from "./database.js";
+import { type HistoryWindow, historyWindow } from "./history-window.js";
 import { generateId, now } from "./repo-helpers.js";
 import * as s from "./schema.js";
 
@@ -120,11 +121,16 @@ export function createWorkerLeaseRepo(db: LeitwerkDb) {
 		},
 
 		/** @internal */
-		listByInstance(instanceId: string): WorkerLease[] {
+		listByInstance(instanceId: string, window?: HistoryWindow): WorkerLease[] {
 			return db
 				.select()
 				.from(s.workerLeases)
-				.where(eq(s.workerLeases.instanceId, instanceId))
+				.where(
+					and(
+						eq(s.workerLeases.instanceId, instanceId),
+						historyWindow(s.workerLeases.startedAt, window),
+					),
+				)
 				.orderBy(asc(s.workerLeases.startedAt), asc(s.workerLeases.id))
 				.all()
 				.map(rowToWorkerLease);

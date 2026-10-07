@@ -6,6 +6,27 @@ import {
 import { describe, expect, it } from "vitest";
 import { flow } from "./flow.js";
 
+function runRepoLookup(
+	key: string,
+	workspaceRoot?: string,
+	projects = [createTestProcessProject({ key })],
+) {
+	return flow
+		.automatic("finalize")
+		.description("Finalize")
+		.run((ctx) => ({ outcome: "done", params: { path: ctx.repo.get(key).fsPath } }))
+		.outcome("done", (outcome) => outcome.description("Done").complete())
+		.definition.run(
+			createTestWorkerProcessContext({
+				process: createTestProcessInstance({ processId: "test_process" }),
+				projects,
+				params: {},
+				state: {},
+				workspaceRoot,
+			}),
+		);
+}
+
 describe("flow automatic turns", () => {
 	it("can wait on itself and expose external actions as graph edges", async () => {
 		const source = {
@@ -25,6 +46,7 @@ describe("flow automatic turns", () => {
 			.turn(
 				flow
 					.automatic("deliver")
+					.waitFor(({ state }) => (state as { ready?: boolean }).ready === true)
 					.description("Deliver")
 					.run(() => ({ outcome: "awaiting" }))
 					.outcome("awaiting", (outcome) => outcome.description("Await events").wait())
@@ -68,6 +90,8 @@ describe("flow automatic turns", () => {
 			.description("Finalize")
 			.run((ctx) => {
 				const repo = ctx.repo.get("repo");
+				expect(ctx.repo.optional("missing")).toBeUndefined();
+				expect(ctx.repo.all()).toEqual([repo]);
 				receivedFsPath = repo.fsPath;
 				return { outcome: "done", params: { path: repo.workspaceClonePath } };
 			})
@@ -150,80 +174,21 @@ describe("flow automatic turns", () => {
 	});
 
 	it("rejects project keys that would resolve outside the workspace root", () => {
-		const turn = flow
-			.automatic("finalize")
-			.description("Finalize")
-			.run((ctx) => ({ outcome: "done", params: { path: ctx.repo.get("../escape").fsPath } }))
-			.outcome("done", (outcome) => outcome.description("Done").complete());
-
-		expect(() =>
-			turn.definition.run(
-				createTestWorkerProcessContext({
-					process: createTestProcessInstance({ processId: "test_process" }),
-					projects: [createTestProcessProject({ key: "../escape" })],
-					params: {},
-					state: {},
-					workspaceRoot: "/tmp/process-workspace",
-				}),
-			),
-		).toThrow(/resolves outside/);
+		expect(() => runRepoLookup("../escape", "/tmp/process-workspace")).toThrow(/resolves outside/);
 	});
 
-	it("allows project keys that start with dots but remain inside the workspace root", async () => {
-		const turn = flow
-			.automatic("finalize")
-			.description("Finalize")
-			.run((ctx) => ({ outcome: "done", params: { path: ctx.repo.get("..repo").fsPath } }))
-			.outcome("done", (outcome) => outcome.description("Done").complete());
-
-		expect(
-			turn.definition.run(
-				createTestWorkerProcessContext({
-					process: createTestProcessInstance({ processId: "test_process" }),
-					projects: [createTestProcessProject({ key: "..repo" })],
-					params: {},
-					state: {},
-					workspaceRoot: "/tmp/process-workspace",
-				}),
-			),
-		).toEqual({ outcome: "done", params: { path: "/tmp/process-workspace/..repo" } });
+	it("allows project keys that start with dots but remain inside the workspace root", () => {
+		expect(runRepoLookup("..repo", "/tmp/process-workspace")).toEqual({
+			outcome: "done",
+			params: { path: "/tmp/process-workspace/..repo" },
+		});
 	});
 
 	it("rejects absolute project keys even when no workspace root is available", () => {
-		const turn = flow
-			.automatic("finalize")
-			.description("Finalize")
-			.run((ctx) => ({ outcome: "done", params: { path: ctx.repo.get("/tmp/repo").fsPath } }))
-			.outcome("done", (outcome) => outcome.description("Done").complete());
-
-		expect(() =>
-			turn.definition.run(
-				createTestWorkerProcessContext({
-					process: createTestProcessInstance({ processId: "test_process" }),
-					projects: [createTestProcessProject({ key: "/tmp/repo" })],
-					params: {},
-					state: {},
-				}),
-			),
-		).toThrow(/must be a relative workspace path/);
+		expect(() => runRepoLookup("/tmp/repo")).toThrow(/must be a relative workspace path/);
 	});
 
-	it("fails clearly when a requested repo key is unavailable", async () => {
-		const turn = flow
-			.automatic("finalize")
-			.description("Finalize")
-			.run((ctx) => ({ outcome: "done", params: { key: ctx.repo.get("repo").key } }))
-			.outcome("done", (outcome) => outcome.description("Done").complete());
-
-		expect(() =>
-			turn.definition.run(
-				createTestWorkerProcessContext({
-					process: createTestProcessInstance({ processId: "test_process" }),
-					projects: [],
-					params: {},
-					state: {},
-				}),
-			),
-		).toThrow(/requires project 'repo'/);
+	it("fails clearly when a requested repo key is unavailable", () => {
+		expect(() => runRepoLookup("repo", undefined, [])).toThrow(/requires project 'repo'/);
 	});
 });

@@ -1,3 +1,4 @@
+import { calculateCost } from "@earendil-works/pi-ai";
 import type { ModelProviderWorker } from "@leitwerk-dev/process-sdk";
 import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import modelsExtension from "./index.js";
@@ -52,6 +53,87 @@ describe("models extension", () => {
 		const providers = getSupportedStandardProviders();
 		expect(providers).toEqual(expect.arrayContaining(["openai", "anthropic", "google"]));
 		expect(providers).not.toContain("amazon-bedrock");
+	});
+
+	it("keeps request-wide pricing tiers through standard model configuration", () => {
+		const cost = {
+			input: 2,
+			output: 10,
+			cacheRead: 0.1,
+			cacheWrite: 2.5,
+			tiers: [{ inputTokensAbove: 272_000, input: 4, output: 15, cacheRead: 0.2, cacheWrite: 5 }],
+		};
+		const parsed = parseStandardProviderConfig(
+			{ models: [{ id: "priced-deployment", cost }] },
+			"openai",
+		);
+		const model = parsed.config.models?.[0];
+		assert(model);
+		const projected = resolveModels(createStandardModelProvider("openai").worker, parsed.config);
+		expect(projected).toHaveProperty(["providers", "openai", "models", "0", "cost"], cost);
+		const usage = {
+			input: 0,
+			output: 10,
+			cacheRead: 272_000,
+			cacheWrite: 0,
+			totalTokens: 272_010,
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+		};
+		expect(calculateCost(model, usage).total).toBeCloseTo(0.0273, 10);
+		usage.input = 1;
+		expect(calculateCost(model, usage).total).toBeCloseTo(0.054554, 10);
+	});
+
+	it("keeps tiered prices through a custom gateway", () => {
+		const cost = {
+			input: 10,
+			output: 50,
+			cacheRead: 1,
+			cacheWrite: 12.5,
+			tiers: [{ inputTokensAbove: 272_000, input: 20, output: 75, cacheRead: 2, cacheWrite: 25 }],
+		};
+		const parsed = parseCustomGatewayConfig("test", {
+			...customGateway,
+			models: [{ id: "priced-deployment", cost }],
+		});
+		const projected = resolveModels(
+			createCustomGatewayProvider("test", true).worker,
+			parsed.config,
+		);
+		expect(projected).toHaveProperty(["providers", "test", "models", "0", "cost"], cost);
+	});
+
+	it.each([
+		{
+			models: [
+				{
+					id: "model",
+					cost: {
+						input: 1,
+						output: 1,
+						cacheRead: 1,
+						cacheWrite: 1,
+						tiers: [{ inputTokensAbove: -1, input: 1, output: 1, cacheRead: 1, cacheWrite: 1 }],
+					},
+				},
+			],
+		},
+		{
+			models: [
+				{
+					id: "model",
+					cost: {
+						input: 1,
+						output: 1,
+						cacheRead: 1,
+						cacheWrite: 1,
+						tiers: [{ inputTokensAbove: 100, input: 1, output: -1, cacheRead: 1, cacheWrite: 1 }],
+					},
+				},
+			],
+		},
+	])("rejects malformed pricing tiers", (override) => {
+		expect(() => parseCustomGatewayConfig("test", { ...customGateway, ...override })).toThrow();
 	});
 
 	it.each([

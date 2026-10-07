@@ -7,6 +7,7 @@ import { readPublicationState } from "@leitwerk-dev/coding/repository-change-pub
 import { SYSTEM_ACTOR } from "@leitwerk-dev/domain";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import { gitSshIntegration } from "@leitwerk-dev/git-ssh";
+import type { GitLabMaintenance } from "@leitwerk-dev/gitlab";
 import { LocalGitLabAdapter, setupGitLabIntegration } from "@leitwerk-dev/gitlab/testing";
 import jira, {
 	type JiraComment,
@@ -27,6 +28,7 @@ import {
 import { LocalGit } from "@leitwerk-dev/test-support/local-git";
 import {
 	createInProcessWorkerSpawn,
+	formatBranchText,
 	StubPiTreeHandleFactory,
 } from "@leitwerk-dev/test-support/worker-testing";
 import { expect } from "vitest";
@@ -53,10 +55,16 @@ export async function jiraFixture(
 	});
 	let clock = Date.now(),
 		issueUnavailable = false,
-		loseComment = false,
+		loseRemoteLink = false,
 		edits = 0;
 	let failPublication = false;
 	let repairMode: "change" | "none" | "operator" = "change";
+	let repairHold:
+		| {
+				entered: ReturnType<typeof Promise.withResolvers<void>>;
+				release: ReturnType<typeof Promise.withResolvers<void>>;
+		  }
+		| undefined;
 	const issue: JiraIssue = {
 		id: "501",
 		key: "APP-1",
@@ -70,7 +78,7 @@ export async function jiraFixture(
 				{ id: "202", name: "Unmapped" },
 			],
 			labels: [
-				"use-leitwerk",
+				"use-leitwerk-beta",
 				...(options.skipPlan ? ["leitwerk-skip-plan-decision"] : []),
 				...(options.skipSimplification ? ["leitwerk-skip-simplification"] : []),
 			],
@@ -87,32 +95,20 @@ export async function jiraFixture(
 		if (issueUnavailable) throw new Error("Jira unavailable");
 		return getIssue(id);
 	};
-	const addComment = jiraClient.addComment.bind(jiraClient);
-	jiraClient.addComment = async (id, body) => {
-		const comment = await addComment(id, body);
-		if (loseComment) {
-			loseComment = false;
+	const upsertRemoteLink = jiraClient.upsertRemoteLink.bind(jiraClient);
+	jiraClient.upsertRemoteLink = async (id, input) => {
+		const link = await upsertRemoteLink(id, input);
+		if (loseRemoteLink) {
+			loseRemoteLink = false;
 			throw new Error("Response lost after Jira write");
 		}
-		return comment;
+		return link;
 	};
 	const prompts: { tools: string[]; prompt: string }[] = [];
 	const pi = new StubPiTreeHandleFactory({
-		toolCallScriptResolver({ tools, promptText, workspaceRoot }) {
+		async toolCallScriptResolver({ tools, promptText, workspaceRoot }) {
 			if (!workspaceRoot) throw new Error("Missing workspace root");
-			const treeText =
-				pi.sessions
-					.at(-1)
-					?.getBranch()
-					.map((entry) =>
-						entry.type === "custom_message"
-							? entry.content
-							: entry.type === "message"
-								? entry.message?.content
-								: "",
-					)
-					.filter((value): value is string => typeof value === "string")
-					.join("\n\n") ?? "";
+			const treeText = formatBranchText(pi.sessions.at(-1)?.getBranch());
 			promptText = `${treeText}\n${promptText}`;
 			const names = tools.map((tool) => tool.name);
 			prompts.push({ tools: names, prompt: promptText });
@@ -146,6 +142,12 @@ export async function jiraFixture(
 				};
 			}
 			if (names.includes("changes_ready")) {
+				const hold = repairHold;
+				if (hold) {
+					repairHold = undefined;
+					hold.entered.resolve();
+					await hold.release.promise;
+				}
 				const key = promptText.match(/Repository: (repo_\d+)/)?.[1];
 				if (key && repairMode === "change")
 					writeFileSync(path.join(workspaceRoot, key, "README.md"), `Repaired ${key} ${++edits}\n`);
@@ -180,6 +182,7 @@ export async function jiraFixture(
 	});
 	let harness: IntegrationHarness;
 	let polls: (() => Promise<{ errors: string[] }>)[] = [];
+	let maintenance: GitLabMaintenance;
 	let flow: ReturnType<typeof createJiraGitLabChange>;
 	async function start(listen = true) {
 		polls = [];
@@ -202,8 +205,8 @@ export async function jiraFixture(
 			},
 			createPollingTestExtension(
 				{ id: "gitlab", version: "1.0.0" },
-				(api) =>
-					setupGitLabIntegration(
+				(api) => {
+					const provider = setupGitLabIntegration(
 						api,
 						{
 							profiles: () => ["team"],
@@ -222,7 +225,17 @@ export async function jiraFixture(
 							},
 						},
 						{ now: () => clock },
-					),
+					);
+					if (provider) maintenance = provider.maintenance;
+					return (
+						provider && {
+							async poll() {
+								const results = [await provider.poll(), await provider.maintenance.poll()];
+								return { errors: results.flatMap((result) => result.errors) };
+							},
+						}
+					);
+				},
 				true,
 			),
 		];
@@ -274,7 +287,14 @@ export async function jiraFixture(
 					jira_gitlab_change_process: {
 						default_model_profile: "fake",
 						turn_configs: {},
-						watchers: { use_leitwerk: { enabled: true, profile: "team", projects: ["100"] } },
+						watchers: {
+							use_leitwerk: {
+								enabled: true,
+								profile: "team",
+								projects: ["100"],
+								label: "use-leitwerk-beta",
+							},
+						},
 					},
 				};
 			},
@@ -317,6 +337,30 @@ export async function jiraFixture(
 	}
 	await harness.ctx.listen({ host: "127.0.0.1", port: 0, useBoundAddressAsBaseUrl: true });
 	const driver = createProcessDriver(() => harness.ctx);
+	const wait: typeof driver.wait = (id, turn, lifecycle = "waiting", timeout = 12000) =>
+		driver.waitForProcess(
+			id,
+			(process) => {
+				if (process.selectedTurnId !== turn || process.lifecycleStatus !== lifecycle) return false;
+				if (turn !== "deliver_change" || lifecycle !== "waiting") return true;
+				const params = JSON.parse(process.paramsJson ?? "{}") as JiraGitLabParams;
+				const state = JSON.parse(process.stateJson ?? "{}");
+				return params.repositories.every(({ key }) => {
+					const current = readPublicationState(state, `jiraGitLabChange:${key}`);
+					return (
+						current.noChanges ||
+						current.delivery.terminalPullRequest ||
+						(current.delivery.stage === "awaiting" &&
+							!current.delivery.adjustment &&
+							!current.pendingEvidence &&
+							current.feedbackIds.length === 0)
+					);
+				});
+			},
+			`${turn}/${lifecycle} with delivery settled`,
+			timeout,
+			lifecycle === "error",
+		);
 	const poll = async () => {
 		clock += 180000;
 		for (const run of polls) {
@@ -335,8 +379,12 @@ export async function jiraFixture(
 		JSON.parse(harness.ctx.deps.processes.getById(id)?.stateJson ?? "{}");
 	return {
 		...driver,
+		wait,
 		issue,
 		comments,
+		get links() {
+			return jiraClient.remoteLinks.get(issue.id) ?? [];
+		},
 		gitlab,
 		prompts,
 		remotes,
@@ -371,11 +419,26 @@ export async function jiraFixture(
 		setUnavailable(value: boolean) {
 			issueUnavailable = value;
 		},
-		loseComment() {
-			loseComment = true;
+		async pollDiscovery() {
+			clock += 30000;
+			return polls[0]();
+		},
+		loseRemoteLink() {
+			loseRemoteLink = true;
 		},
 		setRepair(value: typeof repairMode) {
 			repairMode = value;
+		},
+		assertMaintenance(id: string, key: string) {
+			return maintenance.assertOwnership(id, key);
+		},
+		holdRepair() {
+			const hold = {
+				entered: Promise.withResolvers<void>(),
+				release: Promise.withResolvers<void>(),
+			};
+			repairHold = hold;
+			return { entered: hold.entered.promise, release: () => hold.release.resolve() };
 		},
 		async discover() {
 			await poll();
@@ -396,7 +459,7 @@ export async function jiraFixture(
 				await driver.wait(id, "plan_decision");
 				await driver.action(id, "approve_plan");
 			}
-			await driver.wait(
+			await wait(
 				id,
 				options.noChanges ? null : "deliver_change",
 				options.noChanges ? "completed" : "waiting",

@@ -17,6 +17,7 @@ import type {
 	DeferredProcessActivationSnapshotResult,
 	PreparedDeferredProcessActivation,
 	ProcessActionServiceLike,
+	ProcessObservationUpdate,
 } from "@leitwerk-dev/process-sdk";
 import type { LeitwerkConfig } from "../config/config-types.js";
 import type { RepositoryBundle } from "../db/repositories.js";
@@ -241,6 +242,11 @@ export type RecordResult<TOp extends OperationSpec<string, OperationInputBase, u
 
 /** @internal */
 export interface ProcessEngine {
+	/** @internal */
+	applyProcessObservation(
+		instanceId: string,
+		input: ProcessObservationUpdate,
+	): Promise<EngineResult<void>>;
 	/** @internal */
 	getDeferredProcessActivationSnapshots(
 		query: DeferredProcessActivationSnapshotQuery,

@@ -1,10 +1,5 @@
 import type { LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
-import {
-	coreHostCapabilities,
-	parseTicketCreationConfig,
-	repositorySettingsIdentity,
-	scopedSettingsCapability,
-} from "@leitwerk-dev/process-sdk";
+import { coreHostCapabilities, parseTicketCreationConfig } from "@leitwerk-dev/process-sdk";
 import { GitLabClient, parseGitLabProfiles } from "./client.js";
 import { setupGitLabIntegration } from "./setup.js";
 
@@ -21,23 +16,6 @@ const extension: LeitwerkExtensionModule = {
 	setupServer(api, config) {
 		const profiles = parseGitLabProfiles(config);
 		const clients = new Map([...profiles].map(([id, profile]) => [id, new GitLabClient(profile)]));
-		const settings = api.get(scopedSettingsCapability);
-		if (settings && !Array.isArray(settings))
-			settings.registerDiscovery("repository", async () => {
-				const subjects = [];
-				for (const client of clients.values())
-					for (const project of await client.listProjects())
-						subjects.push({
-							scopeType: "repository",
-							identity: repositorySettingsIdentity(client.baseUrl, project.id),
-							label: project.path_with_namespace,
-							aliases: [
-								project.http_url_to_repo,
-								...(project.ssh_url_to_repo ? [project.ssh_url_to_repo] : []),
-							],
-						});
-				return subjects;
-			});
 		setupGitLabIntegration(
 			api,
 			{
@@ -70,15 +48,17 @@ export {
 	gitlabRepositoryCredentials,
 } from "./capability.js";
 export type {
+	GitLabClientLike,
 	GitLabDiff,
 	GitLabFeedback,
 	GitLabIdentity,
 	GitLabJob,
+	GitLabLabelEvent,
 	GitLabMergeRequest,
 	GitLabObservation,
 	GitLabProject,
 } from "./client.js";
-export { observeMergeRequest } from "./client.js";
+export { GitLabError, observeMergeRequest } from "./client.js";
 export type { GitLabDeliveryObservation } from "./external.js";
 export {
 	gitLabFeedbackReadyAt,
@@ -90,14 +70,49 @@ export type { GitLabIssueWatcherEvent } from "./issue-watcher.js";
 export { gitlabIssueExternalId, gitlabIssueWatcherSource } from "./issue-watcher.js";
 export { resolveGitLabLaunchProject } from "./launch.js";
 export {
+	GITLAB_MAINTAINED_KIND,
+	type GitLabMaintainedBinding,
+	type GitLabMaintainedProcess,
+	type GitLabMaintenance,
+	type GitLabMaintenanceContext,
+	type GitLabMaintenanceDecision,
+	type GitLabMaintenanceDestinations,
+	type GitLabMaintenanceEvent,
+	type GitLabMaintenanceMessage,
+	type GitLabMaintenanceRecord,
+	type GitLabMaintenanceRetry,
+	type GitLabMaintenanceSettings,
+	gitlabMaintenance,
+	gitlabMaintenanceSource,
+	registerGitLabMaintainedProcess,
+} from "./maintenance.js";
+export {
+	GITLAB_ACTIVE_LABEL,
+	GITLAB_DONE_LABEL,
+	type GitLabLabelState,
+	gitLabActivationStatus,
+	readGitLabLabels,
+} from "./maintenance-labels.js";
+export {
 	createGitLabPublicationAdapter,
 	type GitLabPublicationParams,
 	gitlabPublicationEvidenceForRequest,
+	gitlabPublicationRequest,
 	gitlabPublicationSource,
 } from "./publication.js";
+export {
+	createGitLabRepositoryCatalog,
+	type GitLabRepositoryCatalog,
+} from "./repository-catalog.js";
 export type { GitLabSelection } from "./selection.js";
 export {
 	parseGitLabSelection,
 	selectGitLabProjects,
 } from "./selection.js";
-export { ensureGitLabSeenReaction, resolveGitLabBinding } from "./tools.js";
+export {
+	ensureGitLabComment,
+	ensureGitLabSeenReaction,
+	gitLabCommentMarker,
+	resolveGitLabBinding,
+	resolveGitLabRepositoryBinding,
+} from "./tools.js";

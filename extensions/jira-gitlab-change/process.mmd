@@ -23,14 +23,12 @@ flowchart TD
   apply_simplification -- "implementation-summary" --> generate_commit_message
   generate_commit_message -- "commit-message" --> deliver_change
   deliver_change -- "awaiting" --> deliver_change
-  deliver_change -- "feedback_ready" --> revise_from_merge_request_feedback
   deliver_change -- "completed" --> completed
   deliver_change -- "aborted" --> aborted
-  deliver_change -- "ci_ready" --> repair_gitlab_pipeline
-  deliver_change -- "conflict_ready" --> revise_from_merge_request_feedback
-  deliver_change -- "operator_action" --> ci_operator_action
-  deliver_change -. "external:gitlab_merge_requests" .-> deliver_change
-  deliver_change -. "external:source_cancelled" .-> deliver_change
+  deliver_change -. "external:maintenance_feedback" .-> revise_from_merge_request_feedback
+  deliver_change -. "external:maintenance_conflict" .-> revise_from_merge_request_feedback
+  deliver_change -. "external:maintenance_ci" .-> repair_gitlab_pipeline
+  deliver_change -. "external:maintenance_operator" .-> ci_operator_action
   revise_from_merge_request_feedback -- "changes_ready" --> deliver_change
   revise_from_merge_request_feedback -- "no_changes" --> deliver_change
   revise_from_merge_request_feedback -- "cannot_repair" --> ci_operator_action
@@ -41,3 +39,5 @@ flowchart TD
   ci_operator_action -- "ci" --> repair_gitlab_pipeline
   ci_operator_action -- "resume_waiting" --> deliver_change
   ci_operator_action -- "abort" --> aborted
+  ci_operator_action -. "external:maintenance_feedback" .-> revise_from_merge_request_feedback
+  ci_operator_action -. "external:maintenance_conflict" .-> revise_from_merge_request_feedback

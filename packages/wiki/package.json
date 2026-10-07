@@ -1,0 +1,67 @@
+{
+	"name": "@leitwerk-dev/wiki",
+	"version": "0.3.1",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
+		"directory": "packages/wiki"
+	},
+	"type": "module",
+	"exports": {
+		".": {
+			"source": "./src/index.ts",
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		},
+		"./integration": {
+			"source": "./src/integration.ts",
+			"import": "./dist/integration.js",
+			"types": "./dist/integration.d.ts"
+		},
+		"./server": {
+			"source": "./src/server/index.ts",
+			"import": "./dist/server/index.js",
+			"types": "./dist/server/index.d.ts"
+		},
+		"./ui": {
+			"source": "./src/ui/index.ts",
+			"import": "./dist/ui/index.js",
+			"types": "./dist/ui/index.d.ts"
+		},
+		"./ui/WikiPage.svelte": {
+			"source": "./src/ui/WikiPage.svelte",
+			"svelte": "./dist/ui/WikiPage.svelte",
+			"default": "./dist/ui/WikiPage.svelte"
+		}
+	},
+	"scripts": {
+		"build": "tsup --silent"
+	},
+	"dependencies": {
+		"@leitwerk-dev/domain": "0.3.1",
+		"@leitwerk-dev/process-sdk": "0.3.1",
+		"fastify": "^5.8.4"
+	},
+	"devDependencies": {
+		"tsup": "^8.5.1",
+		"svelte": "^5.55.0",
+		"drizzle-orm": "1.0.0-rc.5-ab785fc"
+	},
+	"license": "Apache-2.0",
+	"publishConfig": {
+		"access": "public"
+	},
+	"engines": {
+		"node": ">=26 <27"
+	},
+	"files": [
+		"dist/**",
+		"src/**",
+		"!dist/**/*.test.*",
+		"!src/**/*.test.ts"
+	],
+	"peerDependencies": {
+		"svelte": "^5.55.0",
+		"drizzle-orm": "1.0.0-rc.5-ab785fc"
+	}
+}

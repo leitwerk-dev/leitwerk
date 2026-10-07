@@ -7,6 +7,7 @@ import path from "node:path";
 import type {
 	Actor,
 	ExternalWriteLog,
+	LaunchModelConfigInput,
 	ProcessInstance,
 	ProcessProject,
 	ProcessTurnRecord,
@@ -27,7 +28,7 @@ import { createPersistentIntegrationFixture } from "./integration-harness.js";
 import { observe, type TestObservation } from "./observations.js";
 import { createProcessFixture, type ProcessFixtureOptions } from "./process-fixtures.js";
 import type { QuestionRequestFixture } from "./supported-question-fixtures.js";
-import { StubPiTreeHandleFactory } from "./worker-testing/stub-pi-tree-handle.js";
+import { formatBranchText, StubPiTreeHandleFactory } from "./worker-testing/stub-pi-tree-handle.js";
 
 /** Model-visible inputs for a scripted invocation. @public */
 export interface IntegrationPromptObservation {
@@ -397,7 +398,11 @@ export interface ExtensionIntegrationHarness {
 	/** @public */
 	process(id: string): ExtensionIntegrationProcess;
 	/** @public */
-	launch(id: string, input: Record<string, unknown>): Promise<ExtensionIntegrationProcess>;
+	launch(
+		id: string,
+		input: Record<string, unknown>,
+		modelConfig?: LaunchModelConfigInput,
+	): Promise<ExtensionIntegrationProcess>;
 	/** @public */
 	createProcess<TParams, TState>(
 		definition: ExtensionProcessDefinition<TParams, TState>,
@@ -490,16 +495,7 @@ export async function createExtensionIntegrationHarness(
 				const session = [...piFactory.sessions]
 					.reverse()
 					.find((session) => session.treeFile === input.treeFile);
-				const history =
-					session
-						?.getBranch()
-						.map((entry) => {
-							if (entry.type === "custom_message") return entry.content;
-							if (entry.type === "message" && entry.message) return entry.message.content;
-							return "";
-						})
-						.filter((value) => typeof value === "string")
-						.join("\n\n") ?? "";
+				const history = formatBranchText(session?.getBranch(), "");
 				const script = manual
 					? scripts.get(id)
 					: await options.script?.(
@@ -864,9 +860,10 @@ export async function createExtensionIntegrationHarness(
 		/** Get a handle that remains valid across restart. @public */
 		process: processHandle,
 		/** Admit work through a registered UI launcher. @public */
-		async launch(id, input) {
+		async launch(id, input, modelConfig) {
 			const response = await postImmediateLaunch(context().config.server.base_url, id, {
 				launcherInput: input,
+				...(modelConfig ? { modelConfig } : {}),
 			});
 			const body = (await response.json()) as { process?: { id: string } };
 			if (!response.ok || !body.process)

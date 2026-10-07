@@ -1,7 +1,7 @@
 import type { Actor } from "@leitwerk-dev/domain";
 import { buildRetryWrites } from "../../process-engine/writes/build-retry-writes.js";
 import { stampActorOnEvents } from "../../process-engine/writes/writes.js";
-import { accept, reject } from "../decision.js";
+import { accept, modelOverrideMetadata, reject } from "../decision.js";
 import { defineOperation } from "../operation.js";
 
 export interface RetryFailedTurnInput {
@@ -49,17 +49,7 @@ export const RetryFailedTurn = defineOperation<"retry_failed_turn", RetryFailedT
 		stampActorOnEvents(writes, input.actor, "retry_scheduled");
 		return accept({
 			writes,
-			metadata:
-				input.nextTurnModelProfileId !== undefined || input.providerOptions !== undefined
-					? {
-							...(input.nextTurnModelProfileId !== undefined
-								? { nextTurnModelProfileId: input.nextTurnModelProfileId }
-								: {}),
-							...(input.providerOptions !== undefined
-								? { providerOptions: input.providerOptions }
-								: {}),
-						}
-					: undefined,
+			metadata: modelOverrideMetadata(input),
 		});
 	},
 });

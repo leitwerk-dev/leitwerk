@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { flow } from "./flow.js";
+import { flow, type LlmFlowBuilder } from "./flow.js";
+import { buildProcessFlowView } from "./process-flow-view.js";
+import { toProcessGraphView } from "./process-graph.js";
+import { validateLlmTurnDefinition } from "./turn-semantics.js";
 
 describe("flow", () => {
 	it.each([
@@ -14,34 +17,50 @@ describe("flow", () => {
 		expect(turn.description("Updated description")).toBe(turn);
 	});
 
-	it("declares server-owned integration tools on an LLM turn", () => {
+	it("compiles waiting LLM external actions into fixed graph edges and validates them", () => {
+		const source = { kind: "fixture.mr", label: "Fix MR", config: {} };
 		const turn = flow
 			.llm("repair")
-			.description("Repair a provider failure")
-			.integrationTools("repository_get_change", "pipeline_get_step_logs")
-			.prompt(() => "Diagnose the current failure")
-			.end("done").definition;
-
-		expect(turn).toMatchObject({
-			kind: "llm",
-			integrationTools: ["repository_get_change", "pipeline_get_step_logs"],
-		});
-	});
-
-	it("resolves integration tools from validated params and state", () => {
-		const turn = flow
-			.llm<{ profile: string }, { origin: string }>("repair")
-			.description("Repair a provider failure")
-			.resolveIntegrationTools((params, state) =>
-				params.profile === "private" && state.origin === "ci" ? ["pipeline_get_step_logs"] : [],
-			)
-			.prompt(() => "Diagnose the current failure")
-			.end("done").definition;
-
-		expect(turn.resolveIntegrationTools?.({ profile: "private" }, { origin: "ci" })).toEqual([
-			"pipeline_get_step_logs",
-		]);
-		expect(turn.resolveIntegrationTools?.({ profile: "public" }, { origin: "ci" })).toEqual([]);
+			.description("Repair")
+			.waitFor(() => false)
+			.prompt("Repair")
+			.outcomeTool("done", (o) => o.description("Done").complete())
+			.externalAction("fix", source, (a) => a.label("Fix MR").to("repair"))
+			.externalAction("finish", source, (a) => a.label("Fix MR").complete());
+		const process = flow
+			.process("mr")
+			.displayName("MR")
+			.entry("repair")
+			.codecs({
+				params: { parse: () => ({}), serialize: (v) => v },
+				state: { parse: () => ({}), serialize: (v) => v },
+			})
+			.initialState(() => ({}))
+			.turn(turn)
+			.define();
+		expect(toProcessGraphView(process).turns.get("repair")?.transitions).toContainEqual(
+			expect.objectContaining({ nextTurnId: "repair", trigger: "external:fix" }),
+		);
+		expect(buildProcessFlowView(toProcessGraphView(process)).edges).toContainEqual(
+			expect.objectContaining({ label: "Fix MR", lifecycleStatus: "completed" }),
+		);
+		expect(
+			validateLlmTurnDefinition("repair", { ...turn.definition, waitFor: undefined }),
+		).toContain("LLM turn 'repair' external actions require .waitFor(...)");
+		expect(
+			validateLlmTurnDefinition("repair", {
+				...turn.definition,
+				externalActions: { fix: { id: "wrong", source } },
+			}),
+		).toEqual(
+			expect.arrayContaining([
+				expect.stringContaining("mismatched id"),
+				expect.stringContaining("exactly one target"),
+			]),
+		);
+		expect(() => turn.externalAction("fix", source, (a) => a.complete())).toThrow(
+			"duplicate external action",
+		);
 	});
 
 	it("builds a discoverable plan-producing LLM turn", async () => {
@@ -72,11 +91,7 @@ describe("flow", () => {
 				summary: { type: "string", required: true },
 				acceptanceCriteria: { type: "array", required: true, minItems: 1 },
 			},
-			lifecycleIntent: {
-				kind: "save_plan_result",
-				emitEventType: "plan_saved",
-				broadcastType: "plan.updated",
-			},
+			effect: expect.any(Function),
 		});
 	});
 
@@ -90,98 +105,71 @@ describe("flow", () => {
 		).toThrow(/acceptanceCriteria/);
 	});
 
-	it("builds turns that start with no persisted Pi ancestry", () => {
-		const turn = flow
-			.llm("commit")
-			.description("Commit")
-			.fullPrimary()
-			.startFromRoot()
-			.prompt(() => "Commit the change")
-			.end("done").definition;
-
-		expect(turn).toMatchObject({
-			kind: "llm",
-			branchType: "primary",
-			startFrom: { kind: "session_root" },
-		});
-	});
-
-	it("builds primary turns that continue from the review branch", () => {
-		const turn = flow
-			.llm("implement")
-			.description("Implement")
-			.fullPrimary()
-			.continueFromReviewBranch()
-			.prompt(() => "Implement from accepted review")
-			.end("done").definition;
-
-		expect(turn).toMatchObject({
-			kind: "llm",
-			branchType: "primary",
-			startFrom: {
-				kind: "semantic_ref",
-				ref: "review",
-				fallback: { kind: "current_leaf" },
+	it.each([
+		[
+			"the session root",
+			(turn: LlmFlowBuilder) => turn.fullPrimary().startFromRoot(),
+			{ startFrom: { kind: "session_root" } },
+		],
+		[
+			"the review branch",
+			(turn: LlmFlowBuilder) => turn.fullPrimary().continueFromReviewBranch(),
+			{ startFrom: { kind: "semantic_ref", ref: "review", fallback: { kind: "current_leaf" } } },
+		],
+		[
+			"a product branch with a fresh seed",
+			(turn: LlmFlowBuilder) =>
+				turn.freshSeededPrimary().continueFromProductBranch("simplification-plan", {
+					kind: "session_root",
+				}),
+			{
+				context: "fresh_seeded",
+				startFrom: {
+					kind: "product_ref",
+					productName: "simplification-plan",
+					fallback: { kind: "session_root" },
+				},
 			},
-		});
-	});
-
-	it("builds fresh-seeded primary turns for optional side-branch handoffs", () => {
-		const turn = flow
-			.llm("implement")
-			.description("Implement")
-			.freshSeededPrimary()
-			.continueFromProductBranch("simplification-plan", { kind: "session_root" })
-			.prompt(() => "Implement from a small seed when present")
-			.end("done").definition;
-
-		expect(turn).toMatchObject({
-			kind: "llm",
-			branchType: "primary",
-			context: "fresh_seeded",
-			startFrom: {
-				kind: "product_ref",
-				productName: "simplification-plan",
-				fallback: { kind: "session_root" },
-			},
-		});
-	});
-
-	it("builds primary turns that continue from a product branch with fallback", () => {
-		const turn = flow
-			.llm("implement")
-			.description("Implement")
-			.fullPrimary()
-			.continueFromProductBranch("simplification-plan", {
-				kind: "semantic_ref",
-				ref: "review",
-				fallback: { kind: "current_leaf" },
-			})
-			.prompt(() => "Implement from accepted side branch")
-			.end("done").definition;
-
-		expect(turn).toMatchObject({
-			kind: "llm",
-			branchType: "primary",
-			startFrom: {
-				kind: "product_ref",
-				productName: "simplification-plan",
-				fallback: {
+		],
+		[
+			"a product branch with a nested fallback",
+			(turn: LlmFlowBuilder) =>
+				turn.fullPrimary().continueFromProductBranch("simplification-plan", {
 					kind: "semantic_ref",
 					ref: "review",
 					fallback: { kind: "current_leaf" },
+				}),
+			{
+				startFrom: {
+					kind: "product_ref",
+					productName: "simplification-plan",
+					fallback: { kind: "semantic_ref", ref: "review", fallback: { kind: "current_leaf" } },
 				},
 			},
-		});
+		],
+	] as const)("builds primary turns starting from %s", (_name, configure, expected) => {
+		const turn = configure(
+			flow
+				.llm("implement")
+				.description("Implement")
+				.prompt(() => "Implement"),
+		).end("done").definition;
+
+		expect(turn).toMatchObject({ kind: "llm", branchType: "primary", ...expected });
 	});
 
 	it("builds .end() turns without publishing a product", () => {
-		const turn = flow
+		const completion = flow
 			.llm("run_prompt")
 			.description("Run prompt")
 			.prompt(() => "Prompt")
 			.end("completed")
-			.complete().definition;
+			.complete();
+		const turn = completion.definition;
+		const target = completion.buildRouteTarget();
+		target.complete = false;
+		expect(completion.buildRouteTarget()).toEqual({ complete: true });
+		expect(() => completion.to("next")).toThrow(/already declares a target/);
 
 		expect(turn).toMatchObject({
 			kind: "llm",
@@ -195,6 +183,7 @@ describe("flow", () => {
 		const turn = flow
 			.human("review_feedback")
 			.description("Review feedback")
+			.reviewProduct("review")
 			.reviewProduct("message")
 			.action("accept", (action) =>
 				action.label("Accept").acceptanceState("accepted").to("next"),
@@ -275,11 +264,12 @@ describe("flow", () => {
 			.action("approve", (action) =>
 				action.label("Approve").acceptanceState("accepted").complete(),
 			).definition;
-		const external = flow
+		const route = flow
 			.external("await_file")
 			.description("Await file")
 			.from({ kind: "example.file", label: "Example file", config: { path: "/tmp/file" } })
-			.to("review").definition;
+			.to("review");
+		const external = route.definition;
 
 		expect(human).toMatchObject({
 			operatorAttention: "passive",
@@ -300,5 +290,8 @@ describe("flow", () => {
 				},
 			],
 		});
+		external.transitions[0].to = "mutated";
+		expect(route.definition.transitions[0].to).toBe("review");
+		expect(() => route.complete()).toThrow(/already declares a target/);
 	});
 });

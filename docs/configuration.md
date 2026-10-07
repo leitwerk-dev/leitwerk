@@ -301,6 +301,10 @@ See [selection order](models.md#profile-resolution) and [Watchers](watchers.md).
 installation. Launches pin selected active revisions rather than importing mutable
 repository resources into a running worker.
 
+Loaded extensions may also contribute [skill packs](skill-packs.md) through package
+metadata. Those skills are installed automatically and managed by the extension.
+Upgrades affect future selections; existing processes retain their pinned revisions.
+
 `commit_messages.templates.<id>.rules` defines formatting instructions.
 `default_template` selects the fallback, or null uses built-in guidance.
 `repositories` maps normalized locators to template IDs and takes precedence over

@@ -13,8 +13,18 @@ export interface SettingDefinition<T = unknown> extends SettingMetadata {
 	};
 	/** @public */
 	defaultValue: T;
+	/** Label retained selections synchronously, without remote discovery. @public */
+	choiceLabel?(value: string): string;
 	/** Dynamic non-secret choices for generic forms. @public */
-	choices?(context: SettingsContext): readonly SettingChoice[] | Promise<readonly SettingChoice[]>;
+	choices?(
+		context: SettingsContext,
+		request?: {
+			/** Search text supplied by the operator. @public */
+			search?: string;
+			/** Saved selections that must remain discoverable while searching. @public */
+			values?: readonly string[];
+		},
+	): readonly SettingChoice[] | Promise<readonly SettingChoice[]>;
 }
 
 /** @public */
@@ -73,6 +83,13 @@ export interface ScopedSettingsResolver {
 	registerDiscovery(
 		scopeType: string,
 		discover: () => Promise<readonly SettingsSubjectInput[]>,
+		options?: {
+			/** Limit navigation without deleting retained subjects or overrides. @public */
+			includesSubject?: (
+				subject: SettingsSubject,
+				context: Readonly<Record<string, SettingsSubject>>,
+			) => boolean;
+		},
 	): void;
 }
 

@@ -349,76 +349,66 @@ interface KnownMigration {
 	apply(sqlite: DatabaseSync): void;
 }
 
+function addTablesMigration(
+	id: string,
+	tables: readonly SQLiteTable[],
+	matches: KnownMigration["matches"],
+): KnownMigration {
+	return {
+		id,
+		tableNames: tables.map(getTableName),
+		matches,
+		apply(sqlite) {
+			for (const table of tables) createTableWithIndexes(sqlite, table);
+		},
+	};
+}
+const HISTORY_INDEXES = [
+	"idx_turn_records_page",
+	"idx_turn_annotations_created",
+	"idx_worker_leases_started",
+	"idx_worker_leases_exited",
+] as const;
+
 const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
-	{
-		id: "20260930_add_topic_wiki",
-		tableNames: ["wiki_topics", "wiki_pages", "wiki_revisions", "topic_publications"],
-		matches: (sqlite) =>
-			hasExistingSchema(sqlite) && existingTableSql(sqlite, "wiki_topics") === null,
-		apply(sqlite) {
-			for (const table of [
-				schema.wikiTopics,
-				schema.wikiPages,
-				schema.wikiRevisions,
-				schema.topicPublications,
-			])
-				createTableWithIndexes(sqlite, table);
-		},
-	},
-	{
-		id: "20260925_add_execution_inspections",
-		tableNames: ["inspection_contents", "execution_inspections"],
-		matches: (sqlite) =>
+	addTablesMigration(
+		"20260930_add_topic_wiki",
+		[schema.wikiTopics, schema.wikiPages, schema.wikiRevisions, schema.topicPublications],
+		(sqlite) => hasExistingSchema(sqlite) && existingTableSql(sqlite, "wiki_topics") === null,
+	),
+	addTablesMigration(
+		"20260925_add_execution_inspections",
+		[schema.inspectionContents, schema.executionInspections],
+		(sqlite) =>
 			hasExistingSchema(sqlite) && existingTableSql(sqlite, "execution_inspections") === null,
-		apply(sqlite) {
-			createTableWithIndexes(sqlite, schema.inspectionContents);
-			createTableWithIndexes(sqlite, schema.executionInspections);
-		},
-	},
-	{
-		id: "20260926_add_scoped_settings",
-		tableNames: ["settings_subjects", "settings_aliases", "settings_overrides"],
-		matches: (sqlite) =>
+	),
+	addTablesMigration(
+		"20260926_add_scoped_settings",
+		[schema.settingsSubjects, schema.settingsAliases, schema.settingsOverrides],
+		(sqlite) =>
 			existingTableSql(sqlite, "process_instances") !== null &&
 			existingTableSql(sqlite, "settings_subjects") === null &&
 			existingTableSql(sqlite, "settings_aliases") === null &&
 			existingTableSql(sqlite, "settings_overrides") === null,
-		apply(sqlite) {
-			for (const table of [
-				schema.settingsSubjects,
-				schema.settingsAliases,
-				schema.settingsOverrides,
-			])
-				createTableWithIndexes(sqlite, table);
-		},
-	},
-	{
-		id: "20260926_add_settings_subject_redirects",
-		tableNames: ["settings_subject_redirects"],
-		matches: (sqlite) =>
+	),
+	addTablesMigration(
+		"20260926_add_settings_subject_redirects",
+		[schema.settingsSubjectRedirects],
+		(sqlite) =>
 			hasExistingSchema(sqlite) && existingTableSql(sqlite, "settings_subject_redirects") === null,
-		apply(sqlite) {
-			createTableWithIndexes(sqlite, schema.settingsSubjectRedirects);
-		},
-	},
-	{
-		id: "20260911_add_startup_observations",
-		tableNames: ["startup_observations"],
-		matches: (sqlite) =>
+	),
+	addTablesMigration(
+		"20260911_add_startup_observations",
+		[schema.startupObservations],
+		(sqlite) =>
 			hasExistingSchema(sqlite) && existingTableSql(sqlite, "startup_observations") === null,
-		apply(sqlite) {
-			createTableWithIndexes(sqlite, schema.startupObservations);
-		},
-	},
-	{
-		id: "20260823_add_ticket_destination_recents",
-		tableNames: ["ticket_destination_recents"],
-		matches: (sqlite) =>
+	),
+	addTablesMigration(
+		"20260823_add_ticket_destination_recents",
+		[schema.ticketDestinationRecents],
+		(sqlite) =>
 			hasExistingSchema(sqlite) && existingTableSql(sqlite, "ticket_destination_recents") === null,
-		apply(sqlite) {
-			createTableWithIndexes(sqlite, schema.ticketDestinationRecents);
-		},
-	},
+	),
 	{
 		id: "20260909_add_reasoning_summaries",
 		tableNames: ["process_events", "turn_summaries", "session_summaries"],
@@ -453,14 +443,13 @@ const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
 			createTableWithIndexes(sqlite, schema.sessionSummaries);
 		},
 	},
-	{
-		id: "20260908_add_api_tokens",
-		tableNames: ["api_tokens"],
-		matches: (sqlite) =>
+	addTablesMigration(
+		"20260908_add_api_tokens",
+		[schema.apiTokens],
+		(sqlite) =>
 			existingTableSql(sqlite, "auth_sessions") !== null &&
 			existingTableSql(sqlite, "api_tokens") === null,
-		apply: (sqlite) => createTableWithIndexes(sqlite, schema.apiTokens),
-	},
+	),
 	{
 		id: "20260901_add_session_transfers",
 		tableNames: ["session_transfer_grants", "session_transfer_attempts"],
@@ -615,18 +604,13 @@ const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
 			}
 		},
 	},
-	{
-		id: "20260726_add_sql_backed_skills",
-		tableNames: ["skills", "skill_revisions", "process_skills"],
-		matches: (sqlite) =>
+	addTablesMigration(
+		"20260726_add_sql_backed_skills",
+		[schema.skills, schema.skillRevisions, schema.processSkills],
+		(sqlite) =>
 			existingTableSql(sqlite, "process_instances") !== null &&
 			existingTableSql(sqlite, "skills") === null,
-		apply(sqlite) {
-			for (const table of [schema.skills, schema.skillRevisions, schema.processSkills]) {
-				createTableWithIndexes(sqlite, table);
-			}
-		},
-	},
+	),
 	{
 		id: "20260728_add_skill_catalog_and_invocations",
 		tableNames: ["skills", "skill_catalog_entries", "skill_invocations"],
@@ -661,21 +645,30 @@ const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
 		},
 	},
 	{
-		id: "20260729_add_skill_revision_dependencies",
-		tableNames: ["skill_revision_dependencies"],
-		matches: (sqlite) => existingTableSql(sqlite, "skill_revision_dependencies") === null,
+		id: "20261006_add_extension_skill_provenance",
+		tableNames: ["skills", "skill_revisions"],
+		matches: (sqlite) =>
+			!tableHasColumn(sqlite, "skills", "owner_extension_id") ||
+			!tableHasColumn(sqlite, "skill_revisions", "provenance_json"),
 		apply(sqlite) {
-			createTableWithIndexes(sqlite, schema.skillRevisionDependencies);
+			if (!tableHasColumn(sqlite, "skills", "owner_extension_id")) {
+				sqlite.exec("ALTER TABLE skills ADD COLUMN owner_extension_id text");
+			}
+			if (!tableHasColumn(sqlite, "skill_revisions", "provenance_json")) {
+				sqlite.exec("ALTER TABLE skill_revisions ADD COLUMN provenance_json text");
+			}
 		},
 	},
-	{
-		id: "20260726_add_process_question_requests",
-		tableNames: ["process_question_requests"],
-		matches: (sqlite) => existingTableSql(sqlite, "process_question_requests") === null,
-		apply(sqlite) {
-			createTableWithIndexes(sqlite, schema.processQuestionRequests);
-		},
-	},
+	addTablesMigration(
+		"20260729_add_skill_revision_dependencies",
+		[schema.skillRevisionDependencies],
+		(sqlite) => existingTableSql(sqlite, "skill_revision_dependencies") === null,
+	),
+	addTablesMigration(
+		"20260726_add_process_question_requests",
+		[schema.processQuestionRequests],
+		(sqlite) => existingTableSql(sqlite, "process_question_requests") === null,
+	),
 	{
 		id: "20260725_add_model_policy_provenance_and_future_blocks",
 		tableNames: ["process_instances", "future_executions", "turn_records"],
@@ -924,6 +917,26 @@ const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
 			for (const table of [schema.processInstances, schema.turnRecords]) {
 				for (const statement of generateCreateIndexDDL(table)) sqlite.exec(statement);
 			}
+		},
+	},
+	{
+		id: "20261005_add_process_history_indexes",
+		tableNames: [],
+		legacyIndexNames: [...HISTORY_INDEXES, "idx_leaf_outcomes_anchored"],
+		matches(sqlite) {
+			const indexes = existingSchemaObjects(sqlite, "index");
+			return (
+				hasExistingSchema(sqlite) &&
+				(indexes.has("idx_leaf_outcomes_anchored") ||
+					HISTORY_INDEXES.some((name) => !indexes.has(name)))
+			);
+		},
+		apply(sqlite) {
+			sqlite.exec(`CREATE INDEX IF NOT EXISTS idx_turn_records_page ON turn_records(instance_id, started_at, id);
+CREATE INDEX IF NOT EXISTS idx_turn_annotations_created ON turn_annotations(instance_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_worker_leases_started ON worker_leases(instance_id, started_at);
+CREATE INDEX IF NOT EXISTS idx_worker_leases_exited ON worker_leases(instance_id, exited_at);
+DROP INDEX IF EXISTS idx_leaf_outcomes_anchored;`);
 		},
 	},
 ];

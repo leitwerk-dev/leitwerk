@@ -273,6 +273,7 @@ extension_loading:
   sources:
     - ./extensions/models
     - ./extensions/showcase-processes
+    - ./extensions/example-processes
 
 extensions:
   # github-repo-change:
@@ -289,6 +290,11 @@ extensions:
   #     enabled: false # Set true with the ticket-creation process extension.
   #     default_labels: [created-by-leitwerk]
   # gitlab: # Optional; see extensions/gitlab/README.md for profiles.
+  #   profiles:
+  #     team:
+  #       base_url: https://gitlab.example.com
+  #       token: env:GITLAB_TOKEN
+  #       ignored_comment_users: [sonarqube] # Optional; defaults to [].
   #   ticket_creation:
   #     enabled: false
   #     default_labels: [created-by-leitwerk]
@@ -334,6 +340,8 @@ extensions:
     file_triggers:
       poll_interval: 1s
       poem_review_path: /tmp/poem-review-{instanceId}
+  example-processes:
+    file_triggers:
       complete_prompt_path: /tmp/complete-prompt
   telegram:
     enabled: false
@@ -385,8 +393,9 @@ extensions:
 #       team:
 #         base_url: https://jira.example.org/jira
 #         token: env:JIRA_PAT
+#         project: CLD  # Optional project ID or key for Settings, in addition to watcher projects.
 #         epic_link_field: customfield_10014  # Otherwise discovered from Jira's schema.
-# Issue splitting is opt-in. See extensions/jira-epic-split/README.md for extension
+# Issue splitting is opt-in. See extensions/jira-issue-split/README.md for extension
 # loading, explicit GitLab scope, component mappings, and the review-gated watcher.
 # The watcher accepts leitwerk-issue-split and the legacy leitwerk-epic-split label.
 # Its optional subtaskIssueType selects a Jira subtask type ID when several exist.

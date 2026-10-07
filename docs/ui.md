@@ -143,6 +143,11 @@ technical details and retry-model settings collapsed by default. Retry explains
 that it starts another attempt. Continue is offered only when retained progress
 supports it.
 
+Readiness checks appear as a waiting status, including temporary failures and the
+next check time, even before the first execution. A failed condition offers
+**Retry condition**, which rechecks readiness before starting work. These checks
+do not add timeline turns or worker starts.
+
 Collapsing a card, retry settings, or an action form must preserve entered instructions
 and settings. Navigating back reveals the controls. Historical failures remain
 visible after recovery; repeated business turns are not retry attempts.
@@ -268,11 +273,20 @@ the current tab. Cross-origin links have a visible external marker, accessible
 resource label and new-tab announcement, plus `rel="noopener noreferrer"`.
 Managed result images may open in a secured new tab without an external marker.
 
+## Skill catalog
+
+Installed skills can be selected at launch. Extension-owned entries identify their
+owning extension and expose adapted instructions, upstream provenance, and revision
+history. Their availability changes when the owning extension is updated or removed.
+Repository install, update, and removal actions cannot change extension-owned skills.
+Existing processes retain their pinned revisions. See [skill packs](skill-packs.md).
+
 ## Other surfaces
 
 - Watcher cards show purpose, enabled state, process, and target before configuration.
 - [Solution wikis](topic-wiki.md) provide a source issue index, evidence/status filters, page
-  history, and revision-checked deletion. Participating process headers link to their wiki.
+  history, entry editing, and revision-checked deletion of entries or entire groups.
+  Participating process headers link to their wiki.
 - [API token management](api-tokens.md) lives in the account menu. Anonymous mode shares
   one token owner and omits logout; authenticated logout ends only the browser session.
 - [Local session transfer](operator-guide.md#transfer-a-session-to-local-pi) presents the
@@ -297,3 +311,9 @@ blocks and show a combined preview. Drafts survive validation errors and conflic
 A conflict displays the current value before the operator adopts its revision.
 Process inspection separates future scoped defaults from captured start history
 and links to repository settings. See [Scoped settings](scoped-settings.md).
+
+Process detail opens with the most recent 40 turns. **Load earlier steps** retrieves
+older history in stable pages without delaying process switching. Retained turns,
+worker starts and annotations remain available; the initial view and context map
+cover the loaded history. Usage totals cover the initial page while older history
+is expanded. Live refreshes retain loaded pages and keep current state authoritative.

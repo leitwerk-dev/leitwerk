@@ -1,7 +1,7 @@
+import exampleProcessesExtension from "@leitwerk-dev/example-processes";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import { WS_PRIMARY_PATH_TYPES, WS_PROTOCOL_VERSION } from "@leitwerk-dev/protocol";
 import type { AppContext, WsFrame } from "@leitwerk-dev/server";
-import showcaseProcessesExtension from "@leitwerk-dev/showcase-processes";
 import { fixtureModelProviders } from "@leitwerk-dev/test-support";
 import { createIntegrationHarness } from "@leitwerk-dev/test-support/integration";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -64,7 +64,7 @@ async function waitForFrame(
 beforeAll(async () => {
 	harness = await createIntegrationHarness({
 		extensionCatalog: buildExtensionCatalogFromModules([
-			showcaseProcessesExtension,
+			exampleProcessesExtension,
 			websocketFixtureProviderExtension,
 		]),
 		configOverride(config) {

@@ -50,6 +50,7 @@ export {
 	type ProcessLaunchPlanServiceLike,
 	type ProcessModelSelectionPreviewResultLike,
 	type ProcessModelSelectionServiceLike,
+	type ProcessObservationUpdate,
 	type ProcessProjectRepoLike,
 	type ProcessQuestionServiceLike,
 	type ProcessWatcherServiceLike,
@@ -78,6 +79,7 @@ export {
 	resolveHumanTurnView,
 	routeTurnOutcomes,
 	type TurnDefinition,
+	validateProcessDefinition,
 } from "./define-process.js";
 export { createEventBus } from "./event-bus.js";
 export type {
@@ -142,6 +144,13 @@ export {
 	createExternalSourcePollReporter,
 	type ExternalSourcePollReporter,
 } from "./external-source-poll.js";
+export {
+	consumeTriggerFile,
+	createFileExternalSourceProvider,
+	defineFileExternalSource,
+	type FileExternalInput,
+	readTriggerFile,
+} from "./file-external-source.js";
 export {
 	AutomaticOutcomeBuilder,
 	createFlowPromptContext,
@@ -237,7 +246,6 @@ export {
 	type ProcessGraphView,
 	serializeProcessGraph,
 	toProcessGraphView,
-	validateProcessGraphEntryTurns,
 	validateProcessGraphProducts,
 	validateProcessGraphTurnTransitions,
 } from "./process-graph.js";
@@ -324,7 +332,6 @@ export {
 	REQUIRED_MARKDOWN_RESULT_TURN_RESULT,
 	validateToolCallRendererDefinition,
 } from "./tool-renderers.js";
-export { type TopicWikiStore, topicWikiCapability, wikiInstructions } from "./topic-wiki.js";
 export {
 	assertValidLlmTurnDefinition,
 	createRootBranchReviewTurn,
@@ -335,6 +342,12 @@ export {
 	resolveLlmTurnRestorePrimaryLeafAfterTurn,
 	validateTurnDefinition,
 } from "./turn-semantics.js";
+export {
+	RetryableWaitError,
+	type TurnWaitCompletion,
+	type TurnWaitContext,
+	type TurnWaitPredicate,
+} from "./turn-wait.js";
 export type {
 	EventBus,
 	OutcomeToolArrayItemSpec,

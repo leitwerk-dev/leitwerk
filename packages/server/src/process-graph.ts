@@ -16,7 +16,6 @@ export {
 	type ProcessGraphView,
 	serializeProcessGraph,
 	toProcessGraphView,
-	validateProcessGraphEntryTurns,
 	validateProcessGraphProducts,
 	validateProcessGraphTurnTransitions,
 } from "@leitwerk-dev/process-sdk";

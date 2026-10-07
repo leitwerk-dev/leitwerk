@@ -28,6 +28,9 @@
 			"path": "packages/process-sdk"
 		},
 		{
+			"path": "packages/wiki"
+		},
+		{
 			"path": "packages/extension-runtime"
 		},
 		{
@@ -104,6 +107,12 @@
 		},
 		{
 			"path": "extensions/gitlab-repo-change"
+		},
+		{
+			"path": "extensions/example-processes"
+		},
+		{
+			"path": "extensions/mattpocock-skills"
 		}
 	],
 	"files": []

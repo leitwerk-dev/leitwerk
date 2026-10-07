@@ -1,0 +1,33 @@
+{
+	"upstream": {
+		"url": "https://github.com/mattpocock/skills.git",
+		"commit": "4588b32ecab9ecc9fc8cc6b6c5e7d675b6004b0d"
+	},
+	"licenses": ["LICENSE"],
+	"skills": [
+		{
+			"id": "mattpocock-improve-codebase-architecture",
+			"sourcePath": "skills/engineering/improve-codebase-architecture",
+			"dependencies": [
+				"mattpocock-codebase-design",
+				"mattpocock-grilling",
+				"mattpocock-domain-modeling"
+			]
+		},
+		{
+			"id": "mattpocock-codebase-design",
+			"sourcePath": "skills/engineering/codebase-design",
+			"dependencies": []
+		},
+		{
+			"id": "mattpocock-grilling",
+			"sourcePath": "skills/productivity/grilling",
+			"dependencies": []
+		},
+		{
+			"id": "mattpocock-domain-modeling",
+			"sourcePath": "skills/engineering/domain-modeling",
+			"dependencies": []
+		}
+	]
+}

@@ -1,4 +1,5 @@
 import { createRepositoryChangeProcess } from "@leitwerk-dev/coding";
+import type { RepositoryChangePublicationAdapter } from "@leitwerk-dev/coding/repository-change-publication";
 import {
 	createRepositoryChangePublication,
 	type PublicationEvidence,
@@ -12,12 +13,23 @@ import {
 	gitlabExternal,
 	gitlabIssueWatcherSource,
 	gitlabPublicationEvidenceForRequest,
-	gitlabPublicationSource,
 } from "@leitwerk-dev/gitlab";
+import type { ExtensionProcessDefinition, ServerExtensionAPI } from "@leitwerk-dev/process-sdk";
 import type { createGitLabRepoChangeLauncher } from "./launcher.js";
 import { type GitLabRepoChangeParams, gitlabRepoChangeParamsCodec } from "./params.js";
 
 const remote = (state: RepositoryChangeState) => readPublicationState(state, "gitlabRepoChange");
+const maintenanceAdapters = new WeakMap<
+	ExtensionProcessDefinition<GitLabRepoChangeParams, RepositoryChangeState>,
+	RepositoryChangePublicationAdapter<GitLabRepoChangeParams>
+>();
+/** @internal */
+export function registerGitLabRepoChangeMaintenance(
+	api: ServerExtensionAPI,
+	process: ExtensionProcessDefinition<GitLabRepoChangeParams, RepositoryChangeState>,
+): void {
+	maintenanceAdapters.get(process)?.maintenance?.register(api, process);
+}
 function requireRequest(state: RepositoryChangeState) {
 	const current = remote(state);
 	if (!current.prNumber || !current.headSha)
@@ -40,20 +52,11 @@ export function createGitLabRepoChangeProcess(
 ) {
 	const sources: PublicationSource<GitLabRepoChangeParams>[] = [
 		{
-			id: "gitlab_merge_request",
-			kind: "observation",
-			label: "GitLab merge request evidence",
-			source: gitlabExternal.mergeRequest(({ params, state }) =>
-				gitlabPublicationSource(params, remote(state)),
-			),
-			read: ({ state, event }) =>
-				gitlabPublicationEvidence(state, event as GitLabDeliveryObservation),
-		},
-		{
 			id: "source_cancelled",
 			kind: "cancelled",
 			label: "GitLab source issue cancelled",
-			enabled: (p) => p.origin === "issue",
+			enabled: (params, state) =>
+				params.origin === "issue" && !!remote(state).prNumber && !!remote(state).headSha,
 			source: gitlabExternal.issueCancelled(({ params, state }) => {
 				if (params.origin !== "issue") throw new Error("Missing GitLab source issue");
 				return {
@@ -69,9 +72,8 @@ export function createGitLabRepoChangeProcess(
 			read: () => ({ kind: "cancelled" }),
 		},
 	];
-	const publication = createRepositoryChangePublication(
-		createGitLabPublicationAdapter<GitLabRepoChangeParams>(sources),
-	);
+	const adapter = createGitLabPublicationAdapter<GitLabRepoChangeParams>(sources);
+	const publication = createRepositoryChangePublication(adapter);
 	publication.fragment.watcher({
 		id: "use_leitwerk",
 		label: "GitLab use-leitwerk issues",
@@ -98,5 +100,6 @@ export function createGitLabRepoChangeProcess(
 		publication,
 	});
 	definition.process.runtime = { ...definition.process.runtime, docker };
+	maintenanceAdapters.set(definition.process, adapter);
 	return definition.process;
 }

@@ -20,12 +20,12 @@ import {
 import { parseStructuralProcessState } from "@leitwerk-dev/process-sdk";
 import {
 	buildActiveTimelineTurnSummary,
-	buildLiveTurnProjectionFromEvents,
 	buildUsageSnapshotsByTurnRecordId,
 	type CompactActiveTurnSnapshot,
 	type CompactTurnSummary,
 	type CurrentProcessErrorSummary,
 	type CurrentTurnRecoverySummary,
+	createLiveTurnProjection,
 	emptyCompactTurnSummary,
 	extractFirstUserPromptOnBranch,
 	extractInitialPromptFromParamsJson,
@@ -47,7 +47,6 @@ import {
 	type ReadonlyEntryTree,
 	reasoningPreviewTail,
 	resolveTurnContinuationUserPrompt,
-	snapshotTurnTrace,
 	type TurnReasoningDetailResponseBody,
 	type TurnTracePreview,
 	type TurnTraceSnapshot,
@@ -59,6 +58,7 @@ import { getScheduledActionDetailForProcess } from "./future-execution-presenter
 import { physicalWorkerStarts } from "./physical-worker-starts.js";
 import type { ReadonlyPiSessionTree } from "./pi-session-tree.js";
 import { listVisibleActionsForProcess } from "./process-action-presenter.js";
+import { pendingTurnWait } from "./process-engine/turn-wait-state.js";
 import { resolveCurrentExecutionTurnRecordId } from "./process-execution.js";
 import { buildProcessFlowViewForProcess, getProcessGraph } from "./process-graph.js";
 import { presentProcessInstanceTree } from "./process-instance-tree-presenter.js";
@@ -79,40 +79,6 @@ import {
 import { presentSessionTransferOperation } from "./session-transfer-service.js";
 import { buildStartupEvidence, presentProcessStartupSummary } from "./startup-evidence.js";
 import { normalizeTurnProgressLinks, normalizeTurnProgressReport } from "./turn-progress.js";
-
-const COMPACT_DETAIL_EVENT_TYPES = [
-	"worker_capacity_queued",
-	"turn_outcome_recorded",
-	"lifecycle_parked",
-	"worker_failed",
-	"external_trigger_listener_armed",
-	"external_source_armed",
-	"external_trigger_failed",
-	"external_source_failed",
-	"external_trigger_consumed",
-	"external_source_consumed",
-] as const;
-
-function sortEventsAscending(events: readonly ProcessEvent[]): ProcessEvent[] {
-	return [...events].sort((left, right) => {
-		const createdAtComparison = left.createdAt.localeCompare(right.createdAt);
-		return createdAtComparison !== 0 ? createdAtComparison : left.id.localeCompare(right.id);
-	});
-}
-
-function compactDetailEvents(
-	deps: Pick<RouteDeps, "events">,
-	instanceId: string,
-	turnRecords: readonly ProcessTurnRecord[],
-): ProcessEvent[] {
-	return sortEventsAscending([
-		...deps.events.listByInstanceEventTypes(instanceId, COMPACT_DETAIL_EVENT_TYPES, 1_000),
-		...turnRecords.flatMap((turn) => {
-			const event = deps.events.latestByTurnRecordEventType(instanceId, turn.id, "turn.progress");
-			return event ? [event] : [];
-		}),
-	]);
-}
 
 function compactPrimaryPathSnapshot(
 	snapshot: PrimaryPathSnapshot | PrimaryPathUiSnapshot,
@@ -191,52 +157,23 @@ function paramsRecord(value: unknown): Record<string, unknown> {
 	return asRecord(value) ?? {};
 }
 
-function normalizeOutput(value: string): string {
-	return value.trim();
-}
-
-function turnRecordIdFromEvent(event: ProcessEvent): string {
-	return stringValue(paramsRecord(event.data).turnRecordId);
-}
-
-function createTurnOutcomeEventMap(events: readonly ProcessEvent[]): Map<string, ProcessEvent> {
-	const map = new Map<string, ProcessEvent>();
-	for (const event of events) {
-		if (event.eventType !== "turn_outcome_recorded") {
-			continue;
-		}
-		const turnRecordId = turnRecordIdFromEvent(event);
-		if (turnRecordId) {
-			map.set(turnRecordId, event);
-		}
-	}
-	return map;
+function indexByTurnRecordId<T>(
+	records: readonly T[],
+	key: (record: T) => string | null,
+): Map<string, T> {
+	return new Map(
+		records.flatMap((record) => {
+			const id = key(record);
+			return id ? [[id, record] as const] : [];
+		}),
+	);
 }
 
 function turnRecordIdFromAnnotation(annotation: ProcessTurnAnnotation): string | null {
-	for (const reference of annotation.references) {
-		if (reference.kind === "turn_record") {
-			return reference.turnRecordId;
-		}
-	}
-	return null;
-}
-
-function createTurnAnnotationMap(
-	turnAnnotations: readonly ProcessTurnAnnotation[],
-	annotationType: string,
-): Map<string, ProcessTurnAnnotation> {
-	const map = new Map<string, ProcessTurnAnnotation>();
-	for (const annotation of turnAnnotations) {
-		if (annotation.annotationType !== annotationType) {
-			continue;
-		}
-		const turnRecordId = turnRecordIdFromAnnotation(annotation);
-		if (turnRecordId) {
-			map.set(turnRecordId, annotation);
-		}
-	}
-	return map;
+	return (
+		annotation.references.find((reference) => reference.kind === "turn_record")?.turnRecordId ??
+		null
+	);
 }
 
 function outputFromTurnParams(
@@ -263,16 +200,9 @@ function summarizeTurnOutcome(
 }
 
 function fallbackOutcomeFromTurnRecord(turnRecord: ProcessTurnRecord): string {
-	switch (turnRecord.status) {
-		case "failed":
-			return "failed";
-		case "superseded":
-			return "superseded";
-		case "succeeded":
-			return "succeeded";
-		default:
-			return "completed";
-	}
+	return ["failed", "superseded", "succeeded"].includes(turnRecord.status)
+		? turnRecord.status
+		: "completed";
 }
 
 function fallbackSummaryFromTurnRecord(turnRecord: ProcessTurnRecord): string {
@@ -403,47 +333,6 @@ function effectiveTurnRecordForDisplay(
 	};
 }
 
-function durableTurnLineage(turnRecord: ProcessTurnRecord) {
-	return {
-		attemptNumber: turnRecord.attemptNumber,
-		parentTurnRecordId: turnRecord.parentTurnRecordId,
-		startedAt: turnRecord.startedAt,
-		endedAt: turnRecord.endedAt,
-	};
-}
-
-function createCompletedTurnRecord(args: {
-	turnRecord: ProcessTurnRecord;
-	turnId: string;
-	displayTurn?: string;
-	outcome: string;
-	summary: string;
-	output: string;
-	turnResultMarkdown: string;
-	createdAt: string;
-	actionSource: TimelineActionSource;
-	progress: ProcessTimelineTurnSummary["progress"];
-}): ProcessTimelineTurnSummary {
-	return {
-		id: args.turnRecord.id,
-		turnId: args.turnId,
-		turnType: args.turnRecord.turnType,
-		displayTurn: args.displayTurn ?? args.turnId,
-		outcome: args.outcome,
-		summary: args.summary,
-		output: normalizeOutput(args.output) || (args.turnResultMarkdown ? "" : args.summary),
-		turnResultMarkdown: args.turnResultMarkdown,
-		pathType: args.turnRecord.pathType,
-		createdAt: args.createdAt,
-		presentation: timelinePresentationForTurnType(args.turnRecord.turnType),
-		status: "completed",
-		modelProfileId: args.turnRecord.modelProfileId ?? null,
-		actionSource: args.actionSource,
-		progress: args.progress,
-		...durableTurnLineage(args.turnRecord),
-	};
-}
-
 /** @internal */
 export function presentProcessTimelineTurns(input: {
 	/** @internal */
@@ -463,20 +352,19 @@ export function presentProcessTimelineTurns(input: {
 	/** @internal */
 	activeModelProfileId?: string | null;
 }): ProcessTimelineTurnSummary[] {
-	const outcomeEventsByTurnRecordId = createTurnOutcomeEventMap(input.events);
+	const outcomeEventsByTurnRecordId = indexByTurnRecordId(
+		input.events.filter((event) => event.eventType === "turn_outcome_recorded"),
+		(event) => stringValue(paramsRecord(event.data).turnRecordId),
+	);
 	const progressByTurnRecordId = buildTurnProgressIndex(input.events);
-	const milestoneAnnotationsByTurnRecordId = createTurnAnnotationMap(
-		input.turnAnnotations,
-		"turn_milestone",
-	);
-	const acceptanceAnnotationsByTurnRecordId = createTurnAnnotationMap(
-		input.turnAnnotations,
-		"acceptance_state",
-	);
-	const externalTriggerAnnotationsByTurnRecordId = createTurnAnnotationMap(
-		input.turnAnnotations,
-		"external_trigger",
-	);
+	const annotationMap = (annotationType: string) =>
+		indexByTurnRecordId(
+			input.turnAnnotations.filter((annotation) => annotation.annotationType === annotationType),
+			turnRecordIdFromAnnotation,
+		);
+	const milestoneAnnotationsByTurnRecordId = annotationMap("turn_milestone");
+	const acceptanceAnnotationsByTurnRecordId = annotationMap("acceptance_state");
+	const externalTriggerAnnotationsByTurnRecordId = annotationMap("external_trigger");
 	const actionSourceByTurnRecordId = buildActionSourceIndex(
 		input.turnAnnotations,
 		input.turnRecords,
@@ -504,11 +392,23 @@ export function presentProcessTimelineTurns(input: {
 			continue;
 		}
 		const turnRecord = effectiveTurnRecordForDisplay(durableTurnRecord, input.process);
+		const common = {
+			id: turnRecord.id,
+			turnType: turnRecord.turnType,
+			pathType: turnRecord.pathType,
+			presentation: timelinePresentationForTurnType(turnRecord.turnType),
+			modelProfileId: turnRecord.modelProfileId ?? null,
+			actionSource: actionSourceByTurnRecordId.get(turnRecord.id) ?? null,
+			attemptNumber: turnRecord.attemptNumber,
+			parentTurnRecordId: turnRecord.parentTurnRecordId,
+			startedAt: turnRecord.startedAt,
+			endedAt: turnRecord.endedAt,
+			...progressByTurnRecordId.get(turnRecord.id),
+		};
 		if (turnRecord.status === "running") {
 			turns.push({
-				id: turnRecord.id,
+				...common,
 				turnId: turnRecord.turnId,
-				turnType: turnRecord.turnType,
 				displayTurn: turnRecord.turnId,
 				outcome: "in_progress",
 				summary: `Current step: ${formatDefinition(turnRecord.turnId)}`,
@@ -517,14 +417,8 @@ export function presentProcessTimelineTurns(input: {
 						? input.activeTurn.assistant.text.trim()
 						: "",
 				turnResultMarkdown: "",
-				pathType: turnRecord.pathType,
 				createdAt: turnRecord.startedAt,
-				presentation: timelinePresentationForTurnType(turnRecord.turnType),
 				status: "in_progress",
-				modelProfileId: turnRecord.modelProfileId ?? null,
-				actionSource: actionSourceByTurnRecordId.get(turnRecord.id) ?? null,
-				...progressByTurnRecordId.get(turnRecord.id),
-				...durableTurnLineage(turnRecord),
 			});
 			continue;
 		}
@@ -535,24 +429,26 @@ export function presentProcessTimelineTurns(input: {
 		const actionAnnotation =
 			acceptanceAnnotationsByTurnRecordId.get(turnRecord.id) ??
 			externalTriggerAnnotationsByTurnRecordId.get(turnRecord.id);
-		let presentation: Omit<
-			Parameters<typeof createCompletedTurnRecord>[0],
-			"turnRecord" | "turnResultMarkdown" | "actionSource" | "progress"
-		>;
+		let presentation: Pick<
+			ProcessTimelineTurnSummary,
+			"turnId" | "outcome" | "summary" | "output" | "createdAt"
+		> & { displayTurn?: string };
 
-		if (outcomeEvent) {
-			const turnId = stringValue(outcomeEvent.data.turnId) || turnRecord.turnId || "turn";
+		const recordedOutcome = outcomeEvent ?? (!actionAnnotation ? milestoneAnnotation : null);
+		if (recordedOutcome) {
+			const data = "data" in recordedOutcome ? recordedOutcome.data : recordedOutcome.payload;
+			const turnId = stringValue(data.turnId) || turnRecord.turnId || "turn";
 			const outcome =
-				stringValue(outcomeEvent.data.outcome) ||
+				stringValue(data.outcome) ||
 				stringValue(milestoneAnnotation?.payload.outcome) ||
 				fallbackOutcomeFromTurnRecord(turnRecord);
-			const params = paramsRecord(outcomeEvent.data.params);
+			const params = paramsRecord(outcomeEvent?.data.params);
 			presentation = {
 				turnId,
 				outcome,
 				summary: summarizeTurnOutcome(turnId, outcome, params),
 				output: outputFromTurnParams(params, { includeMarkdownFields: !turnResultMarkdown }),
-				createdAt: turnRecord.endedAt ?? outcomeEvent.createdAt ?? turnRecord.startedAt,
+				createdAt: turnRecord.endedAt ?? recordedOutcome.createdAt ?? turnRecord.startedAt,
 			};
 		} else if (actionAnnotation) {
 			const label = annotationLabel(actionAnnotation);
@@ -568,18 +464,6 @@ export function presentProcessTimelineTurns(input: {
 				output: annotationOutput(actionAnnotation),
 				createdAt: actionAnnotation.createdAt ?? turnRecord.endedAt ?? turnRecord.startedAt,
 			};
-		} else if (milestoneAnnotation) {
-			const turnId = stringValue(milestoneAnnotation.payload.turnId) || turnRecord.turnId || "turn";
-			const outcome =
-				stringValue(milestoneAnnotation.payload.outcome) ||
-				fallbackOutcomeFromTurnRecord(turnRecord);
-			presentation = {
-				turnId,
-				outcome,
-				summary: summarizeTurnOutcome(turnId, outcome, {}),
-				output: "",
-				createdAt: turnRecord.endedAt ?? milestoneAnnotation.createdAt ?? turnRecord.startedAt,
-			};
 		} else {
 			const summary = fallbackSummaryFromTurnRecord(turnRecord);
 			presentation = {
@@ -590,7 +474,12 @@ export function presentProcessTimelineTurns(input: {
 				createdAt: turnRecord.endedAt ?? turnRecord.startedAt,
 			};
 		}
+		const payload = actionAnnotation?.payload ?? milestoneAnnotation?.payload;
+		const selectedTurnId =
+			stringValue(payload?.selectedTurnIdAfter) || stringValue(payload?.causedSelectedTurnId);
+		const targetTurnRecordId = stringValue(payload?.targetTurnRecordId);
 		turns.push({
+			...common,
 			resources:
 				normalizeTurnProgressLinks(
 					paramsRecord(actionAnnotation?.payload.eventDescription).links,
@@ -598,32 +487,24 @@ export function presentProcessTimelineTurns(input: {
 			...(stringValue(actionAnnotation?.payload.sourceTurnRecordId)
 				? { reviewedTurnRecordId: stringValue(actionAnnotation?.payload.sourceTurnRecordId) }
 				: {}),
-			...(() => {
-				const payload = actionAnnotation?.payload ?? milestoneAnnotation?.payload;
-				const selectedTurnId =
-					stringValue(payload?.selectedTurnIdAfter) || stringValue(payload?.causedSelectedTurnId);
-				const targetTurnRecordId = stringValue(payload?.targetTurnRecordId);
-				return selectedTurnId
-					? {
-							transition: {
-								selectedTurnId,
-								...(targetTurnRecordId ? { targetTurnRecordId } : {}),
-								accepted: Boolean(
-									targetTurnRecordId &&
-										input.turnRecords.some((record) => record.id === targetTurnRecordId),
-								),
-							},
-						}
-					: {};
-			})(),
-			...createCompletedTurnRecord({
-				...presentation,
-				turnRecord,
-				turnResultMarkdown,
-				actionSource: actionSourceByTurnRecordId.get(turnRecord.id) ?? null,
-				progress: progressByTurnRecordId.get(turnRecord.id)?.progress ?? null,
-			}),
-			...progressByTurnRecordId.get(turnRecord.id),
+			...(selectedTurnId
+				? {
+						transition: {
+							selectedTurnId,
+							...(targetTurnRecordId ? { targetTurnRecordId } : {}),
+							accepted: Boolean(
+								targetTurnRecordId &&
+									input.turnRecords.some((record) => record.id === targetTurnRecordId),
+							),
+						},
+					}
+				: {}),
+			...presentation,
+			displayTurn: presentation.displayTurn ?? presentation.turnId,
+			output: presentation.output.trim() || (turnResultMarkdown ? "" : presentation.summary),
+			turnResultMarkdown,
+			status: "completed",
+			progress: common.progress ?? null,
 			...(stringValue(milestoneAnnotation?.payload.resultSummary)
 				? { resultSummary: stringValue(milestoneAnnotation?.payload.resultSummary) }
 				: {}),
@@ -648,28 +529,21 @@ export function presentProcessTimelineTurns(input: {
 	) {
 		const turnId = input.process.selectedTurnId ?? "unknown";
 		turns.push({
-			id: input.currentExecutionTurnRecordId ?? `current:${turnId}`,
-			turnId,
-			turnType: input.selectedTurnType ?? "llm",
-			displayTurn: turnId,
-			outcome: "in_progress",
-			summary: `Current step: ${formatDefinition(turnId)}`,
-			output: "",
-			turnResultMarkdown: "",
-			pathType: "primary",
-			createdAt: input.process.updatedAt,
-			presentation: timelinePresentationForTurnType(input.selectedTurnType ?? "llm"),
-			status: "in_progress",
+			...buildActiveTimelineTurnSummary(
+				{
+					turnRecordId: input.currentExecutionTurnRecordId ?? `current:${turnId}`,
+					turnId,
+					turnType: input.selectedTurnType ?? "llm",
+					pathType: "primary",
+					startedAt: input.process.updatedAt,
+					assistant: { text: "", thinking: "", lastUpdatedAt: null },
+				},
+				{ summary: `Current step: ${formatDefinition(turnId)}`, output: "" },
+			),
 			modelProfileId:
 				input.activeModelProfileId === undefined
 					? (input.process.selectedTurnModelProfileId ?? null)
 					: input.activeModelProfileId,
-			attemptNumber: 1,
-			parentTurnRecordId: null,
-			startedAt: input.process.updatedAt,
-			endedAt: null,
-			actionSource: null,
-			progress: null,
 		});
 	}
 
@@ -739,46 +613,28 @@ export function buildExternalTriggerSignals(args: {
 			) ?? null;
 		const latestConfiguredEvent = latestArmedEvent ?? latestEvent;
 		const configuredDetail = setupDetail(latestConfiguredEvent);
-
+		let state: ProcessExternalTriggerSignal["state"] = "waiting";
+		let occurredAt: string | null = null;
+		let secondaryDetail = configuredDetail;
 		if (
 			latestEvent?.eventType === "external_trigger_failed" ||
 			latestEvent?.eventType === "external_source_failed"
 		) {
-			return {
-				triggerId: trigger.id,
-				state: "error",
-				occurredAt: latestEvent.createdAt,
-				secondaryDetail: joinDetails(stringValueOrNull(latestEvent.data.message), configuredDetail),
-			};
-		}
-
-		if (args.isWaitingForSelectedTurn) {
-			return {
-				triggerId: trigger.id,
-				state: "armed",
-				occurredAt: latestArmedEvent?.createdAt ?? null,
-				secondaryDetail: configuredDetail ?? "No trigger attempts recorded yet.",
-			};
-		}
-
-		if (
+			state = "error";
+			occurredAt = latestEvent.createdAt;
+			secondaryDetail = joinDetails(stringValueOrNull(latestEvent.data.message), configuredDetail);
+		} else if (args.isWaitingForSelectedTurn) {
+			state = "armed";
+			occurredAt = latestArmedEvent?.createdAt ?? null;
+			secondaryDetail = configuredDetail ?? "No trigger attempts recorded yet.";
+		} else if (
 			latestEvent?.eventType === "external_trigger_consumed" ||
 			latestEvent?.eventType === "external_source_consumed"
 		) {
-			return {
-				triggerId: trigger.id,
-				state: "triggered",
-				occurredAt: latestEvent.createdAt,
-				secondaryDetail: configuredDetail,
-			};
+			state = "triggered";
+			occurredAt = latestEvent.createdAt;
 		}
-
-		return {
-			triggerId: trigger.id,
-			state: "waiting",
-			occurredAt: null,
-			secondaryDetail: configuredDetail,
-		};
+		return { triggerId: trigger.id, state, occurredAt, secondaryDetail };
 	});
 }
 
@@ -949,6 +805,16 @@ export function buildCurrentProcessError(input: {
 	if (input.process.lifecycleStatus !== "error" || input.currentTurnRecovery) {
 		return null;
 	}
+	const wait = pendingTurnWait(input.process);
+	if (wait?.status === "error")
+		return {
+			title: input.selectedTurnDescription ?? "Waiting condition",
+			summary: wait.message ?? "The waiting condition failed",
+			canRetry: true,
+			guidance:
+				"Fix the condition or its configuration, then retry. Readiness is checked before starting a worker.",
+			technicalDetail: null,
+		};
 	const latestErrorEvent = input.events.findLast(
 		(event) => event.eventType === "lifecycle_parked" || event.eventType === "worker_failed",
 	);
@@ -998,14 +864,10 @@ export function buildUsageEstimate(input: {
 		totalLlmTurnCount += 1;
 		const isActiveTurn = turnRecord.id === input.currentTurnRecordId;
 		const turnUsage =
-			isActiveTurn && input.activeTurn?.turnType === "llm"
-				? (input.activeTurn.usage ??
-					input.tracePreviewsByTurnRecordId[turnRecord.id]?.usage ??
-					input.usageByTurnRecordId[turnRecord.id] ??
-					null)
-				: (input.tracePreviewsByTurnRecordId[turnRecord.id]?.usage ??
-					input.usageByTurnRecordId[turnRecord.id] ??
-					null);
+			(isActiveTurn && input.activeTurn?.turnType === "llm" ? input.activeTurn.usage : null) ??
+			input.tracePreviewsByTurnRecordId[turnRecord.id]?.usage ??
+			input.usageByTurnRecordId[turnRecord.id] ??
+			null;
 		if (!turnUsage) {
 			missingUsageTurnCount += 1;
 			continue;
@@ -1234,10 +1096,23 @@ type ProcessUiSnapshotDeps = Pick<
 	| "config"
 >;
 
+function includeRecord<T extends { id: string }>(
+	records: T[],
+	id: string | null | undefined,
+	repo: { getById(id: string): T | null },
+): void {
+	if (!id || records.some((record) => record.id === id)) return;
+	const record = repo.getById(id);
+	if (record) records.push(record);
+}
+
 export class ProcessUiSnapshotAssembler {
 	constructor(private readonly deps: ProcessUiSnapshotDeps) {}
 
-	async assemble(instanceId: string): Promise<ProcessDetailUiSnapshotResponseBody | null> {
+	async assemble(
+		instanceId: string,
+		beforeTurnRecordId?: string,
+	): Promise<ProcessDetailUiSnapshotResponseBody | null> {
 		const process = this.deps.processes.getById(instanceId);
 		if (!process) {
 			return null;
@@ -1245,23 +1120,41 @@ export class ProcessUiSnapshotAssembler {
 		// Capture every synchronous durable read before yielding so one response cannot
 		// combine process/turn state from opposite sides of a concurrent mutation.
 		const projects = this.deps.projects.listByInstance(instanceId);
-		const turnRecords = this.deps.turnRecords.listByInstance(instanceId);
+		const before = beforeTurnRecordId ? this.deps.turnRecords.getById(beforeTurnRecordId) : null;
+		if (beforeTurnRecordId && before?.instanceId !== instanceId) return null;
+		const page = this.deps.turnRecords.listPage(instanceId, before ?? undefined, 41);
+		const hasMore = page.length > 40;
+		const turnRecords = hasMore ? page.slice(1) : page;
+		const turnRecordIds = turnRecords.map((turn) => turn.id);
+		const window = {
+			since: hasMore ? turnRecords[0]?.startedAt : undefined,
+			until: before?.startedAt,
+		};
 		const mapped = {
 			runs: this.deps.mappedRuns?.listByInstance(instanceId) ?? [],
 			items: this.deps.mappedRuns?.listItemsByInstance(instanceId) ?? [],
 		};
-		const events = compactDetailEvents(this.deps, instanceId, turnRecords);
-		const turnAnnotations = this.deps.turnAnnotations.listByInstance(instanceId);
+		const events = this.deps.events.listUiSnapshotEvents(instanceId, turnRecordIds);
+		const turnAnnotations = this.deps.turnAnnotations.listForTimeline(instanceId, window);
 		const inputs = this.deps.inputs.listByInstance(instanceId);
-		const leafOutcomeSnapshots = this.deps.leafOutcomeSnapshots.listByInstance(instanceId);
+		const leafOutcomeSnapshots = this.deps.leafOutcomeSnapshots.listByInstance(instanceId, window);
 		const questionRequests = this.deps.questionRequests.listByInstance(instanceId);
 		const toolApprovalRequests = this.deps.toolApprovalRequests.listByInstance(instanceId);
-		const workerLeases = this.deps.leases.listByInstance(instanceId);
-		const workerLease = workerLeases.find((lease) => lease.exitedAt === null) ?? null;
-		const startupTurnStarts = this.deps.turnStarts.listByInstance(instanceId);
+		const workerLeases = this.deps.leases.listByInstance(instanceId, window);
+		const workerLease = this.deps.leases.getByInstance(instanceId);
+		if (workerLease && !workerLeases.some((lease) => lease.id === workerLease.id)) {
+			workerLeases.push(workerLease);
+		}
+		const startupTurnStarts = this.deps.turnStarts.listByInstance(instanceId, window);
+		// A worker starts before its accepted turn. Keep boundary records even when
+		// their timestamps precede the oldest turn on this page.
+		for (const turn of turnRecords) {
+			includeRecord(startupTurnStarts, turn.turnStartRecordId, this.deps.turnStarts);
+			includeRecord(workerLeases, turn.acceptedWorkerLeaseId, this.deps.leases);
+		}
 		const selectedTurn = getSelectedTurnSummaryForProcess(this.deps, process);
 		const session = this.deps.turnSummaries.getSession(instanceId);
-		const summaries = this.deps.turnSummaries.listByInstance(instanceId);
+		const summaries = this.deps.turnSummaries.listByInstance(instanceId, turnRecordIds);
 		const currentTurnRecordId = resolveCurrentExecutionTurnRecordId(process, this.deps.turnStarts);
 		const activeRecord = turnRecords.find(
 			(turn) => turn.id === currentTurnRecordId && turn.status === "running",
@@ -1346,6 +1239,10 @@ export class ProcessUiSnapshotAssembler {
 					refreshedAt: annotation.payload.refreshedAt,
 				});
 		}
+		if (hasMore && projections.usageEstimate) {
+			projections.usageEstimate.isPartial = true;
+			projections.usageEstimate.historyLimited = true;
+		}
 		const runDetails = buildProcessRunDetailsView(this.deps, process, projects);
 		const navigation = presentProcessTurnNavigation({
 			graph: getProcessGraph(this.deps.processGraphs, process.processId),
@@ -1358,13 +1255,17 @@ export class ProcessUiSnapshotAssembler {
 
 		return {
 			...projections,
-			timeline: { ...projections.timeline, turns: navigation.turns },
+			timeline: {
+				...projections.timeline,
+				turns: navigation.turns,
+				history: { beforeTurnRecordId: hasMore ? turnRecords[0].id : null },
+			},
 			plannedNextTurn: navigation.plannedNextTurn,
 			instanceTree: presentProcessInstanceTree({
 				process,
 				turnRecords,
 				leases: workerLeases,
-				observations: this.deps.executionInspections.listContextFacts(instanceId),
+				observations: this.deps.executionInspections.listContextFacts(instanceId, turnRecordIds),
 				turnDetails: runDetails.turns,
 				currentPiEntryId: session?.leafId ?? null,
 			}),
@@ -1416,7 +1317,7 @@ export class ProcessUiSnapshotAssembler {
 		const trace =
 			!live && session
 				? buildCommittedTurnTrace({ tree: session.piTree, turnRecord, events })
-				: snapshotTurnTrace(buildLiveTurnProjectionFromEvents(events));
+				: createLiveTurnProjection(events).snapshot();
 		if (!live) trace.usage ??= buildUsageSnapshotsByTurnRecordId(events)[turnRecord.id] ?? null;
 		const detail: TurnReasoningDetailResponseBody = {
 			instanceId: input.instanceId,

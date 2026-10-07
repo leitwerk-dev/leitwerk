@@ -17,6 +17,7 @@ Behavioral rules belong in the linked references, not in a second glossary.
 | **Turn record / `ProcessTurnRecord`** | Durable record of one turn execution attempt, its outcome, and its lineage. |
 | **`lifecycleStatus`** | Coarse process state: `discovered`, `active`, `waiting`, `error`, `completed`, or `aborted`. |
 | **`selectedTurnId`** | Durable pointer to the active or awaited process turn. |
+| **Turn readiness** | A server-owned `.waitFor` condition checked before reserving a worker start. Waiting observations are not turn attempts. |
 | **`TurnStartRecord`** | Durable preparation for one worker-owned turn that reserves a turn-record id without creating an attempt until accepted. |
 | **Mapped LLM turn** | One LLM turn that runs once per frozen item, sequentially. Each item yields a typed result; the turn collects all results and routes once. |
 | **Mapped run** | Durable record of one entry into a mapped LLM turn: the frozen items, their results, and the current item. |
@@ -75,6 +76,7 @@ Behavioral rules belong in the linked references, not in a second glossary.
 
 | Term | Definition |
 |---|---|
+| **Skill Pack** | Extension-owned bundle of adapted skills, explicit dependencies, and upstream provenance, built from a pinned source and reviewed patch. |
 | **Installed Skill** | Skill revision imported into SQLite with an active status available for future process launch selection. |
 | **Attached Skill** | Immutable skill revision explicitly pinned to a process instance during launch creation. |
 | **Skill Candidate** | Discovered skill revision in a configured Git repository that is available for installation. |

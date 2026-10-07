@@ -22,7 +22,10 @@ import {
 	UpdateSemanticRefs,
 	WorkerFailure,
 } from "./ops/index.js";
+import { ApplyProcessObservation } from "./ops/process-observation.js";
+import { RetryTurnWait } from "./ops/turn-wait.js";
 import { createEngineRunner } from "./runner.js";
+import { pendingTurnWait } from "./turn-wait-state.js";
 import type {
 	ActionExecutionResult,
 	EngineResult,
@@ -92,6 +95,9 @@ export function createProcessEngine(deps: ProcessEngineDeps): ProcessEngine {
 
 	engine = {
 		run,
+		applyProcessObservation(instanceId, input) {
+			return run(ApplyProcessObservation, { instanceId, ...input });
+		},
 
 		getDeferredProcessActivationSnapshots({ instanceId, processId, projectKey }) {
 			const processes = instanceId
@@ -150,7 +156,10 @@ export function createProcessEngine(deps: ProcessEngineDeps): ProcessEngine {
 		},
 
 		async retryProcess(instanceId, opts) {
-			const current = deps.processes.getById(instanceId)?.currentExecution;
+			const process = deps.processes.getById(instanceId);
+			if (process && pendingTurnWait(process)?.status === "error")
+				return run(RetryTurnWait, { instanceId, ...opts });
+			const current = process?.currentExecution;
 			const start = current?.kind === "worker_start" ? deps.turnStarts.getById(current.id) : null;
 			if (start?.state.kind === "preparation_failed" || start?.state.kind === "bootstrap_failed") {
 				// RetryStartup fences this ID and lifecycle state under the process lock.

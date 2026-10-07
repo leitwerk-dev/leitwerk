@@ -178,6 +178,46 @@ describe("SkillsPage", () => {
 		expect(target.textContent).toContain("Already Installed Skill");
 	});
 
+	it("shows extension ownership and adapted instructions without catalog mutation actions", async () => {
+		const extensionSkill = {
+			...installed,
+			id: "review",
+			label: "Review",
+			registrationKind: "extension" as const,
+			ownerExtensionId: "review-skills",
+			provenance: {
+				extensionId: "review-skills",
+				packageName: "@example/skills",
+				packageVersion: "1.0.0",
+				upstream: { url: "https://example.test/skills", commit: "a".repeat(40) },
+				sourcePath: "skills/review",
+				patchDigest: "b".repeat(64),
+				dependencies: [],
+			},
+		};
+		vi.mocked(fetchSkills).mockResolvedValue({ ...catalog(), installedSkills: [extensionSkill] });
+		vi.mocked(fetchInstalledSkillDetail).mockResolvedValue({
+			...extensionSkill,
+			skillMarkdown: "# Markdown architecture report",
+			processes: [],
+			revisions: [],
+		});
+		const target = mountSubject({ detailKind: "installed", skillId: "review" });
+		await flush();
+		expect(target.textContent).toContain("review-skills extension");
+		expect(target.textContent).toContain("@example/skills@1.0.0");
+		expect(
+			[...target.querySelectorAll("button")].some((button) =>
+				/^(Remove|Update skill)$/.test(button.textContent?.trim() ?? ""),
+			),
+		).toBe(false);
+		click(target.querySelector('[role="tab"][aria-controls="skill-instructions"]'));
+		await flush();
+		expect(target.querySelector("#skill-instructions")?.textContent).toContain(
+			"Markdown architecture report",
+		);
+	});
+
 	it("shows configuration-managed details without a removal action", async () => {
 		vi.mocked(fetchSkills).mockResolvedValue(catalog());
 		vi.mocked(fetchInstalledSkillDetail).mockResolvedValue({

@@ -2,6 +2,7 @@ export { flushAsyncWork } from "@leitwerk-dev/worker-protocol";
 export { createInProcessWorkerSpawn } from "../in-process-worker.js";
 export { createStubToolScriptController } from "./stub-pi-controls.js";
 export {
+	formatBranchText,
 	StubPiTreeHandle,
 	StubPiTreeHandleFactory,
 	type StubToolCallScriptCall,

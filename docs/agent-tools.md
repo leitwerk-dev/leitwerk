@@ -7,7 +7,7 @@ outcomes.
 | Category | Purpose | Ends the turn? |
 | --- | --- | --- |
 | Workspace primitives | Read and change files or run commands in the worker. | No. |
-| Integration tools | Call an extension-owned external service through the server. | No. |
+| Integration tools | Call an authorized server-owned integration or shared facility. | No. |
 | `ask_questions` | Ask the operator structured questions. | No. |
 | Outcome tools | Publish typed results and select the next route. | Yes. |
 
@@ -70,7 +70,8 @@ operations. A provider write already committed cannot be rolled back by cancella
 Automatic turns and LLM preparation use `ctx.callIntegrationTool(name, args)` with
 the same authorization, replay, and cancellation rules.
 
-There is no fixed core integration catalog. Extensions own provider schemas,
+The wiki package registers its topic-bound tools through the same registry; see
+[wiki interfaces and contribution rules](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/wiki/README.md). Extensions own provider schemas,
 authorization policy, response validation, and provider-specific behavior.
 
 ### Tool approvals

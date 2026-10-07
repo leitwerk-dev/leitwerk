@@ -14,29 +14,27 @@ const stateCodec = {
 
 describe("process graph product validation", () => {
 	it("validates optional consumed products against declared publishers", () => {
-		const process = defineProcess({
-			id: "optional_product_process",
-			displayName: "Optional Product Process",
-			entry: "consumer",
-			paramsCodec: emptyParamsCodec,
-			stateCodec,
-			initialState: () => ({}),
-			turns: {
-				consumer: llmTurn({
-					availableTools: [],
-					description: "Consumer",
-					branchType: "primary",
-					context: "fresh",
-					prompt: async () => "Consume optional product",
-					optionalConsumedProducts: ["message"],
-					turnEnd: { outcome: "done", params: {}, complete: true },
-				}),
-			},
-		});
-
-		expect(validateProcessGraphProducts(toProcessGraphView(process))).toEqual([
-			expect.stringMatching(/'consumer'.*'message'.*never published/),
-		]);
+		expect(() =>
+			defineProcess({
+				id: "optional_product_process",
+				displayName: "Optional Product Process",
+				entry: "consumer",
+				paramsCodec: emptyParamsCodec,
+				stateCodec,
+				initialState: () => ({}),
+				turns: {
+					consumer: llmTurn({
+						availableTools: [],
+						description: "Consumer",
+						branchType: "primary",
+						context: "fresh",
+						prompt: async () => "Consume optional product",
+						optionalConsumedProducts: ["message"],
+						turnEnd: { outcome: "done", params: {}, complete: true },
+					}),
+				},
+			}),
+		).toThrow(/'consumer'.*'message'.*never published/);
 	});
 
 	it("treats automatic outcome-level product publication as a graph publisher", () => {

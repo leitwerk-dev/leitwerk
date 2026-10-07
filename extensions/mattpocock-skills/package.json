@@ -1,0 +1,56 @@
+{
+	"name": "@leitwerk-dev/mattpocock-skills",
+	"version": "0.3.1",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
+		"directory": "extensions/mattpocock-skills"
+	},
+	"type": "module",
+	"leitwerk": {
+		"extension": {
+			"source": "./src/index.ts",
+			"import": "./dist/index.js"
+		},
+		"skills": "./dist/skills/manifest.json"
+	},
+	"exports": {
+		".": {
+			"source": "./src/index.ts",
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		}
+	},
+	"scripts": {
+		"build": "tsup --silent",
+		"skills:prepare": "leitwerk-dev skills:prepare",
+		"skills:diff": "leitwerk-dev skills:diff",
+		"skills:build": "leitwerk-dev skills:build"
+	},
+	"dependencies": {
+		"@leitwerk-dev/process-sdk": "0.3.1"
+	},
+	"devDependencies": {
+		"@leitwerk-dev/dev-tools": "0.3.1",
+		"@leitwerk-dev/extension-runtime": "0.3.1",
+		"@leitwerk-dev/protocol": "0.3.1",
+		"@types/node": "^22.15.30",
+		"tsup": "^8.5.1"
+	},
+	"license": "Apache-2.0",
+	"publishConfig": {
+		"access": "public"
+	},
+	"engines": {
+		"node": ">=26 <27"
+	},
+	"files": [
+		"dist/**",
+		"src/**",
+		"!dist/**/*.test.*",
+		"!src/**/*.test.ts",
+		"skill-pack.json",
+		"patches/**",
+		"upstream/**"
+	]
+}

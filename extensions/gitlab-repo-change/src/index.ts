@@ -2,7 +2,7 @@ import { gitSshIntegration } from "@leitwerk-dev/git-ssh";
 import { gitlabIntegration } from "@leitwerk-dev/gitlab";
 import type { LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
 import { createGitLabRepoChangeLauncher } from "./launcher.js";
-import { createGitLabRepoChangeProcess } from "./process.js";
+import { createGitLabRepoChangeProcess, registerGitLabRepoChangeMaintenance } from "./process.js";
 
 /** @public */
 export const manifest = {
@@ -31,6 +31,7 @@ export function createGitLabRepoChange(options: {
 			api.registerProcess(process);
 		},
 		setupServer(api) {
+			registerGitLabRepoChangeMaintenance(api, process);
 			const integration = api.require(gitlabIntegration);
 			if (Array.isArray(integration)) throw new Error("GitLab integration must be singular");
 			const ssh = api.require(gitSshIntegration);

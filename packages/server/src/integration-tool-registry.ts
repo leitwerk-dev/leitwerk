@@ -380,6 +380,23 @@ export class IntegrationToolRegistry {
 		return promise;
 	}
 
+	/** Only trusted server extensions use this path; approval-gated ticket tools require worker IPC. */
+	executeServer(
+		name: string,
+		args: unknown,
+		ctx: IntegrationToolExecutionInput,
+		signal: AbortSignal,
+	): Promise<unknown> {
+		const definition = this.tools.get(name);
+		if (!definition || definition.capability)
+			throw new Error(`Tool '${name}' is unavailable to server maintenance`);
+		signal.throwIfAborted();
+		return definition.execute(
+			{ ...ctx, signal, externalWrites: bindExternalWrites(this.writes, ctx.process.id) },
+			definition.parse?.(args) ?? parseToolArgs(args),
+		);
+	}
+
 	cancel(idempotencyKey: string): boolean {
 		const execution = this.executions.get(idempotencyKey);
 		if (!execution) return false;

@@ -155,6 +155,8 @@ describe("turn semantics", () => {
 							summary: {
 								type: "string",
 								description: "Summary",
+								minItems: 0,
+								minimum: 0,
 								items: { type: "string" },
 							},
 							changes: {
@@ -167,12 +169,12 @@ describe("turn semantics", () => {
 				},
 			}),
 		);
-		expect(llmErrors).toEqual(
-			expect.arrayContaining([
-				expect.stringContaining("summary"),
-				expect.stringContaining("changes"),
-			]),
-		);
+		expect(llmErrors).toEqual([
+			"LLM turn 'implement' outcome 'done' parameter 'summary' uses minItems but is not an array",
+			"LLM turn 'implement' outcome 'done' parameter 'summary' uses minimum but is not a number",
+			"LLM turn 'implement' outcome 'done' parameter 'summary' declares array items but is not an array",
+			"LLM turn 'implement' outcome 'done' parameter 'changes' declares unsupported array item type 'tuple'",
+		]);
 
 		const automaticErrors = validateAutomaticTurnDefinition(
 			"commit_and_merge",
@@ -226,11 +228,7 @@ describe("turn semantics", () => {
 					availableTools: ["read", "wat"] as never,
 				}),
 			),
-		).toEqual(
-			expect.arrayContaining([
-				expect.stringContaining("availableTools references unknown Pi tool 'wat'"),
-			]),
-		);
+		).toContainEqual(expect.stringContaining("availableTools references unknown Pi tool 'wat'"));
 		expect(
 			validateLlmTurnDefinition(
 				"implement",
@@ -238,10 +236,8 @@ describe("turn semantics", () => {
 					availableTools: ["read", "read"],
 				}),
 			),
-		).toEqual(
-			expect.arrayContaining([
-				expect.stringContaining("availableTools must not contain duplicate Pi tool 'read'"),
-			]),
+		).toContainEqual(
+			expect.stringContaining("availableTools must not contain duplicate Pi tool 'read'"),
 		);
 		expect(
 			validateLlmTurnDefinition(
@@ -250,15 +246,13 @@ describe("turn semantics", () => {
 					availableTools: [" read "] as never,
 				}),
 			),
-		).toEqual(expect.arrayContaining([expect.stringContaining("without surrounding whitespace")]));
+		).toContainEqual(expect.stringContaining("without surrounding whitespace"));
 		expect(
 			validateLlmTurnDefinition("implement", {
 				...makeLlmTurn(),
 				availableTools: undefined as never,
 			}),
-		).toEqual(
-			expect.arrayContaining([expect.stringContaining("must declare availableTools as an array")]),
-		);
+		).toContainEqual(expect.stringContaining("must declare availableTools as an array"));
 		expect(
 			validateLlmTurnDefinition(
 				"implement",
@@ -267,10 +261,8 @@ describe("turn semantics", () => {
 					startFrom: { kind: "current_leaf" },
 				}),
 			),
-		).toEqual(
-			expect.arrayContaining([
-				expect.stringContaining("uses branchType 'root_branch' but starts from the current leaf"),
-			]),
+		).toContainEqual(
+			expect.stringContaining("uses branchType 'root_branch' but starts from the current leaf"),
 		);
 	});
 
@@ -289,10 +281,8 @@ describe("turn semantics", () => {
 				expect.stringContaining("integration tool 'done' conflicts"),
 			]),
 		);
-		expect(errors).not.toEqual(
-			expect.arrayContaining([
-				expect.stringContaining("integration tool 'provider_read' conflicts"),
-			]),
+		expect(errors).not.toContainEqual(
+			expect.stringContaining("integration tool 'provider_read' conflicts"),
 		);
 	});
 
@@ -360,8 +350,8 @@ describe("turn semantics", () => {
 							externalTriggers: [
 								{
 									id: "review_file",
-									label: "Review file",
-									description: "desc",
+									label: "  ",
+									description: "",
 								},
 							],
 						},
@@ -379,7 +369,11 @@ describe("turn semantics", () => {
 				}),
 			),
 		).toEqual(
-			expect.arrayContaining([expect.stringMatching(/'plan_review'.*duplicate external trigger/)]),
+			expect.arrayContaining([
+				expect.stringMatching(/'plan_review'.*duplicate external trigger/),
+				expect.stringMatching(/'plan_review'.*review_file.*non-empty label/),
+				expect.stringMatching(/'plan_review'.*review_file.*non-empty description/),
+			]),
 		);
 	});
 

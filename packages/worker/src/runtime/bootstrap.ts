@@ -1,3 +1,4 @@
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import {
 	type PreparedTurnStart,
@@ -464,13 +465,18 @@ export async function bootstrapWorkerRuntime(
 	const plan = planRunRoot(workspaceRoot, deps.instanceId, runRootProjects);
 
 	const runRootPreparation =
-		resolvedWorkerProcess?.runtime?.repositoryCheckout === "on_demand"
-			? prepareOnDemandRunRoot(plan, deps.gitOps)
-			: deps.payload.resume
-				? validateRunRoot(workspaceRoot, runRootProjects, deps.gitOps).then((validation) =>
-						repairRunRoot(validation, plan, deps.gitOps),
-					)
-				: materializeRunRoot(plan, deps.gitOps);
+		resolvedWorkerProcess?.runtime?.repositoryCheckout === "none"
+			? mkdir(workspaceRoot, { recursive: true }).then(() => ({
+					aggregatedAgentsMdSources: [],
+					loadedSkills: [],
+				}))
+			: resolvedWorkerProcess?.runtime?.repositoryCheckout === "on_demand"
+				? prepareOnDemandRunRoot(plan, deps.gitOps)
+				: deps.payload.resume
+					? validateRunRoot(workspaceRoot, runRootProjects, deps.gitOps).then((validation) =>
+							repairRunRoot(validation, plan, deps.gitOps),
+						)
+					: materializeRunRoot(plan, deps.gitOps);
 
 	const resolvedPiConfig = llmPayload
 		? resolveProcessPiConfig({

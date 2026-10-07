@@ -1,15 +1,15 @@
 import type { ExecutionInspectionCapture, ProcessTurnRecord } from "@leitwerk-dev/domain";
+import examples from "@leitwerk-dev/example-processes";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import type { AppContext } from "@leitwerk-dev/server";
 import { writeProcessSessionSnapshot } from "@leitwerk-dev/server/testing";
-import showcase from "@leitwerk-dev/showcase-processes";
 import { createAcceptedLlmTurn } from "../helpers/accepted-llm-turn.ts";
 import { expect, expectNoPageOverflow, test } from "./fixtures.js";
 
 test.use({
 	browserServerOptions: {
 		tempPrefix: "leitwerk-inspector-browser-",
-		createExtensionCatalog: () => buildExtensionCatalogFromModules([showcase]),
+		createExtensionCatalog: () => buildExtensionCatalogFromModules([examples]),
 	},
 });
 

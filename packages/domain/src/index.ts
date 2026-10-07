@@ -4,6 +4,7 @@ export {
 	SERIALIZED_SYSTEM_ACTOR,
 	serializeActor,
 } from "./actor.js";
+export { orderDependencies } from "./dependency-order.js";
 export type {
 	Actor,
 	CurrentExecutionRef,
@@ -175,7 +176,6 @@ export {
 	trimString,
 	trimToNull,
 } from "./string-normalize.js";
-export type { TopicPublication, WikiEvidence, WikiPage, WikiTopic } from "./topic-wiki.js";
 export type { TurnAcceptanceState } from "./turn-acceptance.js";
 export {
 	type ProcessTurnAnnotation,

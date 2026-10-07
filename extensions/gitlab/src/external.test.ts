@@ -1,9 +1,88 @@
 import type { CoreServerSetupDeps } from "@leitwerk-dev/process-sdk";
 import { createTestServerSetupCapability } from "@leitwerk-dev/test-support";
 import { expect, it, vi } from "vitest";
-import type { GitLabClientLike, GitLabFeedback, GitLabObservation } from "./client.js";
+import {
+	GitLabClient,
+	type GitLabClientLike,
+	type GitLabFeedback,
+	type GitLabObservation,
+} from "./client.js";
 import { createGitLabProvider, GITLAB_MR_KIND, observationKey } from "./external.js";
 import { mr } from "./merge-request.test-fixture.js";
+
+it("ignored authors neither wake feedback nor delay human feedback across restart", async () => {
+	let time = 10_000;
+	const note = (id: number, username: string) => ({
+		id,
+		body: "Please adjust",
+		author: { username },
+		system: false,
+		created_at: new Date(time).toISOString(),
+	});
+	const notes = [note(1, "sonarqube")];
+	const observation: GitLabObservation = { mr, pipeline: null, targetHead: "target" };
+	const armed = {
+		id: "observe",
+		instanceId: "process",
+		resolved: {
+			profile: "test",
+			projectId: 7,
+			iid: 1,
+			afterKey: observationKey(observation),
+			pollInterval: "1s",
+			feedback: { afterId: 0, quietPeriodMs: 120_000 },
+		},
+	};
+	const fire = vi.fn(async () => ({ ok: true }));
+	const deps = createTestServerSetupCapability({
+		externalSources: {
+			listArmed: (kind: string) => (kind === GITLAB_MR_KIND ? [armed] : []),
+			fire,
+		},
+	} as unknown as Partial<CoreServerSetupDeps>);
+	const create = () => {
+		const reader = new GitLabClient(
+			{ baseUrl: "https://forge.test", token: "test", ignoredCommentUsers: ["sonarqube"] },
+			{ fetch: async () => Response.json([{ id: "thread", notes }]) },
+		);
+		const client = {
+			getMergeRequest: async () => mr,
+			getBranch: async () => ({ commit: { id: "target" } }),
+			listMergeRequestPipelines: async () => [],
+			listBranchPipelines: async () => [],
+			listMergeRequestFeedback: reader.listMergeRequestFeedback.bind(reader),
+		} as unknown as GitLabClientLike;
+		return createGitLabProvider(
+			deps,
+			{ profiles: () => ["test"], client: () => client },
+			{ now: () => time },
+		);
+	};
+	let provider = create();
+	await provider.poll();
+	time = 131_000;
+	await provider.poll();
+	expect(fire).not.toHaveBeenCalled();
+	time = 132_000;
+	notes.push(note(2, "reviewer"));
+	await provider.poll();
+	time = 251_000;
+	notes.push(note(3, "SonarQube"));
+	provider = create();
+	await provider.poll();
+	expect(fire).not.toHaveBeenCalled();
+	time = 253_000;
+	expect((await provider.poll()).errors).toEqual([]);
+	expect(fire).toHaveBeenCalledTimes(1);
+	expect(fire).toHaveBeenLastCalledWith(
+		expect.objectContaining({ mergeKey: expect.stringContaining(":2") }),
+	);
+	armed.resolved.feedback.afterId = 2;
+	provider = create();
+	time += 121_000;
+	await provider.poll();
+	expect(fire).toHaveBeenCalledTimes(1);
+});
 
 it("debounces comments on unchanged green CI, resets for new arrivals and resumes after restart", async () => {
 	let time = 10_000;

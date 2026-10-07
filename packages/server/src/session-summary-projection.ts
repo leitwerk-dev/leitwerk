@@ -90,8 +90,7 @@ export function createProjectedSessionSnapshotStore(
 		},
 		backfill(instanceId: string) {
 			return serial(instanceId, async () => {
-				for (const turn of repos.turnRecords.listByInstance(instanceId)) {
-					if (repos.turnSummaries.get(turn.id)) continue;
+				for (const turn of repos.turnRecords.listMissingSummaries(instanceId)) {
 					let summary = emptyCompactTurnSummary();
 					for (const event of repos.events.listByTurnRecord(instanceId, turn.id)) {
 						summary = applyEventToCompactTurnSummary(summary, {

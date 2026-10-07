@@ -120,6 +120,15 @@ export default defineConfig({
 					maxWorkers: Math.max(2, Math.min(6, availableParallelism())),
 					pool: "threads",
 					include: [...isolatedUnitTests, ...externalUnitTests],
+					exclude: [
+						"**/*.integration.test.ts",
+						"**/*.e2e.test.ts",
+						"**/*.ui.integration.test.ts",
+						// Absolute patterns also cover packages outside the public checkout.
+						...externalIntegrationTests,
+						...externalUiIntegrationTests,
+						...externalPackageDirs.map((dir) => resolve(dir, "src/**/*.e2e.test.ts")),
+					],
 				},
 			},
 			{

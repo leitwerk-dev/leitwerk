@@ -9,9 +9,57 @@ import type {
 import { createInMemoryExternalWriteLog, createToolCollector } from "@leitwerk-dev/test-support";
 import { LocalGit } from "@leitwerk-dev/test-support/local-git";
 import { expect, it } from "vitest";
+import { GitLabClient } from "./client.js";
 import { registerGitLabDeliveryTools } from "./delivery-tools.js";
 import { LocalGitLabAdapter } from "./testing.js";
 import { registerGitLabTools } from "./tools.js";
+
+it("does not acknowledge feedback authored by an ignored user", async () => {
+	const request = async (url: URL | Request | string, init?: RequestInit) => {
+		expect(String(url)).toContain("/discussions");
+		expect(init?.method).toBe("GET");
+		return Response.json([
+			{
+				id: "thread",
+				notes: [
+					{
+						id: 42,
+						body: "Quality gate",
+						author: { username: "sonarqube" },
+						created_at: "2026-10-06T10:00:00Z",
+					},
+				],
+			},
+		]);
+	};
+	const client = new GitLabClient(
+		{ baseUrl: "https://forge.test", token: "test", ignoredCommentUsers: ["sonarqube"] },
+		{ fetch: request },
+	);
+	const { api, tools } = createToolCollector();
+	registerGitLabDeliveryTools(
+		api,
+		{ profiles: () => ["test"], client: () => client },
+		{} as ProcessProjectRepoLike,
+	);
+	const project = {
+		id: "project",
+		instanceId: "process",
+		key: "repo",
+		metadata: { gitlab: { profile: "test", projectId: 7, iid: 1 } },
+	} as ProcessProject;
+	await expect(
+		tools.get("gitlab_acknowledge_feedback")?.execute(
+			{
+				process: { id: "process" },
+				project,
+				projects: [project],
+				signal: new AbortController().signal,
+			} as IntegrationToolExecutionContext,
+			{ noteId: 42 },
+		),
+	).rejects.toThrow("not actionable feedback");
+});
 
 it("recovers remote MR creation before local binding and preserves existing MR-bound tools", async ({
 	onTestFinished,

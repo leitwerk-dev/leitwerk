@@ -521,6 +521,7 @@ async function runParity(repoRoot: string): Promise<void> {
 				"extension_loading:",
 				"  sources:",
 				`    - ${JSON.stringify(path.join(repoRoot, "extensions", "showcase-processes"))}`,
+				`    - ${JSON.stringify(path.join(repoRoot, "extensions", "example-processes"))}`,
 				`    - ${JSON.stringify(providerExtensionDir)}`,
 				"extensions: {}",
 			];
@@ -529,20 +530,30 @@ async function runParity(repoRoot: string): Promise<void> {
 			const launcherId = "single_prompt_process.single_prompt_ui";
 			await assertLauncher(baseUrl, launcherId);
 
-			const rendererId = "@leitwerk-dev/showcase-processes:poem_creator_process.leaf_outcome";
-			const rendererBody = (await fetchJson(
-				`${baseUrl}/api/ui/renderers/${encodeURIComponent(rendererId)}`,
-			)) as { moduleUrl?: string; extensionManifestId?: string };
-			assert.equal(rendererBody.extensionManifestId, "showcase-processes");
-			assert(rendererBody.moduleUrl, "expected the renderer endpoint to expose a moduleUrl");
+			for (const [rendererId, extensionManifestId] of [
+				[
+					"@leitwerk-dev/showcase-processes:poem_creator_process.leaf_outcome",
+					"showcase-processes",
+				],
+				[
+					"@leitwerk-dev/showcase-processes:single_prompt_process.leaf_outcome",
+					"example-processes",
+				],
+			]) {
+				const rendererBody = (await fetchJson(
+					`${baseUrl}/api/ui/renderers/${encodeURIComponent(rendererId)}`,
+				)) as { moduleUrl?: string; extensionManifestId?: string };
+				assert.equal(rendererBody.extensionManifestId, extensionManifestId);
+				assert(rendererBody.moduleUrl, "expected the renderer endpoint to expose a moduleUrl");
 
-			const assetResponse = await fetch(`${baseUrl}${rendererBody.moduleUrl}`);
-			assert.equal(assetResponse.status, 200, "expected built renderer assets to be served");
-			assert.match(
-				assetResponse.headers.get("content-type") ?? "",
-				/text\/javascript/u,
-				"expected renderer assets to be served as JavaScript",
-			);
+				const assetResponse = await fetch(`${baseUrl}${rendererBody.moduleUrl}`);
+				assert.equal(assetResponse.status, 200, "expected built renderer assets to be served");
+				assert.match(
+					assetResponse.headers.get("content-type") ?? "",
+					/text\/javascript/u,
+					"expected renderer assets to be served as JavaScript",
+				);
+			}
 
 			const instanceId = await launchNow(baseUrl, launcherId, {
 				prompt: "Say hello from the parity lane.",

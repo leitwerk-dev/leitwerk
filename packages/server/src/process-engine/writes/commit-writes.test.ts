@@ -232,6 +232,9 @@ describe("record writes", () => {
 			lifecycleStatus: "active",
 		});
 
+		deps.db.$client
+			.prepare("UPDATE process_instances SET updated_at = ? WHERE id = ?")
+			.run("2000-01-01T00:00:00.000Z", process.id);
 		const applied = recordWrites(
 			deps,
 			process.id,
@@ -270,6 +273,9 @@ describe("record writes", () => {
 			lifecycleStatus: "active",
 		});
 
+		deps.db.$client
+			.prepare("UPDATE process_instances SET updated_at = ? WHERE id = ?")
+			.run("2000-01-01T00:00:00.000Z", process.id);
 		const applied = recordWrites(
 			deps,
 			process.id,

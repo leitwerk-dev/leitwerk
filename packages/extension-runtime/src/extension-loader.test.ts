@@ -4,10 +4,14 @@ import path from "node:path";
 import {
 	builtinPiProvider,
 	createCapabilityToken,
+	type DefinedProcessInput,
 	defineModelProvider,
 	defineModelProviders,
 	defineProcess,
+	type ExtensionProcessDefinition,
+	emptyParamsCodec,
 	humanTurn,
+	type LlmTurnDefinition,
 	llmTurn,
 	toProcessGraphView,
 } from "@leitwerk-dev/process-sdk";
@@ -23,6 +27,10 @@ import { createLoadedExtensionModuleForTest } from "./testing.js";
 
 const tempDirs: string[] = [];
 const originalRuntimeLane = process.env[LEITWERK_RUNTIME_LANE_ENV];
+const runtimeLanes = [
+	{ lane: "source", directory: "src", extension: "ts" },
+	{ lane: "dist", directory: "dist", extension: "js" },
+];
 
 beforeEach(() => {
 	delete process.env[LEITWERK_RUNTIME_LANE_ENV];
@@ -59,6 +67,7 @@ async function createExtensionPackage(
 		discover?: boolean;
 		extensionMetadata?: unknown;
 		piMetadata?: unknown;
+		skillsMetadata?: unknown;
 	},
 ) {
 	const pkgDir = path.join(root, "extensions", "example");
@@ -74,6 +83,7 @@ async function createExtensionPackage(
 				},
 				...(opts.discover === false ? { discover: false } : {}),
 				...(opts.piMetadata === undefined ? {} : { pi: opts.piMetadata }),
+				...(opts.skillsMetadata === undefined ? {} : { skills: opts.skillsMetadata }),
 			},
 		}),
 	);
@@ -92,6 +102,31 @@ async function createExtensionPackage(
 }
 
 describe("resolveExtensionEntries", () => {
+	it.each([
+		"source",
+		"dist",
+	])("discovers the same generated skill pack in the %s lane", async (lane) => {
+		process.env[LEITWERK_RUNTIME_LANE_ENV] = lane;
+		const root = await createWorkspace();
+		const pkgDir = await createExtensionPackage(root, {
+			withDist: true,
+			skillsMetadata: "./dist/skills/manifest.json",
+		});
+		const entries = await resolveExtensionEntries({ startDir: root, sources: [pkgDir] });
+		expect(entries[0].skillPackPath).toBe(path.join(pkgDir, "dist/skills/manifest.json"));
+		const loaded = await importExtensionModules(entries);
+		expect(loaded[0].skillPackPath).toBe(entries[0].skillPackPath);
+	});
+
+	it("rejects skill-pack metadata outside the package", async () => {
+		const root = await createWorkspace();
+		const pkgDir = await createExtensionPackage(root, {
+			withDist: true,
+			skillsMetadata: "../outside.json",
+		});
+		await expect(resolveExtensionEntries({ startDir: root, sources: [pkgDir] })).rejects.toThrow();
+	});
+
 	it("returns an empty entry list when no extension sources are configured", async () => {
 		process.env[LEITWERK_RUNTIME_LANE_ENV] = "source";
 		const root = await createWorkspace();
@@ -100,40 +135,23 @@ describe("resolveExtensionEntries", () => {
 		await expect(resolveExtensionEntries({ startDir: root, sources: [] })).resolves.toEqual([]);
 	});
 
-	it("resolves configured relative package directories", async () => {
-		process.env[LEITWERK_RUNTIME_LANE_ENV] = "source";
+	it.each(runtimeLanes)("resolves configured package directories in the $lane lane", async ({
+		lane,
+		directory,
+		extension,
+	}) => {
+		process.env[LEITWERK_RUNTIME_LANE_ENV] = lane;
 		const root = await createWorkspace();
-		const pkgDir = await createExtensionPackage(root, { withDist: false });
-
+		const pkgDir = await createExtensionPackage(root, { withDist: lane === "dist" });
 		const entries = await resolveExtensionEntries({
 			startDir: root,
 			sources: ["./extensions/example"],
 		});
-
 		expect(entries).toEqual([
 			{
 				packageName: "@example/example",
 				packageDir: pkgDir,
-				entryPath: path.join(pkgDir, "src", "index.ts"),
-			},
-		]);
-	});
-
-	it("resolves configured package directories to built entrypoints in the dist lane", async () => {
-		process.env[LEITWERK_RUNTIME_LANE_ENV] = "dist";
-		const root = await createWorkspace();
-		const pkgDir = await createExtensionPackage(root, { withDist: true });
-
-		const entries = await resolveExtensionEntries({
-			startDir: root,
-			sources: ["./extensions/example"],
-		});
-
-		expect(entries).toEqual([
-			{
-				packageName: "@example/example",
-				packageDir: pkgDir,
-				entryPath: path.join(pkgDir, "dist", "index.js"),
+				entryPath: path.join(pkgDir, directory, `index.${extension}`),
 			},
 		]);
 	});
@@ -178,51 +196,37 @@ describe("resolveExtensionEntries", () => {
 		);
 	});
 
-	it("resolves Pi entries and resources through the active source lane", async () => {
-		process.env[LEITWERK_RUNTIME_LANE_ENV] = "source";
+	it.each(runtimeLanes)("resolves Pi entries and resources in the $lane lane", async ({
+		lane,
+		directory,
+		extension,
+	}) => {
+		process.env[LEITWERK_RUNTIME_LANE_ENV] = lane;
 		const root = await createWorkspace();
 		const pkgDir = await createExtensionPackage(root, {
-			withDist: false,
+			withDist: lane === "dist",
 			piMetadata: {
 				worker: { source: "./src/pi-worker.ts", import: "./dist/pi-worker.js" },
 				server: { source: "./src/pi-server.ts", import: "./dist/pi-server.js" },
-				resources: { skills: ["./skills"], prompts: ["./prompts"] },
+				resources: lane === "source" ? { skills: ["./skills"], prompts: ["./prompts"] } : undefined,
 			},
 		});
-		await mkdir(path.join(pkgDir, "skills"));
-		await mkdir(path.join(pkgDir, "prompts"));
-
+		if (lane === "source") {
+			await mkdir(path.join(pkgDir, "skills"));
+			await mkdir(path.join(pkgDir, "prompts"));
+		}
 		const [entry] = await resolveExtensionEntries({
 			startDir: root,
 			sources: ["./extensions/example"],
 		});
-
 		expect(entry.pi).toEqual({
-			workerEntryPath: path.join(pkgDir, "src", "pi-worker.ts"),
-			serverEntryPath: path.join(pkgDir, "src", "pi-server.ts"),
+			workerEntryPath: path.join(pkgDir, directory, `pi-worker.${extension}`),
+			serverEntryPath: path.join(pkgDir, directory, `pi-server.${extension}`),
 			resources: {
-				skillDirectories: [path.join(pkgDir, "skills")],
-				promptDirectories: [path.join(pkgDir, "prompts")],
+				skillDirectories: lane === "source" ? [path.join(pkgDir, "skills")] : [],
+				promptDirectories: lane === "source" ? [path.join(pkgDir, "prompts")] : [],
 			},
 		});
-	});
-
-	it("resolves Pi entries through the active dist lane", async () => {
-		process.env[LEITWERK_RUNTIME_LANE_ENV] = "dist";
-		const root = await createWorkspace();
-		const pkgDir = await createExtensionPackage(root, {
-			withDist: true,
-			piMetadata: {
-				worker: { source: "./src/pi-worker.ts", import: "./dist/pi-worker.js" },
-				server: { source: "./src/pi-server.ts", import: "./dist/pi-server.js" },
-			},
-		});
-		const [entry] = await resolveExtensionEntries({
-			startDir: root,
-			sources: ["./extensions/example"],
-		});
-		expect(entry.pi?.workerEntryPath).toBe(path.join(pkgDir, "dist", "pi-worker.js"));
-		expect(entry.pi?.serverEntryPath).toBe(path.join(pkgDir, "dist", "pi-server.js"));
 	});
 
 	it("rejects a Pi worker entry outside its owning package", async () => {
@@ -258,11 +262,56 @@ describe("importExtensionModules", () => {
 });
 
 describe("buildExtensionCatalog", () => {
+	type TestProcessInput = DefinedProcessInput<Record<string, never>, Record<string, never>>;
+
+	function testLlmTurn(
+		description: string,
+		overrides: Partial<
+			LlmTurnDefinition<string, Record<string, never>, Record<string, never>>
+		> = {},
+	) {
+		return llmTurn({
+			availableTools: [],
+			description,
+			branchType: "primary",
+			context: "fresh",
+			prompt: async () => "prompt",
+			turnEnd: { outcome: "done", params: {}, complete: true },
+			...overrides,
+		});
+	}
+
+	function defineTestProcess(
+		input: Pick<TestProcessInput, "id" | "turns"> & Partial<TestProcessInput>,
+	) {
+		return defineProcess({
+			displayName: input.id,
+			entry: Object.keys(input.turns)[0],
+			paramsCodec: emptyParamsCodec,
+			stateCodec: emptyParamsCodec,
+			initialState: () => ({}),
+			...input,
+		});
+	}
+
+	function catalogWithProcesses(
+		...processes: ExtensionProcessDefinition<Record<string, never>, Record<string, never>>[]
+	) {
+		return buildExtensionCatalog([
+			createLoadedExtensionModuleForTest({
+				manifest: { id: "process-extension", version: "0.1.0" },
+				setupCatalog(api) {
+					for (const process of processes) api.registerProcess(process);
+				},
+			}),
+		]);
+	}
+
 	it("orders present optional dependencies before capability consumers", async () => {
 		const token = createCapabilityToken<string>("test:optional-owner");
 		const observed: unknown[] = [];
 		const consumer = createLoadedExtensionModuleForTest({
-			manifest: { id: "consumer", version: "1", optional: ["owner"] },
+			manifest: { id: "consumer", version: "1", optional: ["owner", "owner"] },
 			setupCatalog(api) {
 				const { get, require: requireCapability } = api;
 				observed.push(get(token), requireCapability(token));
@@ -384,93 +433,11 @@ describe("buildExtensionCatalog", () => {
 		).rejects.toThrow("Processes must be created with defineProcess(...)");
 	});
 
-	it("allows multiple graph-defined processes to reuse the same registered turn metadata", async () => {
-		const emptyCodec = {
-			parse: () => ({}),
-			serialize: (value: Record<string, never>) => value,
-		};
-		const first = defineProcess({
-			id: "first_process",
-			displayName: "First",
-			entry: "run_single_prompt",
-			paramsCodec: emptyCodec,
-			stateCodec: emptyCodec,
-			initialState: () => ({}),
-			turns: {
-				run_single_prompt: llmTurn({
-					availableTools: [],
-					description: "Run a shared prompt",
-					branchType: "primary",
-					context: "fresh",
-					prompt: async () => "prompt",
-					turnEnd: { outcome: "completed", params: {}, complete: true },
-				}),
-			},
-		});
-		const second = defineProcess({
-			id: "second_process",
-			displayName: "Second",
-			entry: "run_single_prompt",
-			paramsCodec: emptyCodec,
-			stateCodec: emptyCodec,
-			initialState: () => ({}),
-			turns: {
-				run_single_prompt: llmTurn({
-					availableTools: [],
-					description: "Run a shared prompt",
-					branchType: "primary",
-					context: "fresh",
-					prompt: async () => "another prompt body",
-					turnEnd: { outcome: "completed", params: {}, complete: true },
-				}),
-			},
-		});
-
-		const catalog = await buildExtensionCatalog([
-			createLoadedExtensionModuleForTest({
-				manifest: { id: "shared-turn-extension", version: "0.1.0" },
-				setupCatalog(api) {
-					api.registerProcess(first);
-					api.registerProcess(second);
-				},
-			}),
-		]);
-
-		expect(catalog.processes.get("first_process")?.turns.has("run_single_prompt")).toBe(true);
-		expect(catalog.processes.get("second_process")?.turns.has("run_single_prompt")).toBe(true);
-		expect(catalog.processes.size).toBe(2);
-		expect("processDefinitions" in catalog).toBe(false);
-		const firstProcess = catalog.processes.get("first_process");
-		expect(firstProcess).toBeDefined();
-		if (!firstProcess) {
-			return;
-		}
-		const graph = toProcessGraphView(firstProcess);
-		expect([...graph.entryTurnIds]).toEqual(["run_single_prompt"]);
-		expect(graph.turns.get("run_single_prompt")?.turnType).toBe("llm");
-	});
-
 	it("rejects registered processes with graph transition targets outside the process", async () => {
-		const emptyCodec = {
-			parse: () => ({}),
-			serialize: (value: Record<string, never>) => value,
-		};
-		const process = defineProcess({
+		const process = defineTestProcess({
 			id: "invalid_graph_process",
-			displayName: "Invalid Graph",
-			entry: "start",
-			paramsCodec: emptyCodec,
-			stateCodec: emptyCodec,
-			initialState: () => ({}),
 			turns: {
-				start: llmTurn({
-					availableTools: [],
-					description: "Start",
-					branchType: "primary",
-					context: "fresh",
-					prompt: async () => "prompt",
-					turnEnd: { outcome: "done", params: {}, complete: true },
-				}),
+				start: testLlmTurn("Start"),
 			},
 		});
 		const start = process.turns.get("start");
@@ -479,76 +446,64 @@ describe("buildExtensionCatalog", () => {
 		}
 		setProcessTurnTransitions(start, [{ nextTurnId: "missing", outcome: "done" }]);
 
-		await expect(
-			buildExtensionCatalog([
-				createLoadedExtensionModuleForTest({
-					manifest: { id: "invalid-graph-extension", version: "0.1.0" },
-					setupCatalog(api) {
-						api.registerProcess(process);
-					},
-				}),
-			]),
-		).rejects.toThrow(/invalid_graph_process.*undeclared nextTurnId 'missing'/);
+		await expect(catalogWithProcesses(process)).rejects.toThrow(
+			/invalid_graph_process.*undeclared nextTurnId 'missing'/,
+		);
 	});
 
-	it("rejects registered processes that consume products never published by the process", async () => {
-		const emptyCodec = {
-			parse: () => ({}),
-			serialize: (value: Record<string, never>) => value,
-		};
-		const process = defineProcess({
-			id: "invalid_product_process",
-			displayName: "Invalid Product",
-			entry: "consume_plan",
-			paramsCodec: emptyCodec,
-			stateCodec: emptyCodec,
-			initialState: () => ({}),
+	it.each([
+		"declaration",
+		"retained",
+	] as const)("rechecks %s routing changes against the happy path", async (source) => {
+		const process = defineTestProcess({
+			id: "disconnected_process",
+			happyPath: ["start", "done"],
 			turns: {
-				consume_plan: llmTurn({
-					availableTools: [],
-					description: "Consume plan",
-					branchType: "primary",
-					context: "fresh",
-					prompt: async () => "prompt",
-					consumedProducts: ["plan"],
-					turnEnd: { outcome: "done", params: {}, complete: true },
+				start: testLlmTurn("Start", {
+					turnEnd: { outcome: "ready", params: {}, to: "done" },
+				}),
+				done: humanTurn({
+					description: "Done",
+					actions: {
+						finish: { label: "Finish", acceptanceState: "accepted", complete: true },
+					},
 				}),
 			},
 		});
+		const start = process.turns.get("start");
+		if (start?.definition.kind !== "llm") throw new Error("test start turn is missing");
+		if (source === "declaration") {
+			start.definition.turnEnd = { outcome: "ready", params: {}, complete: true };
+		} else {
+			setProcessTurnTransitions(start, [{ outcome: "ready", lifecycleStatus: "completed" }]);
+		}
 
-		await expect(
-			buildExtensionCatalog([
-				createLoadedExtensionModuleForTest({
-					manifest: { id: "invalid-product-extension", version: "0.1.0" },
-					setupCatalog(api) {
-						api.registerProcess(process);
-					},
-				}),
-			]),
-		).rejects.toThrow(/invalid_product_process.*consumes product 'plan' that is never published/);
+		await expect(catalogWithProcesses(process)).rejects.toThrow(
+			/disconnected_process.*happy path segment 'start' -> 'done' is not connected/,
+		);
+	});
+
+	it("rechecks product declarations changed after definition", async () => {
+		const process = defineTestProcess({
+			id: "invalid_product_process",
+			turns: {
+				consume_plan: testLlmTurn("Consume plan"),
+			},
+		});
+		const consumer = process.turns.get("consume_plan")?.definition;
+		if (consumer?.kind !== "llm") throw new Error("test consumer is missing");
+		consumer.consumedProducts = ["plan"];
+
+		await expect(catalogWithProcesses(process)).rejects.toThrow(
+			/invalid_product_process.*consumes product 'plan' that is never published/,
+		);
 	});
 
 	it("rejects registered processes with graph transitions that do not declare exactly one target", async () => {
-		const emptyCodec = {
-			parse: () => ({}),
-			serialize: (value: Record<string, never>) => value,
-		};
-		const process = defineProcess({
+		const process = defineTestProcess({
 			id: "ambiguous_graph_process",
-			displayName: "Ambiguous Graph",
-			entry: "start",
-			paramsCodec: emptyCodec,
-			stateCodec: emptyCodec,
-			initialState: () => ({}),
 			turns: {
-				start: llmTurn({
-					availableTools: [],
-					description: "Start",
-					branchType: "primary",
-					context: "fresh",
-					prompt: async () => "prompt",
-					turnEnd: { outcome: "done", params: {}, complete: true },
-				}),
+				start: testLlmTurn("Start"),
 			},
 		});
 		const start = process.turns.get("start");
@@ -557,55 +512,25 @@ describe("buildExtensionCatalog", () => {
 		}
 		setProcessTurnTransitions(start, [{ outcome: "done" }]);
 
-		await expect(
-			buildExtensionCatalog([
-				createLoadedExtensionModuleForTest({
-					manifest: { id: "ambiguous-graph-extension", version: "0.1.0" },
-					setupCatalog(api) {
-						api.registerProcess(process);
-					},
-				}),
-			]),
-		).rejects.toThrow(/ambiguous_graph_process.*exactly one target/);
+		await expect(catalogWithProcesses(process)).rejects.toThrow(
+			/ambiguous_graph_process.*exactly one target/,
+		);
 	});
 
 	it("allows process-scoped turn ids even when their metadata diverges", async () => {
-		const emptyCodec = {
-			parse: () => ({}),
-			serialize: (value: Record<string, never>) => value,
-		};
-		const first = defineProcess({
+		const first = defineTestProcess({
 			id: "first_process",
-			displayName: "First",
-			entry: "shared_turn",
-			paramsCodec: emptyCodec,
-			stateCodec: emptyCodec,
-			initialState: () => ({}),
 			turns: {
-				shared_turn: llmTurn({
-					availableTools: [],
-					description: "Shared",
-					branchType: "primary",
-					context: "fresh",
-					prompt: async () => "prompt",
+				shared_turn: testLlmTurn("Shared", {
 					turnEnd: { outcome: "completed", params: {}, complete: true },
 				}),
 			},
 		});
-		const second = defineProcess({
+		const second = defineTestProcess({
 			id: "second_process",
-			displayName: "Second",
-			entry: "shared_turn",
-			paramsCodec: emptyCodec,
-			stateCodec: emptyCodec,
-			initialState: () => ({}),
 			turns: {
-				shared_turn: llmTurn({
-					availableTools: [],
-					description: "Different description",
-					branchType: "primary",
-					context: "fresh",
-					prompt: async () => "prompt",
+				shared_turn: testLlmTurn("Different description", {
+					prompt: async () => "another prompt body",
 					turnEnd: { outcome: "completed", params: {}, complete: true },
 				}),
 				decision: humanTurn({
@@ -621,21 +546,23 @@ describe("buildExtensionCatalog", () => {
 			},
 		});
 
-		const catalog = await buildExtensionCatalog([
-			createLoadedExtensionModuleForTest({
-				manifest: { id: "conflicting-turn-extension", version: "0.1.0" },
-				setupCatalog(api) {
-					api.registerProcess(first);
-					api.registerProcess(second);
-				},
-			}),
-		]);
+		const catalog = await catalogWithProcesses(first, second);
 
-		expect(
-			catalog.processes.get("first_process")?.turns.get("shared_turn")?.definition.description,
-		).toBe("Shared");
-		expect(
-			catalog.processes.get("second_process")?.turns.get("shared_turn")?.definition.description,
-		).toBe("Different description");
+		expect(catalog.processes.size).toBe(2);
+		for (const [process, description, prompt] of [
+			[first, "Shared", "prompt"],
+			[second, "Different description", "another prompt body"],
+		] as const) {
+			const registered = catalog.processes.get(process.id);
+			if (!registered) throw new Error(`Missing process '${process.id}'`);
+			expect([...registered.turns.keys()]).toEqual([...process.turns.keys()]);
+			const turn = registered.turns.get("shared_turn")?.definition;
+			if (turn?.kind !== "llm") throw new Error("Missing shared turn");
+			expect(turn.description).toBe(description);
+			expect(await turn.prompt({} as never)).toBe(prompt);
+			const graph = toProcessGraphView(registered);
+			expect([...graph.entryTurnIds]).toEqual(["shared_turn"]);
+			expect(graph.turns.get("shared_turn")?.turnType).toBe("llm");
+		}
 	});
 });

@@ -87,6 +87,7 @@ describe("routeTurnOutcomes", () => {
 
 	it("applies route effects without replacing original validated parameters", async () => {
 		const base = llmTurn<Record<string, never>, { ready: boolean }, "done">({
+			availableTools: [],
 			description: "Base",
 			branchType: "primary",
 			context: "fresh",

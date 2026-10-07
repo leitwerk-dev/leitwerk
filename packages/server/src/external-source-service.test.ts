@@ -9,6 +9,7 @@ import { getDefaultConfig } from "./config/config-loader.js";
 import { createExternalSourceService } from "./external-source-service.js";
 import { buildProcessActionRegistry } from "./process-action-registry.js";
 import { accept } from "./process-engine/decision.js";
+import { createProcessEngine } from "./process-engine/engine.js";
 import { defineOperation } from "./process-engine/operation.js";
 import { createEngineRunner } from "./process-engine/runner.js";
 import type { ProcessEngine } from "./process-engine/types.js";
@@ -17,6 +18,7 @@ import { createFakeWorkerSupervisor } from "./test-helpers/fake-worker-superviso
 import { createOwnedTestDeps as createTestDeps } from "./test-helpers/owned-test-deps.js";
 import { createProcessGraphRegistry } from "./test-helpers/process-fixtures.js";
 import { prepareSuccessfulLlmTurnStarts as createSuccessfulLlmTurnStarts } from "./test-helpers/turn-start-preflight-fixtures.js";
+import { createTurnWaitService } from "./turn-wait-service.js";
 
 const stateCodec = {
 	parse(value: unknown): Record<string, unknown> {
@@ -89,6 +91,7 @@ function createHarness(
 			flow
 				.llm<Record<string, never>, Record<string, unknown>>("draft")
 				.description("Draft")
+				.waitFor(({ state }) => !!state.productRefs)
 				.optionalConsume("message")
 				.tools()
 				.buildPrompt((ctx) => ctx.input.message ?? "draft")
@@ -133,6 +136,93 @@ function createWaitingProcess(deps: ReturnType<typeof createTestDeps>) {
 }
 
 describe("ExternalSourceService", () => {
+	it.each([
+		"automatic",
+		"llm",
+	] as const)("treats %s external events as readiness wakeups without starts, leases or turn records", async (kind) => {
+		const predicate = vi.fn(() => false);
+		const turn =
+			kind === "automatic"
+				? flow
+						.automatic("work")
+						.description("Work")
+						.waitFor(predicate)
+						.run(() => ({ outcome: "done", params: {} }))
+						.outcome("done", (o) => o.description("Wait").wait())
+				: flow
+						.llm("work")
+						.description("Work")
+						.waitFor(predicate)
+						.prompt("Work")
+						.outcomeTool("done", (o) => o.description("Done").complete());
+		const definition = flow
+			.process("observed_worker")
+			.displayName("Observed worker")
+			.entry("work")
+			.codecs({ params: stateCodec, state: stateCodec })
+			.initialState(() => ({}))
+			.turn(turn.externalAction("changed", source(), (edge) => edge.label("Fix MR").to("work")))
+			.define();
+		const deps = createTestDeps();
+		const processGraphs = createProcessGraphRegistry([definition]);
+		const registry = buildProcessActionRegistry({ processes: processGraphs });
+		const supervisor = createFakeWorkerSupervisor();
+		const commands = createProcessEngine({
+			...deps,
+			processGraphs,
+			processOperations: createProcessOperationCoordinator(),
+			getSupervisor: () => supervisor,
+		});
+		const process = deps.processes.create({
+			processId: definition.id,
+			stateJson: "{}",
+			paramsJson: "{}",
+		});
+		const service = createExternalSourceService({
+			...deps,
+			commands,
+			processActionRegistry: registry,
+		});
+		const waits = createTurnWaitService({
+			...deps,
+			processGraphs,
+			registry,
+			commands,
+			require() {
+				throw new Error("No adapters");
+			},
+		});
+		expect(await commands.startProcess(process.id, "work")).toMatchObject({ ok: true });
+		await service.reconcileAllArmings();
+		expect(service.listArmed("example.file.presence")).toHaveLength(1);
+		expect(
+			registry.getSelectedTurnSummary(
+				definition.id,
+				deps.processes.getById(process.id) ?? process,
+				[],
+			)?.externalTriggers,
+		).toEqual([expect.objectContaining({ label: "Fix MR", externalActionId: "changed" })]);
+		for (let i = 0; i < 25; i++) {
+			expect(
+				await service.fire({
+					instanceId: process.id,
+					armingId: "work:changed",
+					event: { changed: true },
+				}),
+			).toMatchObject({ ok: true });
+			await waits.check(process.id);
+		}
+		expect(predicate).toHaveBeenCalledTimes(1);
+		expect(deps.processes.getById(process.id)).toMatchObject({
+			selectedTurnId: "work",
+			lifecycleStatus: "waiting",
+			currentExecution: null,
+		});
+		expect(deps.turnStarts.listByInstance(process.id)).toEqual([]);
+		expect(deps.turnRecords.listByInstance(process.id)).toEqual([]);
+		expect(deps.leases.listByInstance(process.id)).toEqual([]);
+		expect(supervisor.spawnCalls).toEqual([]);
+	});
 	it("does not arm an external action whose process condition is false", async () => {
 		const { deps, service } = createHarness({ fileDoneWhen: () => false });
 		const process = createWaitingProcess(deps);
@@ -394,7 +484,8 @@ describe("ExternalSourceService", () => {
 		}
 		expect(deps.processes.getById(process.id)).toMatchObject({
 			selectedTurnId: "draft",
-			lifecycleStatus: "active",
+			lifecycleStatus: "waiting",
+			currentExecution: null,
 		});
 		expect(deps.inputs.listByInstance(process.id)).toEqual([]);
 		const [externalTurnRecord] = deps.turnRecords.listByInstance(process.id);
@@ -675,4 +766,53 @@ it("rejects a captured event after its subscription changes without queuing it",
 			})
 		).ok,
 	).toBe(true);
+});
+
+it("commits observation business state without selecting a turn and fences stale updates", async () => {
+	const { deps, service } = createHarness({
+		fileDoneSource: source({
+			resolve: ({ state, projects, process }) => ({
+				state,
+				projects,
+				revision: process.planRevision,
+			}),
+		}),
+	});
+	if (!service.observe) throw new Error("Observation service missing");
+	const process = createWaitingProcess(deps);
+	const armed = service.listArmed("example.file.presence")[0];
+	const identity = {
+		instanceId: process.id,
+		armingId: armed.id,
+		generation: armed.generation ?? "missing",
+	};
+	const observation = {
+		summary: "CI green",
+		observedAt: "2026-10-06T10:00:00Z",
+		subject: "mr",
+		revision: "a",
+	};
+	expect(
+		await service.observe({ ...identity, observation, state: { status: "CI green" } }),
+	).toMatchObject({ ok: true });
+	expect(deps.processes.getById(process.id)).toMatchObject({
+		selectedTurnId: "review",
+		lifecycleStatus: "waiting",
+		stateJson: '{"status":"CI green"}',
+	});
+	expect(deps.turnRecords.listByInstance(process.id)).toHaveLength(0);
+	expect(
+		await service.observe({ ...identity, observation, state: { status: "stale" } }),
+	).toMatchObject({ ok: false });
+	const current = service.listArmed("example.file.presence")[0];
+	deps.processes.update(process.id, { lifecycleStatus: "aborted" });
+	expect(
+		await service.observe({
+			...identity,
+			generation: current.generation ?? "missing",
+			observation,
+			state: { status: "stopped" },
+		}),
+	).toMatchObject({ ok: false });
+	expect(deps.processes.getById(process.id)?.stateJson).toBe('{"status":"CI green"}');
 });

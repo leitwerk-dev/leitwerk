@@ -3,6 +3,7 @@
 	"bootstrap-sha": "0d650094f359c0c8686b5ec0928a607d44fcc866",
 	"release-type": "node",
 	"initial-version": "0.1.0",
+	"release-as": "0.4.0",
 	"include-v-in-tag": false,
 	"include-component-in-tag": true,
 	"tag-separator": "",
@@ -108,7 +109,10 @@
 				"@leitwerk-dev/gitlab-repo-change",
 				"@leitwerk-dev/jira",
 				"@leitwerk-dev/jira-gitlab-change",
-				"@leitwerk-dev/jira-epic-split"
+				"@leitwerk-dev/jira-issue-split",
+				"@leitwerk-dev/example-processes",
+				"@leitwerk-dev/mattpocock-skills",
+				"@leitwerk-dev/wiki"
 			]
 		}
 	],
@@ -290,8 +294,23 @@
 			"skip-github-release": true,
 			"skip-changelog": true
 		},
-		"extensions/jira-epic-split": {
-			"component": "@leitwerk-dev/jira-epic-split",
+		"extensions/jira-issue-split": {
+			"component": "@leitwerk-dev/jira-issue-split",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"extensions/example-processes": {
+			"component": "@leitwerk-dev/example-processes",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"extensions/mattpocock-skills": {
+			"component": "@leitwerk-dev/mattpocock-skills",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"packages/wiki": {
+			"component": "@leitwerk-dev/wiki",
 			"skip-github-release": true,
 			"skip-changelog": true
 		}

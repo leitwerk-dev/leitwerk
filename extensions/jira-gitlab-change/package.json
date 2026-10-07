@@ -25,7 +25,9 @@
 		"@leitwerk-dev/coding": "0.3.1",
 		"@leitwerk-dev/gitlab": "0.3.1",
 		"@leitwerk-dev/git-ssh": "0.3.1",
-		"@leitwerk-dev/jira": "0.3.1"
+		"@leitwerk-dev/jira": "0.3.1",
+		"@leitwerk-dev/wiki": "0.3.1",
+		"@leitwerk-dev/external-writes": "0.3.1"
 	},
 	"devDependencies": {
 		"tsup": "^8.5.1",

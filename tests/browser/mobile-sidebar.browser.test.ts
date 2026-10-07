@@ -1,12 +1,12 @@
+import exampleProcessesExtension from "@leitwerk-dev/example-processes";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
-import showcaseProcessesExtension from "@leitwerk-dev/showcase-processes";
 import { expect, test } from "./fixtures.js";
 
 test.use({
 	viewport: { width: 390, height: 844 },
 	browserServerOptions: {
 		tempPrefix: "leitwerk-mobile-sidebar-browser-",
-		createExtensionCatalog: () => buildExtensionCatalogFromModules([showcaseProcessesExtension]),
+		createExtensionCatalog: () => buildExtensionCatalogFromModules([exampleProcessesExtension]),
 	},
 });
 

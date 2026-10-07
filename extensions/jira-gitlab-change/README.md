@@ -1,8 +1,9 @@
 # Jira GitLab change
 
 `@leitwerk-dev/jira-gitlab-change` launches one process for a Jira issue across its
-component-mapped GitLab repositories. Load `jira`, `gitlab`, `git-ssh`, `coding`, and
-this extension. It is opt-in; no deployment or automatic merge is implied.
+component-mapped GitLab repositories. Load `jira`, `gitlab`, `coding`, and this
+extension. Load `git-ssh` only when using SSH mappings. It is opt-in; no deployment
+or automatic merge is implied.
 
 ```yaml
 process_configs:
@@ -13,20 +14,57 @@ process_configs:
         profile: team
         projects: ['10000', '10001']
         poll_interval: 30s
+        label: use-leitwerk # use-leitwerk-beta for a separate beta trigger
 ```
 
+The watcher label defaults to `use-leitwerk`. Admission retains the selected trigger
+for eligibility, cancellation, approval bypass and final label removal. Changing the
+watcher configuration does not retarget existing runs. The immutable issue identity
+still deduplicates launches across labels and restarts.
+
+Optional model labels select an instance default at admission:
+
+```yaml
+extensions:
+  jira-gitlab-change:
+    model_labels:
+      leitwerk-model-astra: astra-high
+      leitwerk-model-sol: sol-medium
+      leitwerk-model-luna: luna-medium
+```
+
+Values refer to registered, process-allowed model profile IDs. Without a model label,
+normal watcher/process defaults apply. One label overrides the watcher default;
+explicit per-turn overrides retain precedence. Unknown or multiple `leitwerk-model-*`
+labels and unavailable profiles reject admission and remain retryable. The captured
+label/profile selection survives restarts and label reapplication. Later Jira edits
+do not switch the model of an existing run; use its Leitwerk model settings. Model
+labels alone do not trigger a change.
+
 In Settings, refresh sources, select a Jira component, and override **GitLab
-repositories**. Search and select one or more repository / GitLab profile / SSH
-profile combinations. Repository identity uses the GitLab installation and stable
-project ID. The component union removes duplicate repositories and ignores unmapped
+repositories**. Values load immediately; repository options load in the editor.
+Opening the editor shows saved selections and a search field without loading
+options. Enter at least two characters to search GitLab; each query returns up to
+100 matches per profile and repeated queries reuse cached results. Saved selections
+stay visible while searching. **Refresh sources** explicitly rescans GitLab and
+subsequent searches reuse that catalog.
+Select repositories with their GitLab profile and **HTTPS** to use
+the profile's access token for clone and push. No SSH key or known-host configuration
+is needed. The token needs API access and repository write permission (`api` and
+`write_repository` scopes). If `git-ssh` is loaded, mappings may instead select an SSH
+profile with pinned host keys. Repository identity uses the GitLab installation and
+stable project ID. The component union removes duplicate repositories and ignores unmapped
 components. An empty union, unavailable repository/profile, or conflicting profile
-selection blocks admission with a diagnostic. Every repository must pass SSH read
-and dry-run write preflight. Jira and GitLab API tokens remain server-side; only the
-selected Git SSH credentials reach the worker.
+selection blocks admission with a diagnostic. Every repository must pass read and
+dry-run write preflight through its selected transport. Jira credentials remain on
+the server. GitLab HTTPS tokens or SSH credentials reach the selected worker through
+authenticated credential delivery, never through snapshots or repository URLs.
 
 Admission rechecks the issue and mappings, then retains issue content, mapping
 revisions, repository identities, profile references, and branches. Subsequent
 mapping edits affect later launches. The work branch is `leitwerk/jira-<installation-hash>-<issue-id>`.
+The recheck compares the issue revision and launch-relevant fields; changing
+plugin display data or viewing metadata alone does not reject an unchanged issue.
 Each repository has its own checkout, commit message, MR, head, feedback cursor,
 conflict evidence, and CI repair count. Coding settings provide individually labelled
 repository instructions. Models use installation defaults until a primary repository
@@ -39,6 +77,20 @@ any issue with an Epic Link join that epic's [solution wiki](../../docs/topic-wi
 including manual tickets. Subtasks instead join their direct parent's wiki, including
 when that parent belongs to an epic. Generated tickets verify their retained Epic Link
 or subtask parent before admission. Existing running processes keep their captured membership.
+
+Contribute only newly learned solutions useful to another process in that topic.
+The solution must add knowledge absent from both the current ticket description
+and the shared parent or epic requirement; repeating either does not qualify.
+See the [wiki interface](../../packages/wiki/README.md) for evidence and revision rules.
+
+Older split publication receipts may omit checkout credentials and clone URL.
+Admission resolves them from the exact component mapping and current GitLab project,
+then pins their references in the change snapshot. Mappings without an SSH profile
+use HTTPS; existing SSH mappings and running snapshots retain SSH. Retained SSH
+selections and clone URLs cannot silently switch transport. Repository paths, profile
+selections, and base branches must still match. Receipt and wiki history are preserved. A retained wiki
+topic may use a publisher-specific namespace; its installation URL and immutable
+source issue ID must match before it can be reused.
 
 ## Workflow
 
@@ -53,7 +105,7 @@ outcomes are separate from the ten registered turns.
 | `simplify_implementation` | LLM, read-only | Persist findings → apply simplification |
 | `apply_simplification` | LLM | Apply findings and validate → commit messages |
 | `generate_commit_message` | LLM | Persist messages by repository → deliver |
-| `deliver_change` | Automatic | Publish, observe, repair, or finish |
+| `deliver_change` | Automatic | Publish initial work or a changed adjustment |
 | `revise_from_merge_request_feedback` | LLM | Address feedback/conflicts → deliver |
 | `repair_gitlab_pipeline` | LLM | Repair CI → deliver |
 | `ci_operator_action` | Human | Retry repair, resume waiting, or abort |
@@ -63,6 +115,14 @@ accept human comments. `leitwerk-skip-plan-decision` bypasses approval when the 
 finishes or when the label is added while approval waits. A system approval records
 the current plan revision and reason. Removing the label does not rewind work;
 unavailable source reads never bypass approval.
+
+When planning begins, the process adds its public Leitwerk URL through Jira's native
+link feature and transitions the ticket to **In Progress**. Delivery adds a native
+Jira link for each MR. MR descriptions link directly to both the Jira ticket and the
+Leitwerk process. The ticket enters **In Review** only after every changed repository
+has a linked MR; repositories confirmed unchanged do not delay review. No-change
+runs, cancellation and aborted outcomes do not enter review. The workflow posts no
+automatic Jira comments, including completion summaries.
 
 Simplification runs once before first publication. Immediately after implementation,
 the latest Jira labels decide whether `leitwerk-skip-simplification` skips both
@@ -77,7 +137,8 @@ Analysis uses this instruction for each checkout, labelling findings by reposito
 Application consumes the durable findings and accepted plan, applies justified
 changes, preserves behavior, and reruns checks. Empty findings proceed normally.
 Changes stay uncommitted until delivery. Later feedback, conflict, and CI repairs
-return directly to delivery.
+return to delivery when they change work. No-change outcomes acknowledge feedback
+and resume observation without executing Deliver.
 
 ## Delivery and recovery
 
@@ -86,23 +147,35 @@ branches, pinned MR identities, and durable external writes. MR observations cor
 repository, MR, and source revision. Human feedback settles for two minutes. Each
 repository receives up to three automatic CI repairs before operator action.
 Conflicts reuse the shared rebase and original-head push-lease implementation.
+[Shared GitLab MR maintenance](../gitlab/README.md#shared-mr-maintenance) supplies
+feedback/CI routing, ownership labels, fencing, and restart recovery without adding
+business turns. Removing `leitwerk-active` stops only that MR and leaves it open;
+other MRs continue. The outcome table below defines coordinated completion and
+Jira label policy.
 
 | External evidence | Route / outcome |
 | --- | --- |
 | Settled human MR feedback | Feedback revision, then delivery |
 | Confirmed merge conflict | Feedback revision with rebase evidence |
 | Current-head CI failure | CI repair, or operator action after three repairs |
-| All created MRs merged | Complete; comment, remove trigger, add `leitwerk-done` |
-| Mixed merge and unmerged closure | Continue open MRs, then complete with a partial result; no done label |
+| All created MRs merged | Complete; remove trigger, add `leitwerk-done` |
+| Mixed merge and unmerged closure | Continue open MRs, then complete with a partial result; no Jira done label |
 | Every MR closes unmerged | Abort with the recorded result; remove trigger |
-| No repository changes | Complete with explanation; remove trigger; no done label |
+| Some MRs stopped | Continue others; record stopped MRs in the partial result; no Jira done label |
+| All changed MRs stopped unmerged | Abort; leave MRs open; no done label |
+| No repository changes | Complete without MRs; remove trigger; no done label |
 | Source cancellation | Reconcile terminal MRs, stop further delivery, leave open MRs untouched |
 
-All Jira comments and label mutations are durable external writes. Retries do not
-create duplicate processes, MRs, or comments. Generic retry handles failed lookups
-and interrupted turns. Operator abort and process history remain available.
+Jira links, transitions and label mutations are durable external writes. Retries do
+not create duplicate processes, MRs or links. Transitions are discovered by destination
+status name; missing or ambiguous transitions and permission failures pause the owning
+turn for generic retry. Planning retries do not move In Review back to In Progress or
+reopen Done tickets. No automatic final-status transition is performed. Generic retry
+handles failed lookups and interrupted turns. Operator abort and process history remain
+available. GitLab profile `ignored_comment_users` excludes configured feedback authors
+before settling; for example, `[sonarqube]` ignores that account's MR comments.
 
 Before deploying the changed GitLab workflow, finish or abort active instances that
 use removed review or approval turns. Retain their history. Deployment, automatic
-merging, Jira status transitions, and Jira-comment-driven plan revisions are outside
+merging, and Jira-comment-driven plan revisions are outside
 this extension.

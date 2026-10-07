@@ -18,6 +18,8 @@ import { scopedSettingsCapability } from "@leitwerk-dev/process-sdk";
 import type { ModelProfileSnapshot } from "@leitwerk-dev/protocol";
 import { DEFAULT_SESSION_TRANSFER_LIMITS } from "@leitwerk-dev/session-transfer";
 import { createPollingCoordinator, parseDurationMs } from "@leitwerk-dev/watcher-utils";
+import { topicWikiCapability } from "@leitwerk-dev/wiki/integration";
+import { createTopicWikiRepo, registerWikiTools } from "@leitwerk-dev/wiki/server";
 import {
 	cleanupRetainedProcessVolumes,
 	type ProcessStateExporter,
@@ -36,7 +38,6 @@ import {
 	type LeitwerkDb,
 } from "./db/database.js";
 import { createAllRepos, createCredentialCipherFromEnvironment } from "./db/repositories.js";
-import { createTopicWikiRepo } from "./db/topic-wiki-repo.js";
 import { buildExtensionUiCatalog, type ExtensionUiCatalog } from "./extension-ui/catalog.js";
 import { createExtensionHost, type ExtensionHost } from "./extensions/extension-host.js";
 import { createExternalSourceService } from "./external-source-service.js";
@@ -118,6 +119,7 @@ import { createProjectedSessionSnapshotStore } from "./session-summary-projectio
 import { createSessionTransferHelperRelays } from "./session-transfer-helper-relays.js";
 import { createSessionTransferService } from "./session-transfer-service.js";
 import { createSkillCatalogService } from "./skills/catalog-service.js";
+import { importExtensionSkills } from "./skills/extension-importer.js";
 import { createDiagnosticTraceWriter } from "./supervisor/diagnostic-trace-writer.js";
 import { createIpcHandler, type IpcHandler } from "./supervisor/ipc-handler.js";
 import { startStaleHeartbeatWatchdog } from "./supervisor/stale-heartbeat-watchdog.js";
@@ -127,6 +129,7 @@ import {
 	type WorkerWebSocketIpcManager,
 } from "./supervisor/worker-websocket-ipc.js";
 import { createToolApprovalGate } from "./tool-approval-gate.js";
+import { createTurnWaitService } from "./turn-wait-service.js";
 import { defaultWorkerRuntimeProfile } from "./worker-runtime-profile-selection.js";
 import { type Broadcaster, createBroadcaster } from "./ws/broadcast.js";
 
@@ -424,7 +427,9 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		const repos = createAllRepos(db, {
 			...(credentialCipher ? { credentialCipher } : {}),
 		});
+		const extensionSkills = await importExtensionSkills(extensionCatalog.modules);
 		repos.transaction((transactionRepos) => {
+			transactionRepos.skills.reconcileExtensions(extensionSkills);
 			// Directly configured skills are no longer supported. Deactivate any left by an older release.
 			transactionRepos.skills.reconcile([]);
 			transactionRepos.skills.backfillDependencies();
@@ -1219,6 +1224,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			modelStatusCache,
 		});
 		const hostCapabilities = buildHostCapabilities({
+			integrationTools,
 			config,
 			baseDeps,
 			projectMutations,
@@ -1244,6 +1250,30 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		});
 
 		hostCapabilities.provide(scopedSettingsCapability, scopedSettings);
+		const turnWaitService = createTurnWaitService({
+			processes: baseDeps.processes,
+			projects: baseDeps.projects,
+			processGraphs,
+			registry: processActionRegistry,
+			commands: processEngine,
+			require: hostCapabilities.require.bind(hostCapabilities),
+		});
+		polling.create({
+			id: "turn-readiness",
+			pollOnce: turnWaitService.poll,
+			isEnabled: () => true,
+			pollInterval: () => "1s",
+			defaultIntervalMs: 1000,
+		});
+		afterSuccessHooks.add((instanceId) => {
+			// Resolving readiness invokes this hook again; never await our own check.
+			void turnWaitService.check(instanceId).catch((error: unknown) => {
+				app.log.error({ err: error, instanceId }, "Turn readiness check failed");
+			});
+		});
+		const wiki = hostCapabilities.require(topicWikiCapability);
+		if (Array.isArray(wiki)) throw new Error("Wiki integration must be singular");
+		registerWikiTools({ tool: (definition) => integrationTools.register(definition) }, wiki);
 		await setupServerExtensions(
 			extensionCatalog,
 			{
@@ -1264,7 +1294,10 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		);
 		integrationTools.validateTicketProcesses(extensionCatalog.processes);
 		startHooks.push(() => polling.start());
-		stopHooks.push(() => polling.stop());
+		stopHooks.push(async () => {
+			await turnWaitService.stop();
+			await polling.stop();
+		});
 		for (const process of extensionCatalog.processes.values()) {
 			for (const [turnId, binding] of process.turns) {
 				const definition = binding.definition;

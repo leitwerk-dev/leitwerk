@@ -6,6 +6,7 @@ import type {
 	GitLabDiff,
 	GitLabFeedback,
 	GitLabIssue,
+	GitLabLabelEvent,
 	GitLabMergeRequest,
 	GitLabNote,
 	GitLabNoteReaction,
@@ -14,6 +15,7 @@ import type {
 } from "./client.js";
 
 export { GITLAB_MR_KIND } from "./external.js";
+export { createGitLabMaintenance } from "./maintenance.js";
 export { setupGitLabIntegration } from "./setup.js";
 
 /** @public */
@@ -24,6 +26,8 @@ interface LocalState {
 	issueNotes?: Record<string, GitLabNote[]>;
 	/** @public */
 	labels?: Record<string, string[]>;
+	/** @internal */
+	labelEvents?: Record<string, GitLabLabelEvent[]>;
 	/** @internal */
 	projects: GitLabProject[];
 	/** @internal */
@@ -58,6 +62,8 @@ export class LocalGitLabAdapter {
 	loseNextReplyResponse = false;
 	/** @public */
 	loseNextReactionResponse = false;
+	/** @public */
+	loseNextLabelResponse = false;
 	/** @public */
 	constructor(
 		/** @internal */
@@ -325,6 +331,16 @@ export class LocalGitLabAdapter {
 				last_commit_id: this.git(id, ["log", "-1", "--format=%H", ref, "--", filePath]),
 			}),
 			listProjects: async () => structuredClone(this.state.projects),
+			searchProjects: async (search) =>
+				structuredClone(
+					this.state.projects
+						.filter(
+							(project) =>
+								!project.archived &&
+								project.path_with_namespace.toLowerCase().includes(search.trim().toLowerCase()),
+						)
+						.slice(0, 100),
+				),
 			getGroup: async (id) => ({ id: 1, full_path: String(id) }),
 			listGroupProjects: async (group) =>
 				structuredClone(
@@ -341,6 +357,38 @@ export class LocalGitLabAdapter {
 						(m) => m.project_id === id && m.state === "opened" && m.labels.includes(label),
 					),
 				),
+			listMergeRequestLabelEvents: async (id, iid) =>
+				structuredClone(this.state.labelEvents?.[`${id}:${iid}`] ?? []),
+			updateMergeRequestLabels: async (id, iid, patch) => {
+				const request = mr(id, iid);
+				this.state.labelEvents ??= {};
+				this.state.labelEvents[`${id}:${iid}`] ??= [];
+				const events = this.state.labelEvents[`${id}:${iid}`];
+				for (const [action, labels] of [
+					["add", patch.add_labels],
+					["remove", patch.remove_labels],
+				] as const) {
+					for (const name of labels?.split(",").filter(Boolean) ?? []) {
+						if (request.labels.includes(name) === (action === "add")) continue;
+						request.labels =
+							action === "add"
+								? [...request.labels, name]
+								: request.labels.filter((label) => label !== name);
+						events.push({
+							id: Math.max(0, ...events.map((event) => event.id)) + 1,
+							action,
+							label: { name },
+							created_at: new Date().toISOString(),
+						});
+					}
+				}
+				this.save();
+				if (this.loseNextLabelResponse) {
+					this.loseNextLabelResponse = false;
+					throw new Error("Response lost after label write");
+				}
+				return structuredClone(request);
+			},
 			getBranch: async (id, branch) => ({
 				name: branch,
 				can_push: true,
@@ -348,6 +396,7 @@ export class LocalGitLabAdapter {
 				commit: commit(id, branch),
 			}),
 			getCommit: async (id, ref) => commit(id, ref),
+			getMergeBase: async (id, refs) => commit(id, this.git(id, ["merge-base", ...refs])),
 			getChanges: async (id, iid) => structuredClone(this.state.diffs[`${id}:${iid}`] ?? []),
 			listMergeRequestPipelines: async (id, iid) =>
 				structuredClone(

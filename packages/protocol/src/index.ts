@@ -97,14 +97,12 @@ export type {
 	SkillOptionSummary,
 	SkillSelection,
 } from "./launcher-contract.js";
-export type { MutableLiveTurnProjection } from "./live-turn-projection.js";
+export type { LiveTurnProjection, TurnTraceProjection } from "./live-turn-projection.js";
 export {
-	applyPiEventToLiveTurnProjection,
-	buildLiveTurnProjectionFromEvents,
 	buildPrimaryPathOperationalTraceItem,
-	createMutableLiveTurnProjection,
+	createLiveTurnProjection,
 	PRIMARY_PATH_OPERATIONAL_PI_EVENT_TYPES,
-	snapshotLiveTurnProjection,
+	restoreTurnTraceProjection,
 } from "./live-turn-projection.js";
 export {
 	extractPiSessionMessageText,
@@ -144,6 +142,11 @@ export {
 } from "./protocol.js";
 export type { ReadonlyEntryTree } from "./session-entry-tree.js";
 export { createReadonlyEntryTree } from "./session-entry-tree.js";
+export {
+	parseSkillPackManifest,
+	type SkillPackManifest,
+	type SkillRevisionProvenance,
+} from "./skill-pack.js";
 export { isStreamableEvent } from "./streamable-events.js";
 export { truncateTextPreview } from "./text-preview.js";
 export type {
@@ -166,7 +169,6 @@ export {
 	resolveTurnContinuationLeafEntryId,
 	resolveTurnContinuationUserPrompt,
 } from "./turn-continuation.js";
-export { snapshotTurnTrace } from "./turn-trace-projection.js";
 export { buildUsageSnapshotsByTurnRecordId } from "./usage-by-turn-record.js";
 export type { UsageCostSnapshot, UsageTokenCounts } from "./usage-snapshot.js";
 export {

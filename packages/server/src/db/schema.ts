@@ -1,8 +1,13 @@
+import { wikiTopics } from "@leitwerk-dev/wiki/server";
+
+export { wikiPages, wikiRevisions, wikiTopics } from "@leitwerk-dev/wiki/server";
+
 import {
 	type MappedItem,
 	type MappedRunStatus,
 	SERIALIZED_SYSTEM_ACTOR,
 } from "@leitwerk-dev/domain";
+import type { SkillRevisionProvenance } from "@leitwerk-dev/protocol";
 import type { SessionTransferPhase } from "@leitwerk-dev/session-transfer";
 import { sql } from "drizzle-orm";
 import {
@@ -14,28 +19,6 @@ import {
 	text,
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
-
-export const wikiTopics = sqliteTable("wiki_topics", {
-	id: text("id").primaryKey(),
-	key: text("key").notNull(),
-	data: text("data").notNull(),
-});
-
-export const wikiPages = sqliteTable("wiki_pages", {
-	id: text("id").primaryKey(),
-	topicId: text("topic_id")
-		.notNull()
-		.references(() => wikiTopics.id),
-	data: text("data").notNull(),
-});
-
-export const wikiRevisions = sqliteTable("wiki_revisions", {
-	id: text("id").primaryKey(),
-	pageId: text("page_id")
-		.notNull()
-		.references(() => wikiPages.id),
-	data: text("data").notNull(),
-});
 
 export const topicPublications = sqliteTable(
 	"topic_publications",
@@ -161,7 +144,8 @@ export const skills = sqliteTable("skills", {
 	activeRevisionId: text("active_revision_id"),
 	createdAt: text("created_at").notNull(),
 	updatedAt: text("updated_at").notNull(),
-	registrationKind: text("registration_kind", { enum: ["configuration", "catalog"] })
+	ownerExtensionId: text("owner_extension_id"),
+	registrationKind: text("registration_kind", { enum: ["configuration", "catalog", "extension"] })
 		.notNull()
 		.default("configuration"),
 });
@@ -175,6 +159,7 @@ export const skillRevisions = sqliteTable(
 			.references(() => skills.id),
 		bundleDigest: text("bundle_digest").notNull(),
 		bundleBytes: blob("bundle_bytes", { mode: "buffer" }).notNull(),
+		provenance: text("provenance_json", { mode: "json" }).$type<SkillRevisionProvenance>(),
 		sourceRevision: text("source_revision"),
 		importedAt: text("imported_at").notNull(),
 	},
@@ -519,6 +504,7 @@ export const turnRecords = sqliteTable(
 		mappedItemIndex: integer("mapped_item_index"),
 	},
 	(t) => [
+		index("idx_turn_records_page").on(t.instanceId, t.startedAt, t.id),
 		uniqueIndex("uq_turn_records_instance_id").on(t.instanceId, t.id),
 		uniqueIndex("uq_turn_records_turn_start_record").on(t.turnStartRecordId),
 		index("idx_turn_records_instance").on(t.instanceId),
@@ -627,6 +613,7 @@ export const turnAnnotations = sqliteTable(
 		updatedAt: text("updated_at").notNull(),
 	},
 	(t) => [
+		index("idx_turn_annotations_created").on(t.instanceId, t.createdAt),
 		index("idx_turn_annotations_instance").on(t.instanceId),
 		index("idx_turn_annotations_type").on(t.annotationType),
 		uniqueIndex("uq_turn_annotations_instance_key").on(t.instanceId, t.annotationKey),
@@ -657,6 +644,8 @@ export const workerLeases = sqliteTable(
 		readyAt: text("ready_at"),
 	},
 	(t) => [
+		index("idx_worker_leases_exited").on(t.instanceId, t.exitedAt),
+		index("idx_worker_leases_started").on(t.instanceId, t.startedAt),
 		uniqueIndex("uq_worker_leases_instance_id").on(t.instanceId, t.id),
 		index("idx_worker_leases_instance").on(t.instanceId),
 		index("idx_worker_leases_turn_start").on(t.turnStartRecordId),

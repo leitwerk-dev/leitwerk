@@ -8,17 +8,43 @@ import {
 	type JiraIssue,
 	type JiraIssueReceipt,
 	type JiraProject,
+	type JiraRemoteLink,
+	type JiraTransition,
 	jiraEligible,
 	jiraSplitEligible,
 } from "./client.js";
 
-export { registerJiraWikiTools } from "./wiki.js";
+export { registerJiraTools } from "./tools.js";
+
+function upsertRemoteLink(links: JiraRemoteLink[], input: Omit<JiraRemoteLink, "id">) {
+	const previous = links.find((link) => link.globalId === input.globalId);
+	const link = { ...structuredClone(input), id: previous?.id ?? links.length + 1 };
+	if (previous) links[links.indexOf(previous)] = link;
+	else links.push(link);
+	const result: Pick<JiraRemoteLink, "id"> = { id: link.id };
+	return result;
+}
+
+const workflowTransitions: JiraTransition[] = [
+	{
+		id: "31",
+		name: "Start work",
+		to: { id: "3", name: "In Progress", statusCategory: { key: "indeterminate" } },
+	},
+	{
+		id: "41",
+		name: "Request review",
+		to: { id: "4", name: "In Review", statusCategory: { key: "indeterminate" } },
+	},
+];
 
 /** @internal */
 export class LocalJiraSplitAdapter implements JiraClientLike {
 	/** @internal */ readonly baseUrl = "https://jira.test/context";
 	/** @internal */ readonly issues = new Map<string, JiraIssue>();
 	/** @internal */ readonly comments = new Map<string, JiraComment[]>();
+	/** @internal */ readonly remoteLinks = new Map<string, JiraRemoteLink[]>();
+	/** @internal */ transitions = structuredClone(workflowTransitions);
 	/** @internal */ readonly creations: Record<string, unknown>[] = [];
 	/** @internal */ loseNextCreateResponse = false;
 	/** @internal */ searchVisible = true;
@@ -79,9 +105,12 @@ export class LocalJiraSplitAdapter implements JiraClientLike {
 	/** @internal */ async listComponents(): Promise<JiraComponent[]> {
 		return structuredClone(this.components);
 	}
-	/** @internal */ async searchIssues(projectIds: readonly string[]) {
+	/** @internal */ async searchIssues(projectIds: readonly string[], triggerLabel?: string) {
 		return [...this.issues.values()]
-			.filter((issue) => projectIds.includes(issue.fields.project.id) && jiraEligible(issue))
+			.filter(
+				(issue) =>
+					projectIds.includes(issue.fields.project.id) && jiraEligible(issue, triggerLabel),
+			)
 			.map((issue) => structuredClone(issue));
 	}
 	/** @internal */ async searchSplitIssues(projectIds: readonly string[]) {
@@ -184,6 +213,24 @@ export class LocalJiraSplitAdapter implements JiraClientLike {
 			...new Set([...issue.fields.labels.filter((label) => !remove.includes(label)), ...add]),
 		];
 	}
+	/** @internal */ async listRemoteLinks(id: string) {
+		return structuredClone(this.remoteLinks.get(id) ?? []);
+	}
+	/** @internal */ async upsertRemoteLink(id: string, input: Omit<JiraRemoteLink, "id">) {
+		const links = this.remoteLinks.get(id) ?? [];
+		const result = upsertRemoteLink(links, input);
+		this.remoteLinks.set(id, links);
+		return result;
+	}
+	/** @internal */ async listTransitions(_id: string) {
+		return structuredClone(this.transitions);
+	}
+	/** @internal */ async transitionIssue(id: string, transitionId: string) {
+		const issue = this.issues.get(id);
+		const transition = this.transitions.find((transition) => transition.id === transitionId);
+		if (!issue || !transition) throw new Error("Jira transition unavailable");
+		issue.fields.status = structuredClone(transition.to);
+	}
 }
 
 /** @internal */
@@ -198,6 +245,8 @@ export class LocalJiraAdapter {
 		issues: JiraIssue[];
 		/** @internal */
 		comments: Record<string, JiraComment[]>;
+		/** @internal */
+		remoteLinks: Record<string, JiraRemoteLink[]>;
 	};
 	/** @internal */
 	loseNextIssueResponse = false;
@@ -211,7 +260,9 @@ export class LocalJiraAdapter {
 			projects: [],
 			issues: [],
 			comments: {},
+			remoteLinks: {},
 		});
+		this.state.remoteLinks ??= {};
 	}
 	/** @internal */
 	save(): void {
@@ -302,9 +353,20 @@ export class LocalJiraAdapter {
 
 /** @internal */
 export function localJiraIssueClient(
-	state: Pick<LocalJiraAdapter["state"], "issues" | "comments">,
+	state: Pick<LocalJiraAdapter["state"], "issues" | "comments"> &
+		Partial<Pick<LocalJiraAdapter["state"], "remoteLinks">>,
 	save: () => void,
-): Pick<JiraClientLike, "getIssue" | "listComments" | "addComment" | "updateLabels"> {
+): Pick<
+	JiraClientLike,
+	| "getIssue"
+	| "listComments"
+	| "addComment"
+	| "updateLabels"
+	| "listRemoteLinks"
+	| "upsertRemoteLink"
+	| "listTransitions"
+	| "transitionIssue"
+> {
 	const issue = (id: string) => {
 		const found = state.issues.find((issue) => issue.id === id || issue.key === id);
 		if (!found) throw new Error("Unknown local Jira issue");
@@ -326,6 +388,21 @@ export function localJiraIssueClient(
 			current.fields.labels = [
 				...new Set([...current.fields.labels.filter((label) => !remove.includes(label)), ...add]),
 			];
+			save();
+		},
+		listRemoteLinks: async (id) => structuredClone(state.remoteLinks?.[issue(id).id] ?? []),
+		upsertRemoteLink: async (id, input) => {
+			state.remoteLinks ??= {};
+			state.remoteLinks[issue(id).id] ??= [];
+			const result = upsertRemoteLink(state.remoteLinks[issue(id).id], input);
+			save();
+			return result;
+		},
+		listTransitions: async () => structuredClone(workflowTransitions),
+		transitionIssue: async (id, transitionId) => {
+			const transition = workflowTransitions.find((candidate) => candidate.id === transitionId);
+			if (!transition) throw new Error("Jira transition unavailable");
+			issue(id).fields.status = structuredClone(transition.to);
 			save();
 		},
 	};

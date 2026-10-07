@@ -362,10 +362,17 @@ export function createProcessInstanceRepo(db: LeitwerkDb) {
 		},
 
 		/** @public */
-		update(id: string, input: UpdateProcessInstanceInput): ProcessInstance | null {
+		update(
+			id: string,
+			input: UpdateProcessInstanceInput,
+			options: {
+				/** Scheduling-only writes retain process activity time; never part of a process patch. @internal */
+				preserveUpdatedAt?: boolean;
+			} = {},
+		): ProcessInstance | null {
 			const ts = now();
 			const setValues: SQLiteUpdateSetSource<typeof s.processInstances> = {
-				updatedAt: ts,
+				...(options.preserveUpdatedAt ? {} : { updatedAt: ts }),
 				defaultModelProfileId: input.defaultModelProfileId,
 				initialDefaultModelProfileId: input.initialDefaultModelProfileId,
 				selectedTurnId: input.selectedTurnId,

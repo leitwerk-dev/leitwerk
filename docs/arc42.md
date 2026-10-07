@@ -96,6 +96,9 @@ arbitrary replacement of the application shell.
 
 ### Turn
 
+Worker starts first pass the server's [readiness gate](process-sdk.md#readiness-before-a-worker-starts).
+External observations wake the check; external worker targets require a predicate.
+
 1. A `TurnStartRecord` reserves one turn-record identity without counting an attempt.
 2. Worker acceptance creates the turn record and increments its attempt exactly once.
 3. The worker executes the authorized automatic or LLM turn. Optional LLM preparation

@@ -71,6 +71,14 @@ repositories do not block readiness. A failed requested checkout fails that tool
 The returned HEAD describes the local checkout, not necessarily today's remote head.
 Agents must read newly materialized repository instructions before inspection.
 
+Processes can use `.runtime({ repositoryCheckout: "none" })` to retain repository
+bindings solely for server integration-tool authorization. Startup and resume
+create the workspace directory without preparing, validating, repairing, or
+aggregating repositories. `checkout_repository` is absent. Existing workspace,
+manifest, and tree storage remains intact. This mode does not itself remove
+local tools or server mutation tools; the process must authorize only the tools
+its turns need.
+
 A process may opt into development-tool preparation. The worker then runs stock `mise install`
 and `mise ls --current --json` sequentially at each repository root in repository-key order. It
 does not scan nested directories, generate mise configuration, interpret ecosystem files, or
@@ -88,6 +96,7 @@ During worker bootstrap, Leitwerk aggregates instructions and agent capabilities
 
 - **`AGENTS.md` Concatenation:** Combines `AGENTS.md` files across target repositories into a unified root `AGENTS.md` with source provenance comments (`<!-- leitwerk: source=repo/AGENTS.md -->`).
 - **Managed Agent Environment:** The server packages extensions, skills, and settings into an immutable snapshot. The worker verifies and persists each snapshot in `pi-resource-bundles/`, then materializes it in `pi-agent/` alongside temporary credentials. Credentials never enter the persisted bundle.
+- **Attached skill packs:** Extension-owned skills and their dependencies enter this snapshot through the revisions pinned at launch. Worker restarts use those stored bundles, even after an extension upgrade or removal. See [skill packs](skill-packs.md).
 
 ---
 

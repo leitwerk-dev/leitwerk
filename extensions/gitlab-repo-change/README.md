@@ -56,14 +56,15 @@ starts with `{ profile, projectId }`; the server pins the MR `iid` after creatio
 A lost creation response or a restart before binding recovers the same request.
 Existing MR-bound integration tools still require the pinned IID.
 
-Human discussion feedback settles for two minutes. Delivery acknowledges it with
-an eyes reaction, revises in a fresh turn, and reconciles discussion replies. CI
-repair reads failed jobs and bounded traces for the current MR pipeline. Synthetic
-merge pipelines must contain the tracked source revision; newer pending pipelines
-supersede older terminal results. After three automatic CI cycles the operator
-chooses retry, resume waiting, or abort. Successful or absent CI continues waiting.
-Confirmed merge conflicts use the shared rebase implementation and original-head
-push lease. Unknown mergeability does not trigger a repair.
+The process uses [shared GitLab MR maintenance](../gitlab/README.md#shared-mr-maintenance)
+for feedback, CI observations, ownership labels, fencing, and recovery. Deliver runs
+only for initial publication and changed adjustments; maintenance adds no business
+turns. Removing `leitwerk-active` aborts this single-MR process and leaves the MR open.
+
+After three automatic CI repair cycles the operator chooses retry, resume waiting,
+or abort. CI repair uses failed jobs and bounded traces from the current MR pipeline;
+see [pipeline selection](../gitlab/README.md#public-interface). Confirmed conflicts
+use the shared rebase implementation and original-head push lease.
 
 Merge completes delivery. Unmerged closure aborts it. A source issue loses its
 trigger, gains the done label, receives a comment, and closes after merge. Unmerged

@@ -1,8 +1,9 @@
+import { createTopicWikiRepo } from "@leitwerk-dev/wiki/server";
 import { createApiTokenRepo } from "./api-token-repo.js";
 import { createExecutionInspectionRepo } from "./execution-inspection-repo.js";
+import { createPublicationRepo } from "./publication-repo.js";
 import { createScopedSettingsRepo } from "./scoped-settings-repo.js";
 import { createStartupObservationRepo } from "./startup-observation-repo.js";
-import { createTopicWikiRepo } from "./topic-wiki-repo.js";
 import { createTurnSummaryRepo } from "./turn-summary-repo.js";
 
 export * from "./api-token-repo.js";
@@ -71,6 +72,8 @@ import { createWorkerLeaseRepo } from "./worker-lease-repo.js";
 export interface RepositoryBundle {
 	/** @internal */
 	topicWiki: ReturnType<typeof createTopicWikiRepo>;
+	/** @internal */
+	publications: ReturnType<typeof createPublicationRepo>;
 	/** @internal */
 	executionInspections: ReturnType<typeof createExecutionInspectionRepo>;
 	/** @internal */
@@ -150,6 +153,7 @@ export function createAllRepos(
 	const credentialCipher = options.credentialCipher ?? createUnavailableCredentialCipher();
 	const bundle: RepositoryBundle = {
 		topicWiki: createTopicWikiRepo(db),
+		publications: createPublicationRepo(db),
 		executionInspections: createExecutionInspectionRepo(db),
 
 		scopedSettings: createScopedSettingsRepo(db),

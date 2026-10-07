@@ -1,5 +1,5 @@
+import singlePromptExtension from "@leitwerk-dev/example-processes";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
-import singlePromptExtension from "@leitwerk-dev/showcase-processes";
 import { describe, expect, it } from "vitest";
 import { createAcceptedLlmTurn } from "../helpers/accepted-llm-turn.ts";
 import {

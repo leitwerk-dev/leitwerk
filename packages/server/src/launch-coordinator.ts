@@ -629,9 +629,18 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 					return bindLaunchPreparationChecks(attempt.preparationChecks, attempt.launchConfig);
 				},
 				async prepare(attempt) {
+					const eventProfile = attempt.launchConfig.defaultModelProfileId;
 					const prepared = await deps.launchPlans.prepare(
 						withWatcherHandoffDedupKey(attempt.launchPlan, admissionKey),
-						{ modelConfig: watcher.launchModelConfig, invalidModelConfig: "omit" },
+						{
+							modelConfig: {
+								...watcher.launchModelConfig,
+								defaultModelProfileId:
+									eventProfile ?? watcher.launchModelConfig.defaultModelProfileId,
+							},
+							// Event selections express ticket/user intent. Never silently drop them.
+							invalidModelConfig: eventProfile ? "reject" : "omit",
+						},
 					);
 					return prepared.ok
 						? { ok: true as const, value: prepared.launchPlan }

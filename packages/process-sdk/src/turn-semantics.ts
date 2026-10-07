@@ -11,12 +11,11 @@ import type {
 	ProcessToolOutcomeSpec,
 	TurnDefinition,
 } from "./define-process.js";
-import { llmTurn, resolveHumanTurnView } from "./define-process.js";
+import { llmTurn } from "./define-process.js";
 import { validateMappedTurn } from "./mapped-turn.js";
 import { validatePiBuiltInToolArray } from "./pi-config.js";
 import { REQUIRED_MARKDOWN_RESULT_TURN_RESULT } from "./tool-renderers.js";
 import {
-	type OutcomeToolParameterSpec,
 	type ProcessActionPreviewDefinition,
 	type ProcessActionSchedulingDefinition,
 	RESERVED_INTEGRATION_TOOL_NAMES,
@@ -150,45 +149,36 @@ function validateOutcomeToolParameters<TParams = unknown, TState = unknown>(
 	for (const [outcome, outcomeSpec] of Object.entries(outcomes ?? {}) as Array<
 		[string, ProcessToolOutcomeSpec<TParams, TState>]
 	>) {
+		const outcomeContext = `${turnKindLabel} turn '${turnId}' outcome '${outcome}'`;
 		if (outcomeSpec.publishedProduct) {
 			errors.push(...validateProcessProductName(outcomeSpec.publishedProduct));
 			const parameterName = outcomeSpec.turnResultMarkdownParameter?.trim() ?? "";
 			if (!parameterName) {
 				errors.push(
-					`${turnKindLabel} turn '${turnId}' outcome '${outcome}' publishes product '${outcomeSpec.publishedProduct}' but does not declare a turn-result markdown parameter`,
+					`${outcomeContext} publishes product '${outcomeSpec.publishedProduct}' but does not declare a turn-result markdown parameter`,
 				);
 			} else if (!Object.hasOwn(outcomeSpec.parameters, parameterName)) {
 				errors.push(
-					`${turnKindLabel} turn '${turnId}' outcome '${outcome}' publishes product '${outcomeSpec.publishedProduct}' from missing parameter '${parameterName}'`,
+					`${outcomeContext} publishes product '${outcomeSpec.publishedProduct}' from missing parameter '${parameterName}'`,
 				);
 			}
 		}
-		for (const [paramName, paramSpec] of Object.entries(outcomeSpec.parameters) as Array<
-			[string, OutcomeToolParameterSpec]
-		>) {
-			if (paramSpec.minItems !== undefined && paramSpec.type !== "array") {
-				errors.push(
-					`${turnKindLabel} turn '${turnId}' outcome '${outcome}' parameter '${paramName}' uses minItems but is not an array`,
-				);
-			}
-			if (paramSpec.minimum !== undefined && paramSpec.type !== "number") {
-				errors.push(
-					`${turnKindLabel} turn '${turnId}' outcome '${outcome}' parameter '${paramName}' uses minimum but is not a number`,
-				);
-			}
-			if (paramSpec.items !== undefined && paramSpec.type !== "array") {
-				errors.push(
-					`${turnKindLabel} turn '${turnId}' outcome '${outcome}' parameter '${paramName}' declares array items but is not an array`,
-				);
+		for (const [paramName, paramSpec] of Object.entries(outcomeSpec.parameters)) {
+			const context = `${outcomeContext} parameter '${paramName}'`;
+			for (const [property, type, message] of [
+				["minItems", "array", "uses minItems but is not an array"],
+				["minimum", "number", "uses minimum but is not a number"],
+				["items", "array", "declares array items but is not an array"],
+			] as const) {
+				if (paramSpec[property] !== undefined && paramSpec.type !== type)
+					errors.push(`${context} ${message}`);
 			}
 			if (paramSpec.type === "array") {
 				if (!paramSpec.items) {
-					errors.push(
-						`${turnKindLabel} turn '${turnId}' outcome '${outcome}' parameter '${paramName}' is an array and must declare items`,
-					);
+					errors.push(`${context} is an array and must declare items`);
 				} else if (!isValidOutcomeToolArrayItemType(paramSpec.items.type)) {
 					errors.push(
-						`${turnKindLabel} turn '${turnId}' outcome '${outcome}' parameter '${paramName}' declares unsupported array item type '${String(paramSpec.items.type)}'`,
+						`${context} declares unsupported array item type '${String(paramSpec.items.type)}'`,
 					);
 				}
 			}
@@ -329,6 +319,9 @@ export function validateLlmTurnDefinition<
 
 	errors.push(...validateOutcomeToolParameters("LLM", turnId, declaredOutcomes));
 	errors.push(...validateMappedTurn(turnId, turnDef));
+	errors.push(...validateExternalActions("LLM", turnId, turnDef.externalActions));
+	if (Object.keys(turnDef.externalActions ?? {}).length && !turnDef.waitFor)
+		errors.push(`LLM turn '${turnId}' external actions require .waitFor(...)`);
 
 	return errors;
 }
@@ -345,25 +338,69 @@ export function validateAutomaticTurnDefinition<
 	];
 }
 
-/** @internal */
+/** Intrinsic checks shared by standalone turn validation and route compilation. @internal */
+export function validateExternalActions<TParams, TState>(
+	kind: string,
+	turnId: string,
+	actions: HumanTurnDefinition<TParams, TState>["externalActions"],
+): string[] {
+	const errors: string[] = [];
+	for (const [externalActionId, externalAction] of Object.entries(actions ?? {})) {
+		if (externalActionId.trim() === "") {
+			errors.push(
+				kind === "Human"
+					? `Human turn '${turnId}' declares an empty external action id`
+					: `${kind} turn '${turnId}' contains an external action with an empty id`,
+			);
+		}
+		if (externalAction.id !== externalActionId) {
+			errors.push(
+				`${kind} turn '${turnId}' external action '${externalActionId}' has mismatched ${kind === "Human" ? "spec " : ""}id '${externalAction.id}'`,
+			);
+		}
+		if (externalAction.source.kind.trim() === "") {
+			errors.push(
+				`${kind} turn '${turnId}' external action '${externalActionId}' must declare a non-empty source kind`,
+			);
+		}
+		const targetCount =
+			(externalAction.to !== undefined ? 1 : 0) +
+			(externalAction.complete === true ? 1 : 0) +
+			(externalAction.lifecycleStatus !== undefined ? 1 : 0);
+		if (targetCount !== 1) {
+			errors.push(
+				`${kind} turn '${turnId}' external action '${externalActionId}' must declare exactly one target${kind === "Human" ? " via 'to', 'complete', or 'lifecycleStatus'" : ""}`,
+			);
+		}
+		if (externalAction.publishInput) {
+			errors.push(...validateProcessProductName(externalAction.publishInput.productName));
+			if (externalAction.publishInput.inputField.trim() === "") {
+				errors.push(
+					`${kind} turn '${turnId}' external action '${externalActionId}' publishInput must declare a non-empty inputField`,
+				);
+			}
+			if (externalAction.complete === true || externalAction.lifecycleStatus !== undefined) {
+				errors.push(
+					`${kind} turn '${turnId}' external action '${externalActionId}' cannot publish input on a terminal route`,
+				);
+			}
+		}
+	}
+
+	return errors;
+}
+
+/** Intrinsic metadata checked before action derivation, which also validates routing. @internal */
 export function validateHumanTurnDefinition<TParams = unknown, TState = unknown>(
 	turnId: string,
 	turnDef: HumanTurnDefinition<TParams, TState>,
 ): string[] {
 	const errors: string[] = [];
-
-	try {
-		resolveHumanTurnView({ turnId, turn: turnDef });
-	} catch (error: unknown) {
-		errors.push(error instanceof Error ? error.message : String(error));
-	}
 	if (turnDef.reviewProduct) {
 		errors.push(...validateProcessProductName(turnDef.reviewProduct));
 	}
 
-	const actionEntries = Object.entries(turnDef.actions) as Array<
-		[string, HumanTurnDefinition<TParams, TState>["actions"][string]]
-	>;
+	const actionEntries = Object.entries(turnDef.actions);
 	if (actionEntries.length === 0) {
 		errors.push(`Human turn '${turnId}' must declare at least one action`);
 	}
@@ -392,58 +429,13 @@ export function validateHumanTurnDefinition<TParams = unknown, TState = unknown>
 		if (trigger.id.trim() === "") {
 			errors.push(`Human turn '${turnId}' contains an external trigger with an empty id`);
 		}
-		if (actionId.trim() === "") {
-			errors.push(
-				`Human turn '${turnId}' external trigger '${trigger.id}' must declare a non-empty actionId`,
-			);
-		}
-		if (trigger.label.trim() === "") {
-			errors.push(
-				`Human turn '${turnId}' external trigger '${trigger.id}' must declare a non-empty label`,
-			);
-		}
-		if (trigger.description.trim() === "") {
-			errors.push(
-				`Human turn '${turnId}' external trigger '${trigger.id}' must declare a non-empty description`,
-			);
-		}
-	}
-
-	for (const [externalActionId, externalAction] of Object.entries(turnDef.externalActions ?? {})) {
-		if (externalActionId.trim() === "") {
-			errors.push(`Human turn '${turnId}' contains an external action with an empty id`);
-		}
-		if (externalAction.id !== externalActionId) {
-			errors.push(
-				`Human turn '${turnId}' external action '${externalActionId}' has mismatched id '${externalAction.id}'`,
-			);
-		}
-		if (externalAction.source.kind.trim() === "") {
-			errors.push(
-				`Human turn '${turnId}' external action '${externalActionId}' must declare a non-empty source kind`,
-			);
-		}
-		const targetCount =
-			(externalAction.to !== undefined ? 1 : 0) +
-			(externalAction.complete === true ? 1 : 0) +
-			(externalAction.lifecycleStatus !== undefined ? 1 : 0);
-		if (targetCount !== 1) {
-			errors.push(
-				`Human turn '${turnId}' external action '${externalActionId}' must declare exactly one target`,
-			);
-		}
-		if (externalAction.publishInput) {
-			errors.push(...validateProcessProductName(externalAction.publishInput.productName));
-			if (externalAction.publishInput.inputField.trim() === "") {
-				errors.push(
-					`Human turn '${turnId}' external action '${externalActionId}' publishInput must declare a non-empty inputField`,
-				);
-			}
-			if (externalAction.complete === true || externalAction.lifecycleStatus !== undefined) {
-				errors.push(
-					`Human turn '${turnId}' external action '${externalActionId}' cannot publish input on a terminal route`,
-				);
-			}
+		const context = `Human turn '${turnId}' external trigger '${trigger.id}'`;
+		for (const [field, value] of Object.entries({
+			actionId,
+			label: trigger.label,
+			description: trigger.description,
+		})) {
+			if (value.trim() === "") errors.push(`${context} must declare a non-empty ${field}`);
 		}
 	}
 
@@ -487,31 +479,14 @@ export function validateExternalTurnDefinition<TParams = unknown, TState = unkno
 export function validateTurnDefinition<TParams = unknown, TState = unknown>(
 	turnId: string,
 	turnDef: TurnDefinition<TParams, TState>,
-): string[];
-/** @internal */
-export function validateTurnDefinition<TParams = unknown, TState = unknown>(
-	turnDef: TurnDefinition<TParams, TState>,
-): string[];
-/** @internal */
-export function validateTurnDefinition<TParams = unknown, TState = unknown>(
-	turnIdOrDef: string | TurnDefinition<TParams, TState>,
-	turnDef?: TurnDefinition<TParams, TState>,
 ): string[] {
-	const effectiveTurnDef = typeof turnIdOrDef === "string" ? turnDef : turnIdOrDef;
-	const effectiveTurnId =
-		typeof turnIdOrDef === "string"
-			? turnIdOrDef
-			: ((turnIdOrDef as { id?: string }).id ?? "unknown_turn");
-	if (!effectiveTurnDef) {
-		return ["Turn definition is required"];
-	}
-	return isLlmTurnDefinition(effectiveTurnDef)
-		? validateLlmTurnDefinition(effectiveTurnId, effectiveTurnDef)
-		: isAutomaticTurnDefinition(effectiveTurnDef)
-			? validateAutomaticTurnDefinition(effectiveTurnId, effectiveTurnDef)
-			: isHumanTurnDefinition(effectiveTurnDef)
-				? validateHumanTurnDefinition(effectiveTurnId, effectiveTurnDef)
-				: validateExternalTurnDefinition(effectiveTurnId, effectiveTurnDef);
+	return isLlmTurnDefinition(turnDef)
+		? validateLlmTurnDefinition(turnId, turnDef)
+		: isAutomaticTurnDefinition(turnDef)
+			? validateAutomaticTurnDefinition(turnId, turnDef)
+			: isHumanTurnDefinition(turnDef)
+				? validateHumanTurnDefinition(turnId, turnDef)
+				: validateExternalTurnDefinition(turnId, turnDef);
 }
 
 /** @internal */

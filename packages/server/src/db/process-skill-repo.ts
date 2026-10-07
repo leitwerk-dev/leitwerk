@@ -49,15 +49,22 @@ export function createProcessSkillRepo(db: LeitwerkDb) {
 				.select({
 					digest: skillRevisions.bundleDigest,
 					bytes: skillRevisions.bundleBytes,
+					provenance: skillRevisions.provenance,
 				})
 				.from(processSkills)
 				.innerJoin(skillRevisions, eq(processSkills.skillRevisionId, skillRevisions.id))
 				.where(eq(processSkills.instanceId, instanceId))
 				.orderBy(asc(processSkills.position))
 				.all()
-				.map(({ digest, bytes }) => ({
+				.map(({ digest, bytes, provenance }) => ({
 					bundle: { digest, bytes },
-					owner: SKILL_RESOURCE_OWNER,
+					owner: provenance
+						? {
+								kind: "skill" as const,
+								ownerExtensionId: provenance.extensionId,
+								packageName: provenance.packageName,
+							}
+						: SKILL_RESOURCE_OWNER,
 				}));
 		},
 	};

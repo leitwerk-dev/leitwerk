@@ -27,6 +27,7 @@ import ProcessActionsMenu from "../../components/ProcessActionsMenu.svelte";
 import type { ProcessDetailData } from "../../lib/api.js";
 import { shouldIgnorePlainShortcut } from "../../lib/keyboard.js";
 import type { ProcessTerminalStatus } from "../../lib/process-terminal-display.js";
+import { historyState, loadEarlierProcessHistory } from "../../lib/processes.svelte.js";
 import type { createProcessDetailActions } from "./process-detail-actions.svelte.js";
 import { fitChronicleToViewport } from "./process-detail-chronicle-dom.js";
 import { createProcessDetailChronicleScroll } from "./process-detail-chronicle-scroll.svelte.js";
@@ -364,7 +365,16 @@ function handleWindowKeydown(event: KeyboardEvent) {
 					<div class="refresh-banner">{error} — showing the last process state we loaded.</div>
 				{/if}
 
-				{#if projection.timelineItems.length === 0 && startup.attempts.length === 0 && !startupRecovery}
+				{#if detail.timeline.history?.beforeTurnRecordId}
+					<div class="history-loader">
+						<button class="secondary-button" disabled={$historyState.loading} onclick={() => void loadEarlierProcessHistory()}>
+							{$historyState.loading ? "Loading earlier steps…" : "Load earlier steps"}
+						</button>
+						{#if $historyState.error}<p role="alert">{$historyState.error}. Try again.</p>{/if}
+					</div>
+				{/if}
+
+				{#if projection.timelineItems.length === 0 && startup.attempts.length === 0 && !startupRecovery && !processError && !selectedTurn?.readiness}
 					<div class="empty-state" data-section="chronicle-empty-state">
 						<p>
 							This process has not recorded activity yet. As the worker plans, acts, and saves results, the timeline will fill in here.
@@ -512,6 +522,10 @@ function handleWindowKeydown(event: KeyboardEvent) {
 </ModalShell>
 
 <style>
+ .history-loader { padding: var(--space-3, 12px) 0; text-align: center; }
+ .history-loader button { min-height: 44px; padding: 0 16px; }
+ .history-loader p { color: var(--text-danger, #a83a32); }
+
 .match-navigation {display:flex; gap:var(--space-sm); align-items:center; flex-wrap:wrap; font-size:var(--type-body-sm); padding:var(--space-sm); background:var(--chronicle-panel-muted); border-radius:var(--radius-sm);}
 	.ticket-selection-action {
 		min-height: 44px;

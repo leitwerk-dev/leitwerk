@@ -1,6 +1,6 @@
 import type { Actor } from "@leitwerk-dev/domain";
 import { generateId } from "../../db/repo-helpers.js";
-import { accept, reject } from "../decision.js";
+import { accept, modelOverrideMetadata, reject } from "../decision.js";
 import { defineOperation } from "../operation.js";
 import {
 	appendProcessEvent,
@@ -98,17 +98,7 @@ export const RetryStartup = defineOperation<
 		return accept({
 			writes,
 			data: { startRecordId: id },
-			metadata:
-				input.nextTurnModelProfileId !== undefined || input.providerOptions !== undefined
-					? {
-							...(input.nextTurnModelProfileId !== undefined
-								? { nextTurnModelProfileId: input.nextTurnModelProfileId }
-								: {}),
-							...(input.providerOptions !== undefined
-								? { providerOptions: input.providerOptions }
-								: {}),
-						}
-					: undefined,
+			metadata: modelOverrideMetadata(input),
 		});
 	},
 });
