@@ -1,7 +1,12 @@
 import type { ProcessDetailData } from "./api.js";
 
-function merge<T>(older: readonly T[], current: readonly T[], key: (item: T) => string): T[] {
-	return [...new Map([...older, ...current].map((item) => [key(item), item])).values()];
+/** @internal */
+export function mergeUniqueBy<T>(
+	items: readonly T[],
+	incoming: readonly T[],
+	key: (item: T) => string,
+): T[] {
+	return [...new Map([...items, ...incoming].map((item) => [key(item), item])).values()];
 }
 
 /** Add older evidence without replacing live process state or newer versions of records. */
@@ -10,7 +15,7 @@ export function mergeProcessHistory(
 	older: ProcessDetailData,
 ): ProcessDetailData {
 	const byId = <T extends { id: string }>(a: readonly T[], b: readonly T[]) =>
-		merge(a, b, (item) => item.id);
+		mergeUniqueBy(a, b, (item) => item.id);
 	return {
 		...current,
 		timeline: {
@@ -37,12 +42,12 @@ export function mergeProcessHistory(
 		},
 		startup: {
 			...current.startup,
-			attempts: merge(
+			attempts: mergeUniqueBy(
 				older.startup.attempts,
 				current.startup.attempts,
 				(item) => item.startRecordId,
 			),
-			workerStarts: merge(
+			workerStarts: mergeUniqueBy(
 				older.startup.workerStarts ?? [],
 				current.startup.workerStarts ?? [],
 				(item) => item.workerLeaseId,

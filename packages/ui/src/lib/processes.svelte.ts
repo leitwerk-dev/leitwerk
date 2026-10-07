@@ -20,9 +20,9 @@ import {
 	type ProcessDetailData,
 } from "./api";
 import { upsertFutureExecutionSummary } from "./future-executions-logic.js";
-import { applyPrimaryPathFrame } from "./primary-path-detail.js";
+import { applyPrimaryPathFrame, isFullPrimaryPathDetailFrame } from "./primary-path-detail.js";
 import { replayPrimaryPathFramesAfterSnapshot } from "./primary-path-replay.js";
-import { mergeProcessHistory } from "./process-history.js";
+import { mergeProcessHistory, mergeUniqueBy } from "./process-history.js";
 import { buildProcessRowView, sortProcessRowViews } from "./process-row-view.js";
 import { classifyWsEvent, createRequestGuard, type WsAction } from "./processes-logic.js";
 
@@ -54,12 +54,29 @@ export const detailState = writable({
 
 const PROCESS_BROWSE_WS_REFRESH_DELAY_MS = 100;
 
+function createReloadScheduler() {
+	let timer: ReturnType<typeof setTimeout> | null = null;
+	return {
+		clear() {
+			if (timer) clearTimeout(timer);
+			timer = null;
+		},
+		schedule(reload: () => void, delayMs: number) {
+			this.clear();
+			timer = setTimeout(() => {
+				timer = null;
+				reload();
+			}, delayMs);
+		},
+	};
+}
+
 let browseActive = false;
 let activeBrowseRequest: ProcessBrowseRequest | null = null;
-let scheduledListReloadTimer: ReturnType<typeof setTimeout> | null = null;
-let scheduledBrowseReloadTimer: ReturnType<typeof setTimeout> | null = null;
+const listReload = createReloadScheduler();
+const browseReload = createReloadScheduler();
 let detailInstanceId: string | null = null;
-let scheduledDetailReloadTimer: ReturnType<typeof setTimeout> | null = null;
+const detailReload = createReloadScheduler();
 const pendingPrimaryPathFramesByInstanceId = new Map<
 	string,
 	Array<Extract<WsAction, { kind: "apply_primary_path_frame" }>["frame"]>
@@ -95,36 +112,12 @@ export async function loadEarlierProcessHistory() {
 	}
 }
 
-function scheduleProcessesListReload(delayMs = PROCESS_BROWSE_WS_REFRESH_DELAY_MS) {
-	if (scheduledListReloadTimer) clearTimeout(scheduledListReloadTimer);
-	scheduledListReloadTimer = setTimeout(() => {
-		scheduledListReloadTimer = null;
-		void loadProcessesList();
-	}, delayMs);
-}
-
-function clearScheduledBrowseReload() {
-	if (!scheduledBrowseReloadTimer) {
-		return;
-	}
-	clearTimeout(scheduledBrowseReloadTimer);
-	scheduledBrowseReloadTimer = null;
-}
-
 export function setProcessBrowseActive(active: boolean) {
 	browseActive = active;
 	if (!active) {
-		clearScheduledBrowseReload();
+		browseReload.clear();
 		activeBrowseRequest = null;
 	}
-}
-
-function clearScheduledDetailReload() {
-	if (!scheduledDetailReloadTimer) {
-		return;
-	}
-	clearTimeout(scheduledDetailReloadTimer);
-	scheduledDetailReloadTimer = null;
 }
 
 function clearPendingPrimaryPathFrames(instanceId?: string) {
@@ -156,17 +149,6 @@ function takePendingPrimaryPathFrames(instanceId: string) {
 	return queuedFrames;
 }
 
-function applyPrimaryPathFrameToDetailData(
-	data: ProcessDetailData,
-	action: Extract<WsAction, { kind: "apply_primary_path_frame" }>,
-): ProcessDetailData {
-	const nextData = {
-		...data,
-		primaryPath: applyPrimaryPathFrame(data.primaryPath, action.frame),
-	};
-	return nextData;
-}
-
 export function setCurrentDetailInstanceId(instanceId: string | null) {
 	if (detailInstanceId === instanceId) {
 		return;
@@ -176,7 +158,7 @@ export function setCurrentDetailInstanceId(instanceId: string | null) {
 	}
 	detailInstanceId = instanceId;
 	if (!instanceId) {
-		clearScheduledDetailReload();
+		detailReload.clear();
 	}
 }
 
@@ -210,20 +192,12 @@ export async function loadProcessesList() {
 	}
 }
 
-function mergeUniqueBy<T>(
-	items: readonly T[],
-	incoming: readonly T[],
-	key: (item: T) => string,
-): T[] {
-	return [...new Map([...items, ...incoming].map((item) => [key(item), item])).values()];
-}
-
 export async function loadProcessBrowse(
 	request: ProcessBrowseRequest = {},
 	options: { append?: boolean } = {},
 ) {
 	if (!options.append) {
-		clearScheduledBrowseReload();
+		browseReload.clear();
 		activeBrowseRequest = { ...request };
 		delete activeBrowseRequest.offset;
 	}
@@ -261,21 +235,14 @@ export async function loadProcessBrowse(
 }
 
 function scheduleActiveProcessBrowseReload(delayMs = PROCESS_BROWSE_WS_REFRESH_DELAY_MS) {
-	if (!browseActive || !activeBrowseRequest) {
-		return;
-	}
-	clearScheduledBrowseReload();
-	scheduledBrowseReloadTimer = setTimeout(() => {
-		scheduledBrowseReloadTimer = null;
-		if (!browseActive || !activeBrowseRequest) {
-			return;
-		}
-		void loadProcessBrowse(activeBrowseRequest);
+	if (!browseActive || !activeBrowseRequest) return;
+	browseReload.schedule(() => {
+		if (browseActive && activeBrowseRequest) void loadProcessBrowse(activeBrowseRequest);
 	}, delayMs);
 }
 
 export async function loadProcessDetail(instanceId: string) {
-	clearScheduledDetailReload();
+	detailReload.clear();
 	const gen = detailGuard.next();
 	setCurrentDetailInstanceId(instanceId);
 	detailState.update((state) => ({ ...state, loading: true, error: null }));
@@ -314,14 +281,8 @@ export async function loadProcessDetail(instanceId: string) {
 }
 
 function scheduleLoadProcessDetail(instanceId: string, delayMs = 120) {
-	if (detailInstanceId !== instanceId) {
-		return;
-	}
-	clearScheduledDetailReload();
-	scheduledDetailReloadTimer = setTimeout(() => {
-		scheduledDetailReloadTimer = null;
-		void loadProcessDetail(instanceId);
-	}, delayMs);
+	if (detailInstanceId === instanceId)
+		detailReload.schedule(() => void loadProcessDetail(instanceId), delayMs);
 }
 
 export function clearDetail() {
@@ -329,7 +290,7 @@ export function clearDetail() {
 	historyState.set({ loading: false, error: null });
 	setCurrentDetailInstanceId(null);
 	clearPendingPrimaryPathFrames();
-	clearScheduledDetailReload();
+	detailReload.clear();
 	detailState.set({
 		data: null,
 		loading: false,
@@ -349,22 +310,17 @@ export function subscribeReasoningFrames(listener: (frame: WsFrame) => void) {
 
 function executePrimaryPathFrame(action: WsAction & { kind: "apply_primary_path_frame" }) {
 	const current = get(detailState);
-	if (
-		[
-			WS_PRIMARY_PATH_TYPES.ASSISTANT_PARTIAL,
-			WS_PRIMARY_PATH_TYPES.USAGE_UPDATED,
-			WS_PRIMARY_PATH_TYPES.TOOL_CALL_STARTED,
-			WS_PRIMARY_PATH_TYPES.TOOL_CALL_COMPLETED,
-		].includes(action.frame.type as typeof WS_PRIMARY_PATH_TYPES.ASSISTANT_PARTIAL)
-	)
-		return;
+	if (isFullPrimaryPathDetailFrame(action.frame)) return;
 	if (detailInstanceId === action.instanceId && current.loading) bufferPrimaryPathFrame(action);
 	if (current.data?.process.id !== action.instanceId) {
 		return;
 	}
 	detailState.set({
 		...current,
-		data: applyPrimaryPathFrameToDetailData(current.data, action),
+		data: {
+			...current.data,
+			primaryPath: applyPrimaryPathFrame(current.data.primaryPath, action.frame),
+		},
 	});
 }
 
@@ -375,7 +331,7 @@ export function handleWsEvent(frame: WsFrame) {
 	for (const action of actions) {
 		switch (action.kind) {
 			case "reload_list":
-				scheduleProcessesListReload();
+				listReload.schedule(() => void loadProcessesList(), PROCESS_BROWSE_WS_REFRESH_DELAY_MS);
 				break;
 			case "refresh_active_browse":
 				scheduleActiveProcessBrowseReload();

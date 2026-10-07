@@ -8,7 +8,7 @@ import type {
 	TurnId,
 	WorkerErrorClass,
 } from "@leitwerk-dev/domain";
-import { and, asc, desc, eq, notExists, sql } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, isNull, ne, sql } from "drizzle-orm";
 import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core";
 import type { LeitwerkDb } from "./database.js";
 import { generateId, mappedItemRef, now } from "./repo-helpers.js";
@@ -148,19 +148,10 @@ export function createProcessTurnRecordRepo(db: LeitwerkDb) {
 		/** Only absent summaries need repair; don't read every retained turn at startup. @internal */
 		listMissingSummaries(instanceId: string): ProcessTurnRecord[] {
 			return db
-				.select()
+				.select(getTableColumns(s.turnRecords))
 				.from(s.turnRecords)
-				.where(
-					and(
-						eq(s.turnRecords.instanceId, instanceId),
-						notExists(
-							db
-								.select({ id: s.turnSummaries.turnRecordId })
-								.from(s.turnSummaries)
-								.where(eq(s.turnSummaries.turnRecordId, s.turnRecords.id)),
-						),
-					),
-				)
+				.leftJoin(s.turnSummaries, eq(s.turnSummaries.turnRecordId, s.turnRecords.id))
+				.where(and(eq(s.turnRecords.instanceId, instanceId), isNull(s.turnSummaries.turnRecordId)))
 				.all()
 				.map(rowToProcessTurnRecord);
 		},
@@ -193,18 +184,17 @@ export function createProcessTurnRecordRepo(db: LeitwerkDb) {
 			const row = db
 				.select()
 				.from(s.turnRecords)
-				.where(eq(s.turnRecords.instanceId, instanceId))
+				.where(
+					and(
+						eq(s.turnRecords.instanceId, instanceId),
+						eq(s.turnRecords.status, "succeeded"),
+						eq(s.turnRecords.pathType, "primary"),
+						ne(s.turnRecords.resultPiEntryId, ""),
+					),
+				)
 				.orderBy(desc(s.turnRecords.startedAt))
-				.all()
-				.map(rowToProcessTurnRecord)
-				.find(
-					(run) =>
-						run.status === "succeeded" &&
-						run.pathType === "primary" &&
-						typeof run.resultPiEntryId === "string" &&
-						run.resultPiEntryId.length > 0,
-				);
-			return row ?? null;
+				.get();
+			return row ? rowToProcessTurnRecord(row) : null;
 		},
 
 		/** @internal */

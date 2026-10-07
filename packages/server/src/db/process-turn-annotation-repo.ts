@@ -1,6 +1,6 @@
 import type { ProcessTurnAnnotation, TurnAnnotationReference } from "@leitwerk-dev/domain";
 import { parseTurnAnnotationReferences } from "@leitwerk-dev/domain";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, getTableColumns, sql } from "drizzle-orm";
 import type { SQLiteUpdateSetSource } from "drizzle-orm/sqlite-core";
 import type { LeitwerkDb } from "./database.js";
 import { type HistoryWindow, historyWindow } from "./history-window.js";
@@ -69,16 +69,10 @@ export function createProcessTurnAnnotationRepo(db: LeitwerkDb) {
 	const list = (instanceId: string, window: HistoryWindow | undefined, compact: boolean) =>
 		db
 			.select({
-				id: s.turnAnnotations.id,
-				instanceId: s.turnAnnotations.instanceId,
-				annotationType: s.turnAnnotations.annotationType,
-				annotationKey: s.turnAnnotations.annotationKey,
-				referencesJson: s.turnAnnotations.referencesJson,
+				...getTableColumns(s.turnAnnotations),
 				payloadJson: compact
 					? sql<string>`json_remove(${s.turnAnnotations.payloadJson}, '$.event')`
 					: s.turnAnnotations.payloadJson,
-				createdAt: s.turnAnnotations.createdAt,
-				updatedAt: s.turnAnnotations.updatedAt,
 			})
 			.from(s.turnAnnotations)
 			.where(

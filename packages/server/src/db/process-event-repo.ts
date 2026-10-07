@@ -1,6 +1,7 @@
 import type { ProcessEvent } from "@leitwerk-dev/domain";
 import { applyEventToCompactTurnSummary, emptyCompactTurnSummary } from "@leitwerk-dev/protocol";
-import { and, asc, desc, eq, gte, inArray, like, type SQL, sql } from "drizzle-orm";
+import type { SQL } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, gte, inArray, like, sql } from "drizzle-orm";
 import type { LeitwerkDb } from "./database.js";
 import { generateId, now } from "./repo-helpers.js";
 import * as s from "./schema.js";
@@ -89,12 +90,7 @@ export function createProcessEventRepo(db: LeitwerkDb) {
 			const data = s.processEvents.data;
 			return db
 				.select({
-					id: s.processEvents.id,
-					eventSequence: s.processEvents.eventSequence,
-					turnRecordId: s.processEvents.turnRecordId,
-					instanceId: s.processEvents.instanceId,
-					eventType: s.processEvents.eventType,
-					createdAt: s.processEvents.createdAt,
+					...getTableColumns(s.processEvents),
 					data: sql<string>`json_object(
 						'turnRecordId', json_extract(${data}, '$.turnRecordId'),
 						'turnId', json_extract(${data}, '$.turnId'),
@@ -197,20 +193,16 @@ export function createProcessEventRepo(db: LeitwerkDb) {
 			turnRecordId: string,
 			eventType: string,
 		): ProcessEvent | null {
-			const row = db
-				.select()
-				.from(s.processEvents)
-				.where(
+			return (
+				listNewest(
 					and(
 						eq(s.processEvents.instanceId, instanceId),
 						eq(s.processEvents.turnRecordId, turnRecordId),
 						eq(s.processEvents.eventType, eventType),
 					),
-				)
-				.orderBy(desc(s.processEvents.eventSequence))
-				.limit(1)
-				.get();
-			return row ? rowToProcessEvent(row) : null;
+					1,
+				)[0] ?? null
+			);
 		},
 		/** @internal */
 		summary(turnRecordId: string) {
