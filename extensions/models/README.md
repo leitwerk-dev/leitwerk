@@ -55,6 +55,12 @@ Standard providers accept an optional `models` list to add deployments or replac
 
 Both kinds of model definition accept `thinking_level_map`, `input`, `cost`, and `compat`. Thinking-map keys are `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, and `max`; `null` marks a level unsupported. `context_window`, `max_tokens`, and `thinking_level_map` are converted to Pi's field names. `cost` and `compat` use Pi's camelCase keys directly. Gateway-level compatibility settings apply to all models; model-level settings override them. Supported compatibility keys are `supportsStore`, `supportsDeveloperRole`, `supportsReasoningEffort`, `supportsUsageInStreaming`, `maxTokensField`, `supportsStrictMode`, `thinkingFormat`, and `requiresReasoningContentOnAssistantMessages`. Model IDs must be unique within each list, and unknown metadata fields are rejected.
 
+Costs are USD per million tokens. `cost.tiers` optionally lists request-wide
+rates with an `inputTokensAbove` threshold and the four cost fields. The highest
+exceeded threshold applies to the full request, including output; input totals
+include uncached input, cache reads, and cache writes. Omitted costs still default
+to zero, so configure actual rates for paid custom deployments.
+
 Custom gateways support `openai-completions`, `openai-responses`, `anthropic-messages`, and `google-generative-ai`. They support worker LLM turns. Because they do not declare a server adapter, they cannot be selected for process-title generation.
 
 ## API support

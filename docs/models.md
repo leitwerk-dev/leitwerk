@@ -83,6 +83,13 @@ estimated cost, 128,000 context tokens, and 16,384 output tokens. These are not
 claims about the endpoint. `thinking_level_map` can map a Pi level to a provider
 value or null for unsupported levels.
 
+`cost` supplies USD rates per million tokens for `input`, `output`, `cacheRead`,
+and `cacheWrite`. Optional `cost.tiers` entries supply the same rates plus
+`inputTokensAbove`. Pi selects the highest threshold exceeded by a request's
+combined input, cache-read, and cache-write tokens, and applies that tier to
+the entire request. Reasoning tokens already counted in output are not billed
+a second time.
+
 ## Profile resolution
 
 LLM turns resolve profiles in this order:

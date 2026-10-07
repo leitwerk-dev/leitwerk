@@ -87,7 +87,7 @@ const compatibilitySchema = v.strictObject({
 		]),
 	),
 });
-const modelCostSchema = v.strictObject({
+const modelCostRates = {
 	/** @internal */
 	input: nonNegativeNumberSchema,
 	/** @internal */
@@ -96,6 +96,19 @@ const modelCostSchema = v.strictObject({
 	cacheRead: nonNegativeNumberSchema,
 	/** @internal */
 	cacheWrite: nonNegativeNumberSchema,
+};
+const modelCostSchema = v.strictObject({
+	...modelCostRates,
+	/** @internal */
+	tiers: v.optional(
+		v.array(
+			v.strictObject({
+				...modelCostRates,
+				/** @internal */
+				inputTokensAbove: v.pipe(v.number(), v.integer(), v.minValue(0)),
+			}),
+		),
+	),
 });
 const baseUrlSchema = v.pipe(
 	nonEmptyStringSchema,
