@@ -18,6 +18,8 @@ import { scopedSettingsCapability } from "@leitwerk-dev/process-sdk";
 import type { ModelProfileSnapshot } from "@leitwerk-dev/protocol";
 import { DEFAULT_SESSION_TRANSFER_LIMITS } from "@leitwerk-dev/session-transfer";
 import { createPollingCoordinator, parseDurationMs } from "@leitwerk-dev/watcher-utils";
+import { topicWikiCapability } from "@leitwerk-dev/wiki/integration";
+import { createTopicWikiRepo, registerWikiTools } from "@leitwerk-dev/wiki/server";
 import {
 	cleanupRetainedProcessVolumes,
 	type ProcessStateExporter,
@@ -36,7 +38,6 @@ import {
 	type LeitwerkDb,
 } from "./db/database.js";
 import { createAllRepos, createCredentialCipherFromEnvironment } from "./db/repositories.js";
-import { createTopicWikiRepo } from "./db/topic-wiki-repo.js";
 import { buildExtensionUiCatalog, type ExtensionUiCatalog } from "./extension-ui/catalog.js";
 import { createExtensionHost, type ExtensionHost } from "./extensions/extension-host.js";
 import { createExternalSourceService } from "./external-source-service.js";
@@ -1223,6 +1224,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			modelStatusCache,
 		});
 		const hostCapabilities = buildHostCapabilities({
+			integrationTools,
 			config,
 			baseDeps,
 			projectMutations,
@@ -1269,6 +1271,9 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 				app.log.error({ err: error, instanceId }, "Turn readiness check failed");
 			});
 		});
+		const wiki = hostCapabilities.require(topicWikiCapability);
+		if (Array.isArray(wiki)) throw new Error("Wiki integration must be singular");
+		registerWikiTools({ tool: (definition) => integrationTools.register(definition) }, wiki);
 		await setupServerExtensions(
 			extensionCatalog,
 			{

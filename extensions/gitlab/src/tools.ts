@@ -11,6 +11,9 @@ import {
 import type { GitLabIntegration } from "./capability.js";
 import { type GitLabClientLike, GitLabError, observeMergeRequest } from "./client.js";
 
+const hashIdentity = (identity: readonly unknown[]) =>
+	createHash("sha256").update(JSON.stringify(identity)).digest("hex");
+
 async function existingRemote<T>(read: () => Promise<T>): Promise<T | null> {
 	try {
 		return await read();
@@ -92,7 +95,7 @@ export function gitLabCommentMarker(input: {
 		input.writeKey,
 	];
 	if (input.discussionId) identity.push(input.discussionId);
-	return `<!-- leitwerk:gitlab:${createHash("sha256").update(JSON.stringify(identity)).digest("hex")} -->`;
+	return `<!-- leitwerk:gitlab:${hashIdentity(identity)} -->`;
 }
 /** @internal */
 export async function ensureGitLabComment(input: {
@@ -114,7 +117,8 @@ export async function ensureGitLabComment(input: {
 	discussionId?: string;
 	/** @internal */
 	signal?: AbortSignal;
-	/** @public */
+	/** Revalidated inside the durable write immediately before mutation. @internal */
+	beforeWrite?: () => Promise<void>;
 }): Promise<{
 	/** @internal */
 	marker: string;
@@ -139,7 +143,8 @@ export async function ensureGitLabComment(input: {
 		{ writeType: "gitlab.comment", dedupKey: digest },
 		{
 			reconcile: () => existingRemote(async () => (await find()) ?? null),
-			execute: () => {
+			execute: async () => {
+				await input.beforeWrite?.();
 				const body = `${input.body}\n\n${marker}`;
 				return input.discussionId
 					? client.replyToDiscussion(projectId, iid, input.discussionId, body, signal)
@@ -166,6 +171,8 @@ export async function updateGitLabComment(input: {
 	body: string;
 	/** @public */
 	signal?: AbortSignal;
+	/** @public */
+	beforeWrite?: () => Promise<void>;
 }): Promise<{
 	/** @public */
 	marker: string;
@@ -183,7 +190,10 @@ export async function updateGitLabComment(input: {
 	);
 	if (!note) throw new Error("GitLab comment to update was not found");
 	const next = `${body}\n\n${marker}`;
-	if (note.body !== next) await client.updateNote(projectId, iid, note.id, next, signal);
+	if (note.body !== next) {
+		await input.beforeWrite?.();
+		await client.updateNote(projectId, iid, note.id, next, signal);
+	}
 	return { marker };
 }
 /** @internal */
@@ -303,19 +313,15 @@ export async function ensureGitLabResolveDiscussion(input: {
 	signal?: AbortSignal;
 }): Promise<{ discussionId: string; resolved: boolean }> {
 	const { client, writes, instanceId, projectId, iid, writeKey, discussionId, signal } = input;
-	const digest = createHash("sha256")
-		.update(
-			JSON.stringify([
-				client.baseUrl,
-				projectId,
-				iid,
-				instanceId,
-				"resolve",
-				writeKey,
-				discussionId,
-			]),
-		)
-		.digest("hex");
+	const digest = hashIdentity([
+		client.baseUrl,
+		projectId,
+		iid,
+		instanceId,
+		"resolve",
+		writeKey,
+		discussionId,
+	]);
 	await writes.ensure(
 		{ writeType: "gitlab.discussion.resolve", dedupKey: digest },
 		{
@@ -346,11 +352,11 @@ export async function ensureGitLabSeenReaction(input: {
 	noteId: number;
 	/** @public */
 	signal?: AbortSignal;
+	/** @public */
+	beforeWrite?: () => Promise<void>;
 }): Promise<void> {
 	const { client, writes, instanceId, projectId, iid, noteId, signal } = input;
-	const digest = createHash("sha256")
-		.update(JSON.stringify([client.baseUrl, projectId, iid, instanceId, "eyes", noteId]))
-		.digest("hex");
+	const digest = hashIdentity([client.baseUrl, projectId, iid, instanceId, "eyes", noteId]);
 	await writes.ensure(
 		{ writeType: "gitlab.reaction", dedupKey: digest },
 		{
@@ -364,23 +370,51 @@ export async function ensureGitLabSeenReaction(input: {
 						) ?? null
 					);
 				}),
-			execute: () => client.addNoteReaction(projectId, iid, noteId, "eyes", signal),
+			execute: async () => {
+				await input.beforeWrite?.();
+				return client.addNoteReaction(projectId, iid, noteId, "eyes", signal);
+			},
 			toMetadata: (reaction) => ({ projectId, iid, noteId, reactionId: reaction.id, name: "eyes" }),
 		},
 	);
 }
 /** @internal */
-export function registerGitLabTools(api: ServerExtensionAPI, integration: GitLabIntegration) {
+export function registerGitLabTools(
+	api: ServerExtensionAPI,
+	integration: GitLabIntegration,
+	beforeWrite?: (ctx: IntegrationToolExecutionContext) => Promise<void>,
+) {
 	for (const name of [
 		"gitlab_inspect_project",
 		"gitlab_repository_tree",
 		"gitlab_repository_file",
+		"gitlab_code_search",
 	] as const)
 		api.tool<Record<string, unknown>>({
 			name,
 			description:
-				"Inspect a bound GitLab repository. Use the returned commit ID as ref for subsequent tree/file reads.",
-			parameters: projectParameters({ ref: { type: "string" }, path: { type: "string" } }),
+				name === "gitlab_code_search"
+					? "Search blobs in a bound GitLab repository at a full commit. Follow nextPage until null, then read matching files for complete evidence. Search failure is not an empty result."
+					: "Inspect a bound GitLab repository. Use the returned commit ID as ref for subsequent tree/file reads.",
+			parameters:
+				name === "gitlab_code_search"
+					? projectParameters(
+							{
+								ref: { type: "string" },
+								search: { type: "string" },
+								page: { type: "integer", minimum: 1 },
+								perPage: { type: "integer", minimum: 1, maximum: 100 },
+							},
+							["ref", "search"],
+						)
+					: projectParameters(
+							{ ref: { type: "string" }, path: { type: "string" } },
+							name === "gitlab_inspect_project"
+								? []
+								: name === "gitlab_repository_tree"
+									? ["ref"]
+									: ["ref", "path"],
+						),
 			async execute(ctx, args) {
 				const binding = resolveGitLabRepositoryBinding(ctx, integration);
 				const client = integration.client(binding.profile);
@@ -392,6 +426,18 @@ export function registerGitLabTools(api: ServerExtensionAPI, integration: GitLab
 				const ref = stringArg(args, "ref");
 				if (!/^[a-f0-9]{40,64}$/i.test(ref))
 					throw new Error("Repository reads require a commit ID returned by inspection");
+				if (name === "gitlab_code_search") {
+					if (!client.searchRepositoryCode)
+						throw new Error("GitLab code search unavailable; no search was performed");
+					return client.searchRepositoryCode(
+						binding.projectId,
+						ref,
+						stringArg(args, "search"),
+						args.page === undefined ? 1 : numberArg(args, "page"),
+						args.perPage === undefined ? 20 : numberArg(args, "perPage"),
+						ctx.signal,
+					);
+				}
 				if (name === "gitlab_repository_tree") {
 					if (!client.listRepositoryTree) throw new Error("Repository tree inspection unavailable");
 					return client.listRepositoryTree(
@@ -477,26 +523,27 @@ export function registerGitLabTools(api: ServerExtensionAPI, integration: GitLab
 				if (name === "gitlab_observe_merge_request")
 					return observeMergeRequest(client, b.projectId, b.iid, ctx.signal);
 				if (name === "gitlab_get_changes") return client.getChanges(b.projectId, b.iid, ctx.signal);
+				const writeContext = {
+					client,
+					writes: ctx.externalWrites,
+					instanceId: ctx.process.id,
+					projectId: b.projectId,
+					iid: b.iid,
+					signal: ctx.signal,
+				};
 				if (name === "gitlab_update_comment")
 					return updateGitLabComment({
-						client,
-						instanceId: ctx.process.id,
-						projectId: b.projectId,
-						iid: b.iid,
+						...writeContext,
+						beforeWrite: beforeWrite ? () => beforeWrite(ctx) : undefined,
 						writeKey: stringArg(args, "writeKey"),
 						body: stringArg(args, "body"),
-						signal: ctx.signal,
 					});
 				if (name === "gitlab_inline_comment") {
 					const side = stringArg(args, "side");
 					if (side !== "new" && side !== "old")
 						throw new Error("GitLab inline comment side must be new or old");
 					return ensureGitLabInlineComment({
-						client,
-						writes: ctx.externalWrites,
-						instanceId: ctx.process.id,
-						projectId: b.projectId,
-						iid: b.iid,
+						...writeContext,
 						writeKey: stringArg(args, "writeKey"),
 						body: stringArg(args, "body"),
 						path: stringArg(args, "path"),
@@ -505,31 +552,20 @@ export function registerGitLabTools(api: ServerExtensionAPI, integration: GitLab
 						baseSha: stringArg(args, "baseSha"),
 						startSha: stringArg(args, "startSha"),
 						headSha: stringArg(args, "headSha"),
-						signal: ctx.signal,
 					});
 				}
 				if (name === "gitlab_comment" || name === "gitlab_reply")
 					return ensureGitLabComment({
-						client,
-						writes: ctx.externalWrites,
-						instanceId: ctx.process.id,
-						projectId: b.projectId,
-						iid: b.iid,
+						...writeContext,
 						writeKey: stringArg(args, "writeKey"),
 						body: stringArg(args, "body"),
 						...(name === "gitlab_reply" ? { discussionId: stringArg(args, "discussionId") } : {}),
-						signal: ctx.signal,
 					});
 				if (name === "gitlab_resolve_discussion")
 					return ensureGitLabResolveDiscussion({
-						client,
-						writes: ctx.externalWrites,
-						instanceId: ctx.process.id,
-						projectId: b.projectId,
-						iid: b.iid,
+						...writeContext,
 						writeKey: stringArg(args, "writeKey"),
 						discussionId: stringArg(args, "discussionId"),
-						signal: ctx.signal,
 					});
 				const observation = await observeMergeRequest(client, b.projectId, b.iid, ctx.signal);
 				if (!observation.pipeline || observation.pipeline.id !== numberArg(args, "pipelineId"))

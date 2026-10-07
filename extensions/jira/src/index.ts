@@ -19,14 +19,21 @@ import {
 	type JiraIssue,
 	jiraEligible,
 	jiraIssueExternalId,
+	jiraTriggerLabel,
 	parseJiraProfiles,
 } from "./client.js";
 import { registerJiraTicketCreation } from "./ticket-creation.js";
 import { registerJiraTools } from "./tools.js";
-import { registerJiraWikiTools } from "./wiki.js";
 
 export * from "./client.js";
-export { ensureIssueWiki, jiraEpicRevision } from "./wiki.js";
+export { markdownToJira } from "./markdown.js";
+export {
+	assertJiraTicketText,
+	jiraTicketTextProblem,
+	jiraTicketWritingInstructions,
+	ticketDescriptionMarkdown,
+} from "./ticket-text.js";
+export { ensureIssueWiki, jiraEpicRevision, jiraWikiSource } from "./wiki.js";
 
 /** @public */
 export interface JiraIntegration {
@@ -48,6 +55,8 @@ export const jiraSubjectIdentity = (baseUrl: string, id: string) => JSON.stringi
 /** @public */
 export interface JiraWatcherConfig {
 	/** @internal */
+	label?: string;
+	/** @internal */
 	profile: string;
 
 	/** @internal */
@@ -59,6 +68,8 @@ export interface JiraWatcherConfig {
 
 /** @public */
 export interface JiraWatcherEvent {
+	/** @internal */
+	triggerLabel?: string;
 	/** @internal */
 	profile: string;
 
@@ -92,18 +103,25 @@ export const jiraIssueWatcherSource = defineProcessWatcherSource<
 			throw new Error("Invalid Jira poll_interval");
 		return {
 			enabled: c.enabled,
-			config: { profile: c.profile, projects: c.projects as string[], pollInterval },
+			config: {
+				profile: c.profile,
+				projects: c.projects as string[],
+				pollInterval,
+				label: jiraTriggerLabel(c.label),
+			},
 			launchModelConfig: parseProcessWatcherLaunchModelConfig(c.launch),
 		};
 	},
 	presentConfig: (c) => ({
 		targetSummary: `Jira ${c.profile} · ${c.projects.join(", ")}`,
-		details: [{ label: "Trigger", value: "use-leitwerk" }],
+		details: [{ label: "Trigger", value: jiraTriggerLabel(c.label) }],
 	}),
 });
 
 /** @public */
 export interface JiraSourceConfig {
+	/** @internal */
+	triggerLabel?: string;
 	/** @internal */
 	profile: string;
 	/** @internal */
@@ -147,55 +165,98 @@ export function setupJiraIntegration(
 		now?: () => number;
 		/** @internal */
 		ticketCreation?: TicketCreationConfig;
+		/** Project IDs or keys explicitly selected by integration profiles. @internal */
+		projects?: ReadonlyMap<string, readonly string[]>;
 	} = {},
 ) {
 	const now = options.now ?? Date.now;
 	api.provide(jiraIntegration, integration);
 	registerJiraTools(api, integration);
-	registerJiraWikiTools(api, integration);
 	registerJiraTicketCreation(
 		api,
 		integration,
 		options.ticketCreation ?? { enabled: false, defaultLabels: [] },
 	);
 	const settings = api.get(scopedSettingsCapability);
-	if (settings && !Array.isArray(settings)) {
-		settings.registerDiscovery("jira.project", async () => {
-			const subjects = [];
-			for (const profile of integration.profiles()) {
-				const client = integration.client(profile);
-				for (const project of await client.listProjects())
-					subjects.push({
-						scopeType: "jira.project",
-						identity: jiraSubjectIdentity(client.baseUrl, project.id),
-						label: `${project.key} · ${project.name}`,
-					});
-			}
-			return subjects;
+	const deps = api.get(coreHostCapabilities.serverSetup);
+	const configuredProjects = (profile: string) =>
+		new Set([
+			...(options.projects?.get(profile) ?? []),
+			...(!deps || Array.isArray(deps)
+				? []
+				: (deps.processWatchers?.listBySource(jiraIssueWatcherSource) ?? [])
+						.filter((watcher) => watcher.config.profile === profile)
+						.flatMap((watcher) => watcher.config.projects)),
+		]);
+	const projectsFor = async (profile: string) => {
+		const selected = configuredProjects(profile);
+		if (!selected.size) return [];
+		const client = integration.client(profile);
+		const projects = (await client.listProjects()).filter(
+			(project) => selected.has(project.id) || selected.has(project.key),
+		);
+		return projects;
+	};
+	const includesProject = (subject: import("@leitwerk-dev/domain").SettingsSubject | undefined) => {
+		if (!subject) return false;
+		let identity: unknown;
+		try {
+			identity = JSON.parse(subject.identity);
+		} catch {
+			return false;
+		}
+		if (!Array.isArray(identity) || identity.length !== 2) return false;
+		const [origin, id] = identity;
+		return integration.profiles().some((profile) => {
+			if (integration.client(profile).baseUrl !== origin) return false;
+			const configured = configuredProjects(profile);
+			return configured.has(id) || configured.has(subject.label.split(" · ")[0]);
 		});
-		settings.registerDiscovery("jira.component", async () => {
-			const subjects = [];
-			for (const profile of integration.profiles()) {
-				const client = integration.client(profile);
-				for (const project of await client.listProjects()) {
-					const parent = settings.discover({
-						scopeType: "jira.project",
-						identity: jiraSubjectIdentity(client.baseUrl, project.id),
-						label: `${project.key} · ${project.name}`,
-					});
-					for (const component of await client.listComponents(project.id))
+	};
+	if (settings && !Array.isArray(settings)) {
+		settings.registerDiscovery(
+			"jira.project",
+			async () => {
+				const subjects = [];
+				for (const profile of integration.profiles()) {
+					const client = integration.client(profile);
+					for (const project of await projectsFor(profile))
 						subjects.push({
-							scopeType: "jira.component",
-							identity: jiraSubjectIdentity(client.baseUrl, component.id),
-							label: `${project.key} / ${component.name}`,
-							context: { "jira.project": parent.id },
+							scopeType: "jira.project",
+							identity: jiraSubjectIdentity(client.baseUrl, project.id),
+							label: `${project.key} · ${project.name}`,
 						});
 				}
-			}
-			return subjects;
-		});
+				return subjects;
+			},
+			{ includesSubject: (subject) => includesProject(subject) },
+		);
+		settings.registerDiscovery(
+			"jira.component",
+			async () => {
+				const subjects = [];
+				for (const profile of integration.profiles()) {
+					const client = integration.client(profile);
+					for (const project of await projectsFor(profile)) {
+						const parent = settings.discover({
+							scopeType: "jira.project",
+							identity: jiraSubjectIdentity(client.baseUrl, project.id),
+							label: `${project.key} · ${project.name}`,
+						});
+						for (const component of await client.listComponents(project.id))
+							subjects.push({
+								scopeType: "jira.component",
+								identity: jiraSubjectIdentity(client.baseUrl, component.id),
+								label: `${project.key} / ${component.name}`,
+								context: { "jira.project": parent.id },
+							});
+					}
+				}
+				return subjects;
+			},
+			{ includesSubject: (_subject, context) => includesProject(context["jira.project"]) },
+		);
 	}
-	const deps = api.get(coreHostCapabilities.serverSetup);
 	if (!deps || Array.isArray(deps)) return;
 	const shouldPoll = createPollSchedule(now);
 	return deps.polling.create({
@@ -210,13 +271,24 @@ export function setupJiraIntegration(
 				if (!watcher.enabled || !shouldPoll(key, watcher.config.pollInterval)) continue;
 				try {
 					const client = integration.client(watcher.config.profile);
-					for (const issue of await client.searchIssues(watcher.config.projects)) {
-						if (!jiraEligible(issue) || !watcher.config.projects.includes(issue.fields.project.id))
+					for (const issue of await client.searchIssues(
+						watcher.config.projects,
+						watcher.config.label,
+					)) {
+						if (
+							!jiraEligible(issue, watcher.config.label) ||
+							!watcher.config.projects.includes(issue.fields.project.id)
+						)
 							continue;
 						const id = jiraIssueExternalId(client.baseUrl, issue.id);
 						const launch = await deps.launchRuns.startWatcher(
 							watcher,
-							{ profile: watcher.config.profile, issue, projects: watcher.config.projects },
+							{
+								profile: watcher.config.profile,
+								issue,
+								projects: watcher.config.projects,
+								triggerLabel: jiraTriggerLabel(watcher.config.label),
+							},
 							{ idempotencyKey: id },
 						);
 						if (launch.error)
@@ -245,8 +317,9 @@ export function setupJiraIntegration(
 					if (issue.id !== c.issueId) throw new Error("Uncorrelated Jira issue evidence");
 					const fire =
 						c.mode === "plan_bypass"
-							? jiraEligible(issue) && issue.fields.labels.includes("leitwerk-skip-plan-decision")
-							: !jiraEligible(issue);
+							? jiraEligible(issue, c.triggerLabel) &&
+								issue.fields.labels.includes("leitwerk-skip-plan-decision")
+							: !jiraEligible(issue, c.triggerLabel);
 					if (fire)
 						await report.fire(
 							armed,
@@ -274,9 +347,8 @@ const extension: LeitwerkExtensionModule = {
 		settings: [],
 	},
 	setupServer(api, config) {
-		const clients = new Map(
-			[...parseJiraProfiles(config)].map(([id, profile]) => [id, new JiraClient(profile)]),
-		);
+		const profiles = parseJiraProfiles(config);
+		const clients = new Map([...profiles].map(([id, profile]) => [id, new JiraClient(profile)]));
 		setupJiraIntegration(
 			api,
 			{
@@ -287,7 +359,12 @@ const extension: LeitwerkExtensionModule = {
 					return client;
 				},
 			},
-			{ ticketCreation: parseTicketCreationConfig(config, "Jira") },
+			{
+				ticketCreation: parseTicketCreationConfig(config, "Jira"),
+				projects: new Map(
+					[...profiles].map(([id, profile]) => [id, profile.project ? [profile.project] : []]),
+				),
+			},
 		);
 	},
 };

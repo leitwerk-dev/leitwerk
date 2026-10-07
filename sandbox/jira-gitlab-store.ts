@@ -1,4 +1,4 @@
-import type { JiraClientLike, JiraComment, JiraIssue } from "@leitwerk-dev/jira";
+import type { JiraClientLike, JiraComment, JiraIssue, JiraRemoteLink } from "@leitwerk-dev/jira";
 import { localJiraIssueClient } from "@leitwerk-dev/jira/testing";
 import { readLocalJson, writeLocalJson } from "@leitwerk-dev/test-support/local-git";
 
@@ -14,6 +14,7 @@ interface SceneState {
 	now: number;
 	issues: JiraIssue[];
 	comments: Record<string, JiraComment[]>;
+	remoteLinks: Record<string, JiraRemoteLink[]>;
 	requests: Record<string, { scene: JiraScene; issueId: string }>;
 	mappingsSeeded: boolean;
 }
@@ -30,9 +31,11 @@ export class JiraSceneStore {
 			now: Date.now(),
 			issues: [],
 			comments: {},
+			remoteLinks: {},
 			requests: {},
 			mappingsSeeded: false,
 		});
+		this.state.remoteLinks ??= {};
 	}
 	save() {
 		writeLocalJson(this.root, "jira-scenes.json", this.state);

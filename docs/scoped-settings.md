@@ -67,9 +67,10 @@ All endpoints use the application's authenticated actor and authorization model.
 | Endpoint | Contract |
 | --- | --- |
 | `GET /api/settings/definitions` | Active extension definitions and form metadata. |
-| `GET /api/settings/scopes` | Retained subjects, including inactive scopes. |
+| `GET /api/settings/scopes` | Retained subjects visible to configured discovery, including inactive scopes. |
 | `POST /api/settings/scopes/refresh` | Refresh configured, retained, and integration-discovered subjects. |
-| `GET /api/settings/preview?subjectId=…` | Effective and inherited values, sources, revisions, and validation errors. |
+| `GET /api/settings/preview?subjectId=…` | Effective and inherited values, sources, revisions, and validation errors; does not wait for remote options. |
+| `GET /api/settings/choices?subjectId=…&key=…&search=…` | Dynamic options for one field, including retained saved selections. |
 | `POST /api/settings/preview` | Resolve a proposed override using the execution resolver without saving. |
 | `PUT /api/settings/overrides` | Set or reset a revision-checked override. |
 | `GET /api/settings/processes/:instanceId` | Per-turn `future` scoped defaults/errors and historical `captured` settings. |
@@ -105,11 +106,21 @@ unchanged. Settings are shared across the installation, not per-user preferences
 purposes. Setting keys and purpose IDs use the owning extension's namespace.
 Settings combine shared `SettingMetadata` with a versioned value schema and default.
 Metadata defines ordered scopes, merging, and forms. Controls support text, instructions, choices,
-model profiles, numbers, checkboxes, and searchable multi-selects. `choices(context)` may supply dynamic
-non-secret choices. Validation remains authoritative on the server.
+model profiles, numbers, checkboxes, and searchable multi-selects. `choices(context, request)` may supply
+dynamic non-secret choices. The optional request contains search text and saved
+selection values. Options load separately from value previews, writes, and draft
+validation. A multi-select's `form.search` declares a minimum query length and an
+optional placeholder. Those fields show saved selections immediately and fetch
+matches only while editing a query at or above the minimum; shorter queries return
+no matches without calling the provider. `choiceLabel(value)` may label saved
+selections synchronously without remote discovery. Validation remains authoritative
+on the server.
 
 `scopedSettingsCapability` provides a typed server-side resolver and trusted
-subject discovery. Discovery callbacks run only during explicit refresh. Launcher
+subject discovery. Discovery callbacks run only during explicit refresh. A discovery
+provider may supply `includesSubject` to restrict navigation to configured targets;
+subjects and overrides outside that scope remain stored and resolve through direct
+links. Launcher
 projects may supply `settingsRepository` with a provider origin, repository ID,
 and verified aliases. Launchers and integrations may supply `settingsContext` for
 registered scopes. Operator forms cannot invent trusted scope bindings.

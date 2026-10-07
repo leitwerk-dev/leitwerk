@@ -4,12 +4,15 @@ import {
 	type RepositoryCredentialRequirement,
 } from "@leitwerk-dev/process-sdk";
 import type { GitLabClientLike } from "./client.js";
+import type { GitLabRepositoryCatalog } from "./repository-catalog.js";
 /** @public */
 export interface GitLabIntegration {
 	/** @public */
 	profiles(): readonly string[];
 	/** @public */
 	client(profile: string): GitLabClientLike;
+	/** Cached repository metadata for Settings, supplied by server setup. @public */
+	readonly repositoryCatalog?: GitLabRepositoryCatalog;
 }
 /** @public */
 export const gitlabIntegration = createCapabilityToken<GitLabIntegration>(

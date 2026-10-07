@@ -1,13 +1,17 @@
 import { asUnknownRecord } from "@leitwerk-dev/domain";
-import type { JiraIssue } from "@leitwerk-dev/jira";
+import {
+	assertJiraTicketText,
+	type JiraIssue,
+	jiraTicketWritingInstructions,
+} from "@leitwerk-dev/jira";
 import {
 	type AutomaticOutcomeBuilder,
 	type Codec,
 	flow,
 	type ProcessLauncherDefinition,
 	type ProcessWatcherSource,
-	wikiInstructions,
 } from "@leitwerk-dev/process-sdk";
+import { wikiInstructions } from "@leitwerk-dev/wiki";
 import {
 	batchMarkdown,
 	initialSplitState,
@@ -41,6 +45,12 @@ const repositoryCodec: Codec<SplitRepository> = {
 	serialize: (value) => value,
 };
 const draftCodec: Codec<SplitDraft> = { parse: parseDraft, serialize: (value) => value };
+
+function requireCleanDraft(draft: SplitDraft): SplitDraft {
+	if (draft.verdict === "applicable" && !draft.receipt && !draft.excluded)
+		assertJiraTicketText(draft.summary, draft.description);
+	return draft;
+}
 
 function publicationState(state: SplitState, input: unknown): SplitState {
 	const results = input as {
@@ -82,6 +92,7 @@ export function createSplitProcess(
 		) => Promise<import("@leitwerk-dev/process-sdk").ProcessLaunchConfig<SplitParams>>;
 	},
 ) {
+	// Process and turn IDs are durable storage keys; the package rename does not change them.
 	return flow
 		.process<SplitParams, SplitState>("jira_epic_split_process")
 		.displayName("Jira Issue Split")
@@ -216,7 +227,7 @@ export function createSplitProcess(
 				.askQuestions()
 				.buildPrompt(
 					(ctx) =>
-						`Determine whether this repository needs changes for the source issue's requirements. Use GitLab file reads and checkout_repository as needed. Do not change code or publish anything. Distinguish already compliant, not applicable, and unresolved; lack of access is unresolved. For an applicable repository prepare one ticket with concrete acceptance criteria, evidence and inspected commit. ${ctx.params.subtaskType ? `Use issueType Sub-task (${ctx.params.subtaskType.name}); Story and Task are not allowed.` : `Default issue type: ${ctx.params.issueType}; only Story or Task are allowed.`}\n${wikiInstructions}\nSource issue: ${JSON.stringify(ctx.state.epic)}\nRepository: ${JSON.stringify(ctx.item)}\nReturn assessment JSON: ${draftShape}`,
+						`Determine whether this repository needs changes for the source issue's requirements. Use GitLab file reads and checkout_repository as needed. Do not change code or publish anything. Distinguish already compliant, not applicable, and unresolved; lack of access is unresolved. For an applicable repository prepare one ticket with concrete acceptance criteria, evidence and inspected commit. ${ctx.params.subtaskType ? `Use issueType Sub-task (${ctx.params.subtaskType.name}); Story and Task are not allowed.` : `Default issue type: ${ctx.params.issueType}; only Story or Task are allowed.`}\n${jiraTicketWritingInstructions}\n${wikiInstructions}\nSource issue: ${JSON.stringify(ctx.state.epic)}\nRepository: ${JSON.stringify(ctx.item)}\nReturn assessment JSON: ${draftShape}`,
 				)
 				.outcomeTool("repository_assessed", (outcome) =>
 					outcome
@@ -226,7 +237,7 @@ export function createSplitProcess(
 							const draft = parseDraft(JSON.parse(String(event.params.assessment)), ctx.params);
 							if (draft.repositoryKey !== ctx.item.key)
 								throw new Error("Assessment repository mismatch");
-							return draft;
+							return requireCleanDraft(draft);
 						}),
 				)
 				.collect(({ state }, results) => ({
@@ -265,7 +276,12 @@ export function createSplitProcess(
 						.effect(({ ctx, event }) => {
 							const prepared = event.params.prepared as PreparedBatch;
 							return {
-								state: { ...ctx.state, drafts: prepared.drafts, epic: prepared.epic, approved: [] },
+								state: {
+									...ctx.state,
+									drafts: prepared.drafts,
+									epic: prepared.epic,
+									approved: [],
+								},
 							};
 						})
 						.to("batch_review"),
@@ -306,7 +322,11 @@ export function createSplitProcess(
 									description:
 										"Comma-separated labels. Include use-leitwerk only to start code changes. Blank keeps the displayed labels.",
 								},
-								{ id: "clearLabels", label: "Remove all selected ticket labels", kind: "boolean" },
+								{
+									id: "clearLabels",
+									label: "Remove all selected ticket labels",
+									kind: "boolean",
+								},
 							],
 						})
 						.effect(({ ctx, input }) => {
@@ -344,6 +364,9 @@ export function createSplitProcess(
 									: typeof input.labels === "string" && input.labels.trim()
 										? parseLabels(input.labels)
 										: ctx.state.labels;
+							for (const draft of drafts) {
+								if (!draft.blocked) requireCleanDraft(draft);
+							}
 							return {
 								state: {
 									...ctx.state,
@@ -413,7 +436,7 @@ export function createSplitProcess(
 				)
 				.buildPrompt(
 					(ctx) =>
-						`Revise the unpublished repository assessments and ticket drafts using the operator feedback. Reinspect when the source issue or evidence changed. Preserve published rows and repository identities. Return every unpublished row in drafts JSON. ${ctx.params.subtaskType ? "Use issueType Sub-task for every row." : "Use issueType Story or Task for every row."} Do not create issues. ${wikiInstructions}\nSource issue: ${JSON.stringify(ctx.prepared.epic)}\nFeedback: ${ctx.state.feedback}\nRepositories: ${JSON.stringify(ctx.params.repositories)}\nCurrent drafts: ${JSON.stringify(ctx.state.drafts)}\nEach draft has shape ${draftShape}`,
+						`Revise the unpublished repository assessments and ticket drafts using the operator feedback. Reinspect when the source issue or evidence changed. Preserve published rows and repository identities. Return every unpublished row in drafts JSON. ${ctx.params.subtaskType ? "Use issueType Sub-task for every row." : "Use issueType Story or Task for every row."} Do not create issues. ${jiraTicketWritingInstructions}\n${wikiInstructions}\nSource issue: ${JSON.stringify(ctx.prepared.epic)}\nFeedback: ${ctx.state.feedback}\nRepositories: ${JSON.stringify(ctx.params.repositories)}\nCurrent drafts: ${JSON.stringify(ctx.state.drafts)}\nEach draft has shape ${draftShape}`,
 				)
 				.outcomeTool("drafts_revised", (outcome) =>
 					outcome
@@ -422,7 +445,7 @@ export function createSplitProcess(
 						.effect(({ ctx, event }) => {
 							const value: unknown = JSON.parse(String(event.params.drafts));
 							if (!Array.isArray(value)) throw new Error("Expected draft array");
-							const drafts = value.map((draft) => parseDraft(draft, ctx.params));
+							const drafts = value.map((draft) => requireCleanDraft(parseDraft(draft, ctx.params)));
 							const pending = ctx.state.drafts.filter((draft) => !draft.receipt);
 							if (
 								drafts.length !== pending.length ||

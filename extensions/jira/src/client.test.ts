@@ -8,6 +8,56 @@ const linkedIssue = {
 } as unknown as JiraIssue;
 
 describe("Jira Data Center boundary", () => {
+	it("uses native remote-link and transition endpoints with the installation context and signal", async () => {
+		const requests: { url: string; init?: RequestInit }[] = [];
+		const link = {
+			id: 5,
+			globalId: "leitwerk:process",
+			object: { url: "https://leitwerk.test/processes/run", title: "Leitwerk process" },
+		};
+		const transition = {
+			id: "31",
+			name: "Start",
+			to: { id: "3", name: "In Progress", statusCategory: { key: "indeterminate" } },
+		};
+		const client = new JiraClient(
+			{ baseUrl: "https://jira.test/context", token: "secret" },
+			async (url, init) => {
+				requests.push({ url: String(url), init });
+				if (init?.method === "POST")
+					return String(url).endsWith("/transitions")
+						? new Response(null, { status: 204 })
+						: Response.json({ id: link.id });
+				return Response.json(
+					String(url).endsWith("/remotelink") ? [link] : { transitions: [transition] },
+				);
+			},
+		);
+		const signal = new AbortController().signal;
+		expect(await client.listRemoteLinks("APP-1", signal)).toEqual([link]);
+		await client.upsertRemoteLink(
+			"APP-1",
+			{ globalId: link.globalId, object: link.object },
+			signal,
+		);
+		expect(await client.listTransitions("APP-1", signal)).toEqual([transition]);
+		await client.transitionIssue("APP-1", transition.id, signal);
+		expect(requests.map((request) => request.url)).toEqual([
+			"https://jira.test/context/rest/api/2/issue/APP-1/remotelink",
+			"https://jira.test/context/rest/api/2/issue/APP-1/remotelink",
+			"https://jira.test/context/rest/api/2/issue/APP-1/transitions",
+			"https://jira.test/context/rest/api/2/issue/APP-1/transitions",
+		]);
+		expect(JSON.parse(String(requests[1].init?.body))).toEqual({
+			globalId: link.globalId,
+			object: link.object,
+		});
+		expect(JSON.parse(String(requests[3].init?.body))).toEqual({ transition: { id: "31" } });
+		for (const request of requests) {
+			expect(request.init?.signal).toBeDefined();
+			expect(request.init?.headers).toMatchObject({ Authorization: "Bearer secret" });
+		}
+	});
 	it("cancels an in-flight issue creation request with the caller's signal", async () => {
 		const controller = new AbortController();
 		const signals: Array<AbortSignal | null | undefined> = [];
@@ -93,7 +143,10 @@ describe("Jira Data Center boundary", () => {
 		expect(await client.listProjectIssues("100")).toEqual([{ id: "7", key: "GARDEN-7" }]);
 		expect(requests.at(-1)?.url.searchParams.get("jql")).toBe("project = 100 ORDER BY id ASC");
 	});
-	it("retains the context path, uses a PAT header, and follows server-sized pages", async () => {
+	it.each([
+		undefined,
+		"use-leitwerk-beta",
+	])("retains context, credentials and pagination with trigger %s", async (triggerLabel) => {
 		const requests: URL[] = [];
 		const client = new JiraClient(
 			{ baseUrl: "https://jira.test/context/", token: "server-only-secret" },
@@ -103,12 +156,18 @@ describe("Jira Data Center boundary", () => {
 				expect(request.pathname).toBe("/context/rest/api/2/search");
 				expect(init?.headers).toMatchObject({ Authorization: "Bearer server-only-secret" });
 				expect(request.href).not.toContain("server-only-secret");
-				expect(request.searchParams.get("jql")).toContain('labels = "use-leitwerk"');
+				expect(request.searchParams.get("jql")).toContain(
+					`labels = "${triggerLabel ?? "use-leitwerk"}"`,
+				);
 				const startAt = Number(request.searchParams.get("startAt"));
 				return Response.json({ startAt, total: 3, issues: [{ id: String(startAt + 1) }] });
 			},
 		);
-		expect(await client.searchIssues(["100"])).toEqual([{ id: "1" }, { id: "2" }, { id: "3" }]);
+		expect(await client.searchIssues(["100"], triggerLabel)).toEqual([
+			{ id: "1" },
+			{ id: "2" },
+			{ id: "3" },
+		]);
 		expect(requests).toHaveLength(3);
 		expect(JSON.stringify(client)).not.toContain("server-only-secret");
 	});
@@ -279,4 +338,19 @@ describe("Jira Data Center boundary", () => {
 			"Invalid split ticket identity",
 		);
 	});
+});
+
+it("rejects a later failed discovery page instead of returning a partial issue list", async () => {
+	let page = 0;
+	const client = new JiraClient(
+		{ baseUrl: "https://jira.test/context", token: "secret" },
+		async () => {
+			page++;
+			return page === 1
+				? Response.json({ startAt: 0, total: 2, issues: [{ id: "501" }] })
+				: new Response(null, { status: 503 });
+		},
+	);
+	await expect(client.searchIssues(["10100"])).rejects.toThrow("503");
+	expect(page).toBe(2);
 });

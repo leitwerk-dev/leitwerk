@@ -28,6 +28,9 @@
 			"path": "packages/process-sdk"
 		},
 		{
+			"path": "packages/wiki"
+		},
+		{
 			"path": "packages/extension-runtime"
 		},
 		{

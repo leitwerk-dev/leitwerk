@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { PublicationStore } from "@leitwerk-dev/external-writes";
 import type { GitSshIntegration } from "@leitwerk-dev/git-ssh";
 import {
 	type GitLabIntegration,
@@ -6,6 +7,7 @@ import {
 	selectGitLabProjects,
 } from "@leitwerk-dev/gitlab";
 import {
+	assertJiraTicketText,
 	ensureIssueWiki,
 	type JiraCreateMetadata,
 	type JiraIntegration,
@@ -17,6 +19,8 @@ import {
 	jiraIssueExternalId,
 	jiraSplitChildMatches,
 	jiraSubjectIdentity,
+	jiraTicketTextProblem,
+	markdownToJira,
 } from "@leitwerk-dev/jira";
 import { createJiraGitLabLauncher, type RepositoryMapping } from "@leitwerk-dev/jira-gitlab-change";
 import {
@@ -24,14 +28,15 @@ import {
 	type ScopedSettingsResolver,
 	type ServerExtensionAPI,
 	stringArg,
-	type TopicWikiStore,
 } from "@leitwerk-dev/process-sdk";
+import type { TopicWikiStore } from "@leitwerk-dev/wiki";
 import {
 	type SplitDraft,
 	type SplitParams,
 	type SplitRepository,
 	splitParamsCodec,
 	splitStateCodec,
+	splitTicketDescription,
 } from "./model.js";
 
 /** @internal */
@@ -41,7 +46,7 @@ export interface SplitServices {
 	/** @internal */ ssh: GitSshIntegration;
 	/** @internal */ settings: ScopedSettingsResolver;
 	/** @internal */ wiki: TopicWikiStore;
-	/** @internal */ serverBaseUrl: string;
+	/** @internal */ publications: PublicationStore;
 }
 
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -369,6 +374,9 @@ export function registerSplitTools(api: ServerExtensionAPI, services: SplitServi
 						const blocked =
 							sourceBlocked ??
 							typeBlocked ??
+							(draft.verdict === "applicable"
+								? jiraTicketTextProblem(draft.summary, draft.description)
+								: null) ??
 							(state.epicRevision && revision !== state.epicRevision
 								? "Source issue changed: request revision before approval"
 								: draft.verdict === "applicable" && !mapping.componentIds.length
@@ -411,7 +419,7 @@ export function registerSplitTools(api: ServerExtensionAPI, services: SplitServi
 					relationship: jiraIsEpic(params.epic) ? ("epic" as const) : ("subtask" as const),
 				};
 				const reservation = { key, topicId: params.topicId, binding, externalId: null, url: null };
-				const existing = services.wiki.publication(key);
+				const existing = services.publications.publication(key);
 				if (
 					existing &&
 					(existing.topicId !== params.topicId ||
@@ -432,7 +440,7 @@ export function registerSplitTools(api: ServerExtensionAPI, services: SplitServi
 						"Existing ticket publication has a different repository binding; reconcile before continuing",
 					);
 				const readRemote = async () => {
-					const recorded = services.wiki.publication(key);
+					const recorded = services.publications.publication(key);
 					const issue = recorded?.externalId
 						? await client.getIssue(
 								String((JSON.parse(recorded.externalId.slice(5)) as string[])[1]),
@@ -454,8 +462,12 @@ export function registerSplitTools(api: ServerExtensionAPI, services: SplitServi
 					)
 						throw new Error("Created issue no longer belongs to this source issue");
 					const url = `${client.baseUrl}/browse/${encodeURIComponent(issue.key)}`;
-					if (!recorded) services.wiki.reservePublication(reservation);
-					services.wiki.finishPublication(key, jiraIssueExternalId(client.baseUrl, issue.id), url);
+					if (!recorded) services.publications.reservePublication(reservation);
+					services.publications.finishPublication(
+						key,
+						jiraIssueExternalId(client.baseUrl, issue.id),
+						url,
+					);
 					return { id: issue.id, key: issue.key, url };
 				};
 				const uncertainPublication = (): never => {
@@ -469,15 +481,16 @@ export function registerSplitTools(api: ServerExtensionAPI, services: SplitServi
 						{ reconcile: readRemote, execute, toMetadata: (value) => value },
 					);
 				const wantsTrigger = state.labels.includes("use-leitwerk");
-				const triggerPending = () => wantsTrigger && !services.wiki.publication(key)?.triggered;
+				const triggerPending = () =>
+					wantsTrigger && !services.publications.publication(key)?.triggered;
 				const reconcileTrigger = async (id: string, recorded = false) => {
 					const { labels } = (await client.getIssue(id)).fields;
 					const triggered =
-						services.wiki.publication(key)?.triggered ||
+						services.publications.publication(key)?.triggered ||
 						recorded ||
 						labels.includes("use-leitwerk") ||
 						labels.includes("leitwerk-done");
-					if (triggered) services.wiki.markPublicationTriggered(key);
+					if (triggered) services.publications.markPublicationTriggered(key);
 					return triggered;
 				};
 				let receipt: NonNullable<SplitDraft["receipt"]> | null = null;
@@ -496,6 +509,7 @@ export function registerSplitTools(api: ServerExtensionAPI, services: SplitServi
 					if (blocked) return { reviewRequired: blocked };
 				}
 				if (!receipt) {
+					assertJiraTicketText(draft.summary, draft.description);
 					parseLabels(state.labels.join(","));
 					if (!client.createIssueReceipt || !client.createMetadata)
 						throw new Error("Jira issue creation unavailable");
@@ -505,12 +519,11 @@ export function registerSplitTools(api: ServerExtensionAPI, services: SplitServi
 						jiraIsEpic(params.epic),
 					);
 					const type = resolveDraftType(metadata, params, draft);
-					const wikiUrl = `${services.serverBaseUrl.replace(/\/$/, "")}/wiki/${params.topicId}`;
 					const fields: Record<string, unknown> = {
 						project: { id: epic.fields.project.id },
 						issuetype: { id: type.id },
 						summary: draft.summary,
-						description: `${draft.description}\n\nRepository: ${repository.name}\nEvidence (${draft.revision}): ${draft.evidence}\nSource issue solution wiki: ${wikiUrl}\nLeitwerk split identity: ${marker}`,
+						description: markdownToJira(splitTicketDescription(params, repository, draft)),
 						components: draft.componentIds.map((id) => ({ id })),
 						labels: [...state.labels.filter((label) => label !== "use-leitwerk"), marker],
 						...(binding.relationship === "subtask"
@@ -523,7 +536,7 @@ export function registerSplitTools(api: ServerExtensionAPI, services: SplitServi
 								`Jira requires field ${field}; configure its default before publishing`,
 							);
 					receipt = await ensureTicket(async () => {
-						if (!services.wiki.reservePublication(reservation)) uncertainPublication();
+						if (!services.publications.reservePublication(reservation)) uncertainPublication();
 						let created: JiraIssueReceipt;
 						try {
 							created = await createIssue(fields);
@@ -532,11 +545,11 @@ export function registerSplitTools(api: ServerExtensionAPI, services: SplitServi
 								error instanceof JiraRequestError &&
 								[400, 401, 403, 404, 422].includes(error.status)
 							)
-								services.wiki.releaseRejectedPublication(key);
+								services.publications.releaseRejectedPublication(key);
 							throw error;
 						}
 						const url = `${client.baseUrl}/browse/${encodeURIComponent(created.key)}`;
-						services.wiki.finishPublication(
+						services.publications.finishPublication(
 							key,
 							jiraIssueExternalId(client.baseUrl, created.id),
 							url,
@@ -552,7 +565,7 @@ export function registerSplitTools(api: ServerExtensionAPI, services: SplitServi
 								(await reconcileTrigger(receipt.id, phase === "already_recorded")) ? receipt : null,
 							execute: async () => {
 								await client.updateLabels(receipt.id, [], ["use-leitwerk"]);
-								services.wiki.markPublicationTriggered(key);
+								services.publications.markPublicationTriggered(key);
 								return receipt;
 							},
 							toMetadata: (receipt) => receipt,

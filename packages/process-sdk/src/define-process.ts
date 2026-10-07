@@ -1,12 +1,11 @@
-import {
-	assertValidProcessProductName,
-	type ProcessInstance,
-	type ProcessSemanticEntryRefKey,
-	type ProcessTurnStartSelection,
-	type ProcessTurnTerminalLifecycleStatus,
-	type ProcessTurnTransition,
-	type TurnId,
-	type TurnProgressReport,
+import type {
+	ProcessInstance,
+	ProcessSemanticEntryRefKey,
+	ProcessTurnStartSelection,
+	ProcessTurnTerminalLifecycleStatus,
+	ProcessTurnTransition,
+	TurnId,
+	TurnProgressReport,
 } from "@leitwerk-dev/domain";
 import type {
 	ExtensionProcessDefinition,
@@ -34,7 +33,7 @@ import {
 	validateProcessGraphTurnTransitions,
 } from "./process-graph.js";
 import type { ServerExtensionEventMap } from "./server-events.js";
-import { validateTurnDefinition } from "./turn-semantics.js";
+import { validateExternalActions, validateTurnDefinition } from "./turn-semantics.js";
 import type { TurnWaitPredicate } from "./turn-wait.js";
 import type {
 	HumanTurnActionView,
@@ -393,6 +392,8 @@ export interface LlmTurnDefinition<
 	description: string;
 	/** Server-side entry condition, evaluated before worker allocation. @public */
 	waitFor?: TurnWaitPredicate<TParams, TState>;
+	/** External events armed while this LLM turn is selected and waiting. @public */
+	externalActions?: Record<string, ProcessHumanTurnExternalActionSpec<TParams, TState>>;
 	/** Code-defined model policy purpose. Purpose selections cannot be overridden per launch/action. @internal */
 	modelPurpose?: LlmModelPurpose;
 	/** Extension-defined scoped settings consumed by this turn. @public */
@@ -1048,19 +1049,6 @@ function resolveExternalActionRoute<TParams, TState>(input: {
 	spec: ProcessHumanTurnExternalActionSpec<TParams, TState>;
 	knownTurnIds?: ReadonlySet<TurnId>;
 }): NormalizedActionRoute {
-	if (input.externalActionId.trim() === "") {
-		throw new Error(`Human turn '${input.turnId}' declares an empty external action id`);
-	}
-	if (input.spec.id !== input.externalActionId) {
-		throw new Error(
-			`Human turn '${input.turnId}' external action '${input.externalActionId}' has mismatched spec id '${input.spec.id}'`,
-		);
-	}
-	if (input.spec.source.kind.trim() === "") {
-		throw new Error(
-			`Human turn '${input.turnId}' external action '${input.externalActionId}' must declare a non-empty source kind`,
-		);
-	}
 	const target = normalizeStaticRouteTarget(
 		`Human turn '${input.turnId}' external action '${input.externalActionId}'`,
 		input.spec,
@@ -1207,19 +1195,10 @@ function compileExternalActionTransitions<TParams, TState>(
 ): readonly ProcessTurnTransition[] {
 	const entries = Object.entries(input.spec.externalActions ?? {});
 	return compileDeclarations(entries, ([externalActionId, actionSpec]) => {
-		if (actionSpec.publishInput) {
-			if (actionSpec.complete === true || actionSpec.lifecycleStatus !== undefined) {
-				throw new Error(
-					`Human turn '${input.turnId}' external action '${externalActionId}' cannot publish input on a terminal route`,
-				);
-			}
-			assertValidProcessProductName(actionSpec.publishInput.productName);
-			if (actionSpec.publishInput.inputField.trim() === "") {
-				throw new Error(
-					`Human turn '${input.turnId}' external action '${externalActionId}' publishInput must declare a non-empty inputField`,
-				);
-			}
-		}
+		const [error] = validateExternalActions("Human", input.turnId, {
+			[externalActionId]: actionSpec,
+		});
+		if (error) throw new Error(error);
 		const route = { ...input, externalActionId, spec: actionSpec };
 		validateExternalActionPublishedInputTarget(route);
 		const transition = resolveExternalActionRoute(route);
@@ -1503,9 +1482,7 @@ function compileProcessDefinition<TParams, TState>(
 			const external =
 				turnSpec.kind === "external"
 					? turnSpec.transitions
-					: turnSpec.kind === "human" || turnSpec.kind === "automatic"
-						? Object.values(turnSpec.externalActions ?? {})
-						: [];
+					: Object.values(turnSpec.externalActions ?? {});
 			for (const route of external) {
 				const target = route.to ? input.turns[route.to] : undefined;
 				if ((target?.kind === "llm" || target?.kind === "automatic") && !target.waitFor) {
@@ -1516,13 +1493,22 @@ function compileProcessDefinition<TParams, TState>(
 					);
 				}
 			}
+			const externalTransitions =
+				(turnSpec.kind === "llm" || turnSpec.kind === "automatic") && turnSpec.externalActions
+					? compileExternalActionTransitions({
+							turnId,
+							spec: turnSpec,
+							knownTurnIds,
+							turnDefinitionsById,
+						})
+					: [];
 			if (turnSpec.kind === "llm" && turnSpec.forEach) {
 				turns.set(
 					turnId,
-					createProcessTurnBinding(
-						turnSpec,
-						compileMappedTurnTransitions({ turnId, spec: turnSpec, knownTurnIds }),
-					),
+					createProcessTurnBinding(turnSpec, [
+						...compileMappedTurnTransitions({ turnId, spec: turnSpec, knownTurnIds }),
+						...externalTransitions,
+					]),
 				);
 				executableTurns.set(turnId, {
 					spec: turnSpec,
@@ -1538,15 +1524,6 @@ function compileProcessDefinition<TParams, TState>(
 					turnEnd: turnSpec.turnEnd,
 					knownTurnIds,
 				});
-				const externalTransitions =
-					turnSpec.kind === "automatic" && turnSpec.externalActions
-						? compileExternalActionTransitions({
-								turnId,
-								spec: turnSpec,
-								knownTurnIds,
-								turnDefinitionsById,
-							})
-						: [];
 				turns.set(
 					turnId,
 					createProcessTurnBinding(turnSpec, [...transitions, ...externalTransitions]),

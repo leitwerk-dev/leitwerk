@@ -12,17 +12,15 @@ import { gitSshIntegration } from "@leitwerk-dev/git-ssh";
 import { GITHUB_PR_TERMINAL_KIND, setupGitHubIntegration } from "@leitwerk-dev/github";
 import { LocalGitHubAdapter } from "@leitwerk-dev/github/testing";
 import { createGitHubRepoChange } from "@leitwerk-dev/github-repo-change";
-import {
-	GITLAB_MR_KIND,
-	LocalGitLabAdapter,
-	setupGitLabIntegration,
-} from "@leitwerk-dev/gitlab/testing";
+import { GITLAB_MAINTAINED_KIND } from "@leitwerk-dev/gitlab";
+import { LocalGitLabAdapter, setupGitLabIntegration } from "@leitwerk-dev/gitlab/testing";
 import { createGitLabRepoChange } from "@leitwerk-dev/gitlab-repo-change";
 import {
 	type CoreServerSetupDeps,
 	createEmptyStructuralProcessState,
 	type LeitwerkExtensionModule,
 } from "@leitwerk-dev/process-sdk";
+import { createAcceptedWorkerTurn } from "@leitwerk-dev/server/testing";
 import {
 	createPollingTestExtension,
 	FakeLlmProvider,
@@ -50,6 +48,7 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 	let github: LocalGitHubAdapter;
 	let gitlab: LocalGitLabAdapter;
 	let pollProvider: () => Promise<unknown>;
+	let pollMaintenance: (() => Promise<unknown>) | undefined;
 	let clock = Date.now();
 	let repairMode: "change" | "none" | "operator" = "change";
 	let edit = 0;
@@ -167,18 +166,28 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 		flow.process.repositoryCredentials = () => [];
 		const polling = createPollingTestExtension(
 			{ id: provider, version: "1.0.0" },
-			(api) =>
-				provider === "github"
-					? setupGitHubIntegration(
-							api,
-							{ profiles: () => ["team"], client: () => github.client() },
-							{ now: () => clock },
-						)
-					: setupGitLabIntegration(
-							api,
-							{ profiles: () => ["team"], client: () => gitlab.client() },
-							{ now: () => clock },
-						),
+			(api) => {
+				if (provider === "github")
+					return setupGitHubIntegration(
+						api,
+						{ profiles: () => ["team"], client: () => github.client() },
+						{ now: () => clock },
+					);
+				const service = setupGitLabIntegration(
+					api,
+					{ profiles: () => ["team"], client: () => gitlab.client() },
+					{ now: () => clock },
+				);
+				pollMaintenance = service && (() => service.maintenance.poll());
+				return (
+					service && {
+						async poll() {
+							const results = [await service.poll(), await service.maintenance.poll()];
+							return { errors: results.flatMap((result) => result.errors) };
+						},
+					}
+				);
+			},
 			true,
 		);
 		pollProvider = () => polling.poll();
@@ -273,18 +282,22 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 		);
 	};
 	const armed = async (id: string) => {
-		await driver.waitForProcess(
-			id,
-			(p) =>
-				p.selectedTurnId === "deliver_change" &&
-				p.lifecycleStatus === "waiting" &&
+		await waitForValue(
+			async () => {
+				// Worker outcomes can stage server acknowledgement without executing Deliver.
+				await pollMaintenance?.();
+				return harness.ctx.deps.processes.getById(id);
+			},
+			(process) =>
+				process?.selectedTurnId === "deliver_change" &&
+				process.lifecycleStatus === "waiting" &&
 				deliverySettled(id),
-			"delivery settled before observing external events",
+			12000,
 		);
 		await waitForValue(
 			() =>
 				(harness.ctx.deps.externalSourceService as CoreServerSetupDeps["externalSources"])
-					.listArmed(provider === "github" ? GITHUB_PR_TERMINAL_KIND : GITLAB_MR_KIND)
+					.listArmed(provider === "github" ? GITHUB_PR_TERMINAL_KIND : GITLAB_MAINTAINED_KIND)
 					.some((s) => s.instanceId === id),
 			Boolean,
 			12000,
@@ -455,6 +468,17 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 				provider === "github"
 					? await github.client().resolveGitIdentity("team")
 					: await gitlab.client().resolveGitIdentity();
+			// Adopt the published MR with its historical Deliver execution.
+			if (provider === "gitlab")
+				createAcceptedWorkerTurn(harness.ctx, {
+					id: `trn_${process.id}_publication`,
+					instanceId: process.id,
+					turnId: "deliver_change",
+					turnType: "automatic",
+					status: "succeeded",
+					startedAt: new Date(clock).toISOString(),
+					endedAt: new Date(clock).toISOString(),
+				});
 			harness.ctx.deps.projects.create({
 				instanceId: process.id,
 				key: "repo",
@@ -589,6 +613,10 @@ export function repositoryChangeTests(provider: Provider) {
 			await f.poll();
 			await f.wait(id, null, "completed");
 			expect(f.harness.ctx.deps.projects.listByInstance(id)).toHaveLength(1);
+			if (provider === "gitlab") {
+				expect(f.gitlab.state.mrs[0].labels).toContain("leitwerk-done");
+				expect(f.gitlab.state.mrs[0].labels).not.toContain("leitwerk-active");
+			}
 		}, 45000);
 		it("launches one labeled issue and reconciles it after merge without duplicate writes", async ({
 			onTestFinished,
@@ -634,9 +662,15 @@ export function repositoryChangeTests(provider: Provider) {
 			await f.restart();
 			await f.wait(id, "ci_operator_action");
 			f.setRepair("none");
+			const deliveries = () =>
+				f.harness.ctx.deps.turnRecords
+					.listByInstance(id)
+					.filter((turn) => turn.turnId === "deliver_change");
+			const before = deliveries().length;
 			await f.action(id, "retry_repair");
 			await f.armed(id);
 			expect(f.state(id).feedbackIds).toEqual([]);
+			if (provider === "gitlab") expect(deliveries()).toHaveLength(before);
 			f.closeRequest(id);
 			await f.poll();
 			await f.wait(id, null, "aborted");

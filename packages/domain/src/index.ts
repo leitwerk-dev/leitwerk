@@ -176,7 +176,6 @@ export {
 	trimString,
 	trimToNull,
 } from "./string-normalize.js";
-export type { TopicPublication, WikiEvidence, WikiPage, WikiTopic } from "./topic-wiki.js";
 export type { TurnAcceptanceState } from "./turn-acceptance.js";
 export {
 	type ProcessTurnAnnotation,

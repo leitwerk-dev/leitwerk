@@ -1,5 +1,6 @@
 import type { ScopedSettingsSnapshot, SettingsContext } from "@leitwerk-dev/domain";
 import type {
+	SettingChoice,
 	SettingsPreview,
 	SettingsScopesResponse,
 } from "@leitwerk-dev/protocol/http-contracts";
@@ -42,6 +43,19 @@ export function fetchSettingsPreview(subjectId: string) {
 		path: `/api/settings/preview?subjectId=${encodeURIComponent(subjectId)}`,
 		malformed: "Could not read settings",
 		error: settingsError("Could not load settings"),
+	});
+}
+export function fetchSettingsChoices(
+	subjectId: string,
+	key: string,
+	search = "",
+	signal?: AbortSignal,
+) {
+	return requestJson<{ choices: SettingChoice[] }>({
+		path: `/api/settings/choices?${new URLSearchParams({ subjectId, key, search })}`,
+		init: { signal },
+		malformed: "Could not read options",
+		error: settingsError("Could not load options. Try again or refine your search."),
 	});
 }
 export function changeSettings(change: SettingsChange, preview = false) {

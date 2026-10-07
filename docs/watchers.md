@@ -141,10 +141,18 @@ For external actions, providers may pass the captured `generation` from `listArm
 to `fire`. The server checks it under the process lock. A superseded subscription
 returns `external_source_superseded` without recording a turn or queuing an event.
 Omitting the generation retains the generation-free queueing contract. Observations
-require a captured generation and never change process position.
+require a captured generation and never change process position. They may commit
+codec-validated business state under the same fence. Source resolvers must include
+state and bindings used to reconcile an observation so changed inputs supersede it.
 
 Recheck freshness after provider I/O before observing or firing. The SDK poll reporter
 supports this check, but providers retain event-selection and scheduling policy.
 See the [source reporter API](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/process-sdk/src/external-source-poll.ts)
 and [watcher utilities](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/watcher-utils/README.md).
 Provider-specific policies belong in their extension READMEs.
+
+A watcher may select `defaultModelProfileId` from trusted event data. That explicit
+selection overrides the configured watcher default and must pass model validation;
+an unavailable selection fails admission instead of falling back. Configured
+per-turn overrides retain precedence. Watchers without an event selection keep
+the existing inherited-default behavior.

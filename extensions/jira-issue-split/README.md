@@ -1,6 +1,6 @@
 # Jira issue splitting
 
-`@leitwerk-dev/jira-epic-split` creates one reviewed child ticket per applicable
+`@leitwerk-dev/jira-issue-split` creates one reviewed child ticket per applicable
 GitLab repository. Epics create Stories or Tasks; other issue types create native
 Jira subtasks. Existing subtasks cannot be split because Jira does not support
 nested subtasks. It does not change repository code. Load `jira`, `gitlab`,
@@ -37,6 +37,14 @@ Assessments distinguish applicable, already compliant, not applicable, and unres
 Applicable drafts include evidence, an inspected commit, and concrete acceptance
 criteria. Missing access is unresolved, not proof that a repository is irrelevant.
 The batch is a standard published Markdown product and operator form, not a custom UI.
+
+Generated Jira descriptions contain the reviewed task and acceptance criteria, plus
+readable links to the repository and source issue. Evidence, inspected commits,
+solution-wiki references, and split identities stay in Leitwerk's review batch and
+durable publication records. The reconciliation marker remains a Jira label.
+Drafts containing internal IDs, raw hashes, or model citation tokens must be revised
+before approval or publication. Previously saved drafts remain readable. Published
+tickets are not rewritten by this change.
 
 In **Settings → Jira components**, map repositories to their GitLab and SSH profiles.
 Created tickets receive every matching component in the source issue's Jira project. An
@@ -83,9 +91,10 @@ Group/project fields accept comma- or whitespace-separated exact paths. The watc
 deduplicates by Jira installation and source issue ID and leaves the source label unchanged.
 It always pauses at batch review before creating tickets.
 `issueType` selects Story or Task for epic children only. `subtaskIssueType` applies
-to other source issues. Package, process, watcher, and turn IDs retain their existing
-names so configurations and persisted runs remain compatible. Legacy `epic` launch
-input remains accepted as an alias for `issue`.
+to other source issues. The package and extension are named `jira-issue-split`.
+Process, launcher, watcher, watcher-source and turn IDs, and event deduplication keys
+retain their existing names so configurations and persisted runs remain compatible.
+Legacy `epic` launch input remains accepted as an alias for `issue`.
 
 ## Recovery and shared solutions
 
@@ -109,5 +118,8 @@ The splitter and newly launched Jira changes for its children share a
 [topic solution wiki](../../docs/topic-wiki.md) scoped to the source issue, including
 manually created children. Splitting a story uses that story's wiki even if it belongs
 to an epic. Separate stories in the same epic do not share their subtask wikis.
-Processes keep independent execution trees. The wiki shares only
-reusable findings with applicability and revisioned evidence; it is not general memory.
+Processes keep independent execution trees. The wiki shares reusable solutions
+with applicability and revisioned evidence. Contributions must help another process
+and add knowledge absent from the current ticket description and shared source
+requirement. Repeating requirements or reporting progress does not qualify.
+See the [wiki interface](../../packages/wiki/README.md) for contribution and revision rules.

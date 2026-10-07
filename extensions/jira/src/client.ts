@@ -62,6 +62,10 @@ export interface JiraIssue {
 		/** @internal */
 		status: {
 			/** @internal */
+			id?: string;
+			/** @internal */
+			name?: string;
+			/** @internal */
 			statusCategory: {
 				/** @internal */
 				key: string;
@@ -77,6 +81,23 @@ export interface JiraComment {
 
 	/** @internal */
 	body: string;
+}
+
+/** @internal */
+export interface JiraRemoteLink {
+	/** @internal */ id: number;
+	/** @internal */ globalId: string;
+	/** @internal */ object: {
+		/** @internal */ url: string;
+		/** @internal */ title: string;
+	};
+}
+
+/** @internal */
+export interface JiraTransition {
+	/** @internal */ id: string;
+	/** @internal */ name: string;
+	/** @internal */ to: JiraIssue["fields"]["status"];
 }
 
 /** @internal */
@@ -170,6 +191,8 @@ export function parseJiraProfiles(raw: unknown): Map<
 		token: string;
 		/** @internal */
 		epicLinkField?: string;
+		/** @internal */
+		project?: string;
 	}
 > {
 	const profiles = asUnknownRecord(asUnknownRecord(raw)?.profiles) ?? {};
@@ -193,11 +216,17 @@ export function parseJiraProfiles(raw: unknown): Map<
 					!/^customfield_\d+$/.test(profile.epic_link_field))
 			)
 				throw new Error("epic_link_field must identify a Jira custom field");
+			if (
+				profile.project !== undefined &&
+				(typeof profile.project !== "string" || !profile.project.trim())
+			)
+				throw new Error("project must identify a Jira project by ID or key");
 			return [
 				id,
 				{
 					baseUrl: jiraBaseUrl(profile.base_url),
 					token,
+					...(typeof profile.project === "string" ? { project: profile.project.trim() } : {}),
 					...(typeof profile.epic_link_field === "string"
 						? { epicLinkField: profile.epic_link_field }
 						: {}),
@@ -368,10 +397,10 @@ export class JiraClient {
 	}
 
 	/** @internal */
-	searchIssues(projectIds: readonly string[]) {
+	searchIssues(projectIds: readonly string[], triggerLabel?: string) {
 		if (!projectIds.length || projectIds.some((id) => !/^\d+$/.test(id)))
 			throw new Error("Select explicit Jira project IDs");
-		const jql = `project in (${projectIds.join(",")}) AND labels = "use-leitwerk" AND (labels not in ("leitwerk-done")) AND statusCategory != Done ORDER BY id ASC`;
+		const jql = `project in (${projectIds.join(",")}) AND labels = ${JSON.stringify(jiraTriggerLabel(triggerLabel))} AND (labels not in ("leitwerk-done")) AND statusCategory != Done ORDER BY id ASC`;
 		return this.#pages<JiraIssue>(
 			`search?jql=${encodeURIComponent(jql)}&fields=summary,description,labels,project,components,status`,
 			"issues",
@@ -452,6 +481,44 @@ export class JiraClient {
 	}
 
 	/** @internal */
+	listRemoteLinks(id: string, signal?: AbortSignal) {
+		return this.#request<JiraRemoteLink[]>(`issue/${encodeURIComponent(id)}/remotelink`, {
+			signal,
+		});
+	}
+
+	/** @internal */
+	upsertRemoteLink(
+		id: string,
+		link: Omit<JiraRemoteLink, "id">,
+		signal?: AbortSignal,
+	): Promise<Pick<JiraRemoteLink, "id">> {
+		return this.#request<Pick<JiraRemoteLink, "id">>(`issue/${encodeURIComponent(id)}/remotelink`, {
+			method: "POST",
+			body: JSON.stringify(link),
+			signal,
+		});
+	}
+
+	/** @internal */
+	async listTransitions(id: string, signal?: AbortSignal): Promise<JiraTransition[]> {
+		const result = await this.#request<{ transitions: JiraTransition[] }>(
+			`issue/${encodeURIComponent(id)}/transitions`,
+			{ signal },
+		);
+		return result.transitions;
+	}
+
+	/** @internal */
+	transitionIssue(id: string, transitionId: string, signal?: AbortSignal) {
+		return this.#request<void>(`issue/${encodeURIComponent(id)}/transitions`, {
+			method: "POST",
+			body: JSON.stringify({ transition: { id: transitionId } }),
+			signal,
+		});
+	}
+
+	/** @internal */
 	addComment(id: string, body: string) {
 		return this.#request<JiraComment>(`issue/${encodeURIComponent(id)}/comment`, {
 			method: "POST",
@@ -475,9 +542,19 @@ export class JiraClient {
 	}
 }
 
+/** Resolve and validate the change trigger; absent values preserve existing runs. @internal */
+export function jiraTriggerLabel(value: unknown = undefined): string {
+	if (value === undefined) return "use-leitwerk";
+	if (typeof value !== "string" || !/^[A-Za-z0-9_.-]{1,255}$/.test(value))
+		throw new Error(
+			"Jira trigger label must contain only letters, digits, dots, underscores or hyphens",
+		);
+	return value;
+}
+
 /** @public */
-export const jiraEligible = (issue: JiraIssue) =>
-	issue.fields.labels.includes("use-leitwerk") &&
+export const jiraEligible = (issue: JiraIssue, triggerLabel?: string) =>
+	issue.fields.labels.includes(jiraTriggerLabel(triggerLabel)) &&
 	!issue.fields.labels.includes("leitwerk-done") &&
 	issue.fields.status.statusCategory.key !== "done";
 /** Installation context paths and immutable issue IDs define launch identity. @public */

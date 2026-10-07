@@ -318,7 +318,11 @@ function deriveBranchAnchors(
 	return anchorByTurn;
 }
 
-function transitionLabel(transition: { outcome?: string; trigger?: string }): string | null {
+function transitionLabel(
+	transition: { outcome?: string; trigger?: string },
+	labels?: Readonly<Record<string, string>>,
+): string | null {
+	if (transition.trigger && labels?.[transition.trigger]) return labels[transition.trigger];
 	// Route every operator-facing edge label through the shared humanizer so the
 	// diagram shows nice Title Case names (e.g. `approve_plan` -> `Approve Plan`),
 	// consistent with action forms and ready for future localization.
@@ -375,7 +379,7 @@ export function buildProcessFlowView(rawGraph: ProcessGraphView): ProcessFlowVie
 	const terminalStatuses = new Set<ProcessTurnTerminalLifecycleStatus>();
 	for (const [turnId, turn] of graph.turns) {
 		for (const transition of turn.transitions) {
-			const label = transitionLabel(transition);
+			const label = transitionLabel(transition, turn.transitionLabels);
 			if (transition.lifecycleStatus !== undefined) {
 				terminalStatuses.add(transition.lifecycleStatus);
 				edges.push({

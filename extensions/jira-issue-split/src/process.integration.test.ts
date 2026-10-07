@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { SettingsSubject, WikiPage, WikiTopic } from "@leitwerk-dev/domain";
+import type { SettingsSubject } from "@leitwerk-dev/domain";
 import { gitSshIntegration } from "@leitwerk-dev/git-ssh";
 import { setupGitLabIntegration } from "@leitwerk-dev/gitlab/testing";
 import jiraExtension, { setupJiraIntegration } from "@leitwerk-dev/jira";
@@ -9,21 +9,22 @@ import { createJiraGitLabLauncher } from "@leitwerk-dev/jira-gitlab-change";
 import { buildProcessWatchers } from "@leitwerk-dev/process-sdk";
 import { fixtureModelProviders } from "@leitwerk-dev/test-support";
 import { createExtensionIntegrationHarness } from "@leitwerk-dev/test-support/integration";
+import type { WikiPage, WikiTopic } from "@leitwerk-dev/wiki";
 import { expect, it, onTestFinished } from "vitest";
-import splitter, { jiraEpicSplitProcess } from "./index.js";
+import splitter, { jiraIssueSplitProcess } from "./index.js";
 import { createSplitSources } from "./test-fixture.js";
 
 it.each([
 	"Epic",
 	"Story",
 ])("reviews a %s batch, shares evidence, survives restart, and publishes only approved tickets", async (sourceType) => {
-	const root = mkdtempSync(join(tmpdir(), "epic-flow-"));
+	const root = mkdtempSync(join(tmpdir(), "issue-flow-"));
 	onTestFinished(() => rmSync(root, { recursive: true, force: true }));
 	const { gitlab, jira } = createSplitSources(root, sourceType);
-	const originalCredentials = jiraEpicSplitProcess.repositoryCredentials;
-	jiraEpicSplitProcess.repositoryCredentials = () => [];
+	const originalCredentials = jiraIssueSplitProcess.repositoryCredentials;
+	jiraIssueSplitProcess.repositoryCredentials = () => [];
 	onTestFinished(() => {
-		jiraEpicSplitProcess.repositoryCredentials = originalCredentials;
+		jiraIssueSplitProcess.repositoryCredentials = originalCredentials;
 	});
 	const mapping = { ...createJiraGitLabLauncher().mapping, choices: undefined };
 	const test = await createExtensionIntegrationHarness({
@@ -34,7 +35,11 @@ it.each([
 				manifest: { id: "jira", version: "1" },
 				scopedSettings: jiraExtension.scopedSettings,
 				setupServer(api) {
-					setupJiraIntegration(api, { profiles: () => ["team"], client: () => jira });
+					setupJiraIntegration(
+						api,
+						{ profiles: () => ["team"], client: () => jira },
+						{ projects: new Map([["team", ["100"]]]) },
+					);
 				},
 			},
 			{
@@ -98,7 +103,7 @@ it.each([
 		expect(response.statusCode, response.body).toBe(200);
 	}
 	await mapRepositories([1], 0);
-	const watcher = buildProcessWatchers(jiraEpicSplitProcess)!.watchers.get("epic_split")!;
+	const watcher = buildProcessWatchers(jiraIssueSplitProcess)!.watchers.get("epic_split")!;
 	const event = {
 		jiraProfile: "team",
 		gitlabProfile: "team",

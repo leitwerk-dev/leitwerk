@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { flow, type LlmFlowBuilder } from "./flow.js";
+import { buildProcessFlowView } from "./process-flow-view.js";
+import { toProcessGraphView } from "./process-graph.js";
+import { validateLlmTurnDefinition } from "./turn-semantics.js";
 
 describe("flow", () => {
 	it.each([
@@ -12,6 +15,52 @@ describe("flow", () => {
 		expect(turn.id).toBe("example");
 		expect(turn.description("First description")).toBe(turn);
 		expect(turn.description("Updated description")).toBe(turn);
+	});
+
+	it("compiles waiting LLM external actions into fixed graph edges and validates them", () => {
+		const source = { kind: "fixture.mr", label: "Fix MR", config: {} };
+		const turn = flow
+			.llm("repair")
+			.description("Repair")
+			.waitFor(() => false)
+			.prompt("Repair")
+			.outcomeTool("done", (o) => o.description("Done").complete())
+			.externalAction("fix", source, (a) => a.label("Fix MR").to("repair"))
+			.externalAction("finish", source, (a) => a.label("Fix MR").complete());
+		const process = flow
+			.process("mr")
+			.displayName("MR")
+			.entry("repair")
+			.codecs({
+				params: { parse: () => ({}), serialize: (v) => v },
+				state: { parse: () => ({}), serialize: (v) => v },
+			})
+			.initialState(() => ({}))
+			.turn(turn)
+			.define();
+		expect(toProcessGraphView(process).turns.get("repair")?.transitions).toContainEqual(
+			expect.objectContaining({ nextTurnId: "repair", trigger: "external:fix" }),
+		);
+		expect(buildProcessFlowView(toProcessGraphView(process)).edges).toContainEqual(
+			expect.objectContaining({ label: "Fix MR", lifecycleStatus: "completed" }),
+		);
+		expect(
+			validateLlmTurnDefinition("repair", { ...turn.definition, waitFor: undefined }),
+		).toContain("LLM turn 'repair' external actions require .waitFor(...)");
+		expect(
+			validateLlmTurnDefinition("repair", {
+				...turn.definition,
+				externalActions: { fix: { id: "wrong", source } },
+			}),
+		).toEqual(
+			expect.arrayContaining([
+				expect.stringContaining("mismatched id"),
+				expect.stringContaining("exactly one target"),
+			]),
+		);
+		expect(() => turn.externalAction("fix", source, (a) => a.complete())).toThrow(
+			"duplicate external action",
+		);
 	});
 
 	it("builds a discoverable plan-producing LLM turn", async () => {

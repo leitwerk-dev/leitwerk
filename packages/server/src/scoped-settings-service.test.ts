@@ -1,5 +1,5 @@
 import { ADMIN_ACTOR } from "@leitwerk-dev/domain";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	createScopedSettingsService,
 	normalizeSettingsLocator,
@@ -516,7 +516,11 @@ describe("scoped settings", () => {
 		settings.write(saved);
 		const field = (await settings.preview("instance")).fields.find((f) => f.key === definition.key);
 		expect(field?.effective?.value).toBe(saved.value);
-		expect(field?.error).toContain("Repository discovery unavailable");
+		expect(field?.error).toBeNull();
+		expect(field?.choicesDeferred).toBe(true);
+		await expect(settings.choices("instance", definition.key)).rejects.toThrow(
+			"Repository discovery unavailable",
+		);
 		const draft = await settings.previewDraft({
 			...saved,
 			value: "Local draft",
@@ -526,5 +530,120 @@ describe("scoped settings", () => {
 			"Local draft",
 		);
 		expect(settings.resolve(definition, {}).value).toBe(saved.value);
+	});
+	it("loads, previews and saves values without waiting for dynamic choices", async () => {
+		const pending = Promise.withResolvers<readonly { value: string; label: string }[]>();
+		const choices = vi.fn(() => pending.promise);
+		const definition = { ...instructions, choices };
+		const { settings } = await createSettingsFixture(undefined, [
+			{
+				...settingsExtension,
+				scopedSettings: {
+					...settingsExtension.scopedSettings,
+					settings: [definition, repositoryInstructions, model],
+				},
+			},
+		]);
+		const saved = {
+			subjectId: "instance",
+			key: definition.key,
+			value: "Retained",
+			mode: "replace" as const,
+			reset: false,
+			expectedRevision: 0,
+			actor: ADMIN_ACTOR,
+		};
+		settings.write(saved);
+		expect((await settings.preview("instance")).fields[0]).toMatchObject({
+			effective: { value: "Retained" },
+			choicesDeferred: true,
+		});
+		expect(
+			(await settings.previewDraft({ ...saved, value: "Draft" })).fields[0].effective?.value,
+		).toBe("Draft");
+		expect(choices).not.toHaveBeenCalled();
+		const result = settings.choices("instance", definition.key, "repo");
+		expect(choices).toHaveBeenCalledWith(
+			{ instance: "instance" },
+			{ search: "repo", values: ["Retained"] },
+		);
+		pending.resolve([{ value: "repo", label: "Repository" }]);
+		expect(await result).toEqual([{ value: "repo", label: "Repository" }]);
+		await expect(settings.choices("instance", "missing")).rejects.toThrow();
+	});
+	it("labels saved selections without remote reads and only searches after the declared minimum", async () => {
+		const choices = vi.fn(async () => [{ value: "match", label: "Matching repository" }]);
+		const definition = {
+			...instructions,
+			key: "settings-test.repositories",
+			merge: "replace" as const,
+			defaultValue: [] as string[],
+			form: { ...instructions.form, control: "multiselect" as const, search: { minimumLength: 2 } },
+			schema: {
+				parse(value: unknown) {
+					if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string"))
+						throw new Error("Expected selections");
+					return value as string[];
+				},
+			},
+			choiceLabel: (value: string) => `Known ${value}`,
+			choices,
+		};
+		const { settings } = await createSettingsFixture(undefined, [
+			{
+				...settingsExtension,
+				scopedSettings: {
+					...settingsExtension.scopedSettings,
+					settings: [definition, instructions, repositoryInstructions, model],
+				},
+			},
+		]);
+		write(settings, { subjectId: "instance", key: definition.key, value: ["saved"] });
+		expect((await settings.preview("instance")).fields[0].choices).toEqual([
+			{ value: "saved", label: "Known saved" },
+		]);
+		expect(await settings.choices("instance", definition.key)).toEqual([]);
+		expect(await settings.choices("instance", definition.key, " r ")).toEqual([]);
+		expect(choices).not.toHaveBeenCalled();
+		expect(await settings.choices("instance", definition.key, "repo")).toHaveLength(1);
+		expect(choices).toHaveBeenCalledWith(
+			{ instance: "instance" },
+			{ search: "repo", values: ["saved"] },
+		);
+	});
+	it("hides retained subjects outside configured discovery without losing their overrides", async () => {
+		const { settings, repos } = await createSettingsFixture();
+		const projects = ["configured", "outside"].map((identity) =>
+			settings.discover({ scopeType: "settings-test.project", identity, label: identity }),
+		);
+		const components = projects.map((parent) =>
+			settings.discover({
+				scopeType: "settings-test.project-issue-type",
+				identity: parent.identity,
+				label: parent.label,
+				context: { [parent.scopeType]: parent.id },
+			}),
+		);
+		write(settings, {
+			subjectId: components[1].id,
+			key: instructions.key,
+			value: "Retained outside scope",
+		});
+		settings.registerDiscovery("settings-test.project-issue-type", async () => [], {
+			includesSubject: (_subject, context) =>
+				context["settings-test.project"]?.identity === "configured",
+		});
+		expect(
+			settings
+				.listScopes()
+				.subjects.filter((subject) => subject.scopeType === "settings-test.project-issue-type")
+				.map((subject) => subject.id),
+		).toEqual([components[0].id]);
+		expect(
+			(await settings.preview(components[1].id)).fields.find(
+				(field) => field.key === instructions.key,
+			)?.effective?.value,
+		).toBe("Retained outside scope");
+		expect(repos.scopedSettings.getSubject(components[1].id)).not.toBeNull();
 	});
 });

@@ -3,9 +3,16 @@
 	"compilerOptions": {
 		"outDir": "dist",
 		"rootDir": "src",
-		"types": ["node"]
+		"lib": ["ES2024", "DOM", "DOM.Iterable"]
 	},
 	"include": ["src"],
 	"exclude": ["src/**/*.test.ts"],
-	"references": []
+	"references": [
+		{
+			"path": "../domain"
+		},
+		{
+			"path": "../process-sdk"
+		}
+	]
 }

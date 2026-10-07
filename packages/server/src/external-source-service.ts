@@ -22,7 +22,6 @@ import {
 	getExternalActionTransitionTrigger,
 	getExternalSourceTransitionId,
 	isExternalTurnDefinition,
-	isHumanTurnDefinition,
 } from "@leitwerk-dev/process-sdk";
 import { generateId, now } from "./db/repo-helpers.js";
 import type { PendingExternalSourceFire, RepositoryBundle } from "./db/repositories.js";
@@ -447,9 +446,6 @@ export function createExternalSourceService(
 			return armed;
 		}
 
-		if (!isHumanTurnDefinition(turnDef) && turnDef.kind !== "automatic") {
-			return [];
-		}
 		for (const [externalActionId, action] of Object.entries(turnDef.externalActions ?? {})) {
 			if (action.when && !action.when({ ...context })) {
 				continue;
@@ -535,14 +531,13 @@ export function createExternalSourceService(
 		}
 		for (const [turnId, binding] of processDef.turns) {
 			const turnDef = binding.definition;
-			if (isHumanTurnDefinition(turnDef) || turnDef.kind === "automatic") {
+			if (turnDef.kind !== "external") {
 				for (const [externalActionId, action] of Object.entries(turnDef.externalActions ?? {})) {
 					if (getExternalActionArmingId({ turnId, externalActionId }) === armingId) {
 						return { turnId, externalActionId, sourceKind: action.source.kind };
 					}
 				}
-			}
-			if (isExternalTurnDefinition(turnDef)) {
+			} else {
 				for (const [index, transition] of turnDef.transitions.entries()) {
 					const id = getExternalSourceTransitionId({
 						turnId,
@@ -941,6 +936,21 @@ export function createExternalSourceService(
 				refreshedAt: recordedAt,
 			};
 			const writes = createWrites();
+			if (input.state !== undefined) {
+				const definition = ctx.deps.processGraphs.get(ctx.process.processId);
+				if (!definition) return reject("process_not_found", "Process definition is unavailable");
+				try {
+					const state = definition.stateCodec.parse(input.state);
+					applyProcessPatchField(
+						writes,
+						ctx.process,
+						"stateJson",
+						JSON.stringify(definition.stateCodec.serialize(state)),
+					);
+				} catch {
+					return reject("invalid_process_state", "Invalid observation state");
+				}
+			}
 			writes.turnAnnotationWrites.push(
 				previous
 					? { kind: "update", id: previous.id, input: { payload, updatedAt: recordedAt } }

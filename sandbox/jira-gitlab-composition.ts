@@ -9,7 +9,6 @@ import { LocalGitLabAdapter, setupGitLabIntegration } from "@leitwerk-dev/gitlab
 import { createGitLabRepoChange } from "@leitwerk-dev/gitlab-repo-change";
 import jira, { jiraSubjectIdentity, setupJiraIntegration } from "@leitwerk-dev/jira";
 import { createJiraGitLabChange } from "@leitwerk-dev/jira-gitlab-change";
-import { repositorySettingsIdentity, scopedSettingsCapability } from "@leitwerk-dev/process-sdk";
 import { createPollingTestExtension, fixtureModelProviders } from "@leitwerk-dev/test-support";
 import { LocalGit } from "@leitwerk-dev/test-support/local-git";
 import { jiraGitLabScripts } from "./jira-gitlab-scripts.js";
@@ -44,16 +43,6 @@ const composition: SandboxCompositionFactory = (input) => {
 			scopedSettings: jira.scopedSettings,
 		},
 		createPollingTestExtension({ id: "gitlab", version: "0.3.0" }, (api) => {
-			const settings = api.require(scopedSettingsCapability);
-			if (Array.isArray(settings)) throw new Error("Settings must be singular");
-			settings.registerDiscovery("repository", async () =>
-				gitlab.state.projects.map((project) => ({
-					scopeType: "repository",
-					identity: repositorySettingsIdentity(gitlab.baseUrl, project.id),
-					label: project.path_with_namespace,
-					aliases: [project.http_url_to_repo],
-				})),
-			);
 			return setupGitLabIntegration(
 				api,
 				{ profiles: () => ["sandbox"], client: client(gitlab.client()) },
@@ -214,7 +203,7 @@ const composition: SandboxCompositionFactory = (input) => {
 				return reply
 					.type("text/plain")
 					.send(
-						`${issue.key}: ${issue.fields.summary}\n\n${issue.fields.description}\n\nLabels: ${issue.fields.labels.join(", ")}\n\n${(store.state.comments[issue.id] ?? []).map((comment) => comment.body).join("\n\n")}`,
+						`${issue.key}: ${issue.fields.summary}\n\n${issue.fields.description}\n\nStatus: ${issue.fields.status.name ?? issue.fields.status.statusCategory.key}\nLabels: ${issue.fields.labels.join(", ")}\n\nLinks:\n${(store.state.remoteLinks[issue.id] ?? []).map((link) => `${link.object.title}: ${link.object.url}`).join("\n")}\n\n${(store.state.comments[issue.id] ?? []).map((comment) => comment.body).join("\n\n")}`,
 					);
 			});
 			context.app.get<{ Params: { repo: string; iid: string } }>(

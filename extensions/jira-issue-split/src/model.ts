@@ -1,5 +1,5 @@
 import { asUnknownRecord } from "@leitwerk-dev/domain";
-import { type JiraIssue, jiraIsEpic } from "@leitwerk-dev/jira";
+import { type JiraIssue, jiraIsEpic, ticketDescriptionMarkdown } from "@leitwerk-dev/jira";
 import {
 	type Codec,
 	createEmptyStructuralProcessState,
@@ -210,13 +210,27 @@ export const splitStateCodec: Codec<SplitState> = {
 };
 
 /** @internal */
+export function splitTicketDescription(
+	params: SplitParams,
+	repository: SplitRepository,
+	draft: SplitDraft,
+): string {
+	return ticketDescriptionMarkdown(draft.description, {
+		repositoryName: repository.name,
+		repositoryUrl: `${repository.origin.replace(/\/$/, "")}/${repository.name.split("/").map(encodeURIComponent).join("/")}`,
+		sourceKey: params.epic.key,
+		sourceUrl: `${params.jiraBaseUrl.replace(/\/$/, "")}/browse/${encodeURIComponent(params.epic.key)}`,
+	});
+}
+
+/** @internal */
 export function batchMarkdown(params: SplitParams, state: SplitState): string {
 	return `# ${params.epic.key}: repository tickets\n\n[Shared solution wiki](/wiki/${params.topicId})\n\n${params.subtaskType ? `Subtask type: ${params.subtaskType.name} (${params.subtaskType.id}).\n\n` : ""}Labels selected for new tickets: ${state.labels.join(", ") || "none"}.\n\n${state.drafts
 		.map((draft) => {
 			const repository = params.repositories.find(
 				(candidate) => candidate.key === draft.repositoryKey,
 			);
-			return `## ${repository?.name ?? draft.repositoryKey}\n\n${draft.receipt ? `[${draft.receipt.key}](${draft.receipt.url}) — published` : draft.excluded ? "Excluded by operator" : `${draft.verdict}${draft.blocked ? ` — BLOCKED: ${draft.blocked}` : ""}`}\n\n${draft.reason}\n\nEvidence: ${draft.evidence}\n\nInspected revision: ${draft.revision || "unavailable"}\n\n${draft.summary ? `### ${draft.issueType}: ${draft.summary}\n\n${draft.description}\n\nComponents: ${draft.componentIds.join(", ") || "mapping required"}` : ""}`;
+			return `## ${repository?.name ?? draft.repositoryKey}\n\n${draft.receipt ? `[${draft.receipt.key}](${draft.receipt.url}) — published` : draft.excluded ? "Excluded by operator" : `${draft.verdict}${draft.blocked ? ` — BLOCKED: ${draft.blocked}` : ""}`}\n\n${draft.reason}\n\n${draft.summary ? `### ${draft.issueType}: ${draft.summary}\n\n${repository ? splitTicketDescription(params, repository, draft) : draft.description}\n\nComponents: ${draft.componentIds.join(", ") || "mapping required"}\n\n` : ""}### Inspection evidence\n\n${draft.evidence}\n\nInspected revision: ${draft.revision || "unavailable"}`;
 		})
 		.join("\n\n")}`;
 }

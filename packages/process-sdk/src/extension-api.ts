@@ -893,8 +893,8 @@ export interface RepositoryCredentialRegistrar {
 
 /** @public */
 export interface ProcessRuntimeCapabilities {
-	/** Defer full clones until checkout_repository is called for a bound project. @public */
-	readonly repositoryCheckout?: "eager" | "on_demand";
+	/** Choose eager clones, on-demand checkout, or no local checkout. @public */
+	readonly repositoryCheckout?: "eager" | "on_demand" | "none";
 	/** Install repository-declared development tools with mise before accepting work. @internal */
 	readonly developmentTools?: boolean;
 	/** Require a Docker CLI connected to a private or explicitly acknowledged daemon. @public */

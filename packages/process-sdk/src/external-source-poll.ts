@@ -57,7 +57,10 @@ export function createExternalSourcePollReporter(
 			return fired.ok;
 		},
 		/** @public */
-		observe(armed: Arming, input: Pick<ExternalObservationInput, "observation" | "refreshError">) {
+		observe(
+			armed: Arming,
+			input: Pick<ExternalObservationInput, "observation" | "refreshError" | "state">,
+		) {
 			if (current(armed) && sources.observe && armed.generation)
 				return sources.observe({
 					instanceId: armed.instanceId,
@@ -78,34 +81,13 @@ export interface ExternalSourcePollReporter {
 	/** @public */
 	observe(
 		armed: Arming,
-		input: Pick<ExternalObservationInput, "observation" | "refreshError">,
+		input: Pick<ExternalObservationInput, "observation" | "refreshError" | "state">,
 	): ReturnType<NonNullable<ExternalSourceServiceLike["observe"]>> | undefined;
 	/** Compare the captured identity, generation and resolved value with a live subscription. @public */
 	isCurrent(kind: string, armed: Arming): boolean;
 }
 /** A captured generation and resolved identity must still be armed after provider I/O. @internal */
-function sameSubscription(
-	captured: {
-		/** @internal */
-		id: string;
-		/** @internal */
-		instanceId: string;
-		/** @internal */
-		generation?: string;
-		/** @internal */
-		resolved: unknown;
-	},
-	current: {
-		/** @internal */
-		id: string;
-		/** @internal */
-		instanceId: string;
-		/** @internal */
-		generation?: string;
-		/** @internal */
-		resolved: unknown;
-	},
-): boolean {
+function sameSubscription(captured: Arming, current: Arming): boolean {
 	return (
 		current.id === captured.id &&
 		current.instanceId === captured.instanceId &&

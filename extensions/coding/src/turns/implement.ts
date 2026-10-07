@@ -23,5 +23,7 @@ Rules:
 - leave changes uncommitted; delivery owns commits and pushes
 - do not read from or write to any original source repository path outside the process workspace
 - keep the implementation coherent and complete
+- keep the number of changed files small
+- when documenting, be sparse. Do not narrate the implementation or maintain a prose inventory of tests, helpers, internal environment variables, or cleanup mechanics.
 - publish the implementation summary when done`;
 }

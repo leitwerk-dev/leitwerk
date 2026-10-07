@@ -6,6 +6,7 @@ import {
 	jiraIntegration,
 	jiraIssueExternalId,
 	jiraSplitEligible,
+	jiraWikiSource,
 } from "@leitwerk-dev/jira";
 import {
 	coreHostCapabilities,
@@ -14,9 +15,9 @@ import {
 	type ProcessLauncherDefinition,
 	scopedSettingsCapability,
 	stringArg,
-	topicWikiCapability,
 } from "@leitwerk-dev/process-sdk";
 import { createPollSchedule, emptyPollResult, parseDurationMs } from "@leitwerk-dev/watcher-utils";
+import { topicWikiCapability } from "@leitwerk-dev/wiki/integration";
 import type { SplitParams } from "./model.js";
 import { createSplitProcess } from "./process.js";
 import {
@@ -33,10 +34,11 @@ function configured(): SplitServices {
 }
 
 /** @internal */
-export const epicSplitSource = defineProcessWatcherSource<
+export const issueSplitSource = defineProcessWatcherSource<
 	Record<string, unknown>,
 	Record<string, unknown>
 >({
+	// Retain the source identity used by existing watcher configurations.
 	id: "@leitwerk-dev/jira-epic-split.epic",
 	label: "Jira issue split label",
 	parseConfig(raw) {
@@ -163,8 +165,8 @@ const launcher: ProcessLauncherDefinition<SplitParams> = {
 };
 
 /** @internal */
-export const jiraEpicSplitProcess = createSplitProcess(launcher, {
-	source: epicSplitSource,
+export const jiraIssueSplitProcess = createSplitProcess(launcher, {
+	source: issueSplitSource,
 	async resolve(event) {
 		const issue = event.issue as JiraIssue;
 		const launch = await launchSplit(configured(), { ...event, issue: issue.id });
@@ -183,12 +185,12 @@ export const jiraEpicSplitProcess = createSplitProcess(launcher, {
 /** @internal */
 const extension: LeitwerkExtensionModule = {
 	manifest: {
-		id: "jira-epic-split",
+		id: "jira-issue-split",
 		version: "0.3.1",
 		requires: ["jira", "gitlab", "git-ssh", "jira-gitlab-change"],
 	},
 	setupCatalog(api) {
-		api.registerProcess(jiraEpicSplitProcess);
+		api.registerProcess(jiraIssueSplitProcess);
 	},
 	setupServer(api) {
 		const jira = api.require(jiraIntegration),
@@ -206,17 +208,18 @@ const extension: LeitwerkExtensionModule = {
 			Array.isArray(host)
 		)
 			throw new Error("Issue split integration capabilities must be singular");
-		services = { jira, gitlab, ssh, settings, wiki, serverBaseUrl: host.serverBaseUrl };
+		services = { jira, gitlab, ssh, settings, wiki, publications: host.publications };
+		wiki.registerProcessSource(jiraIssueSplitProcess.id, jiraWikiSource(wiki, jira));
 		registerSplitTools(api, services);
 		const shouldPoll = createPollSchedule();
 		host.polling.create({
-			id: "jira-epic-split",
+			id: "jira-issue-split",
 			pollInterval: () => "5s",
 			defaultIntervalMs: 5000,
 			isEnabled: () => true,
 			async pollOnce() {
 				const result = emptyPollResult();
-				for (const watcher of host.processWatchers?.listBySource(epicSplitSource) ?? []) {
+				for (const watcher of host.processWatchers?.listBySource(issueSplitSource) ?? []) {
 					const key = `${watcher.processId}:${watcher.watcherId}`;
 					if (!watcher.enabled || !shouldPoll(key, String(watcher.config.pollInterval))) continue;
 					try {

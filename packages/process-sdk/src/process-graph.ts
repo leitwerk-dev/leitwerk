@@ -23,6 +23,8 @@ export interface ProcessGraphTurnView {
 	description: string;
 	/** @internal */
 	transitions: readonly ProcessTurnTransition[];
+	/** Display labels for external triggers; durable route identities remain unchanged. @internal */
+	transitionLabels?: Readonly<Record<string, string>>;
 	/** @internal */
 	reviewProduct?: string;
 	/** @internal */
@@ -71,15 +73,17 @@ function turnPublishedProducts(definition: TurnDefinition<unknown, unknown>): st
 				}
 			}
 		}
-		for (const action of Object.values(definition.externalActions ?? {})) {
-			if (action.publishInput) {
-				products.add(action.publishInput.productName);
-			}
-		}
 	} else if (definition.kind === "llm" || definition.kind === "automatic") {
 		for (const outcome of Object.values(definition.outcomes ?? {})) {
 			if (typeof outcome?.publishedProduct === "string") {
 				products.add(outcome.publishedProduct);
+			}
+		}
+	}
+	if (definition.kind !== "external") {
+		for (const action of Object.values(definition.externalActions ?? {})) {
+			if (action.publishInput) {
+				products.add(action.publishInput.productName);
 			}
 		}
 	}
@@ -91,10 +95,20 @@ function toTurnView(
 ): ProcessGraphTurnView {
 	const definition = binding.definition;
 	const publishedProducts = turnPublishedProducts(definition);
+	const transitionLabels =
+		definition.kind !== "external"
+			? Object.fromEntries(
+					Object.entries(definition.externalActions ?? {}).flatMap(([id, action]) => {
+						const label = action.label ?? action.source.label;
+						return label ? [[`external:${id}`, label]] : [];
+					}),
+				)
+			: {};
 	return {
 		turnType: definition.kind,
 		description: definition.description,
 		transitions: getProcessTurnTransitions(binding),
+		...(Object.keys(transitionLabels).length ? { transitionLabels } : {}),
 		...(definition.kind === "human" && definition.reviewProduct
 			? { reviewProduct: definition.reviewProduct }
 			: {}),

@@ -136,6 +136,22 @@ function createDefaultServerSetupDeps(): CoreServerSetupDeps {
 		serverBaseUrl: "https://leitwerk.example",
 		components: {},
 		externalWrites: createInMemoryExternalWriteLog(),
+		publications: {
+			publication: () => null,
+			publicationByExternalId: () => null,
+			reservePublication() {
+				throw new Error("Configure publication storage for this test");
+			},
+			finishPublication() {
+				throw new Error("Configure publication storage for this test");
+			},
+			releaseRejectedPublication() {
+				throw new Error("Configure publication storage for this test");
+			},
+			markPublicationTriggered() {
+				throw new Error("Configure publication storage for this test");
+			},
+		},
 		polling: {
 			create(options) {
 				return { poll: options.pollOnce };
@@ -161,6 +177,7 @@ function createDefaultServerSetupDeps(): CoreServerSetupDeps {
 		events: { create: () => {}, listByInstance: () => [] },
 		broadcaster: { sendDurable: () => {} },
 		commands: {
+			applyProcessObservation: async () => ({ ok: true, process: null }),
 			getDeferredProcessActivationSnapshots: () => ({ outcome: "process_not_found" }),
 			activateDeferredProcess: async () => ({
 				ok: true,

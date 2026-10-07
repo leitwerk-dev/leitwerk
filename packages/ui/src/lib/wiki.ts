@@ -1,5 +1,9 @@
-import type { WikiPage, WikiTopic } from "@leitwerk-dev/domain";
-import { apiResponseError, requestJson } from "./http-client.js";
+import { createWikiClient, type WikiUiHost } from "@leitwerk-dev/wiki/ui";
+import ExternalLink from "../components/ExternalLink.svelte";
+import PageHeader from "../components/PageHeader.svelte";
+import { ApiResponseError, apiResponseError, requestJson } from "./http-client.js";
+import { renderMarkdownToHtml } from "./markdown.js";
+import { followLink, navigate } from "./router.svelte.js";
 
 /** @internal */
 export function notifyWikiUpdated(topicId: string): void {
@@ -14,42 +18,17 @@ export function onWikiUpdated(listener: (topicId: string) => void): () => void {
 	return () => window.removeEventListener("leitwerk:wiki-updated", handler);
 }
 
+const client = createWikiClient((input) =>
+	requestJson({ ...input, error: apiResponseError(input.error) }),
+);
 /** @internal */
-export function fetchWikiTopics(): Promise<{ topics: WikiTopic[] }> {
-	return requestJson({
-		path: "/api/wiki/topics",
-		malformed: "Malformed wiki index",
-		error: apiResponseError("Couldn't load solution wikis"),
-	});
-}
-
-/** @internal */
-export function fetchWikiTopic(topicId: string): Promise<{ topic: WikiTopic; pages: WikiPage[] }> {
-	return requestJson({
-		path: `/api/wiki/topics/${encodeURIComponent(topicId)}`,
-		malformed: "Malformed wiki",
-		error: apiResponseError("Couldn't load this wiki"),
-	});
-}
-
-/** @internal */
-export function fetchWikiHistory(
-	topicId: string,
-	pageId: string,
-): Promise<{ revisions: WikiPage[] }> {
-	return requestJson({
-		path: `/api/wiki/topics/${encodeURIComponent(topicId)}/pages/${encodeURIComponent(pageId)}/history`,
-		malformed: "Malformed revision history",
-		error: apiResponseError("Couldn't load entry history"),
-	});
-}
-
-/** @internal */
-export function deleteWikiPage(page: WikiPage): Promise<{ deleted: boolean }> {
-	return requestJson({
-		path: `/api/wiki/topics/${encodeURIComponent(page.topicId)}/pages/${encodeURIComponent(page.id)}?revision=${page.revision}`,
-		init: { method: "DELETE" },
-		malformed: "Malformed deletion response",
-		error: apiResponseError("Couldn't delete this entry; refresh and try again"),
-	});
-}
+export const wikiUiHost: WikiUiHost = {
+	client,
+	renderMarkdownToHtml,
+	followLink,
+	navigate,
+	onWikiUpdated,
+	PageHeader,
+	ExternalLink,
+	errorStatus: (error) => (error instanceof ApiResponseError ? error.status : undefined),
+};

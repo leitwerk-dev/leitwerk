@@ -1,9 +1,14 @@
 <script lang="ts">
 import type { ResolvedSetting } from "@leitwerk-dev/domain";
-import type { SettingFieldView, SettingsPreview } from "@leitwerk-dev/protocol/http-contracts";
-import { tick } from "svelte";
+import type {
+	SettingChoice,
+	SettingFieldView,
+	SettingsPreview,
+} from "@leitwerk-dev/protocol/http-contracts";
+import { tick, untrack } from "svelte";
 import {
 	changeSettings,
+	fetchSettingsChoices,
 	fetchSettingsPreview,
 	type SettingsChange,
 	SettingsRequestError,
@@ -26,22 +31,43 @@ let notice = $state("");
 let conflict = $state(false);
 let combined = $state<ResolvedSetting | null>(null);
 let previewError = $state("");
+let remoteChoices = $state<SettingChoice[]>([]);
+let choicesLoading = $state(false);
+let choicesError = $state("");
+let choicesLoaded = $state(false);
+let choicesRefresh = $state(0);
+const mergeChoices = (...lists: SettingChoice[][]) => [
+	...new Map(lists.flat().map((choice) => [choice.value, choice])).values(),
+];
+const choices = $derived(
+	field.choicesDeferred ? mergeChoices(field.choices, remoteChoices) : field.choices,
+);
+const searchMinimum = $derived(field.form.search?.minimumLength ?? 0);
+const needsSearch = $derived(searchMinimum > 0 && search.trim().length < searchMinimum);
 const inputId = $derived(`setting-${subjectId}-${field.key}`);
 const instructions = $derived(field.merge === "instructions");
 const activeOverride = $derived(field.override && !field.override.reset ? field.override : null);
 const selected = $derived(
 	Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [],
 );
+const retainedChoices = (saved: unknown) =>
+	remoteChoices.filter(
+		(choice) =>
+			selected.includes(choice.value) || (Array.isArray(saved) && saved.includes(choice.value)),
+	);
 const selectionChoices = $derived([
 	...selected
-		.filter((value) => !field.choices.some((choice) => choice.value === value))
+		.filter((value) => !choices.some((choice) => choice.value === value))
 		.map((value) => ({ value, label: `${value} (unavailable)`, disabledReason: undefined })),
-	...field.choices,
+	...choices,
 ]);
 const visibleChoices = $derived(
 	selectionChoices.filter(
 		(choice) =>
-			selected.includes(choice.value) || choice.label.toLowerCase().includes(search.toLowerCase()),
+			selected.includes(choice.value) ||
+			(searchMinimum > 0
+				? !needsSearch || field.choices.some((saved) => saved.value === choice.value)
+				: choice.label.toLowerCase().includes(search.trim().toLowerCase())),
 	),
 );
 function toggleChoice(choice: string, checked: boolean) {
@@ -50,12 +76,19 @@ function toggleChoice(choice: string, checked: boolean) {
 		: selected.filter((entry) => entry !== choice);
 }
 function formatSelection(raw: unknown) {
+	if (
+		Array.isArray(raw) &&
+		raw.length &&
+		field.choicesDeferred &&
+		!choicesLoaded &&
+		raw.some((value) => !choices.some((choice) => choice.value === value))
+	)
+		return `${raw.length} selected`;
 	return Array.isArray(raw)
 		? raw
 				.map(
 					(value) =>
-						field.choices.find((choice) => choice.value === value)?.label ??
-						`${value} (unavailable)`,
+						choices.find((choice) => choice.value === value)?.label ?? `${value} (unavailable)`,
 				)
 				.join("; ") || "None selected"
 		: format(raw);
@@ -99,7 +132,47 @@ function change(reset = false): SettingsChange {
 	return { subjectId, key: field.key, value, mode, reset, expectedRevision: revision };
 }
 $effect(() => {
-	if (!editing) return;
+	if (!field.choicesDeferred) return;
+	const saved = field.effective?.value;
+	if (!editing && (!Array.isArray(saved) || !saved.length)) return;
+	const id = subjectId;
+	const key = field.key;
+	const query = editing ? search.trim() : "";
+	void choicesRefresh;
+	if (searchMinimum > 0) {
+		remoteChoices = untrack(() => retainedChoices(saved));
+		if (!editing || query.length < searchMinimum) {
+			choicesLoading = false;
+			choicesError = "";
+			return;
+		}
+	}
+	const controller = new AbortController();
+	choicesLoading = true;
+	choicesError = "";
+	const timer = setTimeout(() => {
+		void fetchSettingsChoices(id, key, query, controller.signal)
+			.then((result) => {
+				if (controller.signal.aborted) return;
+				remoteChoices = mergeChoices(retainedChoices(saved), result.choices);
+				choicesLoaded = true;
+			})
+			.catch((caught: unknown) => {
+				if (!controller.signal.aborted)
+					choicesError =
+						caught instanceof Error ? caught.message : "Could not load options. Try again.";
+			})
+			.finally(() => {
+				if (!controller.signal.aborted) choicesLoading = false;
+			});
+	}, 200);
+	return () => {
+		controller.abort();
+		clearTimeout(timer);
+	};
+});
+$effect(() => {
+	if (!editing || !instructions) return;
 	const draft = change();
 	let current = true;
 	const timer = setTimeout(() => {
@@ -178,19 +251,22 @@ async function useLatestRevision() {
 				</select>
 			{/if}
 			<label for={inputId}>{field.form.label} override</label>
+			{#if choicesLoading}<p class="source" role="status">{searchMinimum > 0 ? "Searching…" : "Loading options…"}</p>{/if}
+			{#if choicesError}<p class="error" role="alert">{choicesError}</p><button type="button" onclick={() => choicesRefresh++}>{searchMinimum > 0 ? "Retry search" : "Retry options"}</button>{/if}
 			{#if field.form.control === "multiselect"}
-				<input id={inputId} type="search" placeholder="Search options" bind:value={search} disabled={busy} aria-describedby={`${inputId}-count`} />
+				<input id={inputId} type="search" placeholder={field.form.search?.placeholder ?? "Search options"} bind:value={search} disabled={busy} onkeydown={(event) => { if (event.key === "Enter") event.preventDefault(); }} aria-describedby={`${inputId}-count${searchMinimum > 0 ? ` ${inputId}-search-help` : ""}`} />
 				<p id={`${inputId}-count`} class="source" aria-live="polite">{selected.length} selected</p>
+				{#if searchMinimum > 0}<p id={`${inputId}-search-help`} class="description">{needsSearch ? `Type at least ${searchMinimum} characters to search.` : "Select repositories from the matches below."}</p>{/if}
 				<div class="choices" role="group" aria-label={field.form.label}>
 					{#each visibleChoices as choice (choice.value)}
 						<label class="choice"><input type="checkbox" checked={selected.includes(choice.value)} disabled={busy || (Boolean(choice.disabledReason) && !selected.includes(choice.value))} onchange={(event) => toggleChoice(choice.value, event.currentTarget.checked)} /><span>{choice.label}{choice.disabledReason ? ` — ${choice.disabledReason}` : ""}</span></label>
-					{:else}<p class="description">No matching options. Refresh this scope to discover available repositories.</p>{/each}
+					{:else}{#if !choicesLoading && !choicesError && !needsSearch}<p class="description">No matching options. Try a different search.</p>{/if}{/each}
 				</div>
 			{:else if field.form.control === "model" || field.form.control === "select"}
 				<select id={inputId} value={String(value ?? "")} onchange={(event) => { value = event.currentTarget.value || (field.form.control === "model" ? null : ""); }} disabled={busy}>
 					{#if field.form.control === "model"}<option value="">Use YAML / catalog default</option>{/if}
-					{#if typeof value === "string" && !field.choices.some((choice) => choice.value === value)}<option value={value}>{value} (unavailable)</option>{/if}
-					{#each field.choices as choice (choice.value)}<option value={choice.value} disabled={Boolean(choice.disabledReason)}>{choice.label}{choice.disabledReason ? ` — ${choice.disabledReason}` : ""}</option>{/each}
+					{#if typeof value === "string" && !choices.some((choice) => choice.value === value)}<option value={value}>{value} (unavailable)</option>{/if}
+					{#each choices as choice (choice.value)}<option value={choice.value} disabled={Boolean(choice.disabledReason)}>{choice.label}{choice.disabledReason ? ` — ${choice.disabledReason}` : ""}</option>{/each}
 				</select>
 			{:else if field.form.control === "textarea"}
 				<textarea id={inputId} rows="6" value={String(value ?? "")} oninput={(event) => { value = event.currentTarget.value; }} disabled={busy}></textarea>

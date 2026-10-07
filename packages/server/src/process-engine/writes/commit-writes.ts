@@ -250,7 +250,9 @@ export function commitWrites(
 
 		const processAfter =
 			writes.changedFields.length > 0
-				? repos.processes.update(instanceId, writes.processPatch)
+				? repos.processes.update(instanceId, writes.processPatch, {
+						preserveUpdatedAt: writes.preserveUpdatedAt,
+					})
 				: repos.processes.getById(instanceId);
 		const committedProject = writes.projectWrite
 			? repos.projects.update(writes.projectWrite.id, writes.projectWrite.input)
@@ -335,7 +337,8 @@ export function deriveReactions(
 			...(includeClosedAt ? { closedAt: commit.processAfter?.closedAt ?? null } : {}),
 		};
 		let changedFields =
-			commit.processAfter?.updatedAt && !writes.changedFields.includes("updatedAt")
+			commit.processAfter?.updatedAt !== commit.processBefore?.updatedAt &&
+			!writes.changedFields.includes("updatedAt")
 				? [...writes.changedFields, "updatedAt"]
 				: writes.changedFields;
 		if (includeClosedAt && !changedFields.includes("closedAt")) {

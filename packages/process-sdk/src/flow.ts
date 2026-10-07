@@ -1124,6 +1124,54 @@ abstract class DescribedTurnBuilder {
 	}
 }
 
+type StoredExternalActionBuilder<TParams, TState> = ExternalActionBuilder<
+	TParams,
+	TState,
+	unknown,
+	Record<string, unknown>
+>;
+
+/** @public */
+abstract class ExternalActionTurnBuilder<TParams, TState> extends DescribedTurnBuilder {
+	/** @internal */
+	protected abstract readonly turnKind: "LLM" | "Automatic" | "Human";
+	private externalActionBuilders = new Map<string, StoredExternalActionBuilder<TParams, TState>>();
+
+	/** @public */
+	externalAction<
+		TEvent = unknown,
+		TInput extends Record<string, unknown> = Record<string, unknown>,
+	>(
+		externalActionId: string,
+		source: ExternalActionSource<TParams, TState, TEvent, TInput>,
+		configure: (
+			external: ExternalActionBuilder<TParams, TState, TEvent, TInput>,
+		) => ExternalActionBuilder<TParams, TState, TEvent, TInput> | undefined,
+	): this {
+		if (this.externalActionBuilders.has(externalActionId)) {
+			throw new Error(
+				`${this.turnKind} turn '${this.turnId}' declares duplicate external action '${externalActionId}'`,
+			);
+		}
+		const builder = new ExternalActionBuilder(externalActionId, source);
+		configure(builder);
+		this.externalActionBuilders.set(
+			externalActionId,
+			builder as unknown as StoredExternalActionBuilder<TParams, TState>,
+		);
+		return this;
+	}
+
+	/** @internal */
+	protected buildExternalActions():
+		| Record<string, ProcessHumanTurnExternalActionSpec<TParams, TState>>
+		| undefined {
+		return this.externalActionBuilders.size > 0
+			? buildSpecs(this.externalActionBuilders)
+			: undefined;
+	}
+}
+
 function buildSpecs<T>(builders: ReadonlyMap<string, { build(): T }>): Record<string, T> {
 	return Object.fromEntries([...builders].map(([id, builder]) => [id, builder.build()]));
 }
@@ -1182,7 +1230,9 @@ abstract class LlmConfigurationBuilder<
 	TConsumedProducts extends string,
 	TPrepared,
 	TFamily extends LlmBuilderFamily,
-> extends DescribedTurnBuilder {
+> extends ExternalActionTurnBuilder<TParams, TState> {
+	/** @internal */
+	protected readonly turnKind = "LLM";
 	private readonly configuration: Omit<
 		LlmTurnDefinition<string, TParams, TState>,
 		"kind" | "description" | "prompt" | "outcomes" | "turnEnd" | "forEach"
@@ -1414,8 +1464,10 @@ abstract class LlmConfigurationBuilder<
 		if (!prompt) {
 			throw new Error(`LLM turn '${this.turnId}' must declare .buildPrompt(...)`);
 		}
+		const externalActions = this.buildExternalActions();
 		return {
 			...this.configuration,
+			...(externalActions ? { externalActions } : {}),
 			kind: "llm",
 			description: this.turnDescription,
 			prompt,
@@ -1824,54 +1876,6 @@ export class MappedLlmFlowBuilder<
 			// The codecs preserve item/result types across the erased runtime definition boundary.
 			forEach: forEach as MappedLlmTurnSpec<TParams, TState>,
 		};
-	}
-}
-
-type StoredExternalActionBuilder<TParams, TState> = ExternalActionBuilder<
-	TParams,
-	TState,
-	unknown,
-	Record<string, unknown>
->;
-
-/** @public */
-abstract class ExternalActionTurnBuilder<TParams, TState> extends DescribedTurnBuilder {
-	/** @internal */
-	protected abstract readonly turnKind: "Automatic" | "Human";
-	private externalActionBuilders = new Map<string, StoredExternalActionBuilder<TParams, TState>>();
-
-	/** @public */
-	externalAction<
-		TEvent = unknown,
-		TInput extends Record<string, unknown> = Record<string, unknown>,
-	>(
-		externalActionId: string,
-		source: ExternalActionSource<TParams, TState, TEvent, TInput>,
-		configure: (
-			external: ExternalActionBuilder<TParams, TState, TEvent, TInput>,
-		) => ExternalActionBuilder<TParams, TState, TEvent, TInput> | undefined,
-	): this {
-		if (this.externalActionBuilders.has(externalActionId)) {
-			throw new Error(
-				`${this.turnKind} turn '${this.turnId}' declares duplicate external action '${externalActionId}'`,
-			);
-		}
-		const builder = new ExternalActionBuilder(externalActionId, source);
-		configure(builder);
-		this.externalActionBuilders.set(
-			externalActionId,
-			builder as unknown as StoredExternalActionBuilder<TParams, TState>,
-		);
-		return this;
-	}
-
-	/** @internal */
-	protected buildExternalActions():
-		| Record<string, ProcessHumanTurnExternalActionSpec<TParams, TState>>
-		| undefined {
-		return this.externalActionBuilders.size > 0
-			? buildSpecs(this.externalActionBuilders)
-			: undefined;
 	}
 }
 
@@ -2519,7 +2523,7 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 		/** @public */
 		docker?: boolean;
 		/** @internal */
-		repositoryCheckout?: "eager" | "on_demand";
+		repositoryCheckout?: "eager" | "on_demand" | "none";
 	}): this {
 		const runtime = {
 			...(capabilities.developmentTools === true ? { developmentTools: true } : {}),

@@ -234,6 +234,38 @@ describe("LaunchCoordinator reconciliation", () => {
 		});
 	});
 
+	it.each([
+		undefined,
+		"ticket-model",
+	])("validates event model %s ahead of inherited watcher defaults", async (eventProfile) => {
+		const prepare = vi.fn(async () => ({ ok: false, errors: [] }));
+		const { coordinator } = createWatcherHarness({ launchPlans: { prepare } });
+		await coordinator.startWatcher(
+			{
+				processId: "demo",
+				watcherId: "issues",
+				launchModelConfig: {
+					defaultModelProfileId: "watcher-default",
+					turnConfigs: { repair: { modelProfileId: "repair-model" } },
+				},
+				resolveLaunchAttempt: async () => ({
+					launchConfig: { params: {}, defaultModelProfileId: eventProfile },
+					launchPlan: { processId: "demo", processInput: {} },
+					preparationChecks: [],
+				}),
+			} as never,
+			{},
+			{ idempotencyKey: "watcher:model", actor: SYSTEM_ACTOR },
+		);
+		expect(prepare).toHaveBeenCalledWith(expect.anything(), {
+			modelConfig: {
+				defaultModelProfileId: eventProfile ?? "watcher-default",
+				turnConfigs: { repair: { modelProfileId: "repair-model" } },
+			},
+			invalidModelConfig: eventProfile ? "reject" : "omit",
+		});
+	});
+
 	it("retains safe watcher remediation without committing a process", async () => {
 		const createProcess = vi.fn();
 		const { coordinator } = createWatcherHarness({
