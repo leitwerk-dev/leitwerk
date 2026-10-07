@@ -32,7 +32,7 @@ function fixture(): Snapshot {
 		},
 		reports: ["catalog", "consumer"].map((id) => ({
 			id,
-			name: id === "consumer" ? "leitwerk-rsnc" : "leitwerk",
+			name: id === "consumer" ? "example-consumer" : "leitwerk",
 			revision: "abc",
 			fingerprint: "fp",
 			producerVersion: "1",
@@ -211,7 +211,7 @@ describe("internal API dependencies", () => {
 		const snapshot = fixture();
 		const [finding] = internalDependencies(snapshot);
 		expect(finding).toMatchObject({
-			repository: "leitwerk-rsnc",
+			repository: "example-consumer",
 			consumerPackage: "extension",
 			targetPackage: "core",
 			assessment: "forbidden",
