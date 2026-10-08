@@ -165,6 +165,7 @@ export async function executeLogicalPromptPlan<TOutcome extends string>(input: {
 						activeTools: input.toolSession.activeTools,
 						shouldBlockToolCall: (toolName: string) =>
 							input.toolSession.shouldBlockToolCall(toolName),
+						shouldStopAfterTurn: () => Boolean(input.toolSession.getCompletionState().abortReason),
 						suspendPromptGuards: () => guardSuspension.suspend(),
 						terminalAcknowledgement: {
 							...input.toolSession.terminalAcknowledgement,
@@ -237,6 +238,12 @@ export async function executeLogicalPromptPlan<TOutcome extends string>(input: {
 				);
 			}
 			const completionState = input.toolSession.getCompletionState();
+			if (completionState.abortReason)
+				return input.reportFailedTurn(
+					"llm_error",
+					`Turn aborted by LLM: ${completionState.abortReason}`,
+					attempt.result.resultEntryId,
+				);
 			const acknowledgementFailure = input.toolSession.terminalAcknowledgement.failureReason();
 			if (acknowledgementFailure) {
 				trace({
@@ -276,6 +283,13 @@ export async function executeLogicalPromptPlan<TOutcome extends string>(input: {
 				resolvedOutcome,
 			};
 		} catch (error: unknown) {
+			const { abortReason } = input.toolSession.getCompletionState();
+			if (abortReason)
+				return input.reportFailedTurn(
+					"llm_error",
+					`Turn aborted by LLM: ${abortReason}`,
+					input.piHandle.getLeafId(),
+				);
 			if (
 				shouldAutoContinueAfterCompactionError({
 					error,

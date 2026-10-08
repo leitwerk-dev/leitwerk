@@ -357,7 +357,7 @@ async function acceptTerminalOutcome(
 		outcomeResult,
 	]);
 	harness.setLeafId("result-outcome");
-	const stopDecision = await harness.session.agent.createLoopConfig().shouldStopAfterTurn?.({
+	const stopDecision = await harness.session.agent.createLoopConfig().finishTurn?.({
 		message: outcomeAssistant.message,
 	});
 	return { toolResult, stopDecision };
@@ -391,7 +391,7 @@ async function runAcknowledgementScenario(input: {
 			harness.setLeafId("turn-ack");
 			acknowledgementStopDecision = await harness.session.agent
 				.createLoopConfig()
-				.shouldStopAfterTurn?.({ message: response.message });
+				.finishTurn?.({ message: response.message });
 		},
 	});
 	const result = await harness.handle.continueTurn(terminalAcknowledgementOptions(acknowledgement));
@@ -1314,8 +1314,8 @@ describe("SdkPiTreeHandle", () => {
 	])("accepts one non-empty terminal outcome acknowledgement: %s", async (acknowledgementText) => {
 		const scenario = await runAcknowledgementScenario({ text: acknowledgementText });
 
-		expect(scenario.accepted.stopDecision).toBe(false);
-		expect(scenario.acknowledgementStopDecision).toBe(true);
+		expect(scenario.accepted.stopDecision).toEqual({ action: "continue" });
+		expect(scenario.acknowledgementStopDecision).toEqual({ action: "end" });
 		expect(scenario.acknowledgement.state()).toBe("acknowledgement_succeeded");
 		expect(scenario.accepted.toolResult).toMatchObject({
 			content: [{ type: "text", text: TERMINAL_ACKNOWLEDGEMENT_INSTRUCTION }],
@@ -1336,7 +1336,7 @@ describe("SdkPiTreeHandle", () => {
 			afterSuccessfulCall: async (entry) => {
 				await state.harness.session.agent
 					.createLoopConfig()
-					.shouldStopAfterTurn?.({ message: entry.message });
+					.finishTurn?.({ message: entry.message });
 			},
 		});
 		const retryEvents: PiEvent[] = [];

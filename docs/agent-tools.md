@@ -1,8 +1,8 @@
 # Agent tools
 
-A turn exposes only the tools declared for its work. Leitwerk distinguishes local
-workspace operations, server-owned integrations, interactive questions, and terminal
-outcomes.
+An LLM turn exposes the tools declared for its work and the framework's `abort_turn`
+tool. Leitwerk distinguishes local workspace operations, server-owned integrations,
+interactive questions, terminal outcomes, and turn failure.
 
 | Category | Purpose | Ends the turn? |
 | --- | --- | --- |
@@ -10,6 +10,7 @@ outcomes.
 | Integration tools | Call an authorized server-owned integration or shared facility. | No. |
 | `ask_questions` | Ask the operator structured questions. | No. |
 | Outcome tools | Publish typed results and select the next route. | Yes. |
+| `abort_turn` | Stop the current turn in error, preserving work for recovery. | Yes. |
 
 ## Workspace primitives {#1-built-in-primitives}
 
@@ -95,6 +96,15 @@ returns `{ answers: string[] }` after the operator responds.
 The request is a durable pause within the active turn. Answering resumes the same
 context; it neither completes the turn nor starts a new attempt. See the
 [operator guide](operator-guide.md#review-and-guide).
+
+## Aborting a turn
+
+Every LLM turn receives `abort_turn({ reason: "..." })`. Use it when the requested
+work cannot be completed. A non-empty reason is required. The worker stops further
+tool calls and records a failed turn with error class `llm_error`; the process stays
+on the same step with lifecycle `error`. Workspace changes and the session remain
+available for Continue or Retry. The tool does not require result Markdown, publish
+an outcome, or abort the entire process. An already accepted outcome cannot be replaced.
 
 ## Outcome tools {#4-terminal-outcome-tools}
 
