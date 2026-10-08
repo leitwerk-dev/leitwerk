@@ -23,6 +23,55 @@ function turnDef(
 }
 
 describe("TurnOutcomeToolSession terminal outcome runtime controls", () => {
+	it("aborts without accepting an outcome or requiring result Markdown", async () => {
+		const session = createTurnOutcomeToolSession({
+			turnId: "turn",
+			turnDef: turnDef({
+				turnResultMarkdown: {
+					mode: "outcome_tool_argument",
+					parameterName: "markdown",
+					required: true,
+				},
+			}),
+		});
+		const abort = session.tools.find((tool) => tool.name === "abort_turn");
+		if (!abort) throw new Error("Missing abort_turn tool");
+		await abort.execute({ reason: "  Dependency access is unavailable  " });
+		expect(session.getCompletionState().abortReason).toBe("Dependency access is unavailable");
+		expect(session.shouldBlockToolCall("write")).toContain("aborted");
+		expect(session.shouldBlockToolCall("plan_saved")).toContain("aborted");
+		expect(session.resolveOutcome(turnDef())).toBeNull();
+		expect(session.resolveMissingToolRecovery(session.getCompletionState())).toBeNull();
+		expect(session.getCompletionState().markdownState.publicationCount).toBe(0);
+		expect(session.terminalAcknowledgement.state()).toBe("open");
+		session.reset();
+		expect(session.getCompletionState().abortReason).toBeUndefined();
+		expect(session.shouldBlockToolCall("write")).toBeNull();
+	});
+
+	it("rejects blank abort reasons and cannot replace an accepted outcome", async () => {
+		const session = createTurnOutcomeToolSession({ turnId: "turn", turnDef: turnDef() });
+		const abort = session.tools.find((tool) => tool.name === "abort_turn");
+		if (!abort) throw new Error("Missing abort_turn tool");
+		expect(await abort.execute({ reason: "   " })).toMatchObject({ ok: false });
+		expect(session.getCompletionState().abortReason).toBeUndefined();
+		await session.tools.find((tool) => tool.name === "plan_saved")?.execute({});
+		expect(session.shouldBlockToolCall("abort_turn")).toContain(
+			"outcome has already been accepted",
+		);
+		expect(await abort.execute({ reason: "Too late" })).toMatchObject({ ok: false });
+		expect(session.getCompletionState().abortReason).toBeUndefined();
+		expect(session.resolveOutcome(turnDef())?.outcome).toBe("plan_saved");
+	});
+
+	it("provides the abort escape even for turns with no outcome tools", async () => {
+		const definition = turnDef({ outcomes: undefined, turnEnd: { outcome: "done" } });
+		const session = createTurnOutcomeToolSession({ turnId: "turn", turnDef: definition });
+		await session.tools.find((tool) => tool.name === "abort_turn")?.execute({ reason: "Blocked" });
+		expect(session.resolveOutcome(definition)).toBeNull();
+		expect(session.addPromptSuffix("Work")).toContain("instead of a success outcome");
+	});
+
 	it("exposes result image upload only for turns declaring result Markdown", () => {
 		const imageTool = {
 			name: "upload_result_images",
