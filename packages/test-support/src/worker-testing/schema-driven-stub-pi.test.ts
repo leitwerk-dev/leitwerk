@@ -39,6 +39,10 @@ describe("schema-driven stub Pi helpers", () => {
 		const result = resolver({
 			tools: [
 				{
+					name: "abort_turn",
+					parameters: { reason: { type: "string" } },
+				},
+				{
 					name: "complete_turn",
 					parameters: { summary: { type: "string" } },
 				},
@@ -67,6 +71,20 @@ describe("schema-driven stub Pi helpers", () => {
 			toolName: "plan_saved",
 			args: { summary: "summary value" },
 		});
+	});
+
+	it("does not select abort_turn when only framework tools are available", () => {
+		const resolver = createSchemaDrivenToolCallScriptResolver();
+		const abortTool = { name: "abort_turn", parameters: { reason: { type: "string" } } };
+		expect(resolver({ tools: [abortTool] })).toBeUndefined();
+		expect(
+			resolver({
+				tools: [
+					abortTool,
+					{ name: "markdown_result", parameters: { markdown: { type: "string" } } },
+				],
+			}),
+		).toEqual({ toolName: "markdown_result", args: { markdown: "markdown value" } });
 	});
 
 	it("returns undefined when no tools are available", () => {

@@ -42,6 +42,7 @@ export type TerminalAcknowledgementState =
 export type ToolCompletionSnapshot<TOutcome extends string> = {
 	selectedOutcome: TurnOutcomeSelection<TOutcome> | null;
 	markdownState: TurnResultMarkdownState;
+	abortReason?: string;
 };
 
 export interface TurnOutcomeToolSession<TOutcome extends string> {
@@ -93,6 +94,7 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 	integrationTools?: readonly PiCustomTool[];
 }): TurnOutcomeToolSession<TOutcome> {
 	let selectedOutcome: TurnOutcomeSelection<TOutcome> | null = null;
+	let abortReason: string | undefined;
 	let terminalAcknowledgement: TerminalAcknowledgementState = { kind: "open" };
 	const turnResultMarkdownStateRef = { current: createTurnResultMarkdownState() };
 	const outcomeToolEntries = Object.entries(input.turnDef.outcomes ?? {}) as [
@@ -100,6 +102,11 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 		OutcomeToolSpec,
 	][];
 	const outcomeToolNames = outcomeToolEntries.map(([outcome]) => outcome);
+	if (
+		outcomeToolNames.includes("abort_turn") ||
+		input.integrationTools?.some((tool) => tool.name === "abort_turn")
+	)
+		throw new Error("Tool name 'abort_turn' is reserved for turn failure");
 	const usesOutcomeTools = outcomeToolEntries.length > 0;
 	const requiresMarkdownResultToolCall =
 		input.turnDef.turnResultMarkdown?.mode === "tool_call" &&
@@ -146,6 +153,7 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 			},
 			executionMode: "sequential" as const,
 			execute: async (args: Record<string, unknown>) => {
+				if (abortReason) return { ok: false, status: "aborted", reason: abortReason };
 				const result = { status: "ok", outcome };
 				const acceptsOutcome = selectedOutcome === null;
 				if (acceptsOutcome) {
@@ -204,6 +212,26 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 			? [createMarkdownResultTool(turnResultMarkdownStateRef)]
 			: []),
 		...outcomeActions,
+		{
+			name: "abort_turn",
+			description:
+				"Stop this turn as an error when the requested work cannot be completed. Explain the blocker in reason. Preserves the workspace for recovery and does not advance the process.",
+			parameters: {
+				type: "object",
+				properties: { reason: { type: "string", minLength: 1 } },
+				required: ["reason"],
+				additionalProperties: false,
+			},
+			executionMode: "sequential" as const,
+			execute: async (args: Record<string, unknown>) => {
+				if (selectedOutcome)
+					return { ok: false, message: "An outcome has already been accepted for this turn." };
+				const reason = typeof args.reason === "string" ? args.reason.trim() : "";
+				if (!reason) return { ok: false, message: "A non-empty abort reason is required." };
+				abortReason ??= reason;
+				return { status: "aborted", reason: abortReason };
+			},
+		},
 		...(questionTool ? [questionTool] : []),
 		...(input.integrationTools ?? []),
 	];
@@ -247,10 +275,13 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 				usesOutcomeTools,
 				hasResultImageTool,
 			});
+			next +=
+				"\n\nIf the requested work cannot be completed, call abort_turn with a concrete reason instead of a success outcome. This stops the current turn in error without advancing the process. Aborting requires no result Markdown or completion tool call.";
 			return next;
 		},
 		reset(baseState) {
 			selectedOutcome = cloneSelectedOutcome(baseState?.selectedOutcome ?? null);
+			abortReason = baseState?.abortReason;
 			terminalAcknowledgement =
 				selectedOutcome === null ? { kind: "open" } : { kind: "acknowledgement_succeeded" };
 			turnResultMarkdownStateRef.current = cloneTurnResultMarkdownState(
@@ -261,9 +292,11 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 			return {
 				selectedOutcome: cloneSelectedOutcome(selectedOutcome),
 				markdownState: cloneTurnResultMarkdownState(turnResultMarkdownStateRef.current),
+				...(abortReason ? { abortReason } : {}),
 			};
 		},
 		shouldBlockToolCall(toolName) {
+			if (abortReason) return `Tool '${toolName}' was skipped because this turn was aborted.`;
 			if (selectedOutcome === null) {
 				return null;
 			}
@@ -277,6 +310,7 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 			return `Tool '${toolName}' was skipped because an outcome has already been accepted for this turn.`;
 		},
 		resolveOutcome(turnDef) {
+			if (abortReason) return null;
 			if (usesOutcomeTools) {
 				return selectedOutcome;
 			}
@@ -288,6 +322,7 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 				: null;
 		},
 		resolveMissingToolRecovery(completionState) {
+			if (completionState.abortReason) return null;
 			return resolveMissingTurnToolCallRecovery({
 				selectedOutcome: completionState.selectedOutcome,
 				outcomeToolNames,

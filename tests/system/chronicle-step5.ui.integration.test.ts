@@ -51,7 +51,9 @@ function createPoemDraftSequenceSpawn(markdowns: readonly string[]) {
 	return createInProcessWorkerSpawn({
 		extensionCatalog,
 		toolCallScriptResolver({ tools }) {
-			const turnTools = tools.filter((tool) => tool.name !== "upload_result_images");
+			const turnTools = tools.filter(
+				(tool) => tool.name !== "upload_result_images" && tool.name !== "abort_turn",
+			);
 			const toolNames = new Set(turnTools.map((tool) => tool.name));
 			if (toolNames.has("leave_feedback")) {
 				return {

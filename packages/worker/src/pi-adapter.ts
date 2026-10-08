@@ -234,12 +234,15 @@ interface PiBeforeToolCallContext {
 	toolCall: { name: string };
 }
 
+type PiTurnDecision = { action: "end" | "continue" } | undefined;
+
 interface PiAgentLoopConfig {
-	shouldStopAfterTurn?: (...args: unknown[]) => boolean | Promise<boolean>;
+	finishTurn?: (...args: unknown[]) => PiTurnDecision | Promise<PiTurnDecision>;
 	[key: string]: unknown;
 }
 
 interface PiCompletedTurnContext {
+	toolResults?: unknown[];
 	message?: {
 		content?: unknown;
 		stopReason?: unknown;
@@ -1499,7 +1502,9 @@ export class SdkPiTreeHandle implements PiTreeHandle {
 		validateRequestedActiveTools(requestedActiveToolNames, this.availableToolNames);
 		const previousActiveToolNames = this.session.getActiveToolNames();
 		const needsRuntimeHooks =
-			options.shouldBlockToolCall !== undefined || options.terminalAcknowledgement !== undefined;
+			options.shouldBlockToolCall !== undefined ||
+			options.shouldStopAfterTurn !== undefined ||
+			options.terminalAcknowledgement !== undefined;
 		if (
 			customTools.length === 0 &&
 			!needsRuntimeHooks &&
@@ -1522,7 +1527,10 @@ export class SdkPiTreeHandle implements PiTreeHandle {
 		const previousBeforeToolCall = mutableAgent.beforeToolCall;
 		const previousCreateLoopConfig = mutableAgent.createLoopConfig;
 		const loopConfigHook = previousCreateLoopConfig;
-		if (options.terminalAcknowledgement && typeof loopConfigHook !== "function") {
+		if (
+			(options.terminalAcknowledgement || options.shouldStopAfterTurn) &&
+			typeof loopConfigHook !== "function"
+		) {
 			throw new Error("Pi SDK version incompatible: agent loop configuration hook unavailable");
 		}
 		const terminalAcknowledgement = options.terminalAcknowledgement
@@ -1553,22 +1561,25 @@ export class SdkPiTreeHandle implements PiTreeHandle {
 				}
 				return await previousBeforeToolCall?.(context as never, signal);
 			};
-			if (terminalAcknowledgement && typeof loopConfigHook === "function") {
+			if (
+				(terminalAcknowledgement || options.shouldStopAfterTurn) &&
+				typeof loopConfigHook === "function"
+			) {
 				mutableAgent.createLoopConfig = (loopOptions?: unknown) => {
 					const baseConfig = loopConfigHook.call(mutableAgent, loopOptions);
-					const previousShouldStop = baseConfig.shouldStopAfterTurn;
+					const previousFinishTurn = baseConfig.finishTurn;
 					return {
 						...baseConfig,
-						shouldStopAfterTurn: async (...args: unknown[]) => {
+						finishTurn: async (...args: unknown[]) => {
+							const context = isObjectLike(args[0]) ? (args[0] as PiCompletedTurnContext) : null;
+							if (options.shouldStopAfterTurn?.(context?.toolResults ?? []))
+								return { action: "end" };
 							const acknowledgementDecision =
 								terminalAcknowledgement?.onTurnCompleted(args) ?? null;
 							if (acknowledgementDecision !== null) {
-								return acknowledgementDecision;
+								return { action: acknowledgementDecision ? "end" : "continue" };
 							}
-							if (typeof previousShouldStop === "function") {
-								return await previousShouldStop(...args);
-							}
-							return false;
+							return await previousFinishTurn?.(...args);
 						},
 					};
 				};

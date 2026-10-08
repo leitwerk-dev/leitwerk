@@ -139,6 +139,43 @@ it("retries a failed worker turn through HTTP without losing its input or failur
 	expect(retained.json().reasoning.piInput.fullPrompt).toContain(prompt);
 });
 
+it("parks an LLM-aborted turn in error and preserves the reason across restart and retry", async () => {
+	let calls = 0;
+	const f = await fixture(() =>
+		++calls === 1
+			? {
+					calls: [
+						{ toolName: "abort_turn", args: { reason: "Required dependency is unavailable" } },
+					],
+				}
+			: { calls: [], textChunks: ["Recovered result"] },
+	);
+	await f.wait("error");
+	expect(f.ctx.deps.processes.getById(f.id)?.selectedTurnId).toBe("respond");
+	const [failed] = f.ctx.deps.turnRecords.listByInstance(f.id);
+	expect(failed).toMatchObject({
+		status: "failed",
+		errorClass: "llm_error",
+		errorSummary: "Turn aborted by LLM: Required dependency is unavailable",
+		turnResultMarkdown: null,
+	});
+	const session = await f.ctx.app.inject(`/api/processes/${f.id}/session`);
+	expect(session.body).toContain("abort_turn");
+	expect(session.body).toContain("Required dependency is unavailable");
+	expect(calls).toBe(1);
+	await f.restart();
+	expect(f.ctx.deps.processes.getById(f.id)?.lifecycleStatus).toBe("error");
+	expect(f.ctx.deps.turnRecords.getById(failed.id)).toEqual(failed);
+	const retried = await f.ctx.app.inject({ method: "POST", url: `/api/processes/${f.id}/retry` });
+	expect(retried.statusCode, retried.body).toBe(200);
+	await f.wait("completed");
+	expect(calls).toBe(2);
+	expect(f.ctx.deps.turnRecords.listByInstance(f.id).map((record) => record.status)).toEqual([
+		"failed",
+		"succeeded",
+	]);
+});
+
 it("retains long streamed output and thinking in session files and durable turn results after restart", async () => {
 	const textChunks = Array.from(
 		{ length: 80 },

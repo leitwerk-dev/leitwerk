@@ -30,6 +30,10 @@ with the next item's start or, for the last item, with the collected state and r
 An outcome is accepted only for the current accepted turn record and the run's current
 item. Workers receive only the active item, not the full run.
 
+The framework's `abort_turn` tool ends the active turn through `worker.turn_failed`
+with the supplied reason and error class `llm_error`. It bypasses outcome recovery
+and result publication, retaining the selected step in lifecycle `error` for recovery.
+
 ## Durable path
 
 These messages use ProcessEngine operations:
