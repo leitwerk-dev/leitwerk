@@ -22,8 +22,10 @@ afterEach(() => store.dispose());
 describe("ephemeral Docker credentials", () => {
 	it("writes restrictive credentials outside retained storage, replaces them, and cleans up", () => {
 		const previous = process.env.DOCKER_CONFIG;
+		const previousHelm = process.env.HELM_REGISTRY_CONFIG;
 		store.install([credential], true);
 		const first = process.env.DOCKER_CONFIG ?? "";
+		expect(process.env.HELM_REGISTRY_CONFIG).toBe(`${first}/config.json`);
 		expect(process.env.BUILDX_CONFIG).toBeDefined();
 		expect(process.env.BUILDX_CONFIG?.startsWith(first)).toBe(false);
 		expect(first).toMatch(/^\/tmp\/leitwerk-docker-auth-/);
@@ -37,11 +39,13 @@ describe("ephemeral Docker credentials", () => {
 		store.install([{ ...credential, password: "changed" }], true);
 		expect(existsSync(dirname(first))).toBe(false);
 		const second = process.env.DOCKER_CONFIG ?? "";
+		expect(process.env.HELM_REGISTRY_CONFIG).toBe(`${second}/config.json`);
 		expect(second).not.toBe(first);
 		expect(readFileSync(`${second}/config.json`, "utf8")).not.toContain(auth);
 		store.dispose();
 		expect(existsSync(dirname(second))).toBe(false);
 		expect(process.env.DOCKER_CONFIG).toBe(previous);
+		expect(process.env.HELM_REGISTRY_CONFIG).toBe(previousHelm);
 	});
 	it("rejects unsolicited or duplicate credentials without retaining files", () => {
 		expect(() => store.install([credential], false)).toThrow("Docker-enabled");
@@ -84,6 +88,7 @@ it("removes credential files when later bootstrap work fails", async () => {
 		diagnosticTrace() {},
 	});
 	const previous = process.env.DOCKER_CONFIG;
+	const previousHelm = process.env.HELM_REGISTRY_CONFIG;
 	await expect(
 		resources.bootstrap(
 			{
@@ -98,4 +103,5 @@ it("removes credential files when later bootstrap work fails", async () => {
 	expect(directory).toBeDefined();
 	expect(existsSync(directory ?? "")).toBe(false);
 	expect(process.env.DOCKER_CONFIG).toBe(previous);
+	expect(process.env.HELM_REGISTRY_CONFIG).toBe(previousHelm);
 });
