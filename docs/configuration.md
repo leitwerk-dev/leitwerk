@@ -266,6 +266,10 @@ See [upgrade precautions](operations.md#upgrade-and-rollback) for existing store
 `docker_registries.process_bindings.<processId>` lists profile IDs. Duplicate
 registry hosts in a binding fail validation.
 
+Workers expose the same ephemeral credential file to Helm through
+`HELM_REGISTRY_CONFIG`, so authenticated OCI chart pulls use the bound registry
+profiles. Docker and Helm credential paths are restored when the worker releases them.
+
 Only code-defined Docker-requiring processes receive credentials, resolved anew for
 each physical start. Process parameters cannot select profiles. Bindings control
 delivery, not registry-side permissions. See [credential security](security.md#docker-registry-credentials).

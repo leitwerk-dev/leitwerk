@@ -9,6 +9,7 @@ import { is } from "valibot";
 export class DockerRegistryCredentials {
 	#directory: string | undefined;
 	#previousConfig: string | undefined;
+	#previousHelmRegistryConfig: string | undefined;
 	#onExit = () => this.dispose();
 
 	install(credentials: readonly WorkerDockerRegistryCredential[], dockerEnabled: boolean): void {
@@ -39,6 +40,8 @@ export class DockerRegistryCredentials {
 			});
 			this.#previousConfig = process.env.DOCKER_CONFIG;
 			process.env.DOCKER_CONFIG = `${this.#directory}/auth`;
+			this.#previousHelmRegistryConfig = process.env.HELM_REGISTRY_CONFIG;
+			process.env.HELM_REGISTRY_CONFIG = `${this.#directory}/auth/config.json`;
 			if (!process.env.BUILDX_CONFIG) {
 				mkdirSync(`${this.#directory}/buildx`, { mode: 0o700 });
 				process.env.BUILDX_CONFIG = `${this.#directory}/buildx`;
@@ -58,8 +61,13 @@ export class DockerRegistryCredentials {
 			if (this.#previousConfig === undefined) delete process.env.DOCKER_CONFIG;
 			else process.env.DOCKER_CONFIG = this.#previousConfig;
 		}
+		if (process.env.HELM_REGISTRY_CONFIG === `${this.#directory}/auth/config.json`) {
+			if (this.#previousHelmRegistryConfig === undefined) delete process.env.HELM_REGISTRY_CONFIG;
+			else process.env.HELM_REGISTRY_CONFIG = this.#previousHelmRegistryConfig;
+		}
 		rmSync(this.#directory, { recursive: true, force: true });
 		this.#directory = undefined;
 		this.#previousConfig = undefined;
+		this.#previousHelmRegistryConfig = undefined;
 	}
 }
