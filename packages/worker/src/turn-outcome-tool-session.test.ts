@@ -1,38 +1,19 @@
-import type { LlmTurnDefinition } from "@leitwerk-dev/process-sdk";
 import { describe, expect, it, vi } from "vitest";
+import { createTestLlmTurn as turnDef } from "./test-helpers/llm-turn.js";
 import { createTurnOutcomeToolSession } from "./turn-outcome-tool-session.js";
 
-function turnDef(
-	overrides: Partial<LlmTurnDefinition<"plan_saved" | "done", unknown, unknown>> = {},
-): LlmTurnDefinition<"plan_saved" | "done", unknown, unknown> {
-	return {
-		kind: "llm",
-		description: "test turn",
-		availableTools: [],
-		branchType: "primary",
-		context: "full",
-		prompt: () => "test",
-		outcomes: {
-			plan_saved: {
-				description: "save plan",
-				parameters: {},
-			},
-		},
-		...overrides,
-	};
+function createSession(overrides: Parameters<typeof turnDef>[0] = {}) {
+	return createTurnOutcomeToolSession({ turnId: "turn", turnDef: turnDef(overrides) });
 }
 
 describe("TurnOutcomeToolSession terminal outcome runtime controls", () => {
 	it("aborts without accepting an outcome or requiring result Markdown", async () => {
-		const session = createTurnOutcomeToolSession({
-			turnId: "turn",
-			turnDef: turnDef({
-				turnResultMarkdown: {
-					mode: "outcome_tool_argument",
-					parameterName: "markdown",
-					required: true,
-				},
-			}),
+		const session = createSession({
+			turnResultMarkdown: {
+				mode: "outcome_tool_argument",
+				parameterName: "markdown",
+				required: true,
+			},
 		});
 		const abort = session.tools.find((tool) => tool.name === "abort_turn");
 		if (!abort) throw new Error("Missing abort_turn tool");
@@ -50,7 +31,7 @@ describe("TurnOutcomeToolSession terminal outcome runtime controls", () => {
 	});
 
 	it("rejects blank abort reasons and cannot replace an accepted outcome", async () => {
-		const session = createTurnOutcomeToolSession({ turnId: "turn", turnDef: turnDef() });
+		const session = createSession();
 		const abort = session.tools.find((tool) => tool.name === "abort_turn");
 		if (!abort) throw new Error("Missing abort_turn tool");
 		expect(await abort.execute({ reason: "   " })).toMatchObject({ ok: false });
@@ -95,7 +76,7 @@ describe("TurnOutcomeToolSession terminal outcome runtime controls", () => {
 		expect(withMarkdown.addPromptSuffix("test")).toContain("upload_result_images");
 	});
 	it("marks generated outcome tools sequential", () => {
-		const session = createTurnOutcomeToolSession({ turnId: "turn", turnDef: turnDef() });
+		const session = createSession();
 
 		expect(session.tools.find((tool) => tool.name === "plan_saved")?.executionMode).toBe(
 			"sequential",
@@ -146,14 +127,11 @@ describe("TurnOutcomeToolSession terminal outcome runtime controls", () => {
 	});
 
 	it("does not become terminal when outcome markdown validation fails", async () => {
-		const session = createTurnOutcomeToolSession({
-			turnId: "turn",
-			turnDef: turnDef({
-				turnResultMarkdown: {
-					mode: "outcome_tool_argument",
-					parameterName: "markdown",
-				},
-			}),
+		const session = createSession({
+			turnResultMarkdown: {
+				mode: "outcome_tool_argument",
+				parameterName: "markdown",
+			},
 		});
 		const tool = session.tools.find((candidate) => candidate.name === "plan_saved");
 		expect(tool).toBeDefined();
@@ -166,14 +144,11 @@ describe("TurnOutcomeToolSession terminal outcome runtime controls", () => {
 	});
 
 	it("waits for one acknowledgement while preserving outcome Markdown", async () => {
-		const session = createTurnOutcomeToolSession({
-			turnId: "turn",
-			turnDef: turnDef({
-				turnResultMarkdown: {
-					mode: "outcome_tool_argument",
-					parameterName: "markdown",
-				},
-			}),
+		const session = createSession({
+			turnResultMarkdown: {
+				mode: "outcome_tool_argument",
+				parameterName: "markdown",
+			},
 		});
 		const tool = session.tools.find((candidate) => candidate.name === "plan_saved");
 		expect(tool).toBeDefined();
@@ -199,7 +174,7 @@ describe("TurnOutcomeToolSession terminal outcome runtime controls", () => {
 	});
 
 	it("records acknowledgement failure without discarding the accepted outcome", async () => {
-		const session = createTurnOutcomeToolSession({ turnId: "turn", turnDef: turnDef() });
+		const session = createSession();
 		const tool = session.tools.find((candidate) => candidate.name === "plan_saved");
 		await tool?.execute({ summary: "accepted" });
 
@@ -213,15 +188,12 @@ describe("TurnOutcomeToolSession terminal outcome runtime controls", () => {
 	});
 
 	it("allows missing markdown recovery publication after an outcome was selected", () => {
-		const session = createTurnOutcomeToolSession({
-			turnId: "turn",
-			turnDef: turnDef({
-				turnResultMarkdown: {
-					mode: "tool_call",
-					toolName: "markdown_result",
-					required: true,
-				},
-			}),
+		const session = createSession({
+			turnResultMarkdown: {
+				mode: "tool_call",
+				toolName: "markdown_result",
+				required: true,
+			},
 		});
 
 		session.reset({

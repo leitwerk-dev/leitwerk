@@ -350,7 +350,7 @@ export interface PiPromptOptions {
 	/** @internal Runtime-only hook used by the worker Pi adapter before a tool executes. */
 	shouldBlockToolCall?: (toolName: string) => string | null;
 	/** @internal Return control to the worker after a model response and its tool results. */
-	shouldStopAfterTurn?: (toolResults: readonly unknown[]) => boolean;
+	shouldStopAfterTurn?: () => boolean;
 	/** @internal Guard suspension used by durable interactive tools. */
 	suspendPromptGuards?: () => () => void;
 	/** @internal Runtime-only terminal outcome acknowledgement state. */

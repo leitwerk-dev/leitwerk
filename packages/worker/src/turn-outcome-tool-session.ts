@@ -131,16 +131,12 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 			description: spec.description,
 			parameters: {
 				...Object.fromEntries(Object.entries(spec.parameters)),
-				...(injectsGlobalMarkdownParameter
+				...(injectsGlobalMarkdownParameter && outcomeToolMarkdownParameterName
 					? {
 							resultSummary: {
 								type: "string",
 								description: "Concise result summary for this attempt.",
 							},
-						}
-					: {}),
-				...(injectsGlobalMarkdownParameter && outcomeToolMarkdownParameterName
-					? {
 							[outcomeToolMarkdownParameterName]: {
 								type: "string",
 								description:
@@ -216,12 +212,7 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 			name: "abort_turn",
 			description:
 				"Stop this turn as an error when the requested work cannot be completed. Explain the blocker in reason. Preserves the workspace for recovery and does not advance the process.",
-			parameters: {
-				type: "object",
-				properties: { reason: { type: "string", minLength: 1 } },
-				required: ["reason"],
-				additionalProperties: false,
-			},
+			parameters: { reason: { type: "string", minLength: 1, required: true } },
 			executionMode: "sequential" as const,
 			execute: async (args: Record<string, unknown>) => {
 				if (selectedOutcome)

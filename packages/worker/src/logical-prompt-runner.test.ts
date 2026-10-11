@@ -1,30 +1,17 @@
-import type { LlmTurnDefinition, PiPromptOptions } from "@leitwerk-dev/process-sdk";
+import type { PiPromptOptions } from "@leitwerk-dev/process-sdk";
 import { createManualWorkerRuntimeScheduler } from "@leitwerk-dev/test-support/worker-testing";
 import { describe, expect, it, vi } from "vitest";
 import type { WorkerOperationEmission } from "./diagnostics.js";
 import { executeLogicalPromptPlan } from "./logical-prompt-runner.js";
 import type { PiTreeHandle } from "./pi-adapter.js";
+import { createTestLlmTurn } from "./test-helpers/llm-turn.js";
 import { createTurnOutcomeToolSession } from "./turn-outcome-tool-session.js";
 
-const turnDef: LlmTurnDefinition<"plan_saved", unknown, unknown> = {
-	kind: "llm",
+const turnDef = createTestLlmTurn({
 	description: "Save a plan",
-	availableTools: [],
-	branchType: "primary",
-	context: "full",
 	prompt: () => "Create a plan",
-	outcomes: {
-		plan_saved: {
-			description: "Plan saved",
-			parameters: {},
-		},
-	},
-	turnResultMarkdown: {
-		mode: "outcome_tool_argument",
-		parameterName: "markdown",
-		required: true,
-	},
-};
+	turnResultMarkdown: { mode: "outcome_tool_argument", parameterName: "markdown", required: true },
+});
 
 describe("executeLogicalPromptPlan terminal acknowledgement", () => {
 	it("keeps accepted outcome Markdown and traces an ignored acknowledgement failure", async () => {

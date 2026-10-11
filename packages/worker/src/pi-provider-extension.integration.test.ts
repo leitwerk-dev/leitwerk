@@ -1,69 +1,17 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
-import { tmpdir } from "node:os";
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { ExecutionInspectionCapture } from "@leitwerk-dev/domain";
-import { createTestConfigSnapshot as testConfigSnapshot } from "@leitwerk-dev/worker-protocol";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { ManagedPiResourceManifest } from "./managed-pi-bootstrap.js";
 import { SdkPiTreeHandleFactory } from "./pi-adapter.js";
 
-const tempDirs: string[] = [];
-
-async function createTempRoot(): Promise<string> {
-	const dir = await mkdtemp(path.join(tmpdir(), "leitwerk-pi-provider-extension-"));
-	tempDirs.push(dir);
-	return dir;
-}
-
-async function writePiExtension(agentDir: string, source: string): Promise<void> {
-	const extensionDir = path.join(agentDir, "extensions", "test-provider");
-	await mkdir(extensionDir, { recursive: true });
-	await writeFile(path.join(extensionDir, "index.ts"), source);
-}
-
-function providerExtensionSource(baseUrl = "https://example.invalid/v1"): string {
-	return `
-export default function providerExtension(pi) {
-  pi.registerProvider("extension-provider", {
-    name: "Extension Provider",
-    baseUrl: ${JSON.stringify(baseUrl)},
-    apiKey: "test-key",
-    api: "openai-completions",
-    models: [
-      {
-        id: "extension-model",
-        name: "Extension Model",
-        api: "openai-completions",
-        reasoning: false,
-        input: ["text"],
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-        contextWindow: 8192,
-        maxTokens: 1024,
-      },
-    ],
-  });
-}
-`;
-}
-
-function createConfig(agentDir: string) {
-	const config = testConfigSnapshot();
-	config.pi.agent_dir = agentDir;
-	config.pi.model_profiles = [
-		{
-			id: "extension-profile",
-			provider: "extension-provider",
-			model_id: "extension-model",
-		},
-	];
-	return config;
-}
-
-afterEach(async () => {
-	await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
-});
+import {
+	createConfig,
+	createPiProviderFixture,
+	createTempRoot,
+	providerExtensionSource,
+	writePiExtension,
+} from "./test-helpers/pi-provider.js";
 
 describe("SdkPiTreeHandleFactory Pi provider extensions", () => {
 	it("preflights standard Pi resources and reports loaded provenance", async () => {
@@ -142,177 +90,95 @@ describe("SdkPiTreeHandleFactory Pi provider extensions", () => {
 
 	it("executes authenticated requests through providers registered by pi.agent_dir extensions", async () => {
 		let authorization: string | undefined;
-		const server = createServer((request, response) => {
+		const handle = await createPiProviderFixture((request) => {
 			authorization = request.headers.authorization;
-			response.writeHead(200, { "content-type": "text/event-stream" });
-			response.end(
-				[
-					'data: {"id":"completion-1","object":"chat.completion.chunk","created":1,"model":"extension-model","choices":[{"index":0,"delta":{"role":"assistant","content":"authenticated"},"finish_reason":null}]}',
-					'data: {"id":"completion-1","object":"chat.completion.chunk","created":1,"model":"extension-model","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}',
-					"data: [DONE]",
-					"",
-				].join("\n\n"),
-			);
+			return { content: "authenticated" };
 		});
-		await new Promise<void>((resolve, reject) => {
-			server.once("error", reject);
-			server.listen(0, "127.0.0.1", resolve);
+		const observations: ExecutionInspectionCapture[] = [];
+		handle.subscribe((event) => {
+			if (event.type === "inspection")
+				observations.push(event.data.capture as ExecutionInspectionCapture);
 		});
-
-		try {
-			const root = await createTempRoot();
-			const agentDir = path.join(root, "agent");
-			const workspaceRoot = path.join(root, "workspace");
-			await Promise.all([
-				mkdir(workspaceRoot, { recursive: true }),
-				mkdir(agentDir, { recursive: true }),
-			]);
-			await writeFile(path.join(agentDir, "auth.json"), "{}\n");
-			const address = server.address() as AddressInfo;
-			await writePiExtension(
-				agentDir,
-				providerExtensionSource(`http://127.0.0.1:${address.port}/v1`),
-			);
-
-			const handle = await new SdkPiTreeHandleFactory().createPrimaryTreeHandle({
-				instanceId: "pi-provider-extension-test",
-				treeFile: path.join(root, "tree.jsonl"),
-				workspaceRoot,
-				resume: false,
-				configSnapshot: createConfig(agentDir),
-				modelProfileId: "extension-profile",
-			});
-
-			try {
-				const observations: ExecutionInspectionCapture[] = [];
-				handle.subscribe((event) => {
-					if (event.type === "inspection")
-						observations.push(event.data.capture as ExecutionInspectionCapture);
-				});
-				await expect(handle.prompt("Authenticate this request")).resolves.toBeDefined();
-				expect(authorization).toBe("Bearer test-key");
-				const modelInput = observations.find((item) => item.fact.kind === "model_input");
-				expect(modelInput?.fact).toMatchObject({
-					kind: "model_input",
-					model: { provider: "extension-provider", id: "extension-model" },
-					systemPrompt: { state: "recorded" },
-					tools: { state: "recorded", value: [] },
-					messages: [
-						{
-							role: "system",
-							entryId: expect.any(String),
-							content: { state: "recorded" },
-						},
-						{
-							role: "user",
-							entryId: expect.any(String),
-							content: {
-								state: "recorded",
-								value: [{ type: "text", text: "Authenticate this request" }],
-							},
-						},
-					],
-				});
-				await handle.prompt("Continue with another model call");
-				const modelInputs = observations.filter((item) => item.fact.kind === "model_input");
-				expect(modelInputs).toHaveLength(2);
-				expect(new Set(modelInputs.map((item) => item.id)).size).toBe(2);
-				expect(modelInputs[1].fact).toMatchObject({
-					messages: expect.arrayContaining([
-						{
-							role: "user",
-							entryId: expect.any(String),
-							content: {
-								state: "recorded",
-								value: [{ type: "text", text: "Continue with another model call" }],
-							},
-						},
-					]),
-				});
-				expect(JSON.stringify(observations)).not.toContain("test-key");
-				expect(
-					observations.some(
-						(item) => item.fact.kind === "entry_link" && item.fact.entryId === handle.getLeafId(),
-					),
-				).toBe(true);
-				expect(handle.getBranch()).toEqual(
-					expect.arrayContaining([
-						expect.objectContaining({
-							type: "model_change",
-							provider: "extension-provider",
-							modelId: "extension-model",
-						}),
-					]),
-				);
-			} finally {
-				await handle.close();
-			}
-		} finally {
-			await new Promise<void>((resolve, reject) =>
-				server.close((error) => (error ? reject(error) : resolve())),
-			);
-		}
+		await expect(handle.prompt("Authenticate this request")).resolves.toBeDefined();
+		expect(authorization).toBe("Bearer test-key");
+		const modelInput = observations.find((item) => item.fact.kind === "model_input");
+		expect(modelInput?.fact).toMatchObject({
+			kind: "model_input",
+			model: { provider: "extension-provider", id: "extension-model" },
+			systemPrompt: { state: "recorded" },
+			tools: { state: "recorded", value: [] },
+			messages: [
+				{
+					role: "system",
+					entryId: expect.any(String),
+					content: { state: "recorded" },
+				},
+				{
+					role: "user",
+					entryId: expect.any(String),
+					content: {
+						state: "recorded",
+						value: [{ type: "text", text: "Authenticate this request" }],
+					},
+				},
+			],
+		});
+		await handle.prompt("Continue with another model call");
+		const modelInputs = observations.filter((item) => item.fact.kind === "model_input");
+		expect(modelInputs).toHaveLength(2);
+		expect(new Set(modelInputs.map((item) => item.id)).size).toBe(2);
+		expect(modelInputs[1].fact).toMatchObject({
+			messages: expect.arrayContaining([
+				{
+					role: "user",
+					entryId: expect.any(String),
+					content: {
+						state: "recorded",
+						value: [{ type: "text", text: "Continue with another model call" }],
+					},
+				},
+			]),
+		});
+		expect(JSON.stringify(observations)).not.toContain("test-key");
+		expect(
+			observations.some(
+				(item) => item.fact.kind === "entry_link" && item.fact.entryId === handle.getLeafId(),
+			),
+		).toBe(true);
+		expect(handle.getBranch()).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					type: "model_change",
+					provider: "extension-provider",
+					modelId: "extension-model",
+				}),
+			]),
+		);
 	});
 
-	it("includes pi extension load diagnostics when an extension provider model cannot be resolved", async () => {
-		const root = await createTempRoot();
-		const agentDir = path.join(root, "agent");
-		const workspaceRoot = path.join(root, "workspace");
-		await mkdir(workspaceRoot, { recursive: true });
-		await writePiExtension(
-			agentDir,
+	it.each([
+		[
+			"extension load",
 			`export default function brokenProviderExtension() { throw new Error("provider setup exploded"); }`,
-		);
-
-		await expect(
-			new SdkPiTreeHandleFactory().createPrimaryTreeHandle({
-				instanceId: "pi-provider-extension-load-failure-test",
-				treeFile: path.join(root, "tree.jsonl"),
-				workspaceRoot,
-				resume: false,
-				configSnapshot: createConfig(agentDir),
-				modelProfileId: "extension-profile",
-			}),
-		).rejects.toThrow(/provider setup exploded/);
-	});
-
-	it("includes pi provider registration diagnostics when an extension provider model cannot be resolved", async () => {
+			/provider setup exploded/,
+		],
+		["provider registration", providerExtensionSource(null), /baseUrl/],
+	] as const)("includes pi %s diagnostics when an extension provider model cannot be resolved", async (_diagnostic, source, expectedError) => {
 		const root = await createTempRoot();
 		const agentDir = path.join(root, "agent");
 		const workspaceRoot = path.join(root, "workspace");
 		await mkdir(workspaceRoot, { recursive: true });
-		await writePiExtension(
-			agentDir,
-			`
-export default function invalidProviderExtension(pi) {
-  pi.registerProvider("extension-provider", {
-    apiKey: "test-key",
-    api: "openai-completions",
-    models: [
-      {
-        id: "extension-model",
-        name: "Extension Model",
-        reasoning: false,
-        input: ["text"],
-        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-        contextWindow: 8192,
-        maxTokens: 1024,
-      },
-    ],
-  });
-}
-`,
-		);
+		await writePiExtension(agentDir, source);
 
 		await expect(
 			new SdkPiTreeHandleFactory().createPrimaryTreeHandle({
-				instanceId: "pi-provider-extension-registration-failure-test",
+				instanceId: "pi-provider-extension-failure-test",
 				treeFile: path.join(root, "tree.jsonl"),
 				workspaceRoot,
 				resume: false,
 				configSnapshot: createConfig(agentDir),
 				modelProfileId: "extension-profile",
 			}),
-		).rejects.toThrow(/baseUrl/);
+		).rejects.toThrow(expectedError);
 	});
 });

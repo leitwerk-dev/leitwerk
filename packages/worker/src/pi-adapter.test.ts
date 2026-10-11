@@ -771,121 +771,54 @@ describe("translateAgentSessionEvent", () => {
 		]);
 	});
 
-	it("extracts assistant toolcall streaming events from partial toolcall blocks", () => {
-		const state = { currentTurnId: "turn-7", turnSequence: 7 };
-
-		const startEvents = piEventsFromAgentSessionEvent(
+	it.each([
+		["toolcall_start", "toolcall.start", "2026-01-01T00:00:07.000Z", "call-1", {}, undefined],
+		[
+			"toolcall_delta",
+			"toolcall.delta",
+			"2026-01-01T00:00:07.100Z",
+			"call-1",
+			{ command: "ls" },
+			'{"command":"ls',
+		],
+		[
+			"toolcall_end",
+			"toolcall.end",
+			"2026-01-01T00:00:07.300Z",
+			"call-2",
+			{ command: "pwd" },
+			undefined,
+		],
+	] as const)("extracts assistant %s streaming events from toolcall blocks", (type, expectedType, timestamp, id, args, delta) => {
+		const toolCall = { type: "toolCall", id, name: "bash", arguments: args };
+		const events = piEventsFromAgentSessionEvent(
 			{
 				type: "message_update",
-				message: { timestamp: "2026-01-01T00:00:07.000Z" },
+				message: { timestamp },
 				assistantMessageEvent: {
-					type: "toolcall_start",
+					type,
 					contentIndex: 0,
-					partial: {
-						content: [
-							{
-								type: "toolCall",
-								id: "call-1",
-								name: "bash",
-								arguments: {},
-							},
-						],
-					},
+					...(delta !== undefined ? { delta } : {}),
+					...(type === "toolcall_end" ? { toolCall } : {}),
+					partial: { content: [toolCall] },
 				},
 			} as AgentSessionEvent,
-			state,
+			{ currentTurnId: "turn-7", turnSequence: 7 },
 		);
-		expect(startEvents).toHaveLength(1);
-		expect(startEvents[0]).toMatchObject({
-			type: "toolcall.start",
+		expect(events).toHaveLength(1);
+		expect(events[0]).toMatchObject({
+			type: expectedType,
 			turnId: "turn-7",
 			data: {
 				contentIndex: 0,
-				toolCallId: "call-1",
+				toolCallId: id,
 				name: "bash",
-				arguments: {},
+				arguments: args,
+				...(delta !== undefined ? { delta } : {}),
 			},
-			timestamp: "2026-01-01T00:00:07.000Z",
+			timestamp,
 		});
-		expect(startEvents[0].data).not.toHaveProperty("partial");
-
-		const deltaEvents = piEventsFromAgentSessionEvent(
-			{
-				type: "message_update",
-				message: { timestamp: "2026-01-01T00:00:07.100Z" },
-				assistantMessageEvent: {
-					type: "toolcall_delta",
-					contentIndex: 0,
-					delta: '{"command":"ls',
-					partial: {
-						content: [
-							{
-								type: "toolCall",
-								id: "call-1",
-								name: "bash",
-								arguments: { command: "ls" },
-							},
-						],
-					},
-				},
-			} as AgentSessionEvent,
-			state,
-		);
-		expect(deltaEvents).toHaveLength(1);
-		expect(deltaEvents[0]).toMatchObject({
-			type: "toolcall.delta",
-			turnId: "turn-7",
-			data: {
-				contentIndex: 0,
-				toolCallId: "call-1",
-				name: "bash",
-				arguments: { command: "ls" },
-				delta: '{"command":"ls',
-			},
-			timestamp: "2026-01-01T00:00:07.100Z",
-		});
-		expect(deltaEvents[0].data).not.toHaveProperty("partial");
-
-		const endEvents = piEventsFromAgentSessionEvent(
-			{
-				type: "message_update",
-				message: { timestamp: "2026-01-01T00:00:07.300Z" },
-				assistantMessageEvent: {
-					type: "toolcall_end",
-					contentIndex: 0,
-					toolCall: {
-						type: "toolCall",
-						id: "call-2",
-						name: "bash",
-						arguments: { command: "pwd" },
-					},
-					partial: {
-						content: [
-							{
-								type: "toolCall",
-								id: "call-2",
-								name: "bash",
-								arguments: { command: "pwd" },
-							},
-						],
-					},
-				},
-			} as AgentSessionEvent,
-			state,
-		);
-		expect(endEvents).toHaveLength(1);
-		expect(endEvents[0]).toMatchObject({
-			type: "toolcall.end",
-			turnId: "turn-7",
-			data: {
-				contentIndex: 0,
-				toolCallId: "call-2",
-				name: "bash",
-				arguments: { command: "pwd" },
-			},
-			timestamp: "2026-01-01T00:00:07.300Z",
-		});
-		expect(endEvents[0].data).not.toHaveProperty("partial");
+		expect(events[0].data).not.toHaveProperty("partial");
 	});
 
 	it("preserves compaction lifecycle events", () => {
