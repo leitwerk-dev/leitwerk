@@ -1,8 +1,12 @@
 import type { ResolvedSetting, SettingsContext, SettingsSubject } from "@leitwerk-dev/domain";
-import type { SettingChoice, SettingMetadata } from "@leitwerk-dev/protocol/http-contracts";
+import type {
+	SettingChoice,
+	SettingMetadata,
+	SettingsScopeOverview,
+} from "@leitwerk-dev/protocol/http-contracts";
 import { createCapabilityToken } from "./capabilities.js";
 
-export type { SettingChoice } from "@leitwerk-dev/protocol/http-contracts";
+export type { NamedSelection, SettingChoice } from "@leitwerk-dev/protocol/http-contracts";
 
 /** Non-secret, JSON-compatible setting owned and validated by an extension. @public */
 export interface SettingDefinition<T = unknown> extends SettingMetadata {
@@ -33,6 +37,8 @@ export interface SettingsScopeDefinition {
 	id: string;
 	/** @public */
 	label: string;
+	/** Optional display names and label grouping for the generic scope overview. @public */
+	overview?: SettingsScopeOverview;
 }
 
 /** Trusted server-side discovery input. @public */
@@ -59,8 +65,6 @@ export interface ExecutionPurposeDefinition {
 	modelSettingKey?: string;
 	/** Only these non-secret values are captured and sent to the worker. @public */
 	settingKeys?: readonly string[];
-	/** Composed independently per repository, with repository labels. @public */
-	instructionSettingKeys?: readonly string[];
 }
 
 /** @public */
@@ -77,6 +81,12 @@ export interface ScopedSettingsDeclaration {
 export interface ScopedSettingsResolver {
 	/** @public */
 	resolve<T>(definition: SettingDefinition<T>, context: SettingsContext): ResolvedSetting<T>;
+	/** Read a retained subject by stable identity without discovery or remote requests. @public */
+	findSubject(scopeType: string, identity: string): SettingsSubject | null;
+	/** Read a retained subject by ID, including retained redirects. @public */
+	getSubject(id: string): SettingsSubject | null;
+	/** Initialize a field once. Existing overrides and explicit resets are preserved. @public */
+	seedOverride<T>(subjectId: string, definition: SettingDefinition<T>, value: T): boolean;
 	/** Retains stable subject identities and known aliases across rediscovery. @public */
 	discover(input: SettingsSubjectInput): SettingsSubject;
 	/** Called only by explicit discovery, never during step preparation. @public */

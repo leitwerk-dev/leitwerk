@@ -5,6 +5,7 @@ import type {
 	SettingFieldView,
 	SettingsPreview,
 } from "@leitwerk-dev/protocol/http-contracts";
+import { type NamedSelection, settingSelectionValues } from "@leitwerk-dev/protocol/http-contracts";
 import { tick, untrack } from "svelte";
 import {
 	changeSettings,
@@ -13,6 +14,7 @@ import {
 	type SettingsChange,
 	SettingsRequestError,
 } from "../lib/settings.js";
+import NamedSelectionList from "./NamedSelectionList.svelte";
 
 let {
 	field,
@@ -23,7 +25,6 @@ let {
 let editing = $state(false);
 let search = $state("");
 let value = $state<unknown>(null);
-let mode = $state<"append" | "replace">("replace");
 let revision = $state(0);
 let busy = $state(false);
 let error = $state("");
@@ -45,15 +46,12 @@ const choices = $derived(
 const searchMinimum = $derived(field.form.search?.minimumLength ?? 0);
 const needsSearch = $derived(searchMinimum > 0 && search.trim().length < searchMinimum);
 const inputId = $derived(`setting-${subjectId}-${field.key}`);
-const instructions = $derived(field.merge === "instructions");
 const activeOverride = $derived(field.override && !field.override.reset ? field.override : null);
-const selected = $derived(
-	Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [],
-);
+const selected = $derived(settingSelectionValues(value));
 const retainedChoices = (saved: unknown) =>
 	remoteChoices.filter(
 		(choice) =>
-			selected.includes(choice.value) || (Array.isArray(saved) && saved.includes(choice.value)),
+			selected.includes(choice.value) || settingSelectionValues(saved).includes(choice.value),
 	);
 const selectionChoices = $derived([
 	...selected
@@ -93,25 +91,23 @@ function formatSelection(raw: unknown) {
 				.join("; ") || "None selected"
 		: format(raw);
 }
-const format = (raw: unknown) =>
-	raw === null
-		? "Runtime default (YAML or model catalog)"
-		: raw === ""
-			? "Empty"
-			: typeof raw === "string"
-				? raw
-				: JSON.stringify(raw);
+const format = (raw: unknown): string =>
+	field.form.control === "named-selection-list" && Array.isArray(raw)
+		? raw.map((row: NamedSelection) => `${row.name}: ${formatSelection(row.values)}`).join("\n") ||
+			"No groups"
+		: raw === null
+			? "Runtime default (YAML or model catalog)"
+			: raw === ""
+				? "Empty"
+				: typeof raw === "string"
+					? raw
+					: JSON.stringify(raw);
 const sources = (resolved: ResolvedSetting | null) =>
 	resolved?.sources.map((source) => source.label).join(" → ") ?? "Unavailable";
 
 async function begin() {
 	search = "";
-	value = activeOverride
-		? activeOverride.value
-		: instructions
-			? ""
-			: (field.effective?.value ?? null);
-	mode = activeOverride?.mode ?? (instructions ? "append" : "replace");
+	value = activeOverride ? activeOverride.value : (field.effective?.value ?? null);
 	revision = field.override?.revision ?? 0;
 	error = "";
 	notice = "";
@@ -129,7 +125,7 @@ async function cancel() {
 	document.getElementById(`${inputId}-edit`)?.focus();
 }
 function change(reset = false): SettingsChange {
-	return { subjectId, key: field.key, value, mode, reset, expectedRevision: revision };
+	return { subjectId, key: field.key, value, mode: "replace", reset, expectedRevision: revision };
 }
 $effect(() => {
 	if (!field.choicesDeferred) return;
@@ -172,7 +168,7 @@ $effect(() => {
 	};
 });
 $effect(() => {
-	if (!editing || !instructions) return;
+	if (!editing || field.form.control !== "named-selection-list") return;
 	const draft = change();
 	let current = true;
 	const timer = setTimeout(() => {
@@ -240,23 +236,22 @@ async function useLatestRevision() {
 		<div><h3 id={`${inputId}-heading`}>{field.form.label}</h3>{#if field.form.description}<p class="description">{field.form.description}</p>{/if}</div>
 		{#if !editing}<button id={`${inputId}-edit`} type="button" onclick={begin} disabled={busy}>{activeOverride ? "Edit override" : "Override"}</button>{/if}
 	</div>
-	<div class="effective"><span class="source">Effective value · {sources(field.effective)}</span><p class:instruction-value={instructions}>{field.effective ? (field.form.control === "multiselect" ? formatSelection(field.effective.value) : format(field.effective.value)) : "Unavailable"}</p></div>
+	<div class="effective"><span class="source">Effective value · {sources(field.effective)}</span><p class:multiline-value={field.form.control === "textarea" || field.form.control === "named-selection-list"}>{field.effective ? (field.form.control === "multiselect" ? formatSelection(field.effective.value) : format(field.effective.value)) : "Unavailable"}</p></div>
 	{#if field.error}<p class="error" role="alert">{field.error}</p>{/if}
 	{#if editing}
 		<form onsubmit={(event) => { event.preventDefault(); void save(); }}>
-			{#if instructions}
-				<label for={`${inputId}-mode`}>Instruction behavior</label>
-				<select id={`${inputId}-mode`} bind:value={mode} disabled={busy}>
-					<option value="append">Add to inherited instructions</option><option value="replace">Replace inherited instructions</option>
-				</select>
-			{/if}
 			<label for={inputId}>{field.form.label} override</label>
 			{#if choicesLoading}<p class="source" role="status">{searchMinimum > 0 ? "Searching…" : "Loading options…"}</p>{/if}
 			{#if choicesError}<p class="error" role="alert">{choicesError}</p><button type="button" onclick={() => choicesRefresh++}>{searchMinimum > 0 ? "Retry search" : "Retry options"}</button>{/if}
-			{#if field.form.control === "multiselect"}
+			{#if field.form.control === "named-selection-list"}
+				<input id={inputId} type="search" placeholder={field.form.search?.placeholder ?? "Search options"} bind:value={search} disabled={busy} onkeydown={(event) => { if (event.key === "Enter") event.preventDefault(); }} />
+				{#if needsSearch}<p class="description">Type at least {searchMinimum} characters to search.</p>{/if}
+				{#if choicesLoaded && !needsSearch && !choicesLoading && !choicesError && !remoteChoices.some((choice) => !selected.includes(choice.value))}<p class="description" role="status">No additional matches. Try a different search.</p>{/if}
+				<NamedSelectionList rows={Array.isArray(value) ? value as NamedSelection[] : []} choices={visibleChoices} {busy} id={inputId} onChange={(rows) => value = rows} />
+			{:else if field.form.control === "multiselect"}
 				<input id={inputId} type="search" placeholder={field.form.search?.placeholder ?? "Search options"} bind:value={search} disabled={busy} onkeydown={(event) => { if (event.key === "Enter") event.preventDefault(); }} aria-describedby={`${inputId}-count${searchMinimum > 0 ? ` ${inputId}-search-help` : ""}`} />
 				<p id={`${inputId}-count`} class="source" aria-live="polite">{selected.length} selected</p>
-				{#if searchMinimum > 0}<p id={`${inputId}-search-help`} class="description">{needsSearch ? `Type at least ${searchMinimum} characters to search.` : "Select repositories from the matches below."}</p>{/if}
+				{#if searchMinimum > 0}<p id={`${inputId}-search-help`} class="description">{needsSearch ? `Type at least ${searchMinimum} characters to search.` : "Select options from the matches below."}</p>{/if}
 				<div class="choices" role="group" aria-label={field.form.label}>
 					{#each visibleChoices as choice (choice.value)}
 						<label class="choice"><input type="checkbox" checked={selected.includes(choice.value)} disabled={busy || (Boolean(choice.disabledReason) && !selected.includes(choice.value))} onchange={(event) => toggleChoice(choice.value, event.currentTarget.checked)} /><span>{choice.label}{choice.disabledReason ? ` — ${choice.disabledReason}` : ""}</span></label>
@@ -277,7 +272,7 @@ async function useLatestRevision() {
 			{:else}
 				<input id={inputId} type="text" value={String(value ?? "")} oninput={(event) => { value = event.currentTarget.value; }} disabled={busy} />
 			{/if}
-			{#if instructions}<div class="combined"><span class="source">Combined preview</span><p class="instruction-value">{format(combined?.value ?? "")}</p></div>{/if}
+			{#if field.form.control === "named-selection-list" && combined}<div class="combined"><span class="source">Group preview</span><p class="multiline-value">{format(combined.value)}</p></div>{/if}
 			{#if previewError}<p class="error">{previewError}</p>{/if}
 			<div class="actions"><button class="save" type="submit" disabled={busy || conflict}>{busy ? "Saving…" : "Save override"}</button><button type="button" onclick={cancel} disabled={busy}>Cancel</button></div>
 		</form>
@@ -297,7 +292,7 @@ p { margin: .5rem 0; line-height: 1.5; overflow-wrap: anywhere; }
 .source { color: var(--chronicle-text-muted); font-size: var(--type-caption); }
 .effective { margin-top: .75rem; }
 .effective p { margin-top: .25rem; }
-.instruction-value { white-space: pre-wrap; }
+.multiline-value { white-space: pre-wrap; }
 form { margin: 1rem 0; display: grid; gap: .65rem; }
 label { font-weight: 600; }
 input:not([type="checkbox"]), select, textarea { width: 100%; min-width: 0; border: 1px solid var(--chronicle-border-strong); border-radius: var(--radius-sm); padding: .7rem; background: var(--chronicle-panel-surface); color: var(--chronicle-text); font: inherit; }

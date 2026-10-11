@@ -90,6 +90,14 @@ type NormalizedActionRoute = NormalizedRouteTarget & {
 export interface ProcessRuntimeTurnContext<TParams = unknown, TState = unknown>
 	extends WorkerProcessContext<TParams, TState> {}
 
+/** An outcome-tool submission awaiting acceptance. @public */
+export interface LlmOutcomeSubmission {
+	/** @public */
+	outcome: string;
+	/** @public */
+	params: Record<string, unknown>;
+}
+
 /** @internal */
 export interface LlmTurnPreparationContext<TParams = unknown, TState = unknown>
 	extends ProcessRuntimeTurnContext<TParams, TState> {
@@ -298,8 +306,22 @@ export type ProcessHumanTurnActionSpec<TParams = unknown, TState = unknown> = Ba
 	externalTriggers?: readonly ProcessActionExternalTrigger[];
 } & (StaticActionRouting | BranchingActionRouting<TParams, TState>);
 
+/** Pure inputs for resolving a tool contract before worker preparation. @public */
+export interface OutcomeParameterContext<TParams = unknown, TState = unknown> {
+	/** @public */
+	readonly params: TParams;
+	/** @public */
+	readonly state: TState;
+}
+
 /** @public */
 interface ProcessToolOutcomeBaseSpec<TParams = unknown, TState = unknown> {
+	/** Resolve parameters synchronously from captured process data. @public */
+	resolveParameters?: (
+		ctx: OutcomeParameterContext<TParams, TState>,
+	) => Record<string, OutcomeToolParameterSpec>;
+	/** Opt in to provider schema enforcement. @public */
+	strictSchema?: boolean;
 	/** @internal */
 	description: string;
 	/** @internal */
@@ -406,8 +428,15 @@ export interface LlmTurnDefinition<
 	resolveIntegrationTools?: (params: TParams, state: TState) => readonly string[];
 	/** Opt in to the durable, operator-facing ask_questions custom tool. @internal */
 	askQuestions?: boolean;
+	/** Constrain questions using captured process data and completed preparation before prompting. @public */
+	resolveAskQuestions?: (ctx: ProcessRuntimeTurnContext<TParams, TState>) => boolean;
 	/** Deterministic worker preparation that must complete before Pi is prompted. @internal */
 	prepare?(ctx: LlmTurnPreparationContext<TParams, TState>): MaybePromise<unknown>;
+	/** Return actionable errors before an outcome is accepted; no durable effects. @internal */
+	validateOutcome?(
+		ctx: LlmTurnPreparationContext<TParams, TState>,
+		outcome: LlmOutcomeSubmission,
+	): MaybePromise<readonly string[]>;
 	/** @public */
 	completionMode?: TurnCompletionMode;
 	/** @public */

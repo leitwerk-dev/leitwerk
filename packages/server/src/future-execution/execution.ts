@@ -23,6 +23,7 @@ import {
 } from "../process-model-policy/index.js";
 import type { ProcessOperationCoordinator } from "../process-operation-coordinator.js";
 import type { ProcessTitleGenerator } from "../process-title-generator.js";
+import type { LaunchSkillDefaults } from "../skills/launch-skills.js";
 import type { Broadcaster } from "../ws/broadcast.js";
 import {
 	projectFutureExecutionModelState,
@@ -57,6 +58,8 @@ export interface FutureExecutionExecutorDeps
 		| "handoffDedupKeys"
 		| "transaction"
 	> {
+	/** @internal */
+	skillDefaults?: LaunchSkillDefaults;
 	/** @internal */
 	turnRecords?: RepositoryBundle["turnRecords"];
 	/** @internal */

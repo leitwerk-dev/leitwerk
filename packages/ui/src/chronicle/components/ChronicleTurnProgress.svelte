@@ -10,11 +10,13 @@ import type { ExternalResourceType } from "../../lib/external-links.js";
 let {
 	report,
 	compact = false,
+	showSummary = true,
 	attemptStatus,
 	recordedAt,
 }: {
 	report: TurnProgressReport;
 	compact?: boolean;
+	showSummary?: boolean;
 	attemptStatus?: string;
 	recordedAt?: string;
 } = $props();
@@ -56,22 +58,24 @@ function resourceType(kind: TurnProgressLink["kind"]): ExternalResourceType {
 	{/if}
 {/snippet}
 
-{#if report.summary}<p>{report.summary}{#if recordedAt} <time datetime={recordedAt}>{new Date(recordedAt).toLocaleString()}</time>{/if}</p>{/if}
+{#if showSummary && report.summary}<p data-section="turn-progress-summary">{report.summary}{#if recordedAt} <time datetime={recordedAt}>{new Date(recordedAt).toLocaleString()}</time>{/if}</p>{/if}
 
 {#if succeeded}
 	<div class="progress-summary" data-section="turn-progress">
 		<details>
 			<summary>
-				<svg class="check" width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="10" cy="10" r="8" /><path d="m6 10 3 3 5-6" /></svg>
+				{#if !compact}<svg class="check" width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="10" cy="10" r="8" /><path d="m6 10 3 3 5-6" /></svg>{/if}
 				<span>{summary}</span>
-				<svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+				<svg class="chevron" class:leading={compact} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d={compact ? "m9 6 6 6-6 6" : "m6 9 6 6 6-6"} /></svg>
 			</summary>
 			<div class="progress-details"><ProgressChecklistRows {steps} /></div>
 		</details>
 		{@render createdChanges()}
 	</div>
-{:else}
+{:else if steps.length}
 	<ProgressChecklist title={report.title} {steps} dataSection="turn-progress">{@render createdChanges()}</ProgressChecklist>
+{:else}
+	{@render createdChanges()}
 {/if}
 {#if hasUnfinished}
 	<details><summary>Original progress report</summary><ProgressChecklistRows steps={report.steps.map((step) => ({ ...step, status: step.status === "in_progress" ? "incomplete" : step.status, detail: step.status === "in_progress" ? ["Recorded as in progress", step.detail].filter(Boolean).join(" · ") : step.detail }))} /></details>
@@ -85,7 +89,9 @@ function resourceType(kind: TurnProgressLink["kind"]): ExternalResourceType {
 	summary:focus-visible { outline: 2px solid var(--chronicle-accent); outline-offset: 2px; border-radius: 4px; }
 	.check { color: var(--chronicle-success); flex-shrink: 0; }
 	.chevron { color: var(--chronicle-text-faint); }
+	.chevron.leading { order: -1; }
 	details[open] .chevron { transform: rotate(180deg); }
+	details[open] .chevron.leading { transform: rotate(90deg); }
 	.progress-details { padding: 10px 0; }
 	h5 { margin: 0; color: var(--chronicle-text); font-size: var(--type-body-sm); font-weight: 600; }
 	.created-changes { display: grid; gap: 4px; margin-top: 6px; }

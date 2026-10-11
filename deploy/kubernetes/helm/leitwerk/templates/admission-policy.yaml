@@ -1,4 +1,5 @@
 {{- if .Values.rbac.create }}
+{{- $prepare := or .Values.kubernetes.processVolume.preProvision.enabled .Values.kubernetes.imagePreload.enabled }}
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
@@ -26,14 +27,22 @@ spec:
       expression: "'leitwerk.dev/component' in variables.labels ? variables.labels['leitwerk.dev/component'] : ''"
     - name: managedBy
       expression: "'leitwerk.dev/managed-by' in variables.labels ? variables.labels['leitwerk.dev/managed-by'] : ''"
-  {{- if .Values.kubernetes.processVolume.preProvision.enabled }}
+  {{- if .Values.kubernetes.imagePreload.enabled }}
+    - name: isImagePreparation
+      expression: "variables.resource.kind == 'Pod' && has(variables.resource.metadata.namespace) && variables.resource.metadata.namespace == '{{ include "leitwerk.namespace" . }}' && 'leitwerk.dev/image-preload' in variables.labels && variables.component == 'image-preparation' && variables.resource.metadata.name.startsWith('lw-image-')"
+  {{- end }}
+  {{- if $prepare }}
     - name: isPreparation
-      expression: "variables.resource.kind in ['Pod', 'PersistentVolumeClaim'] && has(variables.resource.metadata.namespace) && variables.resource.metadata.namespace == '{{ include "leitwerk.namespace" . }}' && 'leitwerk.dev/volume-pool' in variables.labels && variables.component == 'volume-preparation'"
+      expression: "has(variables.resource.metadata.namespace) && variables.resource.metadata.namespace == '{{ include "leitwerk.namespace" . }}' && ({{ if .Values.kubernetes.processVolume.preProvision.enabled }}(variables.resource.kind in ['Pod', 'PersistentVolumeClaim'] && 'leitwerk.dev/volume-pool' in variables.labels && variables.component == 'volume-preparation'){{ else }}false{{ end }}{{ if .Values.kubernetes.imagePreload.enabled }} || variables.isImagePreparation{{ end }})"
   {{- end }}
   validations:
-    {{- if .Values.kubernetes.processVolume.preProvision.enabled }}
+    {{- if $prepare }}
     - expression: "!variables.isPreparation || variables.resource.kind != 'Pod' || (has(variables.resource.spec) && has(variables.resource.spec.serviceAccountName) && variables.resource.spec.serviceAccountName == 'default' && has(variables.resource.spec.automountServiceAccountToken) && !variables.resource.spec.automountServiceAccountToken)"
       message: "preparation Pods must use the default ServiceAccount without its token"
+    {{- end }}
+    {{- if .Values.kubernetes.imagePreload.enabled }}
+    - expression: "!variables.isImagePreparation || ((!has(variables.resource.spec.volumes) || variables.resource.spec.volumes.size() == 0) && (!has(variables.resource.spec.initContainers) || variables.resource.spec.initContainers.size() == 0) && has(variables.resource.spec.nodeName) && variables.resource.spec.containers.size() == 1 && variables.resource.spec.containers.all(c, c.image.matches('^.+@sha256:[0-9a-f]{64}$') && has(c.command) && c.command == ['node', '-e', 'process.exit(0)'] && (!has(c.args) || c.args.size() == 0) && (!has(c.env) || c.env.size() == 0) && (!has(c.envFrom) || c.envFrom.size() == 0) && (!has(c.volumeMounts) || c.volumeMounts.size() == 0)))"
+      message: "image preparation Pods may only run the digest-qualified worker image exit command without volumes or credentials"
     {{- end }}
     - expression: "variables.resource.kind != 'Namespace' || (variables.resource.metadata.name.startsWith('{{ .Values.kubernetes.processNamespacePrefix }}'))"
       message: "leitwerk process namespaces must use the configured prefix"
@@ -41,15 +50,15 @@ spec:
       message: "leitwerk process namespaces must carry managed-by label"
     - expression: "variables.resource.kind != 'Namespace' || (variables.component == 'process-namespace')"
       message: "leitwerk process namespaces must carry process-namespace component label"
-    - expression: "variables.resource.kind == 'Namespace' || (has(variables.resource.metadata.namespace) && variables.resource.metadata.namespace.startsWith('{{ .Values.kubernetes.processNamespacePrefix }}')){{ if .Values.kubernetes.processVolume.preProvision.enabled }} || variables.isPreparation{{ end }}"
+    - expression: "variables.resource.kind == 'Namespace' || (has(variables.resource.metadata.namespace) && variables.resource.metadata.namespace.startsWith('{{ .Values.kubernetes.processNamespacePrefix }}')){{ if $prepare }} || variables.isPreparation{{ end }}"
       message: "leitwerk process resources must be created in process namespaces"
     - expression: "variables.resource.kind == 'Namespace' || (variables.managedBy == 'leitwerk')"
       message: "leitwerk process resources must carry managed-by label"
-    - expression: "variables.resource.kind != 'PersistentVolumeClaim' || (variables.component == 'process-volume'){{ if .Values.kubernetes.processVolume.preProvision.enabled }} || variables.isPreparation{{ end }}"
+    - expression: "variables.resource.kind != 'PersistentVolumeClaim' || (variables.component == 'process-volume'){{ if $prepare }} || variables.isPreparation{{ end }}"
       message: "leitwerk PVCs must carry process-volume component label"
     - expression: "variables.resource.kind != 'ConfigMap' || (variables.component == 'server-ca')"
       message: "leitwerk server CA ConfigMaps must carry server-ca component label"
-    - expression: "variables.resource.kind != 'Pod' || (variables.component in ['worker', 'session-export-helper']){{ if .Values.kubernetes.processVolume.preProvision.enabled }} || variables.isPreparation{{ end }}"
+    - expression: "variables.resource.kind != 'Pod' || (variables.component in ['worker', 'session-export-helper']){{ if $prepare }} || variables.isPreparation{{ end }}"
       message: "leitwerk pods must carry worker or session-export-helper component label"
     - expression: "variables.resource.kind != 'ServiceAccount' || (variables.component == 'worker-service-account')"
       message: "leitwerk worker ServiceAccounts must carry worker-service-account component label"
@@ -61,15 +70,15 @@ spec:
       message: "leitwerk image-pull Secrets must use dockerconfigjson type"
     - expression: "variables.resource.kind != 'Secret' || (has(variables.resource.data) && variables.resource.data.size() == 1 && '.dockerconfigjson' in variables.resource.data)"
       message: "leitwerk image-pull Secrets may contain only .dockerconfigjson"
-    - expression: "variables.resource.kind != 'Pod' || (has(variables.resource.spec) && has(variables.resource.spec.serviceAccountName) && variables.resource.spec.serviceAccountName == '{{ include "leitwerk.workerServiceAccountName" . }}'){{ if .Values.kubernetes.processVolume.preProvision.enabled }} || variables.isPreparation{{ end }}"
+    - expression: "variables.resource.kind != 'Pod' || (has(variables.resource.spec) && has(variables.resource.spec.serviceAccountName) && variables.resource.spec.serviceAccountName == '{{ include "leitwerk.workerServiceAccountName" . }}'){{ if $prepare }} || variables.isPreparation{{ end }}"
       message: "leitwerk worker pods must use the configured worker ServiceAccount"
-    - expression: "variables.resource.kind != 'Pod' || ('leitwerk.dev/instance-id' in variables.labels){{ if .Values.kubernetes.processVolume.preProvision.enabled }} || variables.isPreparation{{ end }}"
+    - expression: "variables.resource.kind != 'Pod' || ('leitwerk.dev/instance-id' in variables.labels){{ if $prepare }} || variables.isPreparation{{ end }}"
       message: "leitwerk worker pods must carry instance-id label"
-    - expression: "variables.resource.kind != 'Pod' || (variables.component != 'worker' || 'leitwerk.dev/worker-id' in variables.labels){{ if .Values.kubernetes.processVolume.preProvision.enabled }} || variables.isPreparation{{ end }}"
+    - expression: "variables.resource.kind != 'Pod' || (variables.component != 'worker' || 'leitwerk.dev/worker-id' in variables.labels){{ if $prepare }} || variables.isPreparation{{ end }}"
       message: "leitwerk worker pods must carry worker-id label"
-    - expression: "variables.resource.kind != 'Pod' || (variables.component != 'worker' || 'leitwerk.dev/server-epoch' in variables.labels){{ if .Values.kubernetes.processVolume.preProvision.enabled }} || variables.isPreparation{{ end }}"
+    - expression: "variables.resource.kind != 'Pod' || (variables.component != 'worker' || 'leitwerk.dev/server-epoch' in variables.labels){{ if $prepare }} || variables.isPreparation{{ end }}"
       message: "leitwerk worker pods must carry server-epoch label"
-    - expression: "variables.resource.kind != 'Pod' || (variables.component != 'session-export-helper' || 'leitwerk.dev/export-id' in variables.labels){{ if .Values.kubernetes.processVolume.preProvision.enabled }} || variables.isPreparation{{ end }}"
+    - expression: "variables.resource.kind != 'Pod' || (variables.component != 'session-export-helper' || 'leitwerk.dev/export-id' in variables.labels){{ if $prepare }} || variables.isPreparation{{ end }}"
       message: "leitwerk session export helper pods must carry export-id label"
 ---
 apiVersion: admissionregistration.k8s.io/v1

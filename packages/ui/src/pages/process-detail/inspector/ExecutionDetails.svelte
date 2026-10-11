@@ -127,6 +127,7 @@ function eventLabel(event: ProcessEvent) {
 }
 </script>
 <div class="execution-details" bind:this={root} use:observe>
+  {#if data.summary?.execution}<button class="text-link chronicle-link" data-action="show-in-chronicle" onclick={onChronicle}>Show in chronicle</button>{/if}
   {#if data.error}<div role="status" class="load-error" data-section="inspection-load-error"><p>{data.error}</p><button class="ui-button" onclick={data.retry}>Retry</button></div>{/if}
   {#if data.loading && !data.expanded[target.section]}<p class="loading" role="status">Loading {target.section}…</p>{/if}
   {#if target.section === "trace" && trace}
@@ -197,6 +198,7 @@ function eventLabel(event: ProcessEvent) {
 </div>
 <style>
 .execution-details {max-width:960px; margin:0 auto; min-width:0; overflow-wrap:anywhere; display:grid; gap:var(--space-md);}
+.chronicle-link {justify-self:start; min-height:44px;}
 .section {display:grid; gap:var(--space-sm); padding:var(--space-sm) 0; min-width:0;} h2 {margin:0; font-size:var(--type-title-sm); font-weight:650;} p {margin:0; font-size:var(--type-body-sm); line-height:1.65;} .note {color:var(--chronicle-text-muted);}
 .section > button {justify-self:start;} .facts {display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--space-sm); margin-top:var(--space-sm);}
 .boundary {padding:var(--space-md); background:var(--chronicle-accent-soft); color:var(--chronicle-accent); font-weight:650; border:1px solid var(--chronicle-border); border-radius:var(--radius-sm);} .boundary span {display:block; font-weight:400; color:var(--chronicle-text-muted);}

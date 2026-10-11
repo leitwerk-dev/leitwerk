@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import { getDefaultConfig } from "@leitwerk-dev/server";
+import { withDefaultModelFixture } from "@leitwerk-dev/test-support";
 import { StubPiTreeHandleFactory } from "@leitwerk-dev/test-support/worker-testing";
 import { expect, onTestFinished, test } from "vitest";
 import { sandboxConfig } from "./config.js";
@@ -68,6 +69,7 @@ test("excludes ambient provider, Pi, Git and Node overrides", () => {
 test("preflight initializes and cleans adapters only in disposable storage", async () => {
 	const directory = root();
 	const config = getDefaultConfig();
+	const modelCatalog = withDefaultModelFixture(config, await buildExtensionCatalogFromModules([]));
 	const input: SandboxInput = {
 		paths: { root: directory, directory, workspaceRoot: directory },
 		urls: { backend: "http://127.0.0.1:18082", ui: "http://127.0.0.1:5173" },
@@ -87,7 +89,7 @@ test("preflight initializes and cleans adapters only in disposable storage", asy
 			candidateRoot = paths.directory;
 			writeFileSync(path.join(paths.directory, "providers.json"), "candidate");
 		},
-		createCatalog: () => buildExtensionCatalogFromModules([]),
+		createCatalog: async () => modelCatalog,
 		scriptedPi: () => new StubPiTreeHandleFactory(),
 		cleanup() {
 			cleaned = true;
@@ -186,7 +188,9 @@ test("real mode requires a dedicated mode-0600 credential file and rejects symli
 	writeFileSync(
 		file,
 		JSON.stringify({
+			default_model_profile: "sandbox-real",
 			model_profiles: [
+				{ id: "other", provider: "test", model_id: "test", thinking_level: "off" },
 				{ id: "sandbox-real", provider: "test", model_id: "test", thinking_level: "off" },
 			],
 			providers: { test: { api_key: "synthetic-dedicated-key" } },
@@ -196,7 +200,9 @@ test("real mode requires a dedicated mode-0600 credential file and rejects symli
 	expect(() => sandboxConfig(input)).toThrow(/0600/);
 	chmodSync(file, 0o600);
 	const configured = sandboxConfig(input);
+	expect(configured.pi.default_model_profile).toBe("sandbox-real");
 	expect(configured.pi.model_profiles).toEqual([
+		{ id: "other", provider: "test", model_id: "test", thinking_level: "off" },
 		{ id: "sandbox-real", provider: "test", model_id: "test", thinking_level: "off" },
 	]);
 	expect(configured.extensions.models).toEqual({
@@ -207,4 +213,46 @@ test("real mode requires a dedicated mode-0600 credential file and rejects symli
 	writeFileSync(outside, "{}", { mode: 0o600 });
 	symlinkSync(outside, file);
 	expect(() => sandboxConfig(input)).toThrow(/symlink/);
+});
+
+test.each([
+	undefined,
+	null,
+	"",
+	" ",
+	"missing",
+])("real mode rejects invalid default model %s", (default_model_profile) => {
+	const directory = root();
+	const input: SandboxInput = {
+		paths: { root: directory, directory: path.join(directory, "real"), workspaceRoot: directory },
+		urls: { backend: "http://127.0.0.1:18082", ui: "http://127.0.0.1:5173" },
+		mode: "real",
+		modelProfileId: "sandbox-real",
+	};
+	writeFileSync(
+		path.join(directory, "model.json"),
+		JSON.stringify({
+			default_model_profile,
+			model_profiles: [{ id: "sandbox-real", provider: "test", model_id: "test" }],
+			providers: {},
+		}),
+		{ mode: 0o600 },
+	);
+	expect(() => sandboxConfig(input)).toThrow(/default_model_profile/);
+});
+
+test("scripted mode explicitly selects the sandbox model", () => {
+	const directory = root();
+	expect(
+		sandboxConfig({
+			paths: {
+				root: directory,
+				directory: path.join(directory, "scripted"),
+				workspaceRoot: directory,
+			},
+			urls: { backend: "http://127.0.0.1:18082", ui: "http://127.0.0.1:5173" },
+			mode: "scripted",
+			modelProfileId: "sandbox",
+		}).pi.default_model_profile,
+	).toBe("sandbox");
 });

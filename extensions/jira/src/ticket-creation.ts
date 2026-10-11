@@ -13,6 +13,7 @@ import {
 } from "@leitwerk-dev/process-sdk";
 import type { JiraCreateProject } from "./client.js";
 import type { JiraIntegration } from "./index.js";
+import { markdownToJira } from "./markdown.js";
 
 const reservedFields = ["project", "issuetype", "summary", "description", "labels"];
 
@@ -118,14 +119,14 @@ export function registerJiraTicketCreation(
 	api.tool<Record<string, unknown>>({
 		name: "jira_create_issue",
 		description:
-			"Create one Jira issue with the selected project's issue type. Supply any required additional fields from its destination metadata; ask the operator when a value is unknown.",
+			"Create one Jira issue with the selected project's issue type. Write the description in Markdown; the publisher converts it to Jira wiki markup. Supply any required additional fields from its destination metadata; ask the operator when a value is unknown.",
 		parameters: {
 			type: "object",
 			properties: {
 				summary: { type: "string", description: "Concise issue title" },
 				description: {
 					type: "string",
-					description: "Complete issue description in Jira wiki markup",
+					description: "Complete issue description in Markdown",
 				},
 				labels: { type: "array", items: { type: "string" } },
 				fields: {
@@ -143,6 +144,7 @@ export function registerJiraTicketCreation(
 			startTurnId: "create_ticket",
 			titlePath: "/summary",
 			descriptionPath: "/description",
+			descriptionFormat: "markdown",
 			destinations,
 		},
 		async execute(ctx, args) {
@@ -194,7 +196,7 @@ export function registerJiraTicketCreation(
 								project: { id: target.projectId },
 								issuetype: { id: target.issueTypeId },
 								summary,
-								description: `${description}\n\n{noformat}${marker}{noformat}`,
+								description: `${markdownToJira(description)}\n\n{noformat}${marker}{noformat}`,
 								...(labels.length ? { labels } : {}),
 							},
 							ctx.signal,

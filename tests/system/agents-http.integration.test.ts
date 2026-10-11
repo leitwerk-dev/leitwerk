@@ -24,6 +24,7 @@ beforeAll(async () => {
 	const harness = await createIntegrationHarness({
 		extensionCatalog: testExtensionCatalog,
 		configOverride(config) {
+			config.pi.default_model_profile = "fixture";
 			config.pi.model_profiles = [
 				{
 					id: "fixture",

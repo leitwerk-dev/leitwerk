@@ -2,26 +2,44 @@ import { createHash } from "node:crypto";
 import { projectParameters, type ServerExtensionAPI, stringArg } from "@leitwerk-dev/process-sdk";
 import { jiraTriggerLabel } from "./client.js";
 import type { JiraIntegration } from "./index.js";
+import { jiraToMarkdown } from "./markdown.js";
 import { registerJiraWorkflowTools, resolveJiraSourceClient } from "./workflow-tools.js";
 
 /** @internal */
 export function registerJiraTools(api: ServerExtensionAPI, integration: JiraIntegration) {
 	for (const name of [
 		"jira_get_source_issue",
+		"jira_get_issue",
 		"jira_comment",
 		"jira_finalize_source_issue",
 	] as const)
 		api.tool<Record<string, unknown>>({
 			name,
-			description: "Read or reconcile the launch-pinned Jira source issue",
-			parameters: projectParameters({
-				body: { type: "string" },
-				writeKey: { type: "string" },
-				done: { type: "boolean" },
-			}),
+			description:
+				name === "jira_get_source_issue" || name === "jira_get_issue"
+					? name === "jira_get_source_issue"
+						? "Read the launch-pinned Jira source issue. Use descriptionMarkdown for its converted Markdown description; fields.description retains the original Jira wiki markup."
+						: "Read a Jira issue by key or ID using the current process project's bound Jira profile. Use descriptionMarkdown for converted Markdown; fields.description retains Jira wiki markup."
+					: "Reconcile the launch-pinned Jira source issue",
+			parameters:
+				name === "jira_get_source_issue"
+					? projectParameters()
+					: name === "jira_get_issue"
+						? projectParameters({ issueKey: { type: "string" } })
+						: projectParameters({
+								body: { type: "string" },
+								writeKey: { type: "string" },
+								done: { type: "boolean" },
+							}),
 			async execute(ctx, args) {
 				const { binding, client, id } = resolveJiraSourceClient(ctx, integration);
-				if (name === "jira_get_source_issue") return client.getIssue(id);
+				if (name === "jira_get_source_issue" || name === "jira_get_issue") {
+					const issue = await client.getIssue(
+						name === "jira_get_source_issue" ? id : stringArg(args, "issueKey"),
+						ctx.signal,
+					);
+					return { ...issue, descriptionMarkdown: jiraToMarkdown(issue.fields.description) };
+				}
 				const digest = createHash("sha256")
 					.update(JSON.stringify([client.baseUrl, id, ctx.process.id, stringArg(args, "writeKey")]))
 					.digest("hex");

@@ -8,6 +8,7 @@ import type {
 	SettingsOverride,
 	SettingsSubject,
 } from "@leitwerk-dev/domain";
+import { SYSTEM_ACTOR } from "@leitwerk-dev/domain";
 import type { ExtensionCatalog } from "@leitwerk-dev/extension-runtime";
 import type {
 	ExecutionPurposeDefinition,
@@ -19,9 +20,11 @@ import type {
 import { repositorySettingsIdentity } from "@leitwerk-dev/process-sdk";
 import type {
 	SettingFieldView,
+	SettingsOverviewResponse,
 	SettingsPreview,
 	SettingsScopesResponse,
 } from "@leitwerk-dev/protocol/http-contracts";
+import { settingSelectionValues } from "@leitwerk-dev/protocol/http-contracts";
 import type { LeitwerkConfig } from "./config/config-types.js";
 import type { RepositoryBundle } from "./db/repositories.js";
 import type { SettingsWrite } from "./db/scoped-settings-repo.js";
@@ -112,6 +115,8 @@ export interface ScopedSettingsService extends ScopedSettingsResolver {
 	/** @internal */
 	listScopes(): SettingsScopesResponse;
 	/** @internal */
+	overview(scopeType: string): Promise<SettingsOverviewResponse>;
+	/** @internal */
 	forProcess(process: SubjectProcess): ProcessScopeContext;
 	/** @internal */
 	forLaunch(plan: ProcessLaunchPlan): ProcessScopeContext;
@@ -137,9 +142,16 @@ export function createScopedSettingsService(input: {
 	const { repos, catalog } = input;
 	const definitions = new Map<string, { owner: string; definition: SettingDefinition }>();
 	const purposes = new Map<string, ExecutionPurposeDefinition>();
-	const scopes = new Map([
+	const scopes = new Map<string, SettingsScopesResponse["scopes"][number]>([
 		["instance", { id: "instance", label: "Instance" }],
-		["repository", { id: "repository", label: "Repository" }],
+		[
+			"repository",
+			{
+				id: "repository",
+				label: "Repository",
+				overview: { itemLabel: "Repository", itemLabelPlural: "Repositories" },
+			},
+		],
 	]);
 	type DiscoveryProvider = NonNullable<
 		Parameters<ScopedSettingsResolver["registerDiscovery"]>[2]
@@ -159,6 +171,7 @@ export function createScopedSettingsService(input: {
 			if (
 				!Number.isSafeInteger(definition.schemaVersion) ||
 				definition.schemaVersion < 1 ||
+				definition.merge !== "replace" ||
 				!definition.scopes.length ||
 				new Set(definition.scopes).size !== definition.scopes.length
 			)
@@ -179,14 +192,10 @@ export function createScopedSettingsService(input: {
 	for (const purpose of purposes.values()) {
 		for (const key of [
 			...(purpose.settingKeys ?? []),
-			...(purpose.instructionSettingKeys ?? []),
 			...(purpose.modelSettingKey ? [purpose.modelSettingKey] : []),
 		]) {
 			if (!definitions.has(key)) throw new Error(`Unknown setting '${key}' for '${purpose.id}'`);
 		}
-		for (const key of purpose.instructionSettingKeys ?? [])
-			if (definitions.get(key)?.definition.merge !== "instructions")
-				throw new Error(`Instruction setting '${key}' must compose instructions`);
 	}
 	for (const process of catalog.processes.values())
 		for (const binding of process.turns.values()) {
@@ -204,10 +213,7 @@ export function createScopedSettingsService(input: {
 			context: {},
 		});
 
-	const choiceValues = (value: unknown): string[] =>
-		(Array.isArray(value) ? value : [value]).filter(
-			(entry): entry is string => typeof entry === "string",
-		);
+	const choiceValues = settingSelectionValues;
 
 	function requireSubject(id: string): SettingsSubject {
 		const subject = repos.scopedSettings.getSubject(id);
@@ -230,8 +236,6 @@ export function createScopedSettingsService(input: {
 		try {
 			const parsed = definition.schema.parse(value);
 			if (JSON.stringify(parsed) === undefined) throw new Error("Value must be JSON-compatible");
-			if (definition.merge === "instructions" && typeof parsed !== "string")
-				throw new Error("Instructions must be text");
 			if (
 				definition.form.control === "model" &&
 				parsed !== null &&
@@ -280,9 +284,11 @@ export function createScopedSettingsService(input: {
 				throw new SettingsError(
 					`${definition.form.label} on ${subject.label} uses an incompatible schema. Correct '${definition.key}' in Settings.`,
 				);
-			const next = parse(definition, row.value);
-			const append = definition.merge === "instructions" && row.mode === "append";
-			value = append ? [value, next].filter((part) => part !== "").join("\n\n") : next;
+			if (row.mode !== "replace")
+				throw new SettingsError(
+					`Append overrides are no longer supported. Reset '${definition.key}' in Settings.`,
+				);
+			value = parse(definition, row.value);
 			const source = {
 				subjectId,
 				scopeType,
@@ -291,7 +297,7 @@ export function createScopedSettingsService(input: {
 				schemaVersion: row.schemaVersion,
 				mode: row.mode,
 			};
-			sources = append ? [...sources, source] : [source];
+			sources = [source];
 		}
 		return { key: definition.key, value: value as T, sources };
 	}
@@ -399,6 +405,7 @@ export function createScopedSettingsService(input: {
 	function contextFor(
 		process: { metadata?: Record<string, unknown> | null },
 		projects: readonly Project[],
+		preview = false,
 	) {
 		const supplied = process.metadata?.settingsContext;
 		const context: Record<string, string> = { instance: instance.id };
@@ -418,7 +425,8 @@ export function createScopedSettingsService(input: {
 					: undefined;
 		if (typeof primaryKey === "string" && !primary)
 			throw new SettingsError(`Primary repository '${primaryKey}' is no longer bound`);
-		delete context.repository;
+		// A preview can retain a known repository's settings without clone/branch discovery.
+		if (!preview || projects.length > 0) delete context.repository;
 		if (primary) context.repository = primary.subject.id;
 		return {
 			context,
@@ -445,29 +453,13 @@ export function createScopedSettingsService(input: {
 	): ScopedSettingsSnapshot | undefined {
 		const purpose = purposeFor(process.processId, turnId);
 		if (!purpose) return undefined;
-		const { context, subjects, explanations } = forProcess(process);
+		const { context, explanations } = forProcess(process);
 		const keys = new Set([
 			...(purpose.settingKeys ?? []),
 			...(includeModelDefault && purpose.modelSettingKey ? [purpose.modelSettingKey] : []),
 		]);
 		const values = [...keys].map((key) => resolveDefinition(requireDefinition(key), context));
-		const instructions: ScopedSettingsSnapshot["instructions"] = [];
-		for (const key of purpose.instructionSettingKeys ?? []) {
-			const definition = requireDefinition(key) as SettingDefinition<string>;
-			const targets =
-				definition.scopes.includes("repository") && subjects.length
-					? subjects.map(({ subject, project }) => ({
-							label: `${project.key} — ${subject.label}`,
-							context: { ...context, repository: subject.id },
-						}))
-					: [{ label: definition.form.label, context }];
-			for (const target of targets)
-				instructions.push({
-					label: target.label,
-					setting: resolveDefinition(definition, target.context),
-				});
-		}
-		return { version: 1, purpose: purpose.id, context, values, instructions, explanations };
+		return { version: 1, purpose: purpose.id, context, values, explanations };
 	}
 	function modelDefault(
 		processId: string,
@@ -480,7 +472,7 @@ export function createScopedSettingsService(input: {
 		const context = process
 			? forProcess(process).context
 			: plan
-				? contextFor(plan.processInput, plan.projectInputs).context
+				? contextFor(plan.processInput, plan.projectInputs, plan.preview).context
 				: { instance: instance.id };
 		const value = resolveDefinition(requireDefinition(purpose.modelSettingKey), context).value;
 		if (value !== null && typeof value !== "string")
@@ -559,9 +551,9 @@ export function createScopedSettingsService(input: {
 		const definition = requireDefinition(key);
 		if (!definition.scopes.includes(subject.scopeType))
 			throw new SettingsError(`'${key}' does not apply to ${subject.scopeType}`);
-		mode ??= definition.merge === "instructions" ? "append" : "replace";
-		if (mode === "append" && definition.merge !== "instructions")
-			throw new SettingsError("Only instructions can append inherited values");
+		mode ??= "replace";
+		if (mode !== "replace")
+			throw new SettingsError("Settings overrides must replace inherited values");
 		return {
 			subjectId: subject.id,
 			value: reset ? null : parse(definition, value),
@@ -633,8 +625,62 @@ export function createScopedSettingsService(input: {
 	}
 	discoverLocal();
 	return {
+		async overview(scopeType) {
+			const subjects = listScopes().subjects.filter(
+				(subject) => subject.scopeType === scopeType && subject.hasSettings,
+			);
+			return {
+				items: await Promise.all(
+					subjects.map(async (subject) => {
+						const result = await preview(subject.id);
+						const mappingFields = result.fields.filter(
+							(field) => field.form.overview === "repository-mapping",
+						);
+						return {
+							subjectId: subject.id,
+							customized: [
+								...result.fields
+									.filter((field) => field.override && !field.override.reset)
+									.map((field) => field.form.label),
+								...result.inactive.map((field) => field.key),
+							],
+							...(mappingFields.length
+								? {
+										mapping: mappingFields.flatMap((field) =>
+											settingSelectionValues(field.effective?.value).map(
+												(value) =>
+													field.choices.find((choice) => choice.value === value) ?? {
+														value,
+														label: "Unavailable repository",
+													},
+											),
+										),
+									}
+								: {}),
+							errors: result.fields.flatMap((field) => (field.error ? [field.error] : [])),
+						};
+					}),
+				),
+			};
+		},
 		resolve: (definition, context) =>
 			resolveDefinition(requireDefinition(definition.key) as typeof definition, context),
+		findSubject: (scopeType, identity) => repos.scopedSettings.findIdentity(scopeType, identity),
+		getSubject: (id) => repos.scopedSettings.getSubject(id),
+		seedOverride(subjectId, definition, value) {
+			const subject = requireSubject(subjectId);
+			if (repos.scopedSettings.getOverride(subject.id, definition.key)) return false;
+			write({
+				subjectId: subject.id,
+				key: definition.key,
+				value,
+				mode: "replace",
+				reset: false,
+				expectedRevision: 0,
+				actor: SYSTEM_ACTOR,
+			});
+			return true;
+		},
 		discover,
 		registerDiscovery(scopeType, discoverer, options) {
 			if (!scopes.has(scopeType)) throw new SettingsError(`Unknown scope '${scopeType}'`);
@@ -650,7 +696,7 @@ export function createScopedSettingsService(input: {
 		write,
 		listScopes,
 		forProcess,
-		forLaunch: (plan) => contextFor(plan.processInput, plan.projectInputs),
+		forLaunch: (plan) => contextFor(plan.processInput, plan.projectInputs, plan.preview),
 		previewProcess(process: SubjectProcess) {
 			return [...(catalog.processes.get(process.processId)?.turns.keys() ?? [])]
 				.filter((turnId) => purposeFor(process.processId, turnId))

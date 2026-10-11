@@ -151,6 +151,11 @@ Other bindings continue; a single stopped, unmerged binding aborts its process.
 Remove/re-add pairs between polls end the old activation. Ownership is rechecked
 before publication, replies and reactions; late worker outcomes are fenced.
 Label-read failures produce retry diagnostics and do not cancel maintenance.
+Deleting a linked MR aborts the whole process, including running repairs and
+operator waits. Deletion is confirmed by an MR 404 while its project remains
+accessible; access failures and other read errors remain retryable diagnostics.
+Deleted bindings are persisted and receive no further MR reads or writes after
+restart.
 
 Merged MRs lose `leitwerk-active` and gain `leitwerk-done`. Unmerged closure and
 stopping remove active without adding done. Label writes preserve unrelated labels

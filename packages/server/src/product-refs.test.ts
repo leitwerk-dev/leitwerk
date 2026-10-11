@@ -48,6 +48,7 @@ function prepareProductWorkerStart(
 		{ path: "generated.json", content: Buffer.from("{}") },
 		{ path: "settings.json", content: Buffer.from("{}") },
 	]);
+	config.pi.default_model_profile = "fixture-profile";
 	config.pi.model_profiles = [
 		{
 			id: "fixture-profile",

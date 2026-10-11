@@ -3,7 +3,15 @@ import { createTestLlmTurn as turnDef } from "./test-helpers/llm-turn.js";
 import { createTurnOutcomeToolSession } from "./turn-outcome-tool-session.js";
 
 function createSession(overrides: Parameters<typeof turnDef>[0] = {}) {
-	return createTurnOutcomeToolSession({ turnId: "turn", turnDef: turnDef(overrides) });
+	return createTurnOutcomeToolSession({
+		turnId: "turn",
+		turnDef: turnDef({
+			outcomes: {
+				plan_saved: { description: "Save", parameters: { summary: { type: "string" } } },
+			},
+			...overrides,
+		}),
+	});
 }
 
 describe("TurnOutcomeToolSession terminal outcome runtime controls", () => {
@@ -19,6 +27,7 @@ describe("TurnOutcomeToolSession terminal outcome runtime controls", () => {
 		if (!abort) throw new Error("Missing abort_turn tool");
 		await abort.execute({ reason: "  Dependency access is unavailable  " });
 		expect(session.getCompletionState().abortReason).toBe("Dependency access is unavailable");
+		expect(session.recordToolResult({ role: "toolResult", toolName: "abort_turn" })).toBe(true);
 		expect(session.shouldBlockToolCall("write")).toContain("aborted");
 		expect(session.shouldBlockToolCall("plan_saved")).toContain("aborted");
 		expect(session.resolveOutcome(turnDef())).toBeNull();
@@ -126,6 +135,20 @@ describe("TurnOutcomeToolSession terminal outcome runtime controls", () => {
 		expect(resumeGuards).toHaveBeenCalledOnce();
 	});
 
+	it.each([true, false])("constrains question tools and guidance when enabled=%s", (enabled) => {
+		const session = createTurnOutcomeToolSession({
+			turnId: "turn",
+			turnRecordId: "turn-record-1",
+			turnDef: turnDef({ askQuestions: true }),
+			questionsEnabled: enabled,
+			requestQuestions: vi.fn(),
+		});
+		expect(session.tools.some((tool) => tool.name === "ask_questions")).toBe(enabled);
+		expect(session.addPromptSuffix("Work").includes("ask_questions")).toBe(enabled);
+		expect(session.tools.some((tool) => tool.name === "plan_saved")).toBe(true);
+		expect(session.tools.some((tool) => tool.name === "abort_turn")).toBe(true);
+	});
+
 	it("does not become terminal when outcome markdown validation fails", async () => {
 		const session = createSession({
 			turnResultMarkdown: {
@@ -204,4 +227,140 @@ describe("TurnOutcomeToolSession terminal outcome runtime controls", () => {
 		expect(session.shouldBlockToolCall("markdown_result")).toBeNull();
 		expect(session.shouldBlockToolCall("bash")).toContain("already been accepted");
 	});
+});
+
+it("keeps invalid submissions open and accepts a correction in the same tool session", async () => {
+	const validateOutcome = vi.fn(async ({ params }: { params: Record<string, unknown> }) =>
+		params.citation === "captured" ? [] : ["Citation must match the captured commit"],
+	);
+	const session = createTurnOutcomeToolSession({
+		turnId: "investigate",
+		turnDef: turnDef({
+			outcomes: {
+				plan_saved: { description: "Save", parameters: { citation: { type: "string" } } },
+			},
+		}),
+		validateOutcome,
+	});
+	const tool = session.tools.find((tool) => tool.name === "plan_saved")!;
+	expect(await tool.execute({ citation: "invented" })).toEqual({
+		ok: false,
+		status: "invalid",
+		errors: ["Citation must match the captured commit"],
+	});
+	expect(session.getCompletionState().selectedOutcome).toBeNull();
+	expect(session.getCompletionState().markdownState.publicationCount).toBe(0);
+	expect(session.terminalAcknowledgement.state()).toBe("open");
+	expect(session.shouldBlockToolCall("read")).toBeNull();
+	expect(await tool.execute({ citation: "captured" })).toEqual({
+		status: "ok",
+		outcome: "plan_saved",
+	});
+	expect(session.resolveOutcome(turnDef())).toEqual({
+		outcome: "plan_saved",
+		params: { citation: "captured" },
+	});
+	expect(session.terminalAcknowledgement.state()).toBe("outcome_accepted");
+});
+
+it("returns validation exceptions as feedback without accepting an outcome", async () => {
+	const session = createTurnOutcomeToolSession({
+		turnId: "investigate",
+		turnDef: turnDef(),
+		validateOutcome: async () => {
+			throw new Error("Source unavailable; name the missing access in a blocked assessment");
+		},
+	});
+	const result = await session.tools.find((tool) => tool.name === "plan_saved")!.execute({});
+	expect(result).toEqual({
+		ok: false,
+		status: "invalid",
+		errors: ["Source unavailable; name the missing access in a blocked assessment"],
+	});
+	expect(session.resolveOutcome(turnDef())).toBeNull();
+});
+
+it("retains rejection feedback across recovery and clears it when corrected", async () => {
+	const session = createTurnOutcomeToolSession({
+		turnId: "turn",
+		turnDef: turnDef({
+			outcomes: { plan_saved: { description: "Save", parameters: { valid: { type: "boolean" } } } },
+		}),
+		validateOutcome: async ({ params }) => (params.valid ? [] : ["assessment.ticket: unsupported"]),
+	});
+	await session.tools[0].execute({});
+	const state = session.getCompletionState();
+	session.reset(state);
+	const recovery = session.resolveMissingToolRecovery(session.getCompletionState())!;
+	expect(recovery.failureCode).toBe("outcome_rejected");
+	expect(session.buildRecoveryContext(recovery).suggestedContinuePrompt).toContain(
+		"assessment.ticket: unsupported",
+	);
+	await session.tools[0].execute({ valid: true });
+	expect(session.getCompletionState().rejectedOutcome).toBeUndefined();
+	expect(session.resolveMissingToolRecovery(session.getCompletionState())).toBeNull();
+});
+
+it("recognizes Pi schema rejections before the outcome execute callback", () => {
+	const session = createTurnOutcomeToolSession({ turnId: "turn", turnDef: turnDef() });
+	const entry = {
+		id: "result",
+		parentId: "call",
+		type: "message",
+		timestamp: "2026-10-07T10:29:21Z",
+		message: {
+			role: "toolResult",
+			toolName: "plan_saved",
+			isError: true,
+			content: [{ type: "text", text: "assessment.findings must be an object" }],
+		},
+	};
+	expect(session.recordToolResult(entry.message)).toBe(true);
+	const recovery = session.resolveMissingToolRecovery(session.getCompletionState())!;
+	expect(recovery.rejectedOutcome?.errors).toEqual(["assessment.findings must be an object"]);
+	expect(session.describeRecovery(recovery)).toContain("rejected 'plan_saved'");
+});
+
+it("distinguishes a new outcome rejection from unrelated tool failures during correction", async () => {
+	const session = createTurnOutcomeToolSession({
+		turnId: "turn",
+		turnDef: turnDef({
+			outcomes: { plan_saved: { description: "Save", parameters: { valid: { type: "boolean" } } } },
+		}),
+		validateOutcome: async ({ params }) => (params.valid ? [] : ["Use a captured citation"]),
+	});
+	const tool = session.tools[0];
+	const details = await tool.execute({});
+	expect(session.recordToolResult({ role: "toolResult", toolName: "plan_saved", details })).toBe(
+		true,
+	);
+	session.reset(session.getCompletionState());
+	expect(session.recordToolResult({ role: "toolResult", toolName: "read", isError: true })).toBe(
+		false,
+	);
+	expect(session.recordToolResult(undefined)).toBe(false);
+	expect(session.getCompletionState().rejectedOutcome?.errors).toEqual(["Use a captured citation"]);
+	await tool.execute({ valid: true });
+	expect(session.recordToolResult({ role: "toolResult", toolName: "plan_saved", details })).toBe(
+		false,
+	);
+	expect(session.getCompletionState().rejectedOutcome).toBeUndefined();
+});
+
+it("keeps runtime-only integration tools out of model declarations", () => {
+	const hidden = {
+		name: "validate_internal",
+		description: "Validate",
+		modelVisible: false,
+		parameters: {},
+		execute: async () => ({ ok: true }),
+	};
+	const visible = { ...hidden, name: "lookup", modelVisible: true };
+	const session = createTurnOutcomeToolSession({
+		turnId: "turn",
+		turnDef: turnDef(),
+		integrationTools: [hidden, visible],
+	});
+	expect(session.tools.map((tool) => tool.name)).toContain("lookup");
+	expect(session.tools.map((tool) => tool.name)).not.toContain("validate_internal");
 });

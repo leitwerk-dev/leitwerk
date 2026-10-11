@@ -1,7 +1,73 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { jiraFixture } from "./jira-gitlab-fixture.js";
 
 describe("Jira coordinated GitLab change", () => {
+	it("blocks planning before acceptance when tool preparation fails and recovers on retry", async ({
+		onTestFinished,
+	}) => {
+		const f = await jiraFixture(onTestFinished, { toolchainUnavailable: true });
+		await f.pollDiscovery();
+		const id = f.harness.ctx.deps.processes.listAll()[0].id;
+		await f.wait(id, "generate_plan", "error");
+		expect(f.harness.ctx.deps.turnRecords.listByInstance(id)).toHaveLength(0);
+		expect(f.prompts).toHaveLength(0);
+		expect(f.issue.fields.status.statusCategory.key).toBe("new");
+		expect(f.links).toHaveLength(0);
+
+		f.setToolchainUnavailable(false);
+		await f.post(`/api/processes/${id}/retry`);
+		await f.wait(id, "plan_decision");
+		expect(f.harness.ctx.deps.turnRecords.listByInstance(id)).toHaveLength(1);
+		expect(f.issue.fields.status.name).toBe("In Progress");
+		expect(f.prompts).toHaveLength(1);
+	}, 45000);
+
+	it("shows missing component mappings and automatically resumes the same process after restart", async ({
+		onTestFinished,
+	}) => {
+		const f = await jiraFixture(onTestFinished, { unmapped: true });
+		const id = await f.discover();
+		const read = () => {
+			const process = f.harness.ctx.deps.processes.getById(id);
+			if (!process) throw new Error("Missing process");
+			return process;
+		};
+		await vi.waitFor(() =>
+			expect(read().metadata?.turnWait).toMatchObject({
+				message: expect.stringContaining("Shared"),
+			}),
+		);
+		expect(read()).toMatchObject({ lifecycleStatus: "waiting", selectedTurnId: "generate_plan" });
+		expect(f.params(id)).toMatchObject({ repositories: [], startup: { projectIds: ["100"] } });
+		expect(f.harness.ctx.deps.projects.listByInstance(id)).toHaveLength(0);
+		expect(f.harness.ctx.deps.turnStarts.listByInstance(id)).toHaveLength(0);
+		expect(f.harness.ctx.deps.turnRecords.listByInstance(id)).toHaveLength(0);
+		expect(f.harness.ctx.deps.leases.listByInstance(id)).toHaveLength(0);
+		expect(f.prompts).toHaveLength(0);
+		expect(f.links).toHaveLength(0);
+		expect(f.issue.fields.status.statusCategory.key).toBe("new");
+		const snapshot = await f.harness.ctx.app.inject({
+			method: "GET",
+			url: `/api/processes/${id}/ui-snapshot`,
+		});
+		expect(snapshot.statusCode).toBe(200);
+		expect(snapshot.body).toContain("Settings → Jira components");
+		expect(snapshot.body).toContain("Startup will resume automatically");
+		await f.pollDiscovery();
+		await f.restart();
+		expect(f.harness.ctx.deps.processes.listAll().map((p) => p.id)).toEqual([id]);
+		await f.mapComponent("202", [2]);
+		await f.pollDiscovery();
+		await f.wait(id, "plan_decision");
+		expect(f.params(id).startup).toBeUndefined();
+		expect(f.params(id).repositories.map((r) => r.projectId)).toEqual([1, 2]);
+		expect(f.harness.ctx.deps.projects.listByInstance(id)).toHaveLength(2);
+		expect(
+			f.harness.ctx.deps.turnRecords.listByInstance(id).filter((t) => t.turnId === "generate_plan"),
+		).toHaveLength(1);
+		expect(f.harness.ctx.deps.processes.listAll().map((p) => p.id)).toEqual([id]);
+	}, 45000);
+
 	it("retries failed admission and deduplicates a renamed, relabeled issue after restart", async ({
 		onTestFinished,
 	}) => {
@@ -27,6 +93,7 @@ describe("Jira coordinated GitLab change", () => {
 		expect(f.harness.ctx.deps.processes.listAll().map((process) => process.id)).toEqual([id]);
 		expect(f.params(id)).toEqual(retained);
 	}, 45000);
+
 	it("deduplicates component repositories, hands findings to application once, and completes mixed outcomes after restart", async ({
 		onTestFinished,
 	}) => {
@@ -72,6 +139,7 @@ describe("Jira coordinated GitLab change", () => {
 		expect(f.comments).toEqual([]);
 		expect(f.links).toHaveLength(3);
 	}, 60000);
+
 	it("bypasses the current plan from its Jira label and skips both simplification turns", async ({
 		onTestFinished,
 	}) => {
@@ -98,6 +166,7 @@ describe("Jira coordinated GitLab change", () => {
 		expect(f.issue.fields.status.name).toBe("In Review");
 		expect(f.comments).toEqual([]);
 	}, 45000);
+
 	it("accepts human comments for a plan revision and observes label bypass while approval waits", async ({
 		onTestFinished,
 	}) => {
@@ -117,6 +186,7 @@ describe("Jira coordinated GitLab change", () => {
 			true,
 		);
 	}, 45000);
+
 	it("completes a no-change implementation without opening requests or adding the done label", async ({
 		onTestFinished,
 	}) => {
@@ -183,6 +253,7 @@ describe("Jira coordinated GitLab change", () => {
 		expect(f.links).toHaveLength(2);
 		expect(f.issue.fields.status.name).toBe("In Progress");
 	}, 45000);
+
 	it("retries partial publication without duplicate requests or source comments", async ({
 		onTestFinished,
 	}) => {
@@ -203,6 +274,7 @@ describe("Jira coordinated GitLab change", () => {
 		expect(f.links).toHaveLength(3);
 		expect(f.issue.fields.status.name).toBe("In Review");
 	}, 45000);
+
 	it("pauses a failed simplification policy lookup and retries without guessing", async ({
 		onTestFinished,
 	}) => {

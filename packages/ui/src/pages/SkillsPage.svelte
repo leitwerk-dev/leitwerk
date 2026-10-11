@@ -143,6 +143,9 @@ const visibleCount = $derived(
 	activeView === "installed" ? filteredInstalled.length : filteredAvailable.length,
 );
 function skillStatus(skill: SkillCatalogItem | InstalledSkillCatalogItem) {
+	if ("registrationKind" in skill && skill.registrationKind === "bundled") {
+		return { label: "Bundled", className: "registered" };
+	}
 	if ("stale" in skill && skill.stale) {
 		return { label: "No longer available", className: "stale" };
 	}
@@ -326,11 +329,12 @@ $effect(() => {
 	{@const available = item.kind === "available"}
 	{@const repositoryId = available ? item.value.repositoryId : item.value.sourceRepositoryId}
 	{@const registrationKind = available ? null : item.value.registrationKind}
+	{@const bundled = registrationKind === "bundled"}
 	{@const revision = available ? item.value.sourceRevision : item.value.activeSourceRevision}
 	{@const href = available ? buildAvailableSkillPath(item.value.repositoryId, skill.id) : buildInstalledSkillPath(skill.id)}
 	{@const selected = selectedKey === `${item.kind}/${available ? `${item.value.repositoryId}/` : ""}${skill.id}`}
 	{@const status = skillStatus(skill)}
-	{@const repoLabel = registrationKind === "extension" && item.kind === "installed" ? item.value.ownerExtensionId ?? "Extension" : registrationKind === "configuration" ? "Configuration" : repositoryLabels.get(repositoryId ?? "") ?? repositoryId ?? "Repository"}
+	{@const repoLabel = bundled && item.kind === "installed" ? item.value.sourceExtensionId ?? "Bundled extension" : registrationKind === "extension" && item.kind === "installed" ? item.value.ownerExtensionId ?? "Extension" : registrationKind === "configuration" ? "Configuration" : repositoryLabels.get(repositoryId ?? "") ?? repositoryId ?? "Repository"}
 	<tr
 		class:selected
 		onclick={(event) => {
@@ -351,25 +355,30 @@ $effect(() => {
 		<td>
 			<span>{repoLabel}</span>
 			<code>
-				{repositoryId && repositoryLabels.get(repositoryId) && repositoryLabels.get(repositoryId) !== repositoryId
+				{#if item.kind === "installed" && bundled}{item.value.sourceExtensionId ?? "Extension"}{:else}{repositoryId && repositoryLabels.get(repositoryId) && repositoryLabels.get(repositoryId) !== repositoryId
 					? `${repositoryId} · `
-					: ""}{revision?.slice(0, 8) ?? "local"}
+					: ""}{revision?.slice(0, 8) ?? "local"}{/if}
 			</code>
 		</td>
 		<td>
 			<span class={`status-chip ${status.className}`}>{status.label}</span>
 			{#if available && item.value.conflict}<span class="conflict">ID conflict</span>{/if}
 		</td>
-		<td><strong>{skill.usage.attachedLast30Days}</strong><span>30d · {skill.usage.attachedAllTime} total</span></td>
-		<td><strong>{skill.usage.invokedLast30Days}</strong><span>30d · {skill.usage.invokedAllTime} total</span></td>
+		{#if bundled}
+			<td><strong>Automatic</strong><span>Every AI step</span></td>
+			<td><span>Not tracked</span></td>
+		{:else}
+			<td><strong>{skill.usage.attachedLast30Days}</strong><span>30d · {skill.usage.attachedAllTime} total</span></td>
+			<td><strong>{skill.usage.invokedLast30Days}</strong><span>30d · {skill.usage.invokedAllTime} total</span></td>
+		{/if}
 	</tr>
 {/snippet}
 
 <div class="skills-page" data-page="skills">
 	<section class="catalog-pane" class:with-detail={Boolean(selectedKey)}>
 		<PageHeader
-			title="Skills"
-			subtitle="Manage skills imported into Leitwerk and discover new ones from configured repositories."
+				title="Skills"
+				subtitle="Browse bundled skills and manage skills from configured repositories."
 		>
 			{#snippet actions()}
 				{#if repositories.length > 0}
@@ -404,7 +413,7 @@ $effect(() => {
 		</div>
 		<p class="view-explanation">
 			{activeView === "installed"
-				? "Installed skills are available to attach to new process launches."
+				? "Bundled skills are automatically available to every AI step. Other installed skills can be attached to new process launches."
 				: "Remote skills must be installed before they can be attached to a process."}
 		</p>
 
@@ -485,6 +494,7 @@ $effect(() => {
 					</div>
 					{#if detail.value.registrationKind === "extension"}<p class="action-note">This skill is managed by the <code>{detail.value.ownerExtensionId}</code> extension. Update or remove that extension to change availability for future runs.</p>{/if}
 					{#if detail.value.registrationKind === "configuration"}<p class="action-note">This skill is managed by <code>leitwerk.yaml</code>. Change configuration to remove or update it.</p>{/if}
+					{#if detail.value.registrationKind === "bundled"}<p class="action-note">This skill is bundled with a loaded extension and is automatically available to every AI step. Update or remove the extension to change it.</p>{/if}
 					{#if confirmRemove}<div class="remove-confirmation" role="group" aria-label={`Remove ${detail.value.label}`}><strong>Remove {detail.value.label} from future runs?</strong><p>Existing processes and schedules keep their pinned revision.</p><div><button bind:this={confirmRemoveButtonEl} class="ui-button danger-action" data-variant="danger" type="button" disabled={actionPending} onclick={() => void deactivateSkill()}>{actionPending ? "Removing…" : "Confirm removal"}</button><button class="ui-button secondary-action" type="button" disabled={actionPending} onclick={() => void cancelRemove()}>Cancel</button></div></div>{/if}
 				{/if}
 				{#if actionError}<p class="action-note error" role="alert">{actionError} Try again.</p>{/if}
@@ -498,13 +508,13 @@ $effect(() => {
 						{#if detail.kind === "available"}
 							{@render sourceMetadata(detail.value)}
 						{:else}
-							<dl class="detail-meta"><div><dt>Managed by</dt><dd>{detail.value.registrationKind === "extension" ? detail.value.ownerExtensionId ?? "Extension" : detail.value.registrationKind === "configuration" ? "Configuration" : repositoryLabels.get(detail.value.sourceRepositoryId ?? "") ?? detail.value.sourceRepositoryId ?? "Repository"}</dd></div><div><dt>Active revision</dt><dd><code>{detail.value.activeSourceRevision ?? detail.value.activeRevisionId}</code></dd></div><div><dt>Usage</dt><dd>{detail.value.usage.attachedAllTime} attached · {detail.value.usage.invokedAllTime} invoked</dd></div></dl>
+							<dl class="detail-meta"><div><dt>Managed by</dt><dd>{detail.value.registrationKind === "bundled" ? detail.value.sourceExtensionId ?? "Bundled extension" : detail.value.registrationKind === "extension" ? detail.value.ownerExtensionId ?? "Extension" : detail.value.registrationKind === "configuration" ? "Configuration" : repositoryLabels.get(detail.value.sourceRepositoryId ?? "") ?? detail.value.sourceRepositoryId ?? "Repository"}</dd></div><div><dt>{detail.value.registrationKind === "bundled" ? "Bundle digest" : "Active revision"}</dt><dd><code>{detail.value.activeSourceRevision ?? detail.value.activeRevisionId}</code></dd></div>{#if detail.value.registrationKind !== "bundled"}<div><dt>Usage</dt><dd>{detail.value.usage.attachedAllTime} attached · {detail.value.usage.invokedAllTime} invoked</dd></div>{/if}</dl>
 							{#if detail.value.provenance}
 								<dl class="detail-meta"><div><dt>Package</dt><dd><code>{detail.value.provenance.packageName}@{detail.value.provenance.packageVersion}</code></dd></div><div><dt>Upstream</dt><dd>{detail.value.provenance.upstream.url}</dd></div><div><dt>Source path</dt><dd><code>{detail.value.provenance.sourcePath}</code></dd></div><div><dt>Adaptation digest</dt><dd><code>{detail.value.provenance.patchDigest}</code></dd></div></dl>
 							{/if}
-							<section class="revision-section"><h3>Revision history</h3><div class="revision-list">{#each detail.value.revisions as revision (revision.id)}<div><span><code>{revision.sourceRevision ?? revision.id}</code><small>Imported {formatLocalDateTime(revision.importedAt)}</small></span>{#if revision.active}<span class="status-chip registered">Active</span>{/if}</div>{/each}</div></section>
+							{#if detail.value.registrationKind !== "bundled"}<section class="revision-section"><h3>Revision history</h3><div class="revision-list">{#each detail.value.revisions as revision (revision.id)}<div><span><code>{revision.sourceRevision ?? revision.id}</code><small>Imported {formatLocalDateTime(revision.importedAt)}</small></span>{#if revision.active}<span class="status-chip registered">Active</span>{/if}</div>{/each}</div></section>{/if}
 						{/if}
-						{@render processUsage(detail.value.processes)}
+						{#if detail.kind === "available" || detail.value.registrationKind !== "bundled"}{@render processUsage(detail.value.processes)}{/if}
 					</div>
 				{:else}
 					<section id="skill-instructions" class="instructions-section" role="tabpanel"><h3>Instructions</h3><ChronicleMarkdown markdown={instructionMarkdown(detail.value.skillMarkdown)} /></section>

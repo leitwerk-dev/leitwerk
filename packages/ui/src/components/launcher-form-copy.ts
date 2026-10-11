@@ -90,10 +90,11 @@ export function normalizeLauncherValidationErrors(
 ): LauncherValidationView {
 	const nextFieldErrors: Record<string, string[]> = {};
 	const nextFormErrors: string[] = [];
+	const knownFields = new Set(fields.map((field) => field.id));
 
 	for (const error of errors) {
 		const message = humanizeLauncherValidationMessage(fields, error);
-		if (typeof error.fieldId === "string" && error.fieldId.trim() !== "") {
+		if (typeof error.fieldId === "string" && knownFields.has(error.fieldId.trim())) {
 			const fieldId = error.fieldId.trim();
 			nextFieldErrors[fieldId] = nextFieldErrors[fieldId] ?? [];
 			pushUnique(nextFieldErrors[fieldId], message);

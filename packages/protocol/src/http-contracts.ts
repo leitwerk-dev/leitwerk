@@ -965,7 +965,7 @@ export interface SkillCatalogItem {
 }
 
 /** @internal */
-export type SkillRegistrationKind = "configuration" | "catalog" | "extension";
+export type SkillRegistrationKind = "configuration" | "catalog" | "extension" | "bundled";
 
 /** @internal */
 export interface InstalledSkillCatalogItem {
@@ -985,6 +985,8 @@ export interface InstalledSkillCatalogItem {
 	activeSourceRevision: string | null;
 	/** @internal */
 	registrationKind: SkillRegistrationKind;
+	/** Owning extension for automatically available bundled skills. @internal */
+	sourceExtensionId?: string;
 	/** @internal */
 	sourceRepositoryId: string | null;
 	/** @internal */
@@ -1763,6 +1765,12 @@ export type LauncherRecentValuesResponseBody = {
 };
 
 /** @internal */
+export interface LauncherValidationResponseBody {
+	/** Empty when the current launch request passes validation. @internal */
+	errors: readonly LauncherValidationError[];
+}
+
+/** @internal */
 export type LauncherModelConfigPreviewResponseBody = {
 	/** @internal */
 	preview: LauncherModelConfigPreview;
@@ -2523,9 +2531,14 @@ export type {
 export type * from "./execution-inspection.js";
 
 export type {
+	NamedSelection,
 	SettingChoice,
 	SettingFieldView,
 	SettingMetadata,
+	SettingsOverviewResponse,
 	SettingsPreview,
+	SettingsScopeOverview,
 	SettingsScopesResponse,
 } from "./scoped-settings.js";
+
+export { settingSelectionValues } from "./scoped-settings.js";

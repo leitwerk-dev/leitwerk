@@ -63,6 +63,20 @@ describe("flow", () => {
 		);
 	});
 
+	it("declares server-owned integration tools on an LLM turn", () => {
+		const turn = flow
+			.llm("repair")
+			.description("Repair a provider failure")
+			.integrationTools("repository_get_change", "pipeline_get_step_logs")
+			.prompt(() => "Diagnose the current failure")
+			.end("done").definition;
+
+		expect(turn).toMatchObject({
+			kind: "llm",
+			integrationTools: ["repository_get_change", "pipeline_get_step_logs"],
+		});
+	});
+
 	it("builds a discoverable plan-producing LLM turn", async () => {
 		const turn = flow
 			.llm<{ prompt: string }, Record<string, never>>("generate_plan")

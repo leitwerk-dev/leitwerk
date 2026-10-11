@@ -26,7 +26,7 @@ import { registerJiraTicketCreation } from "./ticket-creation.js";
 import { registerJiraTools } from "./tools.js";
 
 export * from "./client.js";
-export { markdownToJira } from "./markdown.js";
+export { jiraToMarkdown, markdownToJira } from "./markdown.js";
 export {
 	assertJiraTicketText,
 	jiraTicketTextProblem,
@@ -48,6 +48,14 @@ export interface JiraIntegration {
 export const jiraIntegration = createCapabilityToken<JiraIntegration>(
 	"@leitwerk-dev/jira.integration",
 );
+
+/** Configured project discovery shared by Jira-backed Settings and launchers. @public */
+export const jiraProjectDiscovery = createCapabilityToken<{
+	/** @public */ projects(profile: string): Promise<readonly import("./client.js").JiraProject[]>;
+	/** @public */ includesProject(
+		subject: import("@leitwerk-dev/domain").SettingsSubject | undefined,
+	): boolean;
+}>("@leitwerk-dev/jira.project-discovery");
 
 /** @public */
 export const jiraSubjectIdentity = (baseUrl: string, id: string) => JSON.stringify([baseUrl, id]);
@@ -213,6 +221,7 @@ export function setupJiraIntegration(
 			return configured.has(id) || configured.has(subject.label.split(" · ")[0]);
 		});
 	};
+	api.provide(jiraProjectDiscovery, { projects: projectsFor, includesProject });
 	if (settings && !Array.isArray(settings)) {
 		settings.registerDiscovery(
 			"jira.project",
@@ -342,7 +351,16 @@ const extension: LeitwerkExtensionModule = {
 	scopedSettings: {
 		scopes: [
 			{ id: "jira.project", label: "Jira projects" },
-			{ id: "jira.component", label: "Jira components" },
+			{
+				id: "jira.component",
+				label: "Jira components",
+				overview: {
+					itemLabel: "Component",
+					itemLabelPlural: "Components",
+					parentLabel: "Project",
+					labelSeparator: " / ",
+				},
+			},
 		],
 		settings: [],
 	},

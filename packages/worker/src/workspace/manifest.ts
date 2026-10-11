@@ -17,6 +17,8 @@ export interface ComponentCheckoutPlan {
 export interface ComponentManifestEntry extends ComponentCheckoutPlan {
 	clonedAt: string;
 	headSha: string;
+	/** Exact read-only checkout requested by a process preparation. */
+	revision?: string;
 }
 
 export interface ManifestDiff {
@@ -45,6 +47,7 @@ const componentManifestEntrySchema = v.pipe(
 		workBranch: v.string(),
 		clonedAt: v.string(),
 		headSha: v.string(),
+		revision: v.optional(v.string()),
 	}),
 );
 

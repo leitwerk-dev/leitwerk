@@ -9,6 +9,7 @@ import {
 	isAutomaticTurnDefinition,
 	isLlmTurnDefinition,
 	parseStructuralProcessState,
+	type ResolvedOutcomeContract,
 } from "@leitwerk-dev/process-sdk";
 import { validateTurnOutcomeCorrelation } from "../../domain-logic/turn-record-guards.js";
 import { captureLeafOutcomeSnapshot } from "../../leaf-outcome-snapshot-capture.js";
@@ -95,11 +96,20 @@ function resolveOutcomePublication(input: {
 	turnId: string;
 	outcome: string;
 	turnPublishedProduct: string | null;
+	outcomeContract?: ResolvedOutcomeContract;
 }): {
 	productName: string | null;
 	markdownParameterName: string | null;
 	resultSummaryParameter?: string;
 } {
+	if (input.outcomeContract) {
+		const outcome = input.outcomeContract.outcomes[input.outcome];
+		return {
+			productName: outcome?.publishedProduct ?? input.outcomeContract.publishedProduct,
+			markdownParameterName: outcome?.turnResultMarkdownParameter ?? null,
+			resultSummaryParameter: outcome?.resultSummaryParameter,
+		};
+	}
 	const definition = input.processGraphs.get(input.processId)?.turns.get(input.turnId)?.definition;
 	if (!definition || (!isLlmTurnDefinition(definition) && !isAutomaticTurnDefinition(definition))) {
 		return { productName: input.turnPublishedProduct, markdownParameterName: null };
@@ -158,6 +168,16 @@ export const TurnOutcome = defineOperation<"turn_outcome", TurnOutcomeInput, voi
 		input.onRecorded?.();
 	},
 	async decide(ctx, input) {
+		const currentStart =
+			ctx.process.currentExecution?.kind === "worker_start"
+				? ctx.deps.turnStarts.getById(ctx.process.currentExecution.id)
+				: null;
+		const outcomeContract =
+			currentStart?.state.kind === "accepted" && currentStart.state.start?.kind === "llm"
+				? (currentStart.state.start.outcomeContract as unknown as
+						| ResolvedOutcomeContract
+						| undefined)
+				: undefined;
 		const initialPayload = input.payload;
 		const turnGraph = getProcessTurnGraph(
 			ctx.deps.processGraphs,
@@ -171,13 +191,10 @@ export const TurnOutcome = defineOperation<"turn_outcome", TurnOutcomeInput, voi
 			turnId: initialPayload.turnId,
 			outcome: initialPayload.outcome,
 			turnPublishedProduct: turnGraph?.publishedProduct ?? null,
+			outcomeContract,
 		});
 		const payload = resolveEffectiveOutcomePayload({ payload: initialPayload, publication });
 		const publishedProduct = publication.productName;
-		const currentStart =
-			ctx.process.currentExecution?.kind === "worker_start"
-				? ctx.deps.turnStarts.getById(ctx.process.currentExecution.id)
-				: null;
 		const expected =
 			currentStart?.state.kind === "accepted" ? currentStart.state.turnRecordId : null;
 		const correlationError = validateTurnOutcomeCorrelation(ctx.process, payload, expected);
@@ -196,7 +213,10 @@ export const TurnOutcome = defineOperation<"turn_outcome", TurnOutcomeInput, voi
 		}
 		const requiredMarkdownError = validateRequiredTurnResultMarkdown({
 			payload,
-			required: turnGraph?.turnResultMarkdownRequired === true,
+			required: outcomeContract
+				? outcomeContract.turnResultMarkdown?.mode !== "none" &&
+					outcomeContract.turnResultMarkdown?.required === true
+				: turnGraph?.turnResultMarkdownRequired === true,
 		});
 		if (requiredMarkdownError) {
 			return reject(requiredMarkdownError.code, requiredMarkdownError.message);
@@ -357,6 +377,7 @@ export const TurnOutcome = defineOperation<"turn_outcome", TurnOutcomeInput, voi
 			processActionRegistry,
 			mappedRuns: ctx.deps.mappedRuns,
 			iteration: currentStart?.iteration ?? null,
+			outcomeContract: outcomeContract ? { ...outcomeContract } : undefined,
 		});
 		if (isWriteBuildFailure(outcomeWrites)) {
 			return reject(outcomeWrites.code, outcomeWrites.message);
@@ -456,7 +477,14 @@ export const TurnOutcome = defineOperation<"turn_outcome", TurnOutcomeInput, voi
 				...mergedWrites.processPatch,
 				stateJson: mergedWrites.processPatch.stateJson ?? ctx.process.stateJson,
 			};
+			const mappedWrite = mergedWrites.mappedRunWrites.find(
+				(write) =>
+					write.kind === "complete_item" && write.input.turnRecordId === completedTurnRecord.id,
+			);
 			const snapshotInput = await captureLeafOutcomeSnapshot({
+				...(mappedWrite?.kind === "complete_item"
+					? { mappedResult: JSON.parse(mappedWrite.input.resultJson) as unknown }
+					: {}),
 				process: capturedProcess,
 				projects,
 				processActionRegistry,

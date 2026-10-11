@@ -16,13 +16,25 @@ export function createCheckoutTool(
 			"Materialize a full clone for one authorized project and return its checked-out revision. Repeated calls reuse the checkout. Inspect only; do not publish changes.",
 		parameters: {
 			type: "object",
-			properties: { projectKey: { type: "string" } },
+			properties: {
+				projectKey: { type: "string" },
+				revision: {
+					type: "string",
+					description: "Captured full commit SHA; refuses local changes.",
+				},
+			},
 			required: ["projectKey"],
 			additionalProperties: false,
 		},
 		executionMode: "sequential",
 		async execute(args) {
 			if (typeof args.projectKey !== "string") throw new Error("projectKey is required");
+			if (
+				args.revision !== undefined &&
+				(typeof args.revision !== "string" ||
+					!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(args.revision))
+			)
+				throw new Error("Use a captured full commit SHA");
 			const plan = planRunRoot(
 				workspaceRoot,
 				instanceId,
@@ -33,7 +45,12 @@ export function createCheckoutTool(
 					workBranch: project.workBranch || project.baseBranch,
 				})),
 			);
-			const result = await prepareOnDemandRunRoot(plan, git, args.projectKey);
+			const result = await prepareOnDemandRunRoot(
+				plan,
+				git,
+				args.projectKey,
+				args.revision as string | undefined,
+			);
 			const entry = result.manifest.components.find(
 				(component) => component.key === args.projectKey,
 			);

@@ -58,7 +58,7 @@ for hostile compositions or repository code.
 
 Scripted mode substitutes Pi and bypasses only Docker preflight. Real mode uses
 the ordinary Pi SDK and preserves process runtime requirements. Supply dedicated
-`model.json` credentials with mode `0600`, containing `model_profiles` and
+`model.json` credentials with mode `0600`, containing `default_model_profile` (an ID in `model_profiles`), `model_profiles`, and
 `providers` (the models extension configuration). Production credentials are never
 read. Ports default to UI `5173` and backend `18082`; use `--ui-port` and
 `--backend-port` to choose strict alternative ports.

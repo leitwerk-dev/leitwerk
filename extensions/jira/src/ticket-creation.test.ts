@@ -66,6 +66,28 @@ function localFixture(defaultLabels: string[] = [], supportsLabels = false) {
 }
 
 describe("Jira ticket creation", () => {
+	it("reviews Markdown and converts it once when publishing, including lost-response recovery", async () => {
+		const { tool, context, adapter } = localFixture();
+		const draft = {
+			...args,
+			description:
+				"## Reminders\n\n- **Weekly** review with `**literal**`.\n\n| Day | Task |\n| --- | --- |\n| Monday | Review |",
+		};
+		const reviewed = structuredClone(draft);
+		expect(tool.capability?.descriptionFormat).toBe("markdown");
+		adapter.loseNextIssueResponse = true;
+		await expect(tool.execute(context, draft)).resolves.toMatchObject({ externalId: "GARDEN-1" });
+		const restarted = setup(adapter.client());
+		await expect(restarted.tool.execute(restarted.context, draft)).resolves.toMatchObject({
+			externalId: "GARDEN-1",
+		});
+		expect(draft).toEqual(reviewed);
+		expect(adapter.state.issues).toHaveLength(1);
+		expect(adapter.state.issues[0].fields.description).toMatch(
+			/^h2\. Reminders\n\n\* \*Weekly\* review with \{\{\*\*literal\*\*}}\.\n\n\|\|Day\|\|Task\|\|\n\|Monday\|Review\|\n\n\{noformat}leitwerk-ticket-write:[a-f0-9]{64}\{noformat}$/,
+		);
+	});
+
 	it("creates without submitting Labels when the create screen excludes it", async () => {
 		const { tool, context, adapter } = localFixture();
 		await expect(tool.execute(context, args)).resolves.toMatchObject({ externalId: "GARDEN-1" });

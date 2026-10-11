@@ -18,7 +18,8 @@ export function createTestConfigSnapshot(): ConfigSnapshot {
 		},
 		pi: {
 			agent_dir: "~/.pi/leitwerk",
-			model_profiles: [],
+			model_profiles: [{ id: "test", provider: "test", model_id: "test" }],
+			default_model_profile: "test",
 			process_title_generation: {
 				model_profile: null,
 				retry: {

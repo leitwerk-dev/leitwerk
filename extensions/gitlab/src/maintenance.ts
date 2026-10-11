@@ -26,6 +26,7 @@ import {
 	GITLAB_ACTIVE_LABEL,
 	gitLabActivationStatus,
 	readGitLabLabels,
+	readMaintainedGitLabLabels,
 } from "./maintenance-labels.js";
 import { ensureGitLabComment, ensureGitLabSeenReaction, resolveGitLabBinding } from "./tools.js";
 
@@ -186,7 +187,7 @@ export interface GitLabMaintenanceRetry {
 export interface GitLabMaintenanceRecord {
 	/** @public */ binding: GitLabMaintainedBinding;
 	/** @public */ after: number;
-	/** @public */ status: "active" | "stopped" | "merged" | "closed";
+	/** @public */ status: "active" | "stopped" | "merged" | "closed" | "deleted";
 	/** @public */ cursor: number;
 	/** @public */ pendingFeedback: GitLabFeedback[];
 	/** @public */ observation?: GitLabDeliveryObservation;
@@ -291,6 +292,8 @@ export function createGitLabMaintenance(
 		policy: GitLabMaintainedProcess<unknown, unknown>,
 		records: Record<string, GitLabMaintenanceRecord>,
 	) => {
+		if (Object.values(records).some((record) => record.status === "deleted"))
+			return "aborted" as const;
 		if (policy.completion) return policy.completion(ctx, records);
 		return bindings(ctx, policy).every(
 			(binding) => records[binding.projectKey] && records[binding.projectKey].status !== "active",
@@ -423,6 +426,7 @@ export function createGitLabMaintenance(
 						ctx = context(process, policy);
 						const settings = policy.settings?.(ctx, binding) ?? {};
 						const known = maintenanceRecords(process)[binding.projectKey];
+						if (known?.status === "deleted") continue;
 						if (
 							known &&
 							known.status !== "active" &&
@@ -435,7 +439,7 @@ export function createGitLabMaintenance(
 						const client = integration.client(binding.profile);
 						if (binding.origin && client.baseUrl !== binding.origin)
 							throw new Error("GitLab installation changed");
-						const labels = await readGitLabLabels(
+						const labels = await readMaintainedGitLabLabels(
 							client,
 							binding.projectId,
 							binding.iid,
@@ -448,7 +452,7 @@ export function createGitLabMaintenance(
 						if (!record)
 							record = records[binding.projectKey] = {
 								binding,
-								after: settings.activationAfter ?? labels.events.at(-1)?.id ?? 0,
+								after: settings.activationAfter ?? labels?.events.at(-1)?.id ?? 0,
 								status: "active",
 								cursor: settings.cursor ?? 0,
 								pendingFeedback: [],
@@ -459,7 +463,13 @@ export function createGitLabMaintenance(
 							`gitlab:active:${process.id}:${binding.projectKey}:${binding.iid}`;
 						let stopped = false;
 						let state = ctx.state;
-						if (record.status === "active") {
+						if (!labels) {
+							record.status = "deleted";
+							record.pendingFeedback = [];
+							delete record.observation;
+							state = policy.stopped?.(ctx, binding) ?? state;
+							stopped = true;
+						} else if (record.status === "active") {
 							if (labels.mr.state !== "opened") {
 								record.status = labels.mr.state === "merged" ? "merged" : "closed";
 								state = policy.terminal?.(ctx, binding, { mr: labels.mr, pipeline: null }) ?? state;
@@ -503,6 +513,8 @@ export function createGitLabMaintenance(
 						if (!saved.ok) continue;
 						let fresh = deps.processes.getById(process.id);
 						if (!fresh) continue;
+						// A deleted MR has no labels, discussions or publication to reconcile.
+						if (record.status === "deleted") continue;
 						const remoteWriteContext = <T extends object>(payload: T) => ({
 							client,
 							writes: ctx.externalWrites,

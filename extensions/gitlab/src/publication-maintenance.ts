@@ -7,6 +7,7 @@ import {
 	publicationFinished,
 	type RepositoryChangePublicationAdapter,
 	readPublicationState,
+	requirePublicationParams,
 } from "@leitwerk-dev/coding/repository-change-publication";
 import type { RepositoryChangeState } from "@leitwerk-dev/coding/repository-change-state";
 import { conflictKey } from "@leitwerk-dev/coding/repository-rebase";
@@ -19,7 +20,7 @@ import {
 } from "./publication.js";
 
 /** The publication adapter retains repair policy and budgets; maintenance owns its delivery edges. @internal */
-export function registerGitLabPublicationMaintenance<P extends GitLabPublicationParams>(
+export function registerGitLabPublicationMaintenance<P extends Partial<GitLabPublicationParams>>(
 	api: ServerExtensionAPI,
 	process: ExtensionProcessDefinition<P, RepositoryChangeState>,
 	adapter: RepositoryChangePublicationAdapter<P>,
@@ -29,8 +30,10 @@ export function registerGitLabPublicationMaintenance<P extends GitLabPublication
 	const current = (ctx: GitLabMaintenanceContext<P, RepositoryChangeState>, key: string) =>
 		readPublicationState(ctx.state, namespace(key));
 	const params = (ctx: GitLabMaintenanceContext<P, RepositoryChangeState>, key: string) =>
-		adapter.repositories?.(ctx.params).find((repository) => repository.key === key)?.params ??
-		ctx.params;
+		requirePublicationParams(
+			adapter.repositories?.(ctx.params).find((repository) => repository.key === key)?.params ??
+				ctx.params,
+		);
 	const patch = (
 		ctx: GitLabMaintenanceContext<P, RepositoryChangeState>,
 		key: string,

@@ -20,4 +20,4 @@ export {
 } from "./actions.js";
 export { createRepositoryChangeProcess } from "./repository-change-process.js";
 
-export { codingPurposes, codingSettings, repositoryInstructions } from "./settings.js";
+export { codingPurposes, codingSettings } from "./settings.js";

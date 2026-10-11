@@ -40,6 +40,7 @@ function deps(spawned: ChildProcess[], overrides: Record<string, unknown> = {}) 
 			time += ms;
 		}),
 		warn: vi.fn(),
+		prepareVirtualMachineDocker: vi.fn().mockResolvedValue(undefined),
 		...overrides,
 	};
 }
@@ -64,6 +65,102 @@ describe("worker container entrypoint", () => {
 			env,
 		});
 		expect(runtime.dockerInfo).not.toHaveBeenCalled();
+		expect(runtime.prepareVirtualMachineDocker).not.toHaveBeenCalled();
+	});
+
+	it("starts gVisor private Docker without VM mount preparation", async () => {
+		const worker = child();
+		const runtime = deps([child(), worker]);
+		const running = runWorkerContainerEntrypoint(
+			{ LEITWERK_PRIVATE_DOCKER: "1", LEITWERK_DOCKER_GVISOR: "1" },
+			runtime,
+		);
+		await vi.waitFor(() => expect(runtime.spawn).toHaveBeenCalledTimes(2));
+		expect(runtime.prepareVirtualMachineDocker).not.toHaveBeenCalled();
+		exit(worker, 0);
+		await expect(running).resolves.toBe(0);
+	});
+
+	it("prepares the VM mounts once before daemon startup and retains the existing retry lifecycle", async () => {
+		const prepared = Promise.withResolvers<void>();
+		const first = child();
+		const second = child();
+		const worker = child();
+		let checks = 0;
+		const runtime = deps([first, second, worker], {
+			prepareVirtualMachineDocker: vi.fn(() => prepared.promise),
+			dockerInfo: vi.fn(async () => {
+				checks += 1;
+				if (checks === 1) exit(first, 1);
+			}),
+		});
+		const running = runWorkerContainerEntrypoint(
+			{
+				LEITWERK_PRIVATE_DOCKER: "1",
+				LEITWERK_DOCKER_ISOLATION: "virtual-machine",
+			},
+			runtime,
+		);
+		expect(runtime.prepareVirtualMachineDocker).toHaveBeenCalledOnce();
+		expect(runtime.spawn).not.toHaveBeenCalled();
+		prepared.resolve();
+		await vi.waitFor(() => expect(runtime.spawn).toHaveBeenCalledTimes(3));
+		expect(runtime.prepareVirtualMachineDocker).toHaveBeenCalledOnce();
+		exit(worker, 0);
+		await expect(running).resolves.toBe(0);
+	});
+
+	it("stops before daemon or worker startup when VM mount preparation fails", async () => {
+		const runtime = deps([], {
+			prepareVirtualMachineDocker: vi.fn().mockRejectedValue(new Error("VM boundary rejected")),
+		});
+		await expect(
+			runWorkerContainerEntrypoint(
+				{
+					LEITWERK_PRIVATE_DOCKER: "1",
+					LEITWERK_DOCKER_ISOLATION: "virtual-machine",
+				},
+				runtime,
+			),
+		).rejects.toThrow("VM boundary rejected");
+		expect(runtime.spawn).not.toHaveBeenCalled();
+		expect(runtime.mkdir).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		{ LEITWERK_PRIVATE_DOCKER: "1", LEITWERK_DOCKER_ISOLATION: "" },
+		{ LEITWERK_PRIVATE_DOCKER: "1", LEITWERK_DOCKER_ISOLATION: "native" },
+		{ LEITWERK_DOCKER_ISOLATION: "virtual-machine" },
+		{
+			LEITWERK_PRIVATE_DOCKER: "1",
+			LEITWERK_DOCKER_ISOLATION: "virtual-machine",
+			LEITWERK_DOCKER_GVISOR: "1",
+		},
+	])("rejects invalid private Docker isolation before starting either process: %j", async (env) => {
+		const runtime = deps([]);
+		await expect(runWorkerContainerEntrypoint(env, runtime)).rejects.toThrow(
+			"Invalid trusted private Docker isolation",
+		);
+		expect(runtime.spawn).not.toHaveBeenCalled();
+		expect(runtime.prepareVirtualMachineDocker).not.toHaveBeenCalled();
+	});
+
+	it("keeps shutdown effective while VM mount preparation is pending", async () => {
+		const prepared = Promise.withResolvers<void>();
+		const prepareVirtualMachineDocker = vi.fn((_signal: AbortSignal) => prepared.promise);
+		const runtime = deps([], { prepareVirtualMachineDocker });
+		const running = runWorkerContainerEntrypoint(
+			{
+				LEITWERK_PRIVATE_DOCKER: "1",
+				LEITWERK_DOCKER_ISOLATION: "virtual-machine",
+			},
+			runtime,
+		);
+		process.emit("SIGTERM");
+		prepared.reject(new Error("aborted"));
+		await expect(running).resolves.toBe(0);
+		expect(prepareVirtualMachineDocker.mock.calls[0]?.[0].aborted).toBe(true);
+		expect(runtime.spawn).not.toHaveBeenCalled();
 	});
 
 	it("pins every private Docker subprocess to its daemon despite image environment overrides", async () => {
@@ -108,6 +205,7 @@ describe("worker container entrypoint", () => {
 		exit(worker, 0);
 		await expect(running).resolves.toBe(0);
 		expect(spawnsAtReadiness).toBe(1);
+		expect(runtime.prepareVirtualMachineDocker).not.toHaveBeenCalled();
 	});
 
 	it.each([

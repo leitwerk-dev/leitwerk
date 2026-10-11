@@ -50,6 +50,7 @@ import type { ServerProcessModelPolicy } from "../process-model-policy/index.js"
 import { presentLaunchPlanPreparationIssues } from "../process-model-policy-presenter.js";
 import type { ProcessOperationCoordinator } from "../process-operation-coordinator.js";
 import type { ProcessTitleGenerator } from "../process-title-generator.js";
+import { type LaunchSkillDefaults, resolveLaunchSkills } from "../skills/launch-skills.js";
 import type { Broadcaster } from "../ws/broadcast.js";
 import { projectLaunchPlanModelState } from "./model-projection.js";
 import {
@@ -234,6 +235,7 @@ export interface FutureLaunchLifecycleDeps
 	processModelPolicy: ServerProcessModelPolicy;
 	modelStatusCache: Pick<ModelStatusCache, "snapshot">;
 	logger?: ProcessEngineLogger;
+	skillDefaults?: LaunchSkillDefaults;
 }
 
 function invalidOutcome(
@@ -244,13 +246,14 @@ function invalidOutcome(
 }
 
 function resolveSelectedSkills(
-	skills: FutureLaunchLifecycleDeps["skills"],
+	deps: FutureLaunchLifecycleDeps,
+	processId: string,
 	ids: readonly string[],
 ):
 	| { ok: true; value: readonly SkillSelection[] }
 	| { ok: false; outcome: Extract<LaunchFailure, { kind: "invalid" }> } {
 	try {
-		return { ok: true, value: skills.resolveActive(ids) };
+		return { ok: true, value: resolveLaunchSkills(deps, processId, ids) };
 	} catch (error) {
 		return {
 			ok: false,
@@ -321,6 +324,18 @@ function resolveScheduledLaunchUpdateRequest(
 	};
 }
 
+function preservedScheduleSkills(
+	payload: FutureLaunchPayload,
+	selectedSkillIds: readonly string[] | undefined,
+): readonly SkillSelection[] | undefined {
+	if (selectedSkillIds === undefined) return payload.resourceSelections;
+	const previous = new Set(payload.selectedSkillIds);
+	const selected = new Set(selectedSkillIds);
+	return previous.size === selected.size && [...selected].every((id) => previous.has(id))
+		? payload.resourceSelections
+		: undefined;
+}
+
 export function createFutureLaunchLifecycle(
 	deps: FutureLaunchLifecycleDeps,
 	options: { now?: () => Date } = {},
@@ -389,6 +404,7 @@ export function createFutureLaunchLifecycle(
 	async function persistPreparedLaunch(
 		input: PreparedLaunch & { existing?: FutureExecution; actor: Actor },
 	): Promise<LaunchMutationOutcome> {
+		if (input.launchPlan.preview) throw new Error("Launcher previews cannot be committed");
 		if (input.schedule.mode === "now") throw new Error("Immediate launches cannot be persisted");
 		const values = {
 			scheduleKind: input.schedule.mode,
@@ -444,9 +460,10 @@ export function createFutureLaunchLifecycle(
 			? { ok: true as const, launcher: input.resolvedLauncher }
 			: await deps.launcherService.resolveUiLauncher(input.launcherId, input.request.launcherInput);
 		if (!resolved.ok) return { ok: false, outcome: launcherResolutionFailure(resolved) };
-		const resourceSelections = input.resourceSelections
-			? { ok: true as const, value: input.resourceSelections }
-			: resolveSelectedSkills(deps.skills, input.request.skillIds ?? []);
+		const resourceSelections =
+			input.resourceSelections !== undefined
+				? { ok: true as const, value: input.resourceSelections }
+				: resolveSelectedSkills(deps, resolved.launcher.processId, input.request.skillIds ?? []);
 		if (!resourceSelections.ok) return { ok: false, outcome: resourceSelections.outcome };
 
 		// A revised launch uses its persisted plan as the source of stored model
@@ -547,7 +564,7 @@ export function createFutureLaunchLifecycle(
 					launcherId: resolved.launcher.launcherId,
 					request: resolved.request,
 					baseLaunchPlan: resolved.payload.launchPlan,
-					resourceSelections: request.skillIds ? undefined : resolved.payload.resourceSelections,
+					resourceSelections: preservedScheduleSkills(resolved.payload, request.skillIds),
 					operationTime,
 					resolvedLauncher: resolved.launcher,
 				});
@@ -638,8 +655,40 @@ export function createFutureLaunchLifecycle(
 			opts?: {
 				/** @internal */
 				resolvedLauncher?: ResolvedProcessLauncher;
+				/** Existing schedule being previewed; pins survive unchanged skill selections. @internal */
+				futureExecutionId?: string;
 			},
 		): Promise<PreparedLaunchResult> {
+			if (opts?.futureExecutionId !== undefined) {
+				const existing = deps.futureExecutions.getById(opts.futureExecutionId);
+				if (!existing || existing.kind !== "launch") {
+					return { ok: false, outcome: { kind: "not_found", target: "launch" } };
+				}
+				const parsed = parseFutureLaunchPayloadJson(existing.payloadJson);
+				if (!parsed.ok) {
+					return {
+						ok: false,
+						outcome: invalidOutcome("invalid_payload", "Scheduled launch payload is invalid"),
+					};
+				}
+				if ((existing.launcherId ?? parsed.value.launchPlan.launcherId) !== launcherId) {
+					return {
+						ok: false,
+						outcome: invalidOutcome("invalid_schedule", "Schedule belongs to another launcher"),
+					};
+				}
+				const launchRequest = resolveScheduledLaunchUpdateRequest(existing, request, parsed.value);
+				if (!launchRequest.ok) {
+					return { ok: false, outcome: { kind: "invalid", issues: [launchRequest.issue] } };
+				}
+				return prepareLaunchInternal({
+					launcherId,
+					request: launchRequest.value,
+					baseLaunchPlan: parsed.value.launchPlan,
+					resourceSelections: preservedScheduleSkills(parsed.value, request.skillIds),
+					resolvedLauncher: opts.resolvedLauncher,
+				});
+			}
 			return prepareLaunchInternal({
 				launcherId,
 				request,
@@ -778,7 +827,7 @@ export function createFutureLaunchLifecycle(
 					launcherId: existing.launcherId ?? parsed.value.launchPlan.launcherId,
 					request: launchRequest.value,
 					baseLaunchPlan: parsed.value.launchPlan,
-					resourceSelections: request.skillIds ? undefined : parsed.value.resourceSelections,
+					resourceSelections: preservedScheduleSkills(parsed.value, request.skillIds),
 					operationTime,
 				});
 				if (!prepared.ok) return prepared.outcome;

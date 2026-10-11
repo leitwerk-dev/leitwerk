@@ -1,3 +1,4 @@
+import type { InstalledSkillCatalogDetail } from "@leitwerk-dev/protocol";
 import { createCanonicalPiResourceBundle } from "@leitwerk-dev/worker-protocol";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { closeDatabase, createInMemoryDatabase } from "../db/database.js";
@@ -19,6 +20,55 @@ function importedSkill(revision: string) {
 }
 
 describe("skill catalog service", () => {
+	it("exposes bundled instructions without installing or making them selectable again", async () => {
+		const db = createInMemoryDatabase();
+		onTestFinished(() => closeDatabase(db));
+		const repos = createAllRepos(db);
+		const bundled: InstalledSkillCatalogDetail = {
+			id: "review",
+			label: "Review",
+			description: "Review changes",
+			registrationKind: "bundled",
+			sourceExtensionId: "skills",
+			activeRevisionId: "bundle-digest",
+			activeSourceRevision: null,
+			sourceRepositoryId: null,
+			updateAvailable: false,
+			modelInvocable: true,
+			usage: { attachedAllTime: 0, attachedLast30Days: 0, invokedAllTime: 0, invokedLast30Days: 0 },
+			skillMarkdown: "# Bundled review",
+			processes: [],
+			revisions: [],
+		};
+		repos.skills.mergeCatalog("shared", [importedSkill("revision-1")]);
+		const service = createSkillCatalogService({
+			repositories: [{ id: "shared", url: "https://example.test/shared.git", ref: "main" }],
+			repos,
+			bundledSkills: [bundled],
+			importRepository: async () => {
+				throw new Error("repository unavailable");
+			},
+		});
+		const refreshed = await service.refresh();
+		expect(refreshed.installedSkills).toEqual([
+			expect.objectContaining({
+				id: "review",
+				registrationKind: "bundled",
+				sourceExtensionId: "skills",
+			}),
+		]);
+		expect(refreshed.installedSkills[0]).not.toHaveProperty("skillMarkdown");
+		expect(refreshed.availableSkills[0]?.conflict).toBe(true);
+		expect(service.detail("shared", "review")?.conflict).toBe(true);
+		expect(service.installedDetail("review")?.skillMarkdown).toBe("# Bundled review");
+		expect(service.remove("review")).toBe(false);
+		expect(() => service.register("shared", "review")).toThrow("conflicting bundled");
+		expect(repos.skills.listAvailable()).toEqual([]);
+		expect(repos.skills.catalog().installedSkills).toEqual([]);
+		const unloaded = createSkillCatalogService({ repositories: [], repos });
+		expect(unloaded.list().installedSkills).toEqual([]);
+	});
+
 	it("preserves partial results, exposes updates, and keeps installed skills after remote removal", async () => {
 		const db = createInMemoryDatabase();
 		onTestFinished(() => closeDatabase(db));

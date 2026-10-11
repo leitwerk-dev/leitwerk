@@ -32,6 +32,28 @@ async function listen(handler: http.RequestListener): Promise<string> {
 }
 
 describe("Kubernetes HTTP API client", () => {
+	it("preserves modern event recurrence data from the Kubernetes API", async () => {
+		const apiServerUrl = await listen((_request, response) => {
+			response.writeHead(200, { "Content-Type": "application/json" });
+			response.end(
+				JSON.stringify({
+					items: [
+						{
+							type: "Warning",
+							reason: "FailedMount",
+							eventTime: "2026-10-11T09:21:00Z",
+							series: { count: 8, lastObservedTime: "2026-10-11T09:22:10Z" },
+						},
+					],
+				}),
+			);
+		});
+		const client = createKubernetesHttpApiClient({ apiServerUrl });
+		expect(await client.listPodEvents("worker", "process")).toEqual([
+			expect.objectContaining({ series: { count: 8, lastObservedTime: "2026-10-11T09:22:10Z" } }),
+		]);
+	});
+
 	it("creates the requested PVC once and never resizes or recreates it on later ensures", async () => {
 		const methods: string[] = [];
 		let retained: KubernetesPersistentVolumeClaimManifest | null = null;

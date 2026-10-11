@@ -60,6 +60,10 @@ data:
       {{- end }}
       default_worker_runtime_profile: {{ .Values.kubernetes.defaultWorkerRuntimeProfile | quote }}
       worker_service_account: {{ include "leitwerk.workerServiceAccountName" . | quote }}
+      {{- if .Values.kubernetes.imagePreload.enabled }}
+      image_preload:
+        enabled: true
+      {{- end }}
       process_volume:
         {{- if .Values.kubernetes.processVolume.preProvision.enabled }}
         pre_provision:
@@ -74,8 +78,23 @@ data:
         mount_path: {{ .Values.kubernetes.processVolume.mountPath | quote }}
       {{- if .Values.kubernetes.docker.enabled }}
       docker:
+        {{- with .Values.kubernetes.docker.workerRuntimeProfile }}
+        worker_runtime_profile: {{ . | quote }}
+        {{- end }}
+        {{- with .Values.kubernetes.docker.nodeSelector }}
+        node_selector:
+          {{- toYaml . | nindent 10 }}
+        {{- end }}
         runtime_class_name: {{ required "kubernetes.docker.runtimeClassName is required when Kubernetes Docker support is enabled" .Values.kubernetes.docker.runtimeClassName | quote }}
+        {{- with .Values.kubernetes.docker.isolation }}
+        isolation: {{ . | quote }}
+        {{- end }}
+        {{- if ne .Values.kubernetes.docker.gvisor nil }}
+        gvisor: {{ .Values.kubernetes.docker.gvisor }}
+        {{- end }}
+        {{- if not (or .Values.kubernetes.docker.isolation .Values.kubernetes.docker.gvisor) }}
         host_users: {{ .Values.kubernetes.docker.hostUsers }}
+        {{- end }}
         {{- with .Values.kubernetes.docker.network }}
         network:
           {{- toYaml . | nindent 10 }}
@@ -104,6 +123,9 @@ data:
 
     pi:
       agent_dir: {{ .Values.server.config.piAgentDir | quote }}
+      default_model_profile: {{ .Values.server.config.piDefaultModelProfile | quote }}
+      model_profiles:
+        {{- toYaml .Values.server.config.piModelProfiles | nindent 8 }}
       retry:
         enabled: {{ .Values.server.config.piRetry.enabled }}
         max_retries: {{ .Values.server.config.piRetry.maxRetries }}

@@ -4,7 +4,10 @@ import type {
 	ResolvedTurnStart,
 	TurnStartRecordState,
 } from "@leitwerk-dev/domain";
-import { filterProviderOptionsForDefinition } from "@leitwerk-dev/process-sdk";
+import {
+	filterProviderOptionsForDefinition,
+	resolveOutcomeContract,
+} from "@leitwerk-dev/process-sdk";
 import { IPC_PROTOCOL_VERSION, WORKER_API_VERSION } from "@leitwerk-dev/worker-protocol";
 import type { LeitwerkConfig } from "../config/config-types.js";
 import type { RepositoryBundle } from "../db/repositories.js";
@@ -26,6 +29,11 @@ import {
 import type { Writes } from "./writes/writes.js";
 
 export interface TurnStartPreflightDeps {
+	processActionRegistry?: Pick<
+		import("../process-action-registry.js").ProcessActionRegistry,
+		"getTurnDefinition" | "resolveContextData" | "getProcessGraph"
+	>;
+	mappedRuns?: Pick<RepositoryBundle["mappedRuns"], "getById" | "getItem">;
 	scopedSettings?: Pick<ScopedSettingsService, "capture">;
 	processModelPolicy: ServerProcessModelPolicy;
 	config: LeitwerkConfig;
@@ -69,6 +77,8 @@ function resolveRuntimeProfile(
 			config: deps.config,
 			processId: process.processId,
 			componentKeys: deps.projects.listByInstance(process.id).map((project) => project.key),
+			docker:
+				deps.processActionRegistry?.getProcessGraph(process.processId)?.runtime?.docker === true,
 		}),
 	);
 	return selection.ok
@@ -142,6 +152,58 @@ export async function prepareCreatedTurnStarts(
 			// Reconcile obsolete workers without launching this failed start.
 			writes.workerIntent = { kind: "reconcile" };
 		};
+
+		let outcomeContract: Record<string, unknown> | undefined;
+		if (deps.processActionRegistry) {
+			try {
+				const registry = deps.processActionRegistry;
+				const turn = registry.getTurnDefinition(nextProcess.processId, write.input.turnId);
+				if (!turn || turn.kind !== "llm") throw new Error("Selected LLM turn is unavailable");
+				const ref = write.input.iteration;
+				const pendingRun = writes.mappedRunWrites.find(
+					(candidate) => candidate.kind === "create" && candidate.input.id === ref?.runId,
+				);
+				const item = ref
+					? pendingRun?.kind === "create"
+						? pendingRun.input.items[ref.itemIndex]
+						: deps.mappedRuns?.getItem(ref.runId, ref.itemIndex)
+					: undefined;
+				const count =
+					pendingRun?.kind === "create"
+						? pendingRun.input.items.length
+						: ref
+							? deps.mappedRuns?.getById(ref.runId)?.itemCount
+							: undefined;
+				if (
+					ref &&
+					(!item ||
+						item.itemKey !== ref.itemKey ||
+						item.itemIndex !== ref.itemIndex ||
+						count === undefined)
+				)
+					throw new Error("Frozen mapped item is unavailable");
+				outcomeContract = {
+					...resolveOutcomeContract(
+						turn,
+						registry.resolveContextData(nextProcess.processId, nextProcess),
+						ref && item
+							? {
+									...ref,
+									item: JSON.parse(item.itemJson),
+									itemLabel: item.label,
+									itemCount: count!,
+								}
+							: undefined,
+					),
+				};
+			} catch (error) {
+				return {
+					ok: false,
+					code: "invalid_outcome_contract",
+					message: error instanceof Error ? error.message : "Unable to resolve outcome contract",
+				};
+			}
+		}
 
 		// Resolve the model and required settings without yielding. An edit while the
 		// resource bundle is assembled belongs to the next start, not this snapshot.
@@ -305,6 +367,7 @@ export async function prepareCreatedTurnStarts(
 				kind: "starting",
 				start: {
 					kind: "llm",
+					...(outcomeContract ? { outcomeContract } : {}),
 					...(scopedSettings ? { scopedSettings } : {}),
 					model,
 					...(provenance ? { modelSelectionProvenance: provenance } : {}),

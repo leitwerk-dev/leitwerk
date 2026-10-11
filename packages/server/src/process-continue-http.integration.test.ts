@@ -75,6 +75,7 @@ beforeAll(async () => {
 		extensionCatalog: buildExtensionCatalogFromModules([continueExtension]),
 		inProcessWorkers: false,
 		configOverride(config) {
+			config.pi.default_model_profile = "continue-fixture-profile";
 			config.pi.model_profiles = [
 				{
 					id: "continue-fixture-profile",

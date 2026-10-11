@@ -4,6 +4,7 @@ import {
 	readPublicationState,
 } from "@leitwerk-dev/coding/repository-change-publication";
 import type { RepositoryChangeState } from "@leitwerk-dev/coding/repository-change-state";
+import { asUnknownRecord } from "@leitwerk-dev/domain";
 import { gitSshIntegration } from "@leitwerk-dev/git-ssh";
 import {
 	createGitLabPublicationAdapter,
@@ -30,6 +31,7 @@ import { topicWikiCapability } from "@leitwerk-dev/wiki/integration";
 import {
 	createJiraGitLabLauncher,
 	type JiraGitLabParams,
+	jiraChangePrompt,
 	jiraGitLabParamsCodec,
 } from "./launch.js";
 import { parseJiraModelLabels } from "./models.js";
@@ -44,7 +46,10 @@ const remote = (state: RepositoryChangeState, key: string) =>
 export function createJiraGitLabChange(options: {
 	/** @internal */
 	docker: boolean;
+	/** Opt into the supported Jira verification transition after all changed MRs merge. @internal */
+	verificationOnMerge?: boolean;
 }) {
+	let verificationOnMerge = options.verificationOnMerge ?? false;
 	const launcher = createJiraGitLabLauncher();
 	const adapter = createGitLabPublicationAdapter<JiraGitLabParams>([], namespace);
 	adapter.ensureRequest = async (ctx) => {
@@ -90,6 +95,11 @@ export function createJiraGitLabChange(options: {
 		const merged = created.filter(({ current }) => current.delivery.terminalPullRequest?.merged);
 		const done = !cancelled && created.length > 0 && merged.length === created.length;
 		const projectKey = ctx.params.repositories[0].key;
+		if (done && verificationOnMerge)
+			await ctx.callIntegrationTool("jira_transition_source_issue", {
+				projectKey,
+				targetStatus: "In Verification",
+			});
 		if (!cancelled)
 			await ctx.callIntegrationTool("jira_finalize_source_issue", {
 				projectKey,
@@ -145,25 +155,34 @@ export function createJiraGitLabChange(options: {
 					: gitlabRepositoryCredentials(repo.gitlabProfile, [repo]),
 			),
 	});
-	process.runtime = { ...process.runtime, docker: options.docker };
+	process.runtime = { ...process.runtime, developmentTools: true, docker: options.docker };
 	const plan = process.turns.get("generate_plan")?.definition;
 	const delivery = process.turns.get("deliver_change")?.definition;
 	if (plan?.kind !== "llm" || delivery?.kind !== "automatic")
 		throw new Error("Jira change requires planning and delivery turns");
+	plan.waitFor = launcher.ready;
+	plan.resolveAskQuestions = ({ prepared }) => asUnknownRecord(prepared)?.skipPlanDecision !== true;
 	plan.integrationTools = [
 		...(plan.integrationTools ?? []),
+		"jira_get_source_issue",
 		"jira_ensure_remote_link",
 		"jira_transition_source_issue",
 	];
 	const originalPrepare = plan.prepare;
 	plan.prepare = async (ctx) => {
 		const projectKey = ctx.params.repositories[0].key;
+		const issue = (await ctx
+			.callIntegrationTool("jira_get_source_issue", { projectKey })
+			.catch(() => null)) as JiraIssue | null;
 		await ctx.callIntegrationTool("jira_ensure_remote_link", { projectKey, kind: "process" });
 		await ctx.callIntegrationTool("jira_transition_source_issue", {
 			projectKey,
 			targetStatus: "In Progress",
 		});
-		return (await originalPrepare?.(ctx)) ?? {};
+		return {
+			...(asUnknownRecord(await originalPrepare?.(ctx)) ?? {}),
+			skipPlanDecision: issue?.fields.labels.includes("leitwerk-skip-plan-decision") ?? false,
+		};
 	};
 	const originalDelivery = delivery.run;
 	delivery.run = async (ctx) => {
@@ -199,12 +218,14 @@ export function createJiraGitLabChange(options: {
 		const originalTools = turn.resolveIntegrationTools;
 		turn.resolveIntegrationTools = (params, state) => [
 			...(originalTools?.(params, state) ?? turn.integrationTools ?? []),
+			"jira_get_source_issue",
+			"jira_get_issue",
 			...(params.wikiTopicId
 				? ["wiki_index", "wiki_read", "wiki_share", "wiki_edit", "wiki_delete", "wiki_delete_group"]
 				: []),
 		];
 		turn.prompt = async (ctx) =>
-			`${await originalPrompt(ctx)}${ctx.params.wikiTopicId ? `\n\n${wikiInstructions}\nWiki: /wiki/${ctx.params.wikiTopicId}` : ""}`;
+			`${await originalPrompt({ ...ctx, params: { ...ctx.params, prompt: jiraChangePrompt(ctx.params.issue) } })}${ctx.params.wikiTopicId ? `\n\n${wikiInstructions}\nWiki: /wiki/${ctx.params.wikiTopicId}` : ""}`;
 	}
 	const extension: LeitwerkExtensionModule = {
 		manifest: {
@@ -217,6 +238,10 @@ export function createJiraGitLabChange(options: {
 			api.registerProcess(process);
 		},
 		setupServer(api, config) {
+			const verification = asUnknownRecord(config)?.verification_on_merge;
+			if (verification !== undefined && typeof verification !== "boolean")
+				throw new Error("Jira verification_on_merge must be a boolean");
+			verificationOnMerge = verification ?? options.verificationOnMerge ?? false;
 			adapter.maintenance?.register(api, process);
 			const jira = api.require(jiraIntegration),
 				gitlab = api.require(gitlabIntegration),

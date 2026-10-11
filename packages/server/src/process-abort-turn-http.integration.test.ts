@@ -65,6 +65,7 @@ beforeAll(async () => {
 		extensionCatalog: buildExtensionCatalogFromModules([abortTurnExtension]),
 		inProcessWorkers: false,
 		configOverride(config) {
+			config.pi.default_model_profile = "abort-fixture-profile";
 			config.pi.model_profiles = [
 				{
 					id: "abort-fixture-profile",

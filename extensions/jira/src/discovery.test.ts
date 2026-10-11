@@ -32,6 +32,9 @@ it.each([
 		}
 	>();
 	const settings: ScopedSettingsResolver = {
+		getSubject: () => null,
+		seedOverride: () => false,
+		findSubject: () => null,
 		resolve() {
 			throw new Error("Unused resolver");
 		},

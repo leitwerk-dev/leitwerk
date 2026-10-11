@@ -6,6 +6,7 @@ export {
 	type FixtureModelProviderSet,
 	fixtureModelProfiles,
 	fixtureModelProviders,
+	withDefaultModelFixture,
 } from "./model-provider-fixtures.js";
 export {
 	createPollingTestExtension,

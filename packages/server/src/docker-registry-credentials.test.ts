@@ -13,8 +13,11 @@ const credential = {
 	password: "private-registry-test-password",
 };
 function config() {
+	const config = getDefaultConfig();
+	config.pi.model_profiles = [{ id: "test", provider: "test", model_id: "test" }];
+	config.pi.default_model_profile = "test";
 	return {
-		...getDefaultConfig(),
+		...config,
 		docker_registries: {
 			profiles: { approved: { ...credential }, admin: { ...credential, password: "other-secret" } },
 			process_bindings: { fixer: ["approved"] },

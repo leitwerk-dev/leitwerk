@@ -76,6 +76,10 @@ export interface InspectionModelInput {
 			description: string;
 			/** @internal */
 			parameters: unknown;
+			/** @internal */
+			strictSchema?: boolean;
+			/** @internal */
+			schemaEnforcement?: "provider" | "server";
 		}>
 	>;
 	/** Ordered references are retained per call; immutable content is stored once. @internal */

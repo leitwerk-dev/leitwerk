@@ -244,6 +244,12 @@ function baseConfigLines(tempDir: string, port: number): string[] {
 		`  tree_files_dir: ${JSON.stringify(path.join(tempDir, "trees"))}`,
 		"pi:",
 		`  agent_dir: ${JSON.stringify(path.join(tempDir, "pi"))}`,
+		"  default_model_profile: parity-fixture",
+		"  model_profiles:",
+		"    - id: parity-fixture",
+		"      provider: parity-fixture",
+		"      model_id: fixture-model",
+		"      thinking_level: off",
 	];
 }
 
@@ -404,13 +410,14 @@ async function runServerStartSmoke(repoRoot: string): Promise<void> {
 	await withBuiltServer(
 		repoRoot,
 		"leitwerk-server-start-",
-		() => [
+		(tempDir) => [
 			"workers:",
 			"  runner: local",
 			"  max_parallel_processes: 1",
 			"  log_worker_events_to_stdout: false",
 			"extension_loading:",
-			"  sources: []",
+			"  sources:",
+			`    - ${JSON.stringify(writeParityModelProviderExtension(tempDir, repoRoot))}`,
 			"extensions: {}",
 		],
 		(server) => {
@@ -439,6 +446,7 @@ async function runDefaultWorkerSmoke(repoRoot: string): Promise<void> {
 				"extension_loading:",
 				"  sources:",
 				`    - ${JSON.stringify(extensionDir)}`,
+				`    - ${JSON.stringify(writeParityModelProviderExtension(tempDir, repoRoot))}`,
 				"extensions: {}",
 			];
 		},
@@ -506,11 +514,6 @@ async function runParity(repoRoot: string): Promise<void> {
 		(tempDir) => {
 			const providerExtensionDir = writeParityModelProviderExtension(tempDir, repoRoot);
 			return [
-				"  model_profiles:",
-				"    - id: parity-fixture",
-				"      provider: parity-fixture",
-				"      model_id: fixture-model",
-				"      thinking_level: off",
 				"workers:",
 				"  runner: local",
 				"  max_parallel_processes: 1",

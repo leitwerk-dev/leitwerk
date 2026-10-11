@@ -113,6 +113,8 @@ export interface LlmTurnExecutorCallbacks {
 	): void;
 	emit?: WorkerOperationEmitter;
 	integrationTools?: readonly import("@leitwerk-dev/process-sdk").PiCustomTool[];
+	callIntegrationTool?: (name: string, args: Record<string, unknown>) => Promise<unknown>;
+	reportProgress?: import("@leitwerk-dev/process-sdk").LlmTurnPreparationContext["reportProgress"];
 }
 
 /** Pi writes these on new sessions before any conversational content exists. */
@@ -334,6 +336,31 @@ export async function executeLlmTurn<TOutcome extends string>(input: {
 		turnId,
 		turnRecordId,
 		turnDef: input.turnDef,
+		questionsEnabled: input.turnDef.resolveAskQuestions?.({
+			...input.ctx,
+			prepared: input.prepared,
+		}),
+		...(input.turnDef.validateOutcome
+			? {
+					validateOutcome: async (outcome: {
+						outcome: TOutcome;
+						params: Record<string, unknown>;
+					}) =>
+						input.turnDef.validateOutcome!(
+							{
+								...input.ctx,
+								prepared: input.prepared,
+								callIntegrationTool:
+									input.callbacks.callIntegrationTool ??
+									(async () => {
+										throw new Error("Integration tools unavailable");
+									}),
+								reportProgress: input.callbacks.reportProgress ?? (() => {}),
+							},
+							outcome,
+						),
+				}
+			: {}),
 		requestQuestions: input.callbacks.requestQuestions,
 		integrationTools: input.callbacks.integrationTools,
 		resultImageTool: input.resultImageTools.create({
@@ -651,7 +678,7 @@ export async function executeLlmTurn<TOutcome extends string>(input: {
 		const { recoveryContext, description } = recoveryResult.failure;
 		return reportFailedTurn(
 			"protocol_error",
-			`Turn '${turnId}' completed without the required tool calls after ${MAX_MISSING_TOOL_CALL_RECOVERY_ATTEMPTS} automatic recovery attempts: ${description}`,
+			`Turn '${turnId}' did not complete within the recovery budget of ${MAX_MISSING_TOOL_CALL_RECOVERY_ATTEMPTS} attempts: ${description}`,
 			finalPromptResult.resultEntryId,
 			{
 				recoveryContext,

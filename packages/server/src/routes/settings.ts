@@ -9,7 +9,7 @@ type Change = {
 	subjectId: string;
 	key: string;
 	value?: unknown;
-	mode?: "append" | "replace";
+	mode?: "replace";
 	reset?: boolean;
 	expectedRevision: number;
 };
@@ -23,12 +23,12 @@ function parseChange(value: unknown): Change {
 		typeof raw.key !== "string" ||
 		!Number.isSafeInteger(raw.expectedRevision) ||
 		Number(raw.expectedRevision) < 0 ||
-		(raw.mode !== undefined && raw.mode !== "append" && raw.mode !== "replace") ||
+		(raw.mode !== undefined && raw.mode !== "replace") ||
 		(raw.reset !== undefined && typeof raw.reset !== "boolean") ||
 		(!raw.reset && !Object.hasOwn(raw, "value"))
 	)
 		throw new SettingsError(
-			"Provide subjectId, key, value, and expectedRevision; mode must be append or replace",
+			"Provide subjectId, key, value, and expectedRevision; mode must be replace",
 			400,
 		);
 	return raw as Change;
@@ -55,6 +55,10 @@ export function registerSettingsRoutes(
 	}
 	app.get("/api/settings/definitions", async () => ({ definitions: settings.definitions() }));
 	app.get("/api/settings/scopes", async () => settings.listScopes());
+	app.get<{ Querystring: { scopeType?: string } }>("/api/settings/overview", async (request) => {
+		if (!request.query.scopeType) throw new SettingsError("Provide scopeType", 400);
+		return settings.overview(request.query.scopeType);
+	});
 	app.post("/api/settings/scopes/refresh", async () => {
 		const scopes = await settings.refresh();
 		await repos.onSettingsChanged?.();

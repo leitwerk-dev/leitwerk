@@ -88,7 +88,9 @@ export type OutcomeToolParameterType = "string" | "number" | "array" | "boolean"
 /** JSON-schema-compatible value declaration nested below an outcome parameter. @public */
 export interface OutcomeToolArrayItemSpec {
 	/** @public */
-	type: OutcomeToolParameterType;
+	type?: OutcomeToolParameterType;
+	/** Alternatives; declare either type or a nonempty anyOf. @public */
+	anyOf?: readonly OutcomeToolArrayItemSpec[];
 	/** @public */
 	description?: string;
 	/** @public */
@@ -101,12 +103,22 @@ export interface OutcomeToolArrayItemSpec {
 	required?: readonly string[];
 	/** @public */
 	additionalProperties?: boolean;
+	/** @public */
+	enum?: readonly string[];
+	/** @public */
+	minLength?: number;
+	/** @public */
+	minimum?: number;
 }
 
 /** @public */
 export interface OutcomeToolParameterSpec {
 	/** @internal */
-	type: OutcomeToolParameterType;
+	type?: OutcomeToolParameterType;
+	/** Alternatives for this parameter. @public */
+	anyOf?: readonly OutcomeToolArrayItemSpec[];
+	/** @public */
+	minLength?: number;
 	/** @internal */
 	description: string;
 	/** @internal */
@@ -127,10 +139,18 @@ export interface OutcomeToolParameterSpec {
 	items?: OutcomeToolArrayItemSpec;
 	/** @internal */
 	enum?: readonly string[];
+	/** Properties of an object parameter. @public */
+	properties?: Record<string, OutcomeToolArrayItemSpec>;
+	/** Required keys inside an object; `required` marks the parameter itself. @public */
+	requiredProperties?: readonly string[];
+	/** Whether an object accepts undeclared keys. @public */
+	additionalProperties?: boolean;
 }
 
 /** @internal */
 export interface OutcomeToolSpec {
+	/** Opt in to provider enforcement of the complete schema. @internal */
+	strictSchema?: boolean;
 	/** @internal */
 	description: string;
 	/** @internal */
@@ -267,6 +287,10 @@ export interface PiCustomToolExecutionContext {
 
 /** @public */
 export interface PiCustomTool {
+	/** Opt in to provider schema enforcement. @internal */
+	strictSchema?: boolean;
+	/** Hidden tools remain callable by runtime callbacks. @internal */
+	modelVisible?: boolean;
 	/** @public */
 	name: string;
 	/** @internal */
@@ -350,7 +374,7 @@ export interface PiPromptOptions {
 	/** @internal Runtime-only hook used by the worker Pi adapter before a tool executes. */
 	shouldBlockToolCall?: (toolName: string) => string | null;
 	/** @internal Return control to the worker after a model response and its tool results. */
-	shouldStopAfterTurn?: () => boolean;
+	shouldStopAfterTurn?: (toolResults: readonly unknown[]) => boolean;
 	/** @internal Guard suspension used by durable interactive tools. */
 	suspendPromptGuards?: () => () => void;
 	/** @internal Runtime-only terminal outcome acknowledgement state. */

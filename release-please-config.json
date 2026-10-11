@@ -112,7 +112,8 @@
 				"@leitwerk-dev/jira-issue-split",
 				"@leitwerk-dev/example-processes",
 				"@leitwerk-dev/mattpocock-skills",
-				"@leitwerk-dev/wiki"
+				"@leitwerk-dev/wiki",
+				"@leitwerk-dev/skills"
 			]
 		}
 	],
@@ -311,6 +312,11 @@
 		},
 		"packages/wiki": {
 			"component": "@leitwerk-dev/wiki",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"extensions/skills": {
+			"component": "@leitwerk-dev/skills",
 			"skip-github-release": true,
 			"skip-changelog": true
 		}

@@ -22,6 +22,8 @@ const composition: SandboxCompositionFactory = (input) => {
 	const now = () => store.state.now;
 	const direct = createGitLabRepoChange({ docker: false });
 	const coordinated = createJiraGitLabChange({ docker: false });
+	// Scripted seeds have no toolchains and must not require host mise.
+	coordinated.process.runtime = { ...coordinated.process.runtime, developmentTools: false };
 	// Local file transport is confined to these seeds; no SSH material enters workers.
 	direct.process.repositoryCredentials = () => [];
 	coordinated.process.repositoryCredentials = () => [];

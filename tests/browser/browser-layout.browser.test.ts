@@ -7,6 +7,7 @@ test.use({
 	browserServerOptions: {
 		tempPrefix: "leitwerk-browser-layout-",
 		configure: (config) => {
+			config.pi.default_model_profile = "layout-reference-model-with-a-long-name";
 			config.pi.model_profiles = [
 				{
 					...fixtureModelProfile,

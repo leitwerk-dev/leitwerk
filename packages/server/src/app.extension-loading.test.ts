@@ -39,6 +39,7 @@ async function createExtensionWorkspace(): Promise<string> {
 			name: "@example/example",
 			type: "module",
 			leitwerk: {
+				pi: { resources: { skills: ["./skills"] } },
 				extension: {
 					source: "./src/index.ts",
 					import: "./src/index.ts",
@@ -46,12 +47,18 @@ async function createExtensionWorkspace(): Promise<string> {
 			},
 		}),
 	);
+	await mkdir(path.join(root, "extensions", "example", "skills", "writing"), { recursive: true });
+	await writeFile(
+		path.join(root, "extensions", "example", "skills", "writing", "SKILL.md"),
+		"---\nname: Writing\ndescription: Write documentation\n---\n# Writing\n",
+	);
 	await writeFile(
 		path.join(root, "extensions", "example", "src", "index.ts"),
 		[
 			'import { appendFileSync } from "node:fs";',
 			"export default {",
 			"\tmanifest: { id: 'example', version: '0.1.0' },",
+			"\tmodelProviders: (rawConfig) => [{ rawConfig, definition: { id: 'test-provider', parseConfig: () => ({ config: {} }), worker: { kind: 'builtin_pi_provider', providerId: 'test-provider' }, models: () => [{ modelId: 'model', availability: 'available' }], secrets: () => ({}) } }],",
 			`\tsetupServer() { appendFileSync(${JSON.stringify(path.join(root, "loaded.txt"))}, "example\\n"); },`,
 			"};",
 			"",
@@ -94,6 +101,8 @@ describe("createAppContext extension loading", () => {
 		const config = getDefaultConfig();
 		config.storage.sqlite_path = ":memory:";
 		config.extension_loading.sources = [extension];
+		config.pi.default_model_profile = "profile";
+		config.pi.model_profiles = [{ id: "profile", provider: "test-provider", model_id: "model" }];
 		const ctx = await createAppContext({ config, logger: false });
 		try {
 			expect(
@@ -121,6 +130,8 @@ describe("createAppContext extension loading", () => {
 		process.chdir(nestedCwd);
 
 		const config = getDefaultConfig();
+		config.pi.default_model_profile = "profile";
+		config.pi.model_profiles = [{ id: "profile", provider: "test-provider", model_id: "model" }];
 		config.storage.sqlite_path = ":memory:";
 		config.extension_loading.sources = ["./extensions/example"];
 		config.server.base_url = "http://127.0.0.1:8080";
@@ -140,6 +151,17 @@ describe("createAppContext extension loading", () => {
 		});
 		try {
 			expect(await readFile(path.join(workspaceRoot, "loaded.txt"), "utf8")).toBe("example\n");
+			const catalog = await ctx.app.inject({ method: "GET", url: "/api/skills" });
+			expect(catalog.statusCode).toBe(200);
+			expect(catalog.json().installedSkills).toEqual([
+				expect.objectContaining({
+					id: "writing",
+					registrationKind: "bundled",
+					sourceExtensionId: "example",
+				}),
+			]);
+			const detail = await ctx.app.inject({ method: "GET", url: "/api/skills/installed/writing" });
+			expect(detail.json().skill.skillMarkdown).toContain("# Writing");
 		} finally {
 			await ctx.close();
 		}
@@ -161,6 +183,7 @@ describe("createAppContext extension loading", () => {
 			},
 		]);
 		const config = getDefaultConfig();
+		config.pi.default_model_profile = "profile";
 		config.storage.sqlite_path = ":memory:";
 		config.extensions = { "provider-owner": { endpoint: "https://provider.invalid" } };
 		config.pi.model_profiles = [{ id: "profile", provider: "test-provider", model_id: "model" }];
@@ -180,6 +203,7 @@ describe("createAppContext extension loading", () => {
 
 	it("rejects a configured profile whose provider extension is not loaded", async () => {
 		const config = getDefaultConfig();
+		config.pi.default_model_profile = "profile";
 		config.storage.sqlite_path = ":memory:";
 		config.pi.model_profiles = [{ id: "profile", provider: "missing-provider", model_id: "model" }];
 		const extensionCatalog = await buildExtensionCatalogFromModules([]);

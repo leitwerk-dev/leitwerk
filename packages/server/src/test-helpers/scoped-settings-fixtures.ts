@@ -1,3 +1,4 @@
+import type { ExtensionCatalog } from "@leitwerk-dev/extension-runtime";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import type { LeitwerkExtensionModule, SettingDefinition } from "@leitwerk-dev/process-sdk";
 import { getDefaultConfig } from "../config/config-loader.js";
@@ -12,28 +13,28 @@ import {
 	createFixtureProcess,
 } from "./process-fixtures.js";
 
-export const instructions: SettingDefinition<string> = {
-	key: "settings-test.instructions",
+export const reportLabel: SettingDefinition<string> = {
+	key: "settings-test.report_label",
 	schemaVersion: 1,
-	defaultValue: "Code instructions",
+	defaultValue: "Default report",
 	scopes: [
 		"instance",
 		"settings-test.issue-type",
 		"settings-test.project",
 		"settings-test.project-issue-type",
 	],
-	merge: "instructions",
+	merge: "replace",
 	schema: {
 		parse(value) {
 			if (typeof value !== "string") throw new Error("Expected text");
 			return value;
 		},
 	},
-	form: { label: "Instructions", control: "textarea", group: "Planning" },
+	form: { label: "Report label", control: "textarea", group: "Planning" },
 };
-export const repositoryInstructions: SettingDefinition<string> = {
-	...instructions,
-	key: "settings-test.repository_instructions",
+export const repositoryLabel: SettingDefinition<string> = {
+	...reportLabel,
+	key: "settings-test.repository_label",
 	scopes: ["instance", "repository"],
 };
 export const model: SettingDefinition<string | null> = {
@@ -68,14 +69,13 @@ export const settingsExtension: LeitwerkExtensionModule = {
 			{ id: "settings-test.project", label: "Project" },
 			{ id: "settings-test.project-issue-type", label: "Project + issue type" },
 		],
-		settings: [instructions, repositoryInstructions, model],
+		settings: [reportLabel, repositoryLabel, model],
 		purposes: [
 			{
 				id: "settings-test.planning",
 				label: "Planning",
 				modelSettingKey: model.key,
-				instructionSettingKeys: [repositoryInstructions.key],
-				settingKeys: [instructions.key],
+				settingKeys: [reportLabel.key, repositoryLabel.key],
 			},
 		],
 	},
@@ -100,8 +100,9 @@ export async function createSettingsFixture(
 	repos = createAllRepos(createOwnedInMemoryDatabase()),
 	modules = [settingsExtension],
 ) {
-	const catalog = await buildExtensionCatalogFromModules(modules);
+	const catalog: ExtensionCatalog = await buildExtensionCatalogFromModules(modules);
 	const config = getDefaultConfig();
+	config.pi.default_model_profile = "first";
 	config.pi.model_profiles = [
 		{ id: "first", provider: "test", model_id: "one" },
 		{ id: "second", provider: "test", model_id: "two" },

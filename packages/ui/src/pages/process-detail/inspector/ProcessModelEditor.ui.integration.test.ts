@@ -171,7 +171,7 @@ it("retains an open model draft through a failed background refresh and recovery
 					return error.current;
 				},
 				onNavigate: () => {},
-				onBack: () => {},
+				onReturn: () => {},
 				onChronicle: () => {},
 			},
 		}),

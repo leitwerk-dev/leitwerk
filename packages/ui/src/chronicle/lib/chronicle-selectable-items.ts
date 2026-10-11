@@ -32,6 +32,7 @@ export interface ChronicleSelectablePromptItem extends ChronicleSelectableBaseIt
 
 export interface ChronicleSelectableTurnItem extends ChronicleSelectableBaseItem {
 	kind: "turn";
+	recoveryAnchorId?: string;
 	turnId: string;
 	turnRecordId: string;
 	status: "completed" | "in_progress" | "waiting";
@@ -207,7 +208,20 @@ export function buildChronicleSelectableItems(
 		latestTurn?.status === "completed"
 			? latestTurn
 			: undefined;
-	if (waitingTurn) {
+	const recoveryTurn =
+		input.pendingRailItem?.tone === "error_recovery"
+			? items.find(
+					(item): item is ChronicleSelectableTurnItem =>
+						item.kind === "turn" &&
+						item.turnRecordId === input.pendingRailItem?.relatedTurnRecordId &&
+						item.shape === "square",
+				)
+			: undefined;
+	if (recoveryTurn) {
+		recoveryTurn.detail = input.pendingRailItem?.detail ?? null;
+		recoveryTurn.recoveryAnchorId =
+			input.pendingRailItem?.anchorId ?? CHRONICLE_ACTION_SECTION_ANCHOR_ID;
+	} else if (waitingTurn) {
 		waitingTurn.status = "waiting";
 		waitingTurn.detail = "Waiting for an event";
 		waitingTurn.anchorId = input.pendingRailItem?.anchorId ?? CHRONICLE_ACTION_SECTION_ANCHOR_ID;
@@ -243,7 +257,12 @@ export function findChronicleSelectableItem(
 	if (!anchorId) {
 		return null;
 	}
-	return items.find((item) => item.anchorId === anchorId) ?? null;
+	return (
+		items.find(
+			(item) =>
+				item.anchorId === anchorId || (item.kind === "turn" && item.recoveryAnchorId === anchorId),
+		) ?? null
+	);
 }
 
 export function moveChronicleAnchorByOffset(
@@ -254,7 +273,8 @@ export function moveChronicleAnchorByOffset(
 	if (items.length === 0) {
 		return null;
 	}
-	const currentIndex = items.findIndex((item) => item.anchorId === currentAnchorId);
+	const currentItem = findChronicleSelectableItem(items, currentAnchorId);
+	const currentIndex = currentItem ? items.indexOf(currentItem) : -1;
 	const safeCurrentIndex = currentIndex >= 0 ? currentIndex : items.length - 1;
 	const nextIndex = Math.max(0, Math.min(safeCurrentIndex + offset, items.length - 1));
 	return items[nextIndex]?.anchorId ?? null;

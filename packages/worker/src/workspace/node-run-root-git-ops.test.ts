@@ -176,3 +176,62 @@ describe("NodeRunRootGitOps", () => {
 		expect(parsed.manifest.components[0]?.key).toBe("repo");
 	});
 });
+
+it("pins shared checkouts at captured commits, fetches later captured commits, and preserves dirty files", async () => {
+	const source = createSourceRepo();
+	const captured = git(source, "rev-parse", "HEAD").trim();
+	const workspace = createTempDir("pinned-component-checkout");
+	const ops = new NodeRunRootGitOps();
+	const { createCheckoutTool } = await import("./checkout-tool.js");
+	const tool = createCheckoutTool(
+		workspace,
+		"instance",
+		[
+			{
+				key: "monitor",
+				repoLocator: source,
+				baseBranch: "main",
+				workBranch: "main",
+			} as import("@leitwerk-dev/domain").ProcessProject,
+		],
+		ops,
+	);
+	const initial = (await tool.execute({ projectKey: "monitor", revision: captured })) as {
+		path: string;
+		headSha: string;
+	};
+	expect(initial.headSha).toBe(captured);
+	writeFileSync(path.join(source, "AGENTS.md"), "# Updated component instructions\n");
+	git(source, "add", "AGENTS.md");
+	git(source, "commit", "-m", "new source");
+	const next = git(source, "rev-parse", "HEAD").trim();
+	for (let index = 0; index < 4; index++)
+		expect(
+			((await tool.execute({ projectKey: "monitor", revision: captured })) as { headSha: string })
+				.headSha,
+		).toBe(captured);
+	expect(
+		((await tool.execute({ projectKey: "monitor", revision: next })) as { headSha: string })
+			.headSha,
+	).toBe(next);
+	expect(readFileSync(path.join(workspace, "AGENTS.md"), "utf8")).toContain(
+		"Updated component instructions",
+	);
+	git(initial.path, "checkout", "--detach", captured);
+	const { prepareOnDemandRunRoot } = await import("./run-root.js");
+	await prepareOnDemandRunRoot(
+		planRunRoot(workspace, "instance", [
+			{ key: "monitor", repoLocator: source, baseBranch: "main", workBranch: "main" },
+		]),
+		ops,
+	);
+	expect(git(initial.path, "rev-parse", "HEAD").trim()).toBe(next);
+	writeFileSync(path.join(initial.path, "local-work.txt"), "preserve this");
+	await expect(tool.execute({ projectKey: "monitor", revision: captured })).rejects.toThrow(
+		"local changes",
+	);
+	expect(readFileSync(path.join(initial.path, "local-work.txt"), "utf8")).toBe("preserve this");
+	await expect(tool.execute({ projectKey: "monitor", revision: "main" })).rejects.toThrow(
+		"full commit",
+	);
+});

@@ -122,4 +122,4 @@ facts without storing credentials, provider responses, PIDs, pod names, or conta
 - **Settings override**: Versioned, revision-checked value for one setting and subject.
   Reset restores inheritance while retaining the revision.
 - **Execution purpose**: Extension-defined binding from an LLM turn to model and
-  instruction settings captured when preparing that turn.
+  other non-secret settings captured when preparing that turn.

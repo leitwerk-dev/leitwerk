@@ -52,12 +52,14 @@ export interface KubernetesWorkerServerCaConfigMapSpec {
 
 /** @internal */
 export interface KubernetesDockerPodSpecOptions {
+	/** Docker-only keys override the global Pod selector. @internal */
+	nodeSelector?: Record<string, string>;
 	/** @internal */
 	runtimeClassName: string;
 	/** @internal */
 	hostUsers?: boolean;
 	/** @internal */
-	gvisor?: boolean;
+	isolation?: "gvisor" | "virtual-machine";
 	/** @internal */
 	network?: DockerNetworkConfig;
 }
@@ -147,6 +149,13 @@ export interface KubernetesDockerConfigJsonSecretManifest extends NamespacedMani
 
 /** @internal */
 export interface KubernetesPodEventSummary {
+	/** @internal */
+	series?: {
+		/** @internal */
+		count?: number;
+		/** @internal */
+		lastObservedTime?: string;
+	};
 	/** @internal */
 	objectUid?: string;
 	/** @internal */
@@ -598,25 +607,37 @@ export function buildKubernetesWorkerPodManifest(
 	});
 	const containerResources = resources(input);
 	const ca = options.serverCaConfigMap;
+	const dockerEnv = { ...input.env };
+	delete dockerEnv.LEITWERK_DOCKER_GVISOR;
+	delete dockerEnv.LEITWERK_DOCKER_ISOLATION;
 	const trustedDockerEnv = input.docker
 		? {
-				...input.env,
+				...dockerEnv,
 				DOCKER_HOST: "unix:///var/run/docker.sock",
 				LEITWERK_PRIVATE_DOCKER: "1",
-				...(options.docker?.gvisor ? { LEITWERK_DOCKER_GVISOR: "1" } : {}),
+				...(options.docker?.isolation === "gvisor" ? { LEITWERK_DOCKER_GVISOR: "1" } : {}),
+				...(options.docker?.isolation === "virtual-machine"
+					? { LEITWERK_DOCKER_ISOLATION: "virtual-machine" }
+					: {}),
 				LEITWERK_PROCESS_VOLUME_MOUNT_PATH: volume.mountPath,
 				...(options.docker?.network
 					? { LEITWERK_DOCKER_NETWORK: JSON.stringify(options.docker.network) }
 					: {}),
 			}
-		: input.env;
+		: dockerEnv;
 	const container: KubernetesPodManifest["spec"]["containers"][number] = {
 		name: "worker",
-		...(input.docker && options.docker?.gvisor
+		...(input.docker && options.docker?.isolation
 			? {
 					securityContext: {
 						privileged: false as const,
-						capabilities: { add: ["SYS_ADMIN", "NET_ADMIN"] },
+						// Docker opens nonroot child namespace handles within the VM guest.
+						capabilities: {
+							add:
+								options.docker?.isolation === "virtual-machine"
+									? ["SYS_ADMIN", "NET_ADMIN", "SYS_PTRACE"]
+									: ["SYS_ADMIN", "NET_ADMIN"],
+						},
 					},
 				}
 			: {}),
@@ -634,7 +655,13 @@ export function buildKubernetesWorkerPodManifest(
 		input.docker && options.docker
 			? {
 					runtimeClassName: options.docker.runtimeClassName,
-					...(options.docker.gvisor ? {} : { hostUsers: options.docker.hostUsers }),
+					...(options.docker.nodeSelector
+						? { nodeSelector: { ...options.nodeSelector, ...options.docker.nodeSelector } }
+						: {}),
+					...(options.docker.isolation ? {} : { hostUsers: options.docker.hostUsers }),
+					...(options.docker.isolation === "virtual-machine"
+						? { automountServiceAccountToken: false }
+						: {}),
 				}
 			: {},
 	);
@@ -667,7 +694,8 @@ function formatPodEvent(
 	const pieces: string[] = [];
 	if (event.type?.trim()) pieces.push(event.type.trim());
 	if (event.reason?.trim()) pieces.push(event.reason.trim());
-	if (event.count !== undefined && event.count > 1) pieces.push(`x${event.count}`);
+	const count = event.series?.count ?? event.count;
+	if (count !== undefined && count > 1) pieces.push(`x${count}`);
 	const prefix = pieces.join(" ");
 	const message = event.message?.trim();
 	if (!prefix && !message) return null;
@@ -677,15 +705,51 @@ function formatPodEvent(
 	);
 }
 
+function podEventTimestamp(event: KubernetesPodEventSummary): number {
+	for (const value of [
+		event.series?.lastObservedTime,
+		event.lastTimestamp,
+		event.eventTime,
+		event.firstTimestamp,
+	]) {
+		if (!value) continue;
+		const timestamp = Date.parse(value);
+		if (Number.isFinite(timestamp)) return timestamp;
+	}
+	return Number.NEGATIVE_INFINITY;
+}
+
 /** @internal */
 export function formatKubernetesPodDiagnostics(
 	events: readonly KubernetesPodEventSummary[] | undefined,
 	limit = 3,
 	sensitiveValues: readonly string[] = [],
 ): string | undefined {
-	const formatted = (events ?? [])
-		.map((event) => formatPodEvent(event, sensitiveValues))
-		.filter((entry): entry is string => entry !== null)
+	const candidates = (events ?? []).map((event) => ({
+		formatted: formatPodEvent(event, sensitiveValues),
+		timestamp: podEventTimestamp(event),
+		warning: event.type?.trim() === "Warning",
+		identity: redactKubernetesDiagnostic(
+			JSON.stringify([event.type?.trim(), event.reason?.trim(), event.message?.trim()]),
+			sensitiveValues,
+		),
+	}));
+	// API list order is not chronological. Keep recent phase context, using warnings only for ties.
+	candidates.sort((left, right) => {
+		if (left.timestamp !== right.timestamp) return left.timestamp > right.timestamp ? -1 : 1;
+		if (left.warning !== right.warning) return left.warning ? -1 : 1;
+		const leftText = left.formatted ?? "";
+		const rightText = right.formatted ?? "";
+		return leftText < rightText ? -1 : leftText > rightText ? 1 : 0;
+	});
+	const seen = new Set<string>();
+	const formatted = candidates
+		.filter((candidate) => {
+			if (candidate.formatted === null || seen.has(candidate.identity)) return false;
+			seen.add(candidate.identity);
+			return true;
+		})
+		.map((candidate) => candidate.formatted)
 		.slice(0, limit);
 	return formatted.length > 0
 		? boundedDiagnostic(`Kubernetes events: ${formatted.join(" | ")}`, sensitiveValues)

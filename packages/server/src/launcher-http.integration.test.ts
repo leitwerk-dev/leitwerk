@@ -6,15 +6,17 @@ import type { LaunchRun } from "@leitwerk-dev/domain";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import { type Codec, defineProcess, type LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
 import { parseFutureLaunchPayloadJson, serializeFutureLaunchPayload } from "@leitwerk-dev/protocol";
-import { createAppContext, getDefaultConfig } from "@leitwerk-dev/server";
+import { getDefaultConfig } from "@leitwerk-dev/server";
 import { fixtureModelProviders } from "@leitwerk-dev/test-support";
 import {
 	createIntegrationHarness,
+	createTestAppContext,
 	type IntegrationHarness,
 	waitForValue as waitFor,
 } from "@leitwerk-dev/test-support/integration";
 import { afterAll, beforeAll, describe, expect, it, onTestFinished, vi } from "vitest";
 import { MAX_PROCESS_TITLE_LENGTH } from "./launch-title.js";
+import { installTestSkill } from "./test-helpers/skill-fixtures.js";
 
 function parseFutureLaunchPayloadOrThrow(payloadJson: string) {
 	const parsed = parseFutureLaunchPayloadJson(payloadJson);
@@ -302,6 +304,7 @@ const launcherTestExtension: LeitwerkExtensionModule = {
 };
 
 function applyLauncherModelConfig(config: ReturnType<typeof getDefaultConfig>) {
+	config.pi.default_model_profile = "claude_fast";
 	config.pi.model_profiles = [
 		{
 			id: "claude_fast",
@@ -474,10 +477,10 @@ async function createTitleTestHarness(
 	}) =>
 		(!launchPlan.processInput.title || launchPlan.processInput.title.trim() === "") &&
 		(launchPlan.titleSourceFields?.length ?? 0) > 0;
-	let ctx: Awaited<ReturnType<typeof createAppContext>> | null = null;
+	let ctx: Awaited<ReturnType<typeof createTestAppContext>> | null = null;
 	const config = getDefaultConfig();
 	applyLauncherModelConfig(config);
-	ctx = await createAppContext({
+	ctx = await createTestAppContext({
 		logger: false,
 		config,
 		extensionCatalog: buildExtensionCatalogFromModules([launcherTestExtension]),
@@ -552,6 +555,164 @@ afterAll(async () => {
 });
 
 describe("launcher HTTP routes", () => {
+	it("applies default skills and validates schedule edits against pinned revisions", async () => {
+		const skillHarness = await createIntegrationHarness({
+			extensionCatalog: buildExtensionCatalogFromModules([launcherTestExtension]),
+			inProcessWorkers: false,
+			configOverride(config) {
+				applyLauncherModelConfig(config);
+				config.default_skills = ["shared"];
+			},
+		});
+		onTestFinished(() => skillHarness.close());
+		const deps = skillHarness.ctx.deps;
+		const pinned = installTestSkill(deps, "shared");
+		const base = `${skillHarness.address}/api/launchers/launcher_test_process.local_repo_ui`;
+		const body = {
+			launcherInput: { repoPath: "/tmp/skill-launch", prompt: "Review changes" },
+			skillIds: [],
+			schedule: { mode: "once", runAt: futureIso() },
+		};
+		const json = (value: unknown) => ({
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify(value),
+		});
+		const response = await fetch(`${base}/future-launches`, json(body));
+		expect(response.status, await response.clone().text()).toBe(201);
+		const [execution] = deps.futureExecutions.listAll();
+		if (!execution) throw new Error("Expected a schedule");
+		expect(parseFutureLaunchPayloadOrThrow(execution.payloadJson).resourceSelections).toEqual(
+			pinned,
+		);
+		deps.skills.remove("shared");
+		const preview = await fetch(`${base}/validate?futureExecutionId=${execution.id}`, json(body));
+		expect(preview.status).toBe(200);
+		expect(await preview.json()).toEqual({ errors: [] });
+		const updated = await fetch(
+			`${skillHarness.address}/api/future-executions/${execution.id}/launch`,
+			{ ...json({ ...body, title: "Updated title" }), method: "PUT" },
+		);
+		expect(updated.status).toBe(200);
+		expect(
+			parseFutureLaunchPayloadOrThrow(
+				deps.futureExecutions.getById(execution.id)?.payloadJson ?? "",
+			).resourceSelections,
+		).toEqual(pinned);
+		const freshPreview = await fetch(`${base}/validate`, json(body));
+		expect(await freshPreview.json()).toMatchObject({
+			errors: [{ code: "invalid_skill_selection", message: expect.stringContaining("shared") }],
+		});
+		const unavailable = await fetch(`${base}/future-launches`, json(body));
+		expect(unavailable.status).toBe(400);
+		expect(deps.futureExecutions.listAll()).toHaveLength(1);
+		const malformed = await fetch(`${base}/validate?futureExecutionId=`, json(body));
+		expect(malformed.status).toBe(400);
+		const wrongLauncher = await fetch(
+			`${skillHarness.address}/api/launchers/launcher_test_process.prefilled_model_ui/validate?futureExecutionId=${execution.id}`,
+			json(body),
+		);
+		expect(await wrongLauncher.json()).toMatchObject({ errors: [{ code: "invalid_schedule" }] });
+	});
+
+	it.each([
+		"now",
+		"once",
+		"cron",
+	] as const)("validates %s requests without starting or saving work", async (mode) => {
+		const launchRuns = vi.spyOn(harness.ctx.deps.launchRuns, "create");
+		const recents = vi.spyOn(harness.ctx.deps.launcherRecentValues, "record");
+		const checks = vi.spyOn(harness.ctx.deps.launcherService, "resolvePreparationChecks");
+		onTestFinished(() => {
+			launchRuns.mockRestore();
+			recents.mockRestore();
+			checks.mockRestore();
+		});
+		const processCount = harness.ctx.deps.processes.listAll().length;
+		const futureCount = harness.ctx.deps.futureExecutions.listAll().length;
+		const response = await fetch(
+			`${harness.address}/api/launchers/launcher_test_process.local_repo_ui/validate`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					title: null,
+					launcherInput: { repoPath: "/tmp/validate-only", prompt: "Ship it" },
+					modelConfig: {},
+					skillIds: [],
+					schedule: { mode, runAt: futureIso(), cronExpression: "0 9 * * *" },
+				}),
+			},
+		);
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ errors: [] });
+		expect(launchRuns).not.toHaveBeenCalled();
+		expect(recents).not.toHaveBeenCalled();
+		expect(checks).not.toHaveBeenCalled();
+		expect(harness.ctx.deps.processes.listAll()).toHaveLength(processCount);
+		expect(harness.ctx.deps.futureExecutions.listAll()).toHaveLength(futureCount);
+	});
+
+	it.each([
+		{ payload: { launcherInput: {} }, code: "required", fieldId: "repoPath", status: 200 },
+		{
+			payload: {
+				launcherInput: { repoPath: "/tmp/check", prompt: "Ship it" },
+				modelConfig: { defaultModelProfileId: "missing-model" },
+			},
+			code: "invalid_model_config",
+			status: 200,
+		},
+		{
+			payload: {
+				launcherInput: { repoPath: "/tmp/check", prompt: "Ship it" },
+				skillIds: ["missing-skill"],
+			},
+			code: "invalid_skill_selection",
+			status: 200,
+		},
+		{
+			payload: {
+				launcherInput: { repoPath: "/tmp/check", prompt: "Ship it" },
+				schedule: { mode: "cron", cronExpression: "invalid" },
+			},
+			code: "invalid_schedule",
+			status: 200,
+		},
+		{
+			payload: { launcherInput: {}, schedule: { mode: "once", runAt: null } },
+			code: "invalid_schedule",
+			status: 400,
+		},
+	])("returns $code before launch", async ({ payload, code, fieldId, status }) => {
+		const response = await fetch(
+			`${harness.address}/api/launchers/launcher_test_process.local_repo_ui/validate`,
+			{
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(payload),
+			},
+		);
+		expect(response.status).toBe(status);
+		expect(await response.json()).toMatchObject({
+			errors: [expect.objectContaining({ code, ...(fieldId ? { fieldId } : {}) })],
+		});
+	});
+
+	it("rejects unknown launchers and malformed validation requests", async () => {
+		for (const [id, body, status] of [
+			["missing", {}, 404],
+			["launcher_test_process.local_repo_ui", { launcherInput: [] }, 400],
+		] as const) {
+			const response = await fetch(`${harness.address}/api/launchers/${id}/validate`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify(body),
+			});
+			expect(response.status).toBe(status);
+		}
+	});
+
 	it("removes the multiplexed blocking launch route", async () => {
 		const response = await globalThis.fetch(
 			`${harness.address}/api/launchers/launcher_test_process.local_repo_ui/launch`,

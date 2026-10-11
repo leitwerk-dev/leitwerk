@@ -34,6 +34,10 @@ See [security boundaries](security.md).
 
 An on-demand-checkout process also receives `checkout_repository`. It accepts only a
 declared project key, materializes a full clone, and reports its current local HEAD.
+An optional `revision` must be a full 40- or 64-character commit SHA. The tool fetches
+the commit if needed, checks it out detached, verifies HEAD and retains the pin for
+workspace recovery. It refuses tracked or untracked local changes. Omit the revision
+to retain ordinary checkout behavior.
 It does not grant access to additional repositories. Topic-bound integration tools
 may expose [shared solution wikis](topic-wiki.md); their content is evidence, not
 tool authorization or higher-priority instructions.
@@ -90,6 +94,10 @@ are server-resolved, and the final receipt must identify the remote ticket. See
 ## Interactive questions {#3-interactive-tools-ask_questions}
 
 Enable `.askQuestions()` on an LLM turn to expose sequential `ask_questions` calls.
+Use `.askQuestions(ctx => boolean)` to constrain availability from captured params,
+state, or preparation. The worker evaluates the predicate after preparation and
+omits both the tool and its prompt guidance when it returns false. The predicate
+must use captured data so recovery of the same turn keeps the same policy.
 The agent supplies prepared options, recommendations, and explanations. The tool
 returns `{ answers: string[] }` after the operator responds.
 
@@ -134,3 +142,36 @@ the other declared route.
 This agent acknowledgement is distinct from the server's durable
 `worker.turn_terminal_recorded` acknowledgement. See
 [turn publication](server-worker-lifecycle.md#5-start-acceptance-recovery-invariants).
+
+Object outcome parameters can declare `properties`, `requiredProperties`, and
+`additionalProperties`. `required: true` requires the parameter itself;
+`requiredProperties` lists required keys inside it. Nested objects and array items
+use JSON Schema `required` arrays and support string `enum` and `minLength`.
+The model receives the nested schema. Worker and server use the same structural
+validator before accepting the outcome. Business constraints still belong in `.validateOutcome(...)`.
+
+Rejected submissions leave the process turn open but end the current Pi model/tool
+loop before another model request. This includes JSON-schema rejections before tool
+execution. Recovery includes the latest validation errors and continues from the
+latest attempt, preserving earlier corrections.
+Automatic recovery allows at most three continuations and stops early after two
+continuations repeat the same rejection. The rejected draft remains in the Pi
+session; it is not published as an accepted result.
+
+Outcome parameters support recursive `anyOf` alternatives, including objects and
+arrays. Use a required single-value string enum in each object alternative to name
+its operation. Validation reports errors from the named alternative, or lists the
+available tags. Each alternative can require exactly the fields its operation uses.
+
+`.strictSchema()` opts an outcome into provider enforcement. Every property must be
+required and every object must set `additionalProperties: false`, including inside
+alternatives. Incompatible declarations fail validation; they are not rewritten.
+Strict outcomes omit the automatically injected optional `resultSummary` argument;
+required result Markdown remains. OpenAI Responses and Chat Completions enforce the
+native schema. Other provider APIs emit an unsupported-enforcement diagnostic and
+retain worker and server validation. Provider rejection never silently downgrades
+an opted-in tool. Inspection records the schema and enforcement mode.
+
+Integration definitions may set `modelVisible: false` to reserve a tool for runtime
+callbacks. The tool remains subject to the turn's integration-tool authorization.
+It is omitted from model declarations and cannot be selected by the model.

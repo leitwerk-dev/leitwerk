@@ -9,6 +9,7 @@ import type { ProcessDetailData } from "../../../lib/api.js";
 import { buildInspectorPath, type InspectorTarget } from "../../../lib/router-logic.js";
 import ProcessFlowDiagram from "../../ProcessFlowDiagram.svelte";
 import InspectionEvidence from "./InspectionEvidence.svelte";
+import type { ChronicleTarget } from "./inspector-navigation.js";
 import { modelSourceLabel as sourceLabel } from "./model-source-label.js";
 import ProcessModelEditor from "./ProcessModelEditor.svelte";
 
@@ -23,7 +24,7 @@ let {
 	detail: ProcessDetailData;
 	target: Extract<InspectorTarget, { scope: "process" | "step" }>;
 	onNavigate: (target: InspectorTarget) => void;
-	onChronicle: (target?: { turnRecordId?: string; turnId?: string }) => void;
+	onChronicle: (target: ChronicleTarget) => void;
 	onShowSummary?: () => void;
 	onReady?: () => boolean | void;
 } = $props();

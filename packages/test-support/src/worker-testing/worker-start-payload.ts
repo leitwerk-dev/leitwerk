@@ -90,6 +90,7 @@ export function createTestLlmWorkerStartPayload(
 	]);
 	const configSnapshot = createTestConfigSnapshot();
 	configSnapshot.pi.agent_dir = path.join(options.root, "agent");
+	configSnapshot.pi.default_model_profile = model.profileId;
 	configSnapshot.pi.model_profiles = [
 		{
 			id: model.profileId,

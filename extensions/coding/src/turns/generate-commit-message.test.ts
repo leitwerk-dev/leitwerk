@@ -20,13 +20,34 @@ describe("commit-message generation", () => {
 			params: {},
 			state: {},
 			prompts: { initial: "" },
-			input: { plan: "## Plan\n\nShip the durable behavior." },
+			input: {
+				plan: "## Plan\n\nShip the durable behavior.",
+				"implementation-summary": "Implemented the behavior and its compatibility adjustment.",
+			},
+			prepared: {
+				repositories: [
+					{
+						key: "repo",
+						path: "/workspace/repo",
+						head: "baseline",
+						status: { text: " M feature.ts\n", truncated: false },
+						stagedDiff: { text: "", truncated: false },
+						unstagedDiff: { text: "+compatibility adjustment\n", truncated: false },
+						untrackedFiles: { text: "", truncated: false },
+					},
+				],
+			},
 			repo: {} as never,
 		});
 		expect(prompt).toContain("<formatting_rules>\nrepo:\nUse type(scope).\n</formatting_rules>");
 		expect(prompt).toContain(
 			"<accepted_plan>\n## Plan\n\nShip the durable behavior.\n</accepted_plan>",
 		);
+		expect(prompt).toContain(
+			"<implementation_summary>\nImplemented the behavior and its compatibility adjustment.\n</implementation_summary>",
+		);
+		expect(prompt).toContain("+compatibility adjustment");
+		expect(prompt).toContain("Shell, edit, and write tools are unavailable.");
 	});
 
 	it.each([

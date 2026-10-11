@@ -1,13 +1,17 @@
 import { execFileSync } from "node:child_process";
 import {
+	cpSync,
 	existsSync,
 	lstatSync,
 	mkdirSync,
+	mkdtempSync,
 	readFileSync,
 	realpathSync,
 	renameSync,
+	rmSync,
 	writeFileSync,
 } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import type { RepositoryFeedbackItem, RepositoryPullRequest } from "@leitwerk-dev/process-sdk";
 import { traceTestSubprocess } from "./test-diagnostics.js";
@@ -31,6 +35,36 @@ export interface LocalRepositorySeed {
 	commitMessage?: string;
 	/** @internal */
 	signoff?: boolean;
+}
+
+/** Copies immutable bare seeds into independent test fixtures. @internal */
+export class LocalGitSeedCache {
+	private root: string | undefined;
+	private readonly templates = new Map<string, string>();
+
+	/** Seed options select the template; an existing destination is never overwritten. @internal */
+	copy(git: LocalGit, seed: LocalRepositorySeed): string {
+		const key = JSON.stringify(seed);
+		let template = this.templates.get(key);
+		if (!template) {
+			this.root ??= mkdtempSync(path.join(tmpdir(), "leitwerk-git-seeds-"));
+			const directory = mkdtempSync(path.join(this.root, "seed-"));
+			template = new LocalGit(directory).seed(seed).bare;
+			this.templates.set(key, template);
+		}
+		const destination = localPath(git.root, `repositories/${path.basename(template)}`);
+		if (existsSync(destination)) throw new Error("Git seed destination already exists");
+		mkdirSync(path.dirname(destination), { recursive: true });
+		cpSync(template, destination, { recursive: true, force: false, errorOnExist: true });
+		return destination;
+	}
+
+	/** Release templates after the suite; copied repositories remain usable. @internal */
+	close(): void {
+		if (this.root) rmSync(this.root, { recursive: true, force: true });
+		this.root = undefined;
+		this.templates.clear();
+	}
 }
 
 /** Reject escaping paths and symlinks, including a not-yet-created file's parents. @public */

@@ -60,6 +60,7 @@ export {
 	type RegisteredProcessWatcherLike,
 	type WatcherLaunchResultLike,
 } from "./core-capabilities.js";
+export type { OutcomeParameterContext } from "./define-process.js";
 export {
 	type AutomaticTurnDefinition,
 	automaticTurn,
@@ -70,7 +71,9 @@ export {
 	getExternalSourceTransitionId,
 	type HumanTurnDefinition,
 	humanTurn,
+	type LlmOutcomeSubmission,
 	type LlmTurnDefinition,
+	type LlmTurnPreparationContext,
 	llmTurn,
 	type ProcessEffectPlan,
 	type ProcessHumanTurnExternalActionSpec,
@@ -126,6 +129,7 @@ export type {
 	TicketCreationDestinationSnapshot,
 	TicketCreationDestinationSummary,
 	TicketCreationReceipt,
+	TurnDiagnosticReport,
 	UiLauncherDefinition,
 	UiLauncherSummary,
 	WorkerCompleteInput,
@@ -234,6 +238,20 @@ export {
 	piWorker,
 	resolveProviderOptions,
 } from "./model-provider.js";
+export {
+	applyOutcomeContract,
+	type ResolvedOutcomeContract,
+	resolveOutcomeContract,
+} from "./outcome-contract.js";
+export {
+	assertOutcomeSchema,
+	compileOutcomeParameters,
+	type OutcomeSchemaIssue,
+	outcomeCallParameters,
+	outcomeParameterSchema,
+	validateOutcomeParameters,
+	validateOutcomeValue,
+} from "./outcome-schema.js";
 export { buildProcessFlowView } from "./process-flow-view.js";
 export {
 	getProcessGraph,
@@ -343,9 +361,13 @@ export {
 	validateTurnDefinition,
 } from "./turn-semantics.js";
 export {
+	type InitialProcessBinding,
 	RetryableWaitError,
+	type TurnWaitBinding,
 	type TurnWaitCompletion,
 	type TurnWaitContext,
+	type TurnWaitDecision,
+	type TurnWaitNotice,
 	type TurnWaitPredicate,
 } from "./turn-wait.js";
 export type {

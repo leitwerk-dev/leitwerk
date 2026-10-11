@@ -1,4 +1,5 @@
 import type { Actor } from "@leitwerk-dev/domain";
+import type { InitialProcessBinding } from "@leitwerk-dev/process-sdk";
 import { accept, modelOverrideMetadata, noWrites, reject } from "../decision.js";
 import { defineOperation } from "../operation.js";
 import { pendingTurnWait, turnWaitPredicate, writeTurnWait } from "../turn-wait-state.js";
@@ -42,7 +43,8 @@ interface ResolveTurnWaitInput {
 	projectsJson: string;
 	/** State validated and encoded by the readiness service. */
 	nextStateJson?: string;
-	result: "ready" | "waiting" | "complete" | "retry" | "error";
+	initialBinding?: InitialProcessBinding;
+	result: "ready" | "waiting" | "complete" | "abort" | "bind" | "retry" | "error";
 	message?: string;
 	now: number;
 	pollIntervalMs: number;
@@ -70,6 +72,63 @@ export const ResolveTurnWait = defineOperation<"resolve_turn_wait", ResolveTurnW
 		const writes = createWrites();
 		if (input.nextStateJson !== undefined && !["retry", "error"].includes(input.result))
 			applyProcessPatchField(writes, process, "stateJson", input.nextStateJson);
+		if (input.result === "bind") {
+			const binding = input.initialBinding;
+			if (
+				!binding?.projects.length ||
+				!wait.initialSelection ||
+				process.currentExecution ||
+				deps.projects.listByInstance(process.id).length ||
+				deps.turnStarts.listByInstance(process.id).length ||
+				deps.turnRecords.listByInstance(process.id).length
+			)
+				return reject(
+					"startup_binding_unavailable",
+					"Initial bindings require a process without projects or execution history",
+				);
+			if (
+				Object.keys(binding.metadata ?? {}).some(
+					(key) => key === "turnWait" || Object.hasOwn(process.metadata ?? {}, key),
+				)
+			)
+				return reject(
+					"startup_binding_superseded",
+					"Initial repository binding cannot replace retained metadata",
+				);
+			const definition = deps.processGraphs.get(process.processId);
+			if (!definition) return reject("process_not_found", "Process definition is unavailable");
+			applyProcessPatchField(
+				writes,
+				process,
+				"paramsJson",
+				JSON.stringify(
+					definition.paramsCodec.serialize(definition.paramsCodec.parse(binding.params)),
+				),
+			);
+			applyProcessPatchField(writes, process, "metadata", {
+				...process.metadata,
+				...binding.metadata,
+				...(binding.settingsContext ? { settingsContext: binding.settingsContext } : {}),
+			});
+			writes.initialProjects = binding.projects.map((project) => ({
+				...project,
+				instanceId: process.id,
+			}));
+			writeTurnWait(writes, process, {
+				...wait,
+				revision: wait.revision + 1,
+				message: null,
+				failures: 0,
+				nextCheckAt: 0,
+			});
+			appendProcessEvent(writes, process, {
+				eventType: "initial_repositories_bound",
+				level: "info",
+				message: "Startup repository bindings resolved",
+				data: { projectKeys: binding.projects.map((p) => p.key) },
+			});
+			return accept({ writes });
+		}
 		if (input.result === "ready") {
 			writeTurnWait(writes, process, null);
 			writes.waitForAdmission = wait.id;
@@ -82,16 +141,21 @@ export const ResolveTurnWait = defineOperation<"resolve_turn_wait", ResolveTurnW
 			writes.workerIntent = { kind: "reconcile" };
 			return accept({ writes, metadata: wait.metadata });
 		}
-		if (input.result === "complete") {
+		if (input.result === "complete" || input.result === "abort") {
 			writeTurnWait(writes, process, null);
 			applyProcessPatchField(writes, process, "selectedTurnId", null);
 			applyProcessPatchField(writes, process, "currentExecution", null);
-			applyProcessPatchField(writes, process, "lifecycleStatus", "completed");
+			applyProcessPatchField(
+				writes,
+				process,
+				"lifecycleStatus",
+				input.result === "abort" ? "aborted" : "completed",
+			);
 			writes.workerIntent = { kind: "reconcile" };
 			appendProcessEvent(writes, process, {
-				eventType: "process_completed",
+				eventType: input.result === "abort" ? "process_aborted" : "process_completed",
 				level: "info",
-				message: "Waiting condition completed the process",
+				message: input.message ?? "Waiting condition completed the process",
 			});
 			return accept({ writes });
 		}

@@ -363,7 +363,7 @@ export function buildProcessRunDetailsView(
 						Object.entries(toolSpec.parameters) as [string, OutcomeToolParameterSpec][]
 					).map(([parameterName, parameterSpec]) => ({
 						name: parameterName,
-						type: parameterSpec.type,
+						type: parameterSpec.type ?? "union",
 						description: parameterSpec.description,
 						required: parameterSpec.required === true,
 					})),

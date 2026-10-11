@@ -7,7 +7,11 @@ import type {
 	WorkerProcessContext,
 	WorkerRunHandle,
 } from "@leitwerk-dev/process-sdk";
-import { assertValidLlmTurnDefinition } from "@leitwerk-dev/process-sdk";
+import {
+	applyOutcomeContract,
+	assertValidLlmTurnDefinition,
+	resolveOutcomeContract,
+} from "@leitwerk-dev/process-sdk";
 import { createAutomaticTurnExecutor } from "../automatic-turn-executor.js";
 import type { WorkerOperationEmitter } from "../diagnostics.js";
 import type { PiTreeHandle } from "../pi-adapter.js";
@@ -159,6 +163,17 @@ export async function executeSelectedTurn(
 	};
 
 	const ctx = {
+		reportDiagnostic(report) {
+			input.emit({
+				kind: "trace",
+				payload: {
+					...report,
+					turnRecordId: input.turnRecordId,
+					turnId: currentTurnId,
+					timestamp: input.scheduler.now().toISOString(),
+				},
+			});
+		},
 		scopedSettings: input.session.scopedSettings,
 		process: processSnapshot,
 		projects: projectSnapshots,
@@ -203,6 +218,15 @@ export async function executeSelectedTurn(
 					`Selected turn '${currentTurnId}' of type '${selectedTurnType}' cannot call run.turn()`,
 				);
 			}
+			turnDef = applyOutcomeContract(
+				turnDef,
+				input.session.outcomeContract ??
+					resolveOutcomeContract(
+						turnDef,
+						{ params: ctx.params, state: ctx.state },
+						input.session.iteration,
+					),
+			);
 			assertValidLlmTurnDefinition(currentTurnId, turnDef);
 			if (!piHandle) {
 				throw new TurnExecutionError(
@@ -258,6 +282,8 @@ export async function executeSelectedTurn(
 				callbacks: {
 					requestQuestions: input.requestQuestions,
 					integrationTools: input.integrationTools,
+					callIntegrationTool,
+					reportProgress,
 					onPreTurnTargetedInputApplied(inputId, sequence, meta) {
 						appliedTargetedInputs.push({ inputId, sequence, ...(meta ? { meta } : {}) });
 					},

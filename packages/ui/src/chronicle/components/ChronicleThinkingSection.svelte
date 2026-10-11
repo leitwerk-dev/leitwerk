@@ -11,6 +11,7 @@ interface Props {
 	previewTruncated?: boolean;
 	traceItemCount: number;
 	isLive?: boolean;
+	isThinking?: boolean;
 	questionRequests?: readonly ProcessQuestionRequest[];
 }
 let {
@@ -19,6 +20,7 @@ let {
 	previewTruncated = false,
 	traceItemCount,
 	isLive = false,
+	isThinking = false,
 	questionRequests = [],
 }: Props = $props();
 const previewLines = $derived(
@@ -29,7 +31,10 @@ const previewLines = $derived(
 {#if (isLive && previewLines.length > 0) || questionRequests.length > 0}
 	<section class="thinking-section" class:is-live={isLive} data-section="thinking-preview" data-live={isLive ? "true" : "false"}>
 		{#if isLive && previewLines.length > 0}
-			<span class="reasoning-label">Reasoning</span>
+			<span class="reasoning-label">
+				{#if isThinking}<svg class="reasoning-activity" width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><circle cx="4" cy="4" r="3" fill="currentColor" /></svg>{/if}
+				Reasoning
+			</span>
 			<div class="thinking-preview-copy" data-line-count={previewLines.length} data-truncated={previewTruncated ? "true" : "false"} data-trace-item-count={traceItemCount} style:--thinking-preview-lines={THINKING_PREVIEW_LINE_COUNT}>
 				<ChronicleThinkingText text={previewLines.join("\n")} variant="preview" />
 			</div>
@@ -44,7 +49,8 @@ const previewLines = $derived(
 
 <style>
 	.thinking-section { display: grid; gap: 8px; min-width: 0; }
-	.reasoning-label { color: var(--chronicle-text-muted); font-size: var(--type-body-sm); font-weight: 600; }
+	.reasoning-label { display: flex; align-items: center; gap: 7px; color: var(--chronicle-text-muted); font-size: var(--type-body-sm); font-weight: 600; }
+	.reasoning-activity { color: var(--chronicle-accent); flex-shrink: 0; }
 	.thinking-preview-copy { display: flex; flex-direction: column; justify-content: flex-end; max-height: calc(var(--thinking-preview-lines, 4) * 1lh); max-width: 72ch; overflow: clip; color: var(--chronicle-text-muted); font-size: var(--type-body-sm); line-height: 1.6; }
 	.thinking-preview-copy > :global(*) { flex: 0 0 auto; }
 	.reasoning-questions { display: grid; gap: var(--space-sm); }

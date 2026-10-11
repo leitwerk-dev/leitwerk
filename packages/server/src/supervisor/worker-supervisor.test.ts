@@ -117,10 +117,38 @@ function storageFixture(extensionSize = "50Gi", afterRecord?: () => Promise<void
 		await supervisor.detachAll("test complete");
 		closeDatabase(deps.db);
 	});
-	return { deps, process, supervisor, ensure, launch, webSocketIpc };
+	return { deps, config, definition, process, supervisor, ensure, launch, webSocketIpc };
 }
 
 describe("createWorkerSupervisor", () => {
+	it.each([
+		false,
+		true,
+	])("resolves current profile budgets when a retained Docker=%s process starts", async (docker) => {
+		const t = storageFixture();
+		t.definition.runtime = { docker };
+		if (!t.config.kubernetes) throw new Error("Expected Kubernetes config");
+		t.config.kubernetes.docker = { worker_runtime_profile: "docker_vm" };
+		t.config.worker_runtime_profiles = {
+			generic: {
+				image: "registry.test/ordinary:1",
+				resources: { limits: { cpu: "4", memory: "8Gi" } },
+			},
+			docker_vm: {
+				image: "registry.test/docker:1",
+				resources: { requests: { cpu: "4", memory: "16Gi" }, limits: { cpu: "4", memory: "16Gi" } },
+			},
+		};
+		await t.supervisor.spawnWorker(t.process.id);
+		expect(t.launch.mock.calls[0]?.[0]).toMatchObject({
+			docker,
+			image: { reference: docker ? "registry.test/docker:1" : "registry.test/ordinary:1" },
+			resources: { cpu: "4", memory: docker ? "16Gi" : "8Gi" },
+			...(docker ? { resourceRequests: { cpu: "4", memory: "16Gi" } } : {}),
+			volume: { id: "process-pvc" },
+		});
+	});
+
 	it.each([
 		"hook",
 		"derivation",

@@ -13,6 +13,10 @@ Published charts are available at `oci://ghcr.io/leitwerk-dev/charts/leitwerk` a
 
 Worker Pods, per-process worker ServiceAccounts, process PVCs, and per-process server-CA ConfigMaps are not Helm-managed. They are created dynamically by the server's Kubernetes runner and reconciled by the server lifecycle. To enable process definitions that declare `runtime.docker`, set `kubernetes.docker.enabled`, `runtimeClassName`, `hostUsers`, and `processStorageClassName`. The chart does not install the referenced RuntimeClass, runtime handler, nodes, or StorageClass. For production internal TLS, set `internalTls.enabled=true`, provide a Secret containing the server cert/key and CA bundle, and let the chart render `kubernetes.server_ca_file`; the runner copies that CA into each process namespace for worker Pods.
 
+For chart-generated configuration, set `server.config.piModelProfiles` and
+`server.config.piDefaultModelProfile` to an ID in that catalog, and load the
+owning provider extension. The server rejects a missing or unknown default.
+
 Set `server.existingConfigSecret` to mount an operator-managed Secret whose
 `leitwerk.yaml` key contains the complete server configuration. Helm values do
 not modify that file; put worker host aliases and other runtime settings in the
@@ -47,6 +51,16 @@ For private worker images, configure `kubernetes.imagePullSecrets` and
 the named source Secrets in its namespace and `create`/`patch` on managed target
 Secrets. Admission restricts targets to the configured names and process
 namespace prefix. Secret values are never Helm values.
+
+Enable `kubernetes.processVolume.preProvision.enabled` and its `count` to maintain
+a pool of fresh process volumes. Enable `kubernetes.imagePreload.enabled` to
+prepare all digest-qualified worker profile images on eligible worker nodes.
+With an existing config Secret, set `kubernetes.process_volume.pre_provision`
+and `kubernetes.image_preload.enabled` there too. Apply RBAC and admission updates
+before enabling those settings. Preparation is asynchronous and does not gate
+readiness; deployment verification should check ready volumes and successful
+image-preparation Pods. See [configuration](../../docs/configuration.md) for
+the preparation and replenishment contracts.
 
 Set `gateway.enabled=true` to serve the revision-matched SPA through Caddy. An
 init container copies the UI from the server image, and the gateway proxies API,

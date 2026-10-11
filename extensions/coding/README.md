@@ -4,11 +4,55 @@ Shared repository-change planning, review, implementation, state, commit-message
 
 Owning extensions provide process identity, launcher policy, finalization copy, repository credential requirements, and a publication fragment. `@leitwerk-dev/forgejo-repo-change`, `@leitwerk-dev/github-repo-change`, and `@leitwerk-dev/gitlab-repo-change` are production consumers; the public sandbox supplies a local-only publication fragment for scripted scenarios.
 
-After final implementation approval, `generate_commit_message` consumes the durable accepted `plan` without repository tools. It uses the model configured for `pi.process_title_generation.model_profile` (or the process's inherited model when title generation has no profile), applies the formatting rules pinned in project metadata at launch, and persists normalized plain-text messages keyed by project in `finalization.commitMessages`, for both single- and multi-repository changes. Publication fragments also accept the legacy `generatedCommitMessage` for resumed processes.
+Before first publication, `generate_commit_message` consumes the durable accepted
+`plan` and latest `implementation-summary`. Preparation captures each repository's
+HEAD, Git status, staged and unstaged diffs, and untracked filenames without changing
+the checkout. Evidence is bounded to fit a preparation checkpoint and marks truncated
+fields. The model can inspect relevant files with Pi's read-only `read`, `grep`,
+`find`, and `ls` tools; it cannot run shell commands or modify files. Messages describe
+the implemented change, using the plan for intent and the launch-pinned formatting
+rules. The turn uses the `coding.implementation` model purpose and persists normalized
+plain-text messages by project in `finalization.commitMessages`. Deliver then commits,
+pushes, and publishes. Publication fragments also accept the legacy
+`generatedCommitMessage` for resumed processes.
+
+Each Git inspection command has a 60-second deadline by default. Configure
+`coding.commit_message_git_timeout_ms` in Settings at the Instance or Repository
+scope to override it without restarting. The value is a positive integer in
+milliseconds, up to 2147483647. A new turn start or operator retry captures the
+value; worker recovery retains it. Multi-repository processes use their primary
+repository's value, or the Instance value when no primary repository is bound.
+Historical starts without this setting use the 60-second default. A timeout fails
+preparation and reports the repository, Git command, and configured deadline.
+
+Inspection refreshes a temporary copy of each repository's index and reuses that
+cache across commands. The checkout's index and staged changes remain intact.
+Worker diagnostics record each command's duration and outcome, with bounded Git
+Trace2 counters for metadata checks, content scans, and inspection phases. Raw
+Trace2 events, file contents, and paths are not stored in these diagnostics.
 
 `commitAndPushWorkBranch()` requires an explicit trusted Git identity, commits dirty workspace files, and pushes only the checked-out feature branch. It rejects invalid Git identity, unresolved conflicts, branch mismatches, and remote heads that do not match the committed HEAD.
 
 Turn labels use short task names: Plan, Review Plan, Implement, and Review. Automated assessments use Assess Plan and Assess Implementation so operators can distinguish them from their own decisions. Repository-change processes share these labels and turn ids.
+
+## Planning contract
+
+All consumers of the shared planner inspect relevant code, repository guidance,
+dependency contracts, and external references before choosing the implementation.
+A successful plan resolves questions affecting correctness, compatibility, and
+feasibility, including access to required evidence. Material operator decisions
+use `ask_questions` after discoverable facts are exhausted when the owning process
+enables questions. When disabled, the planner decides from the requirement and
+evidence, records minimal assumptions, and keeps the requested scope. Inaccessible
+required evidence uses `abort_turn` with the resource, observed failure, and access needed;
+the turn remains in error without publishing a successful plan or advancing.
+
+Plans use **Findings and decisions**, **Changes**, and **Validation**, targeting
+150–300 words for straightforward tickets and adding detail as complexity requires.
+They record established decisions, concrete edits, and grouped validation checks.
+`plan_saved` saves the finished plan with a one-sentence `summary` and
+`acceptanceCriteria` limited to the requested outcomes. Approval and recovery use
+the existing process flow.
 
 ## Shared publication
 
@@ -70,17 +114,18 @@ Pre-launch repository lookup uses `sanitizeWorkerSubprocessEnv` without project 
 
 ## Scoped settings
 
+`coding.commit_message_git_timeout_ms` inherits Instance → Repository and is
+captured with the implementation purpose for commit-message preparation.
+
 Coding declares `coding.planning_model`, `coding.implementation_model`,
-`coding.review_model`, and `coding.repository_instructions`. They inherit
+and `coding.review_model`. They inherit
 Instance → Repository. Model null delegates to YAML and the allowed catalog;
-explicit process/action choices take precedence. Instructions append by default,
-or replace inherited blocks when selected. Empty replacement clears them.
+explicit process/action choices take precedence.
 
 Plan uses `coding.planning`; implementation, commit-message generation, feedback
 revisions, CI repairs, and rebase repairs use `coding.implementation`;
 simplification analysis uses `coding.review`. Each new step captures current values. Prepared starts and
-worker recovery retain their snapshots. Multi-repository instruction blocks are
-labelled separately; model defaults use the primary repository.
+worker recovery retain their snapshots. Model defaults use the primary repository.
 
 ## Streamlined coordinated changes
 

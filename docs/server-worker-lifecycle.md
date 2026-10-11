@@ -35,6 +35,14 @@ context cannot restart; create a new one. If shutdown also fails, the startup er
 remains the cause of the aggregate error. See [testing](testing.md#harness-lifecycle)
 for fixture setup.
 
+Optional Kubernetes preparation shares the server's start and stop lifecycle.
+Volume provisioning and worker image preloading run independent background
+controllers; a failure in either leaves the other running. Neither gates server
+readiness or process starts. Image preparation reconciles eligible nodes every
+30 seconds and adopts successful node/image receipts after a restart. See
+[configuration](configuration.md#preloaded-kubernetes-worker-images) for settings,
+permissions, and the normal worker pull fallback.
+
 ---
 
 ## Responsibilities and ownership
@@ -166,6 +174,10 @@ first failure and latest observation in the termination message. The runner reco
 that diagnostic before reclaiming the Pod. Successful connection clears stale
 failure evidence.
 
+Kubernetes exit diagnostics retain up to three distinct recent Pod events, including
+modern recurrence timestamps and counts. Warnings take priority when timestamps
+tie; undated events follow dated events. Messages remain redacted and bounded.
+
 ---
 
 ## Acceptance and recovery {#5-start-acceptance-recovery-invariants}
@@ -173,6 +185,13 @@ failure evidence.
 Worker reservation requires [server-side readiness](process-sdk.md#readiness-before-a-worker-starts).
 A permanent predicate error is recoverable through `retryProcess()` without creating
 a failed turn.
+
+A normal waiting diagnostic explains a missing prerequisite and continues at the
+polling interval. Before the first execution, readiness may atomically bind initially
+unknown repositories and parameters. That transaction creates no worker start;
+the next check admits preparation using the committed bindings. Launch progress
+shows **Waiting for startup prerequisites** and the same diagnostic as process detail,
+without claiming that a worker failed or startup succeeded.
 
 1. **`TurnStartRecord` Reservation:** A worker start prepares a `TurnStartRecord` in SQLite before worker execution begins. This reserves the turn-record ID but is **not** an attempt.
 2. **`worker.turn_started` Acceptance:** The worker prepares the workspace, resolves the Pi resource bundle from delivered bytes or the process volume, verifies and persists it, and sends `worker.turn_started`. By default, every declared repository must be ready. Processes opting into `repositoryCheckout: "on_demand"` prepare only retained checkouts; other declared repositories are materialized through `checkout_repository`. Processes using `repositoryCheckout: "none"` retain authorization bindings, skip repository preparation on startup and resume, and have no checkout tool. A clone, checkout, branch, manifest, or workspace aggregate failure in the required set fails bootstrap; the worker does not report readiness or request turn acceptance with a partially prepared set. The worker MUST NOT execute LLM prompts or automatic handlers until receiving `worker.turn_start_accepted`.
@@ -213,6 +232,8 @@ it to run again.
 
 ---
 
+Explicit agent aborts retain their reported reason in the process error presentation. Recovery guidance asks the operator to resolve the reported blocker before continuing or retrying; provider capacity and quota guidance applies to model request failures.
+
 ## Execution inspection
 
 Execution inspection observations are accepted only from the live lease for the
@@ -236,6 +257,10 @@ Automatic sessions do not upload snapshots. LLM sessions use these rules:
 - After `worker.ready` and before `worker.failed`: best effort.
 - Before publishing a turn outcome or turn failure: mandatory and correlated to the turn record.
 - Before `worker.cleanup_completed`: mandatory when Pi is available; skipped otherwise.
+
+Snapshot transport failure traces and mandatory failure details retain only bounded,
+allowlisted error names and codes from nested causes. They exclude native error
+messages, URLs, credentials, and snapshot content.
 
 Mandatory upload failures become infrastructure failures. Best-effort failures allow the pending lifecycle operation to continue. A successful upload does not complete terminal publication: the worker keeps the terminal fact pending until the server acknowledges its durable recording.
 
@@ -319,6 +344,19 @@ Observation annotations replace one snapshot per resolved subscription generatio
 retain the last successful facts across refresh failures, and reject stale writes.
 
 ### Launch HTTP boundary
+
+`POST /api/launchers/:launcherId/validate` accepts the same launcher input, title,
+model configuration, skills, and schedule as submission. It returns
+`{ errors: LauncherValidationError[] }`, empty when the request passes the existing
+form and scheduling rules. Field errors retain their `fieldId`; malformed requests
+return 400 and unknown launchers return 404. Validation uses the launcher's optional
+`resolvePreviewConfig`, falling back to `resolveLaunchConfig`, and applies the shared
+model, skill and schedule checks without creating a launch run, process, or schedule, recording
+recent values, generating a title, running preparation checks, or starting workers.
+It does not reserve a successful launch; submission always resolves the full launch
+configuration again. Preview configurations may omit execution resources unrelated
+to settings resolution and are never committed. Defaults and model previews use the
+same preview resolution path.
 
 | Operation | Route | Accepted schedule mode |
 | --- | --- | --- |

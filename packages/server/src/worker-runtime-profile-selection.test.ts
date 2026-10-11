@@ -108,6 +108,43 @@ describe("selectWorkerRuntimeProfile", () => {
 });
 
 describe("buildRuntimeProfileSelectionInput", () => {
+	it("uses the Docker fallback only after explicit process and component choices", () => {
+		const config = getDefaultConfig();
+		config.workers.runner = "kubernetes";
+		if (!config.kubernetes) throw new Error("Expected Kubernetes config");
+		config.kubernetes.docker = { worker_runtime_profile: "java21" };
+		config.worker_runtime_profiles = profiles;
+		config.components = {
+			frontend: { repo: "git@x:fe.git", default_branch: "main" },
+			backend: { repo: "git@x:be.git", default_branch: "main" },
+		};
+		const select = (docker: boolean) =>
+			selectWorkerRuntimeProfile(
+				buildRuntimeProfileSelectionInput({
+					config,
+					processId: "p",
+					componentKeys: ["frontend", "backend"],
+					docker,
+				}),
+			);
+		expect(select(true)).toMatchObject({ ok: true, runtimeProfile: "java21" });
+		expect(select(false)).toMatchObject({ ok: true, runtimeProfile: "generic" });
+		config.components.frontend.worker_runtime_profile = "node22";
+		expect(select(true)).toMatchObject({ ok: true, runtimeProfile: "node22" });
+		config.components.backend.worker_runtime_profile = "generic";
+		expect(select(true)).toMatchObject({ ok: false });
+		config.process_configs = { p: { turn_configs: {}, worker_runtime_profile: "generic" } };
+		expect(select(true)).toMatchObject({ ok: true, runtimeProfile: "generic" });
+		delete config.process_configs.p.worker_runtime_profile;
+		delete config.components.frontend.worker_runtime_profile;
+		delete config.components.backend.worker_runtime_profile;
+		config.workers.runner = "docker";
+		expect(select(true)).toMatchObject({ ok: true, runtimeProfile: "generic" });
+		config.workers.runner = "kubernetes";
+		delete config.kubernetes.docker.worker_runtime_profile;
+		expect(select(true)).toMatchObject({ ok: true, runtimeProfile: "generic" });
+	});
+
 	it("reads override, component, and default selections from config", () => {
 		const config = getDefaultConfig();
 		config.workers.default_runtime_profile = "generic";

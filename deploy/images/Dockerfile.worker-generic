@@ -79,6 +79,7 @@ COPY --from=build --parents \
 COPY --from=build --parents \
 	/app/./packages/*/dist \
 	/app/./extensions/*/dist \
+	/app/./extensions/*/skills \
 	/app/./packages/server/migrations \
 	./
 

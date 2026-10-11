@@ -68,6 +68,7 @@ Create `.leitwerk/sandbox/model.json` with mode `0600` and dedicated credentials
 
 ```json
 {
+  "default_model_profile": "sandbox-real",
   "model_profiles": [
     { "id": "sandbox-real", "provider": "openai", "model_id": "YOUR_MODEL_ID", "thinking_level": "off" }
   ],

@@ -3,10 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import { coreHostCapabilities, type LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
+import { createTestAppContext } from "@leitwerk-dev/test-support/integration";
 import { emptyPollResult } from "@leitwerk-dev/watcher-utils";
 import { describe, expect, it, vi } from "vitest";
 import WebSocket from "ws";
-import { type AppOptions, createAppContext } from "./app.js";
+import type { AppOptions } from "./app.js";
 import { getDefaultConfig } from "./config/index.js";
 import { closeDatabase, createInMemoryDatabase } from "./db/database.js";
 import { fakeWorkerRunnerRuntime } from "./test-helpers/worker-runner-runtime.js";
@@ -20,7 +21,7 @@ async function context(
 	config.server.host = "127.0.0.1";
 	config.server.port = 0;
 	config.workers.runner = "local";
-	return createAppContext({
+	return createTestAppContext({
 		logger: false,
 		config,
 		extensionCatalog: buildExtensionCatalogFromModules(

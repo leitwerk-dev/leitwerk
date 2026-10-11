@@ -3,6 +3,7 @@ import { type LaunchPreparationCheck, SafeLaunchPreparationError } from "@leitwe
 import {
 	parseFutureActionPayloadJson,
 	parseFutureLaunchPayloadJson,
+	parseLauncherRequestBody,
 	serializeFutureActionPayload,
 	serializeFutureLaunchPayload,
 } from "@leitwerk-dev/protocol";
@@ -19,6 +20,7 @@ import { createProcessOperationCoordinator } from "./process-operation-coordinat
 import { createOwnedTestDeps } from "./test-helpers/owned-test-deps.js";
 import { createDefaultTestProcessGraphRegistry } from "./test-helpers/process-fixtures.js";
 import { createTestLaunchPlan } from "./test-helpers/process-model-fixtures.js";
+import { installTestSkill } from "./test-helpers/skill-fixtures.js";
 
 function createServiceHarness(
 	options: {
@@ -33,6 +35,7 @@ function createServiceHarness(
 		startTurnId?: string | null;
 		failTitleQueue?: boolean;
 		failProcessTitleQueue?: boolean;
+		skillDefaults?: Parameters<typeof createFutureExecutionLifecycle>[0]["skillDefaults"];
 	} = {},
 ) {
 	const deps = createOwnedTestDeps();
@@ -96,6 +99,7 @@ function createServiceHarness(
 	});
 	const service = createFutureExecutionLifecycle({
 		...deps,
+		skillDefaults: options.skillDefaults,
 		broadcaster: deps.broadcaster,
 		commands,
 		processOperations,
@@ -119,6 +123,151 @@ function createServiceHarness(
 	});
 	return { deps, service };
 }
+
+describe("default skills for launches and schedules", () => {
+	function request(body: Record<string, unknown> = {}) {
+		const parsed = parseLauncherRequestBody({
+			launcherInput: {},
+			skillIds: [],
+			schedule: { mode: "once", runAt: "2099-04-25T09:00:00.000Z" },
+			...body,
+		});
+		if (!parsed.ok) throw new Error(parsed.error);
+		return parsed.value;
+	}
+
+	it.each(["now", "once", "cron"])("pins defaults on new %s launches", async (mode) => {
+		const skillDefaults = { default_skills: ["shared"] };
+		const { deps, service } = createServiceHarness({ skillDefaults });
+		const pinned = installTestSkill(deps, "shared");
+		const prepared = await service.prepareLaunch(
+			"demo.launcher",
+			request({
+				schedule: { mode, runAt: "2099-04-25T09:00:00.000Z", cronExpression: "0 9 * * *" },
+			}),
+		);
+		if (!prepared.ok) throw new Error(JSON.stringify(prepared));
+		expect(prepared.prepared.selectedSkillIds).toEqual([]);
+		expect(prepared.prepared.resourceSelections).toEqual(pinned);
+		const result = await service.commitPreparedLaunch(prepared.prepared);
+		if (result.kind === "launched") {
+			expect(deps.processSkills.listSelections(result.process.id)).toEqual(pinned);
+		} else if (result.kind === "scheduled") {
+			expect(parseFutureLaunchPayloadJson(result.execution.payloadJson)).toMatchObject({
+				ok: true,
+				value: { selectedSkillIds: [], resourceSelections: pinned },
+			});
+		} else throw new Error(JSON.stringify(result));
+	});
+
+	it("fails unavailable defaults without creating a process or schedule", async () => {
+		const { deps, service } = createServiceHarness({
+			skillDefaults: { default_skills: ["missing"] },
+		});
+		expect(await service.prepareLaunch("demo.launcher", request())).toMatchObject({
+			ok: false,
+			outcome: { kind: "invalid", issues: [{ code: "invalid_skill_selection" }] },
+		});
+		expect(deps.futureExecutions.listAll()).toEqual([]);
+		expect(deps.processes.listAll()).toEqual([]);
+	});
+
+	it("preserves schedule pins during validation and edits until the selection changes", async () => {
+		const skillDefaults = { default_skills: ["shared"] };
+		const { deps, service } = createServiceHarness({ skillDefaults });
+		const pinned = installTestSkill(deps, "shared");
+		const explicit = installTestSkill(deps, "extra");
+		const result = await launch(service, "demo.launcher", request({ skillIds: ["extra"] }));
+		if (result.kind !== "scheduled") throw new Error(JSON.stringify(result));
+		const newer = installTestSkill(deps, "shared", "Updated instructions.");
+		expect(newer).not.toEqual(pinned);
+		deps.skills.remove("shared");
+		deps.skills.remove("extra");
+		skillDefaults.default_skills = ["missing"];
+		const unchanged = request({ skillIds: ["extra"], title: "New title" });
+		const preview = await service.prepareLaunch("demo.launcher", unchanged, {
+			futureExecutionId: result.execution.id,
+		});
+		expect(preview).toMatchObject({
+			ok: true,
+			prepared: { resourceSelections: [...pinned, ...explicit] },
+		});
+		const updated = await service.reviseScheduledLaunch(result.execution.id, unchanged);
+		if (updated.kind !== "scheduled") throw new Error(JSON.stringify(updated));
+		expect(parseFutureLaunchPayloadJson(updated.execution.payloadJson)).toMatchObject({
+			ok: true,
+			value: { selectedSkillIds: ["extra"], resourceSelections: [...pinned, ...explicit] },
+		});
+		const changed = request({ skillIds: [] });
+		expect(await service.reviseScheduledLaunch(result.execution.id, changed)).toMatchObject({
+			kind: "invalid",
+			issues: [{ code: "invalid_skill_selection" }],
+		});
+		expect(deps.futureExecutions.getById(result.execution.id)?.payloadJson).toBe(
+			updated.execution.payloadJson,
+		);
+		skillDefaults.default_skills = ["shared"];
+		installTestSkill(deps, "shared", "Updated instructions.");
+		const changedPreview = await service.prepareLaunch("demo.launcher", changed, {
+			futureExecutionId: result.execution.id,
+		});
+		expect(changedPreview).toMatchObject({ ok: true, prepared: { resourceSelections: newer } });
+		const revised = await service.reviseScheduledLaunch(result.execution.id, changed);
+		if (revised.kind !== "scheduled") throw new Error(JSON.stringify(revised));
+		expect(parseFutureLaunchPayloadJson(revised.execution.payloadJson)).toMatchObject({
+			ok: true,
+			value: { selectedSkillIds: [], resourceSelections: newer },
+		});
+	});
+
+	it("keeps scheduled revisions on repeated occurrences after removal and default changes", async () => {
+		const skillDefaults = { default_skills: ["shared"] };
+		const { deps, service } = createServiceHarness({ skillDefaults });
+		const pinned = installTestSkill(deps, "shared");
+		const result = await launch(
+			service,
+			"demo.launcher",
+			request({ schedule: { mode: "cron", cronExpression: "0 9 * * *" } }),
+		);
+		if (result.kind !== "scheduled") throw new Error(JSON.stringify(result));
+		skillDefaults.default_skills = ["missing"];
+		deps.skills.remove("shared");
+		for (let occurrence = 0; occurrence < 2; occurrence += 1) {
+			const current = deps.futureExecutions.getById(result.execution.id);
+			if (!current) throw new Error("Missing recurring schedule");
+			await service.runDueWork(current.nextRunAt);
+		}
+		expect(deps.processes.listAll()).toHaveLength(2);
+		for (const process of deps.processes.listAll()) {
+			expect(deps.processSkills.listSelections(process.id)).toEqual(pinned);
+			expect(deps.processSkills.listResourceLayers(process.id)).toHaveLength(1);
+		}
+	});
+
+	it("launches legacy empty schedules without resolving current defaults", async () => {
+		const { deps, service } = createServiceHarness({
+			skillDefaults: { default_skills: ["missing"] },
+		});
+		const existing = createDueLaunch(deps);
+		const result = await service.reviseScheduledLaunch(
+			existing.id,
+			request({ schedule: { mode: "now" } }),
+		);
+		if (result.kind !== "launched") throw new Error(JSON.stringify(result));
+		expect(deps.processSkills.listSelections(result.process.id)).toEqual([]);
+	});
+
+	it("rejects validation context for missing schedules and other launchers", async () => {
+		const { deps, service } = createServiceHarness();
+		const existing = createDueLaunch(deps, { launcherId: "other.launcher" });
+		expect(
+			await service.prepareLaunch("demo.launcher", request(), { futureExecutionId: existing.id }),
+		).toMatchObject({ ok: false, outcome: { kind: "invalid" } });
+		expect(
+			await service.prepareLaunch("demo.launcher", request(), { futureExecutionId: "missing" }),
+		).toMatchObject({ ok: false, outcome: { kind: "not_found" } });
+	});
+});
 
 async function launch(
 	service: ReturnType<typeof createFutureExecutionLifecycle>,

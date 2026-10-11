@@ -1,4 +1,4 @@
-import { type Actor, resolveJsonPointer } from "@leitwerk-dev/domain";
+import { type Actor, resolveJsonPointer, type TurnProgressReport } from "@leitwerk-dev/domain";
 import {
 	bindExternalWrites,
 	type ExternalWriteLogRepoLike,
@@ -34,8 +34,8 @@ type RegisteredIntegrationTool = IntegrationToolDefinition<unknown>;
 type TicketCreationTool = RegisteredIntegrationTool & { capability: TicketCreationCapability };
 type IntegrationToolExecutionInput = Omit<
 	IntegrationToolExecutionContext,
-	"signal" | "externalWrites"
->;
+	"signal" | "externalWrites" | "reportProgress"
+> & { reportProgress?: IntegrationToolExecutionContext["reportProgress"] };
 
 interface PendingIntegrationToolExecution {
 	readonly controller: AbortController;
@@ -346,6 +346,7 @@ export class IntegrationToolRegistry {
 			if (!definition) throw new Error(`Unknown integration tool '${name}'`);
 			return {
 				name: definition.name,
+				...(definition.modelVisible === false ? { modelVisible: false } : {}),
 				description: definition.description,
 				parameters:
 					definition.capability?.kind === "ticket_creation" && definition.capability.destinations
@@ -369,6 +370,9 @@ export class IntegrationToolRegistry {
 				return definition.execute(
 					{
 						...ctx,
+						reportProgress: (report) => {
+							if (!controller.signal.aborted) ctx.reportProgress?.(report);
+						},
 						signal: controller.signal,
 						externalWrites: bindExternalWrites(this.writes, ctx.process.id),
 					},
@@ -392,7 +396,14 @@ export class IntegrationToolRegistry {
 			throw new Error(`Tool '${name}' is unavailable to server maintenance`);
 		signal.throwIfAborted();
 		return definition.execute(
-			{ ...ctx, signal, externalWrites: bindExternalWrites(this.writes, ctx.process.id) },
+			{
+				...ctx,
+				signal,
+				reportProgress: (report) => {
+					if (!signal.aborted) ctx.reportProgress?.(report);
+				},
+				externalWrites: bindExternalWrites(this.writes, ctx.process.id),
+			},
 			definition.parse?.(args) ?? parseToolArgs(args),
 		);
 	}
@@ -419,6 +430,11 @@ export function createIntegrationToolRequestService(input: {
 	repos: Pick<RepositoryBundle, "processes" | "projects" | "turnRecords" | "turnStarts">;
 	processActionRegistry: Pick<ProcessActionRegistry, "getTurnDefinition" | "resolveContextData">;
 	toolApprovalGate?: ToolApprovalGate;
+	reportProgress?: (input: {
+		instanceId: string;
+		turnRecordId: string;
+		report: TurnProgressReport;
+	}) => void;
 }) {
 	const pending = new Map<
 		string,
@@ -459,22 +475,26 @@ export function createIntegrationToolRequestService(input: {
 			if (process.selectedTurnId !== turn.turnId) {
 				return fail("Integration tool call targets a stale turn");
 			}
-			const assertActive = () => {
-				if (signal.aborted) throw new Error("Integration tool execution cancelled");
+			const isActive = () => {
+				if (signal.aborted) return false;
 				const current = input.repos.processes.getById(instanceId);
 				const currentTurn = input.repos.turnRecords.getById(payload.turnRecordId);
 				const start =
 					current?.currentExecution?.kind === "worker_start"
 						? input.repos.turnStarts.getById(current.currentExecution.id)
 						: null;
-				if (
-					!current ||
-					currentTurn?.status !== "running" ||
-					current.selectedTurnId !== turn.turnId ||
-					start?.state.kind !== "accepted" ||
-					start.state.turnRecordId !== payload.turnRecordId
-				)
-					throw new Error("Integration tool call targets a stale turn record");
+				return Boolean(
+					current &&
+						currentTurn?.status === "running" &&
+						currentTurn.instanceId === instanceId &&
+						current.selectedTurnId === turn.turnId &&
+						start?.state.kind === "accepted" &&
+						start.state.turnRecordId === payload.turnRecordId,
+				);
+			};
+			const assertActive = () => {
+				if (signal.aborted) throw new Error("Integration tool execution cancelled");
+				if (!isActive()) throw new Error("Integration tool call targets a stale turn record");
 			};
 			const authorizedTools = resolveTurnIntegrationToolNames(
 				input.processActionRegistry,
@@ -490,7 +510,10 @@ export function createIntegrationToolRequestService(input: {
 			const project = projectKey
 				? (projects.find((candidate) => candidate.key === projectKey) ?? null)
 				: null;
-			if (projectKey && !project) return fail(`Unknown process project '${projectKey}'`);
+			if (projectKey && !project)
+				return fail(
+					`Unknown process project '${projectKey}'. Available project keys: ${projects.map((candidate) => candidate.key).join(", ") || "(none)"}`,
+				);
 			try {
 				let ticketDestination: TicketCreationDestinationSnapshot | undefined;
 				let executionArgs = payload.args;
@@ -551,6 +574,10 @@ export function createIntegrationToolRequestService(input: {
 					projects,
 					turn,
 					project,
+					reportProgress: (report) => {
+						if (isActive())
+							input.reportProgress?.({ instanceId, turnRecordId: payload.turnRecordId, report });
+					},
 					...(ticketDestination ? { ticketDestination } : {}),
 					idempotencyKey: integrationToolIdempotencyKey({
 						instanceId,

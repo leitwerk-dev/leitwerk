@@ -20,6 +20,11 @@ server:
     storageClassName: standard
   config:
     baseUrl: http://localhost:8080
+    piDefaultModelProfile: smoke
+    piModelProfiles:
+      - id: smoke
+        provider: openai
+        model_id: smoke
     logWorkerEventsToStdout: true
     extensionLoading:
       sources:

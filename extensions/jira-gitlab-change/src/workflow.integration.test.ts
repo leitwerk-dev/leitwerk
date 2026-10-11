@@ -268,7 +268,10 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 	it("retries a failed review transition without duplicating MRs or links", async () => {
 		const f = await fixture();
 		await f.plan();
-		const review = required(f.jira.transitions.pop());
+		const review = required(
+			f.jira.transitions.find((transition) => transition.to.name === "In Review"),
+		);
+		f.jira.transitions = f.jira.transitions.filter((transition) => transition !== review);
 		await expect(f.deliver()).rejects.toThrow("In Review");
 		expect(await f.status()).toBe("In Progress");
 		f.jira.transitions.push(review);

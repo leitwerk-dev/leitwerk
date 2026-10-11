@@ -13,6 +13,7 @@ import type {
 } from "./define-process.js";
 import { llmTurn } from "./define-process.js";
 import { validateMappedTurn } from "./mapped-turn.js";
+import { compileOutcomeParameters } from "./outcome-schema.js";
 import { validatePiBuiltInToolArray } from "./pi-config.js";
 import { REQUIRED_MARKDOWN_RESULT_TURN_RESULT } from "./tool-renderers.js";
 import {
@@ -165,6 +166,7 @@ function validateOutcomeToolParameters<TParams = unknown, TState = unknown>(
 		}
 		for (const [paramName, paramSpec] of Object.entries(outcomeSpec.parameters)) {
 			const context = `${outcomeContext} parameter '${paramName}'`;
+			const before = errors.length;
 			for (const [property, type, message] of [
 				["minItems", "array", "uses minItems but is not an array"],
 				["minimum", "number", "uses minimum but is not a number"],
@@ -176,10 +178,20 @@ function validateOutcomeToolParameters<TParams = unknown, TState = unknown>(
 			if (paramSpec.type === "array") {
 				if (!paramSpec.items) {
 					errors.push(`${context} is an array and must declare items`);
-				} else if (!isValidOutcomeToolArrayItemType(paramSpec.items.type)) {
+				} else if (
+					!paramSpec.items.anyOf &&
+					!isValidOutcomeToolArrayItemType(paramSpec.items.type)
+				) {
 					errors.push(
 						`${context} declares unsupported array item type '${String(paramSpec.items.type)}'`,
 					);
+				}
+			}
+			if (errors.length === before) {
+				try {
+					compileOutcomeParameters({ [paramName]: paramSpec }, outcomeSpec.strictSchema);
+				} catch (error) {
+					errors.push(`${context}: ${error instanceof Error ? error.message : String(error)}`);
 				}
 			}
 		}
@@ -335,6 +347,7 @@ export function validateAutomaticTurnDefinition<
 	return [
 		...validateOutcomeTurnResultContract("Automatic", turnId, turnDef.outcomes, turnDef.turnEnd),
 		...validateOutcomeToolParameters("Automatic", turnId, turnDef.outcomes),
+		...validateExternalActions("Automatic", turnId, turnDef.externalActions),
 	];
 }
 

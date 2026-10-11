@@ -5,6 +5,7 @@ import type {
 	LauncherOptionsResponseBody,
 	LauncherRecentValuesResponseBody,
 	LaunchersResponseBody,
+	LauncherValidationResponseBody,
 	LaunchRunResponseBody,
 	ProcessLaunchRunsResponseBody,
 	StartLaunchRunResponseBody,
@@ -57,7 +58,7 @@ export function registerLauncherRoutes(
 					: {};
 				const warnings: Array<{ code: string; message: string; fieldId?: string }> = [];
 				if (launcher) {
-					const resolved = await deps.launcherService.resolveUiLauncher(
+					const resolved = await deps.launcherService.resolveUiLauncherPreview(
 						req.params.launcherId,
 						defaults,
 					);
@@ -105,6 +106,54 @@ export function registerLauncherRoutes(
 				values: deps.launcherRecentValues.list(req.params.launcherId),
 			} satisfies LauncherRecentValuesResponseBody;
 			return body;
+		},
+	);
+
+	app.post<{
+		Params: { launcherId: string };
+		Querystring: { futureExecutionId?: string };
+		Body: unknown;
+	}>(
+		"/api/launchers/:launcherId/validate",
+		{
+			schema: {
+				querystring: {
+					type: "object",
+					properties: { futureExecutionId: { type: "string", minLength: 1, pattern: "\\S" } },
+				},
+			},
+		},
+		async (req, reply) => {
+			const normalized = normalizeLauncherRequest(req.body);
+			if (!normalized.ok) {
+				return sendLauncherRequestNormalizationError(reply, normalized.error);
+			}
+			try {
+				const resolved = await deps.launcherService.resolveUiLauncherPreview(
+					req.params.launcherId,
+					normalized.request.launcherInput,
+				);
+				if (!resolved.ok)
+					return { errors: resolved.errors } satisfies LauncherValidationResponseBody;
+				// Apply shared skills, models and schedule rules to the preview only.
+				// Submission always resolves the complete executable configuration again.
+				const result = await futureExecutionLifecycle.prepareLaunch(
+					req.params.launcherId,
+					normalized.request,
+					{
+						resolvedLauncher: resolved.launcher,
+						futureExecutionId: req.query.futureExecutionId,
+					},
+				);
+				if (result.ok) return { errors: [] } satisfies LauncherValidationResponseBody;
+				if (result.outcome.kind === "invalid") {
+					return { errors: result.outcome.issues } satisfies LauncherValidationResponseBody;
+				}
+				return sendLauncherMutationResponse(reply, deps, result.outcome);
+			} catch (error) {
+				if (sendLauncherLookupFailure(reply, error)) return;
+				throw error;
+			}
 		},
 	);
 

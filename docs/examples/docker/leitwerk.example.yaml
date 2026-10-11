@@ -31,6 +31,7 @@ worker_runtime_profiles:
 
 pi:
   agent_dir: /state/pi
+  default_model_profile: example_model
   model_profiles:
     - id: example_model
       provider: openai
@@ -38,6 +39,7 @@ pi:
 
 extension_loading:
   sources:
+    - /app/extensions/skills
     - /app/extensions/models
     - /app/extensions/showcase-processes
 

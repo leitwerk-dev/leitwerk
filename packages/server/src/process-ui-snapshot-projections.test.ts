@@ -101,6 +101,39 @@ describe("process error presentation", () => {
 	});
 
 	it.each([
+		"llm_error",
+		null,
+		undefined,
+	])("presents explicit agent aborts with class %s", (errorClass) => {
+		const raw = "Turn 'apply' prompt failed: Turn aborted by LLM: Required validation is blocked.";
+		expect(formatProcessErrorPresentation(raw, errorClass)).toEqual({
+			summary: "The agent stopped this turn — required validation is blocked.",
+			guidance:
+				"Review the reported reason and resolve any blocker before continuing or retrying the turn.",
+			technicalDetail: raw,
+		});
+	});
+
+	it("preserves the complete abort reason without interpreting embedded JSON", () => {
+		const raw = 'Turn aborted by LLM: Need clarification: {"message":"which target?"}';
+		expect(formatProcessErrorPresentation(raw, "llm_error").summary).toBe(
+			'The agent stopped this turn — need clarification: {"message":"which target?"}',
+		);
+		expect(formatProcessErrorPresentation("Turn aborted by LLM:", "llm_error").summary).toBe(
+			"The agent stopped this turn",
+		);
+	});
+
+	it.each([
+		'402 {"error":{"message":"Turn aborted by LLM: provider message"}}',
+		"Provider reported Turn aborted by LLM: unavailable",
+	])("keeps provider guidance for non-authoritative abort text: %s", (raw) => {
+		const result = formatProcessErrorPresentation(raw, "llm_error");
+		expect(result.summary).toMatch(/^The model request failed/);
+		expect(result.guidance).toContain("provider capacity or quota");
+	});
+
+	it.each([
 		["Something broke", null, "Something broke", null],
 		[
 			"remote rejected push",

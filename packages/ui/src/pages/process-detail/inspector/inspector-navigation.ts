@@ -17,12 +17,12 @@ interface ReadingPosition {
 }
 interface InspectionHistory {
 	instanceId: string;
-	depth: number;
-	originalExecution: string | null;
 	returnPosition: ReadingPosition | null;
 	reading?: ReadingPosition;
-	reveal?: { turnRecordId?: string; turnId?: string };
+	reveal?: ChronicleTarget;
 }
+/** @internal */
+export type ChronicleTarget = { turnRecordId: string } | { turnId: string };
 const itemKey = (el: HTMLElement) => el.dataset.inspectionItem ?? el.dataset.anchorId ?? el.id;
 function capture(viewport: HTMLElement | null): ReadingPosition | null {
 	if (!viewport) return null;
@@ -81,7 +81,7 @@ export function createInspectorNavigation(args: {
 	get instanceId(): string;
 	get route(): InspectorRoute;
 	get path(): string;
-	reveal(target: { turnRecordId?: string; turnId?: string }): void;
+	reveal(target: ChronicleTarget): void;
 }) {
 	const positions = new Map<string, ReadingPosition>();
 	let restoredPath: string | null = null;
@@ -106,43 +106,35 @@ export function createInspectorNavigation(args: {
 		save();
 		const previous = state();
 		const returnPosition = args.route ? (previous?.returnPosition ?? null) : capture(viewport());
-		const originalExecution = args.route
-			? (previous?.originalExecution ?? null)
-			: target.scope === "execution"
-				? target.turnRecordId
-				: null;
-		if (!args.route)
-			write({ instanceId: args.instanceId, depth: 0, originalExecution, returnPosition });
+		if (!args.route) write({ instanceId: args.instanceId, returnPosition });
 		const to = buildInspectorPath(args.instanceId, target);
 		navigate(to, {
 			state: {
 				inspection: {
 					instanceId: args.instanceId,
-					depth: (args.route ? (previous?.depth ?? 0) : 0) + 1,
 					returnPosition,
-					originalExecution,
 					reading: positions.get(to),
 				},
 			},
 		});
 	}
-	function showChronicle(reveal?: { turnRecordId?: string; turnId?: string }) {
+	function leaveInspector(reveal?: ChronicleTarget) {
 		save();
-		const previous = state();
-		const selected = args.route?.scope === "execution" ? args.route.turnRecordId : null;
-		const target =
-			reveal ??
-			(selected && selected !== previous?.originalExecution
-				? { turnRecordId: selected }
-				: undefined);
 		navigate(buildProcessPath(args.instanceId), {
-			state: { inspection: { ...previous, instanceId: args.instanceId, depth: 0, reveal: target } },
+			state: {
+				inspection: {
+					instanceId: args.instanceId,
+					returnPosition: state()?.returnPosition ?? null,
+					reveal,
+				},
+			},
 		});
 	}
-	function back() {
-		save();
-		if ((state()?.depth ?? 0) > 0) history.back();
-		else showChronicle();
+	function returnToProcess() {
+		leaveInspector();
+	}
+	function showChronicle(target: ChronicleTarget) {
+		leaveInspector(target);
 	}
 	async function restoreRoute() {
 		restoredPath = null;
@@ -154,10 +146,21 @@ export function createInspectorNavigation(args: {
 			document.getElementById("inspector-heading")?.focus({ preventScroll: true });
 		} else if (current?.reveal) {
 			args.reveal(current.reveal);
-		} else {
-			restore(viewport(), current?.returnPosition);
-			if (current?.returnPosition?.focusId)
-				document.getElementById(current.returnPosition.focusId)?.focus({ preventScroll: true });
+		} else if (current) {
+			restore(viewport(), current.returnPosition);
+			const focus = current.returnPosition?.focusId
+				? document.getElementById(current.returnPosition.focusId)
+				: null;
+			if (focus) focus.focus({ preventScroll: true });
+			else {
+				const heading = document.querySelector<HTMLElement>(
+					'[data-page="process-detail"] .page-shell h1',
+				);
+				if (heading) {
+					heading.tabIndex = -1;
+					heading.focus({ preventScroll: true });
+				}
+			}
 		}
 	}
 	function observe(element: HTMLElement) {
@@ -172,7 +175,7 @@ export function createInspectorNavigation(args: {
 	}
 	return {
 		visit,
-		back,
+		returnToProcess,
 		showChronicle,
 		save,
 		restoreRoute,

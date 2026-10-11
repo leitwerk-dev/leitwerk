@@ -17,9 +17,10 @@ import type {
 } from "@leitwerk-dev/process-sdk";
 import { createTestDeps } from "@leitwerk-dev/server/testing";
 import { createToolCollector } from "@leitwerk-dev/test-support";
+import { LocalGitSeedCache } from "@leitwerk-dev/test-support/local-git";
 import { createWikiIntegration } from "@leitwerk-dev/wiki/integration";
 import { registerWikiTools } from "@leitwerk-dev/wiki/server";
-import { expect, it, onTestFinished } from "vitest";
+import { afterAll, expect, it, onTestFinished } from "vitest";
 import {
 	batchMarkdown,
 	initialSplitState,
@@ -39,6 +40,9 @@ import {
 
 import { createSplitSources } from "./test-fixture.js";
 
+const gitSeeds = new LocalGitSeedCache();
+afterAll(() => gitSeeds.close());
+
 async function fixture(
 	sourceType = "Epic",
 	configureJira: (jira: LocalJiraAdapter) => void = () => {},
@@ -49,7 +53,7 @@ async function fixture(
 		deps.db.$client.close();
 		rmSync(root, { recursive: true, force: true });
 	});
-	const { git, gitlab, jira, epic } = createSplitSources(root, sourceType);
+	const { git, gitlab, jira, epic } = createSplitSources(root, sourceType, gitSeeds);
 	configureJira(jira);
 	const mappings = [1, 2].map((projectId) =>
 		JSON.stringify({

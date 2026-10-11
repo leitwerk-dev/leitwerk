@@ -1,6 +1,7 @@
 import type { ScopedSettingsSnapshot, SettingsContext } from "@leitwerk-dev/domain";
 import type {
 	SettingChoice,
+	SettingsOverviewResponse,
 	SettingsPreview,
 	SettingsScopesResponse,
 } from "@leitwerk-dev/protocol/http-contracts";
@@ -25,7 +26,7 @@ export interface SettingsChange {
 	subjectId: string;
 	key: string;
 	value: unknown;
-	mode: "append" | "replace";
+	mode: "replace";
 	reset: boolean;
 	expectedRevision: number;
 }
@@ -43,6 +44,13 @@ export function fetchSettingsPreview(subjectId: string) {
 		path: `/api/settings/preview?subjectId=${encodeURIComponent(subjectId)}`,
 		malformed: "Could not read settings",
 		error: settingsError("Could not load settings"),
+	});
+}
+export function fetchSettingsOverview(scopeType: string) {
+	return requestJson<SettingsOverviewResponse>({
+		path: `/api/settings/overview?${new URLSearchParams({ scopeType })}`,
+		malformed: "Could not read settings overview",
+		error: settingsError("Could not load settings overview"),
 	});
 }
 export function fetchSettingsChoices(

@@ -516,6 +516,8 @@ export type CurrentExecutionRef = {
 /** Immutable non-secret inputs resolved for a worker-owned turn start. @internal */
 export type ResolvedTurnStart =
 	| {
+			/** Resolved non-secret outcome schemas and publication metadata. @internal */
+			outcomeContract?: JsonObject;
 			/** @internal */
 			scopedSettings?: ScopedSettingsSnapshot;
 			/** @internal */
@@ -1102,7 +1104,7 @@ export interface TurnProgressReport {
 	title: string;
 	/** Attempt-specific progress or waiting explanation; not an operation receipt. @public */
 	summary?: string;
-	/** @public */
+	/** Optional checklist; may be empty when summary supplies the activity text. @public */
 	steps: TurnProgressStep[];
 	/** @public */
 	links?: TurnProgressLink[];

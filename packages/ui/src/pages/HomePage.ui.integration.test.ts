@@ -126,6 +126,7 @@ vi.mock("../lib/api.js", () => ({
 	launchLauncher: vi.fn(),
 	previewCronExpression: vi.fn(),
 	updateScheduledLaunch: vi.fn(),
+	validateLauncher: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock("../lib/retry-config.svelte.js", () => ({
@@ -356,6 +357,7 @@ describe("HomePage", () => {
 			"05",
 		);
 
+		await flush();
 		target
 			.querySelector("form")
 			?.dispatchEvent(new SubmitEvent("submit", { bubbles: true, cancelable: true }));

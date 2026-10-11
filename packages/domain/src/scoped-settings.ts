@@ -87,13 +87,6 @@ export interface ScopedSettingsSnapshot {
 	context: SettingsContext;
 	/** @public */
 	values: ResolvedSetting[];
-	/** Instruction blocks are labelled so repositories cannot be confused. @public */
-	instructions: Array<{
-		/** @public */
-		label: string;
-		/** @public */
-		setting: ResolvedSetting<string>;
-	}>;
 	/** @public */
 	explanations: string[];
 }

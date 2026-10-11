@@ -10,18 +10,26 @@ import {
 } from "@leitwerk-dev/jira";
 import { LocalJiraSplitAdapter } from "@leitwerk-dev/jira/testing";
 import type {
+	InitialProcessBinding,
 	IntegrationToolExecutionContext,
 	ScopedSettingsResolver,
 } from "@leitwerk-dev/process-sdk";
 import { createTestDeps } from "@leitwerk-dev/server/testing";
 import { createToolCollector } from "@leitwerk-dev/test-support";
-import { LocalGit } from "@leitwerk-dev/test-support/local-git";
+import { LocalGit, LocalGitSeedCache } from "@leitwerk-dev/test-support/local-git";
 import { createWikiIntegration } from "@leitwerk-dev/wiki/integration";
 import { registerWikiTools } from "@leitwerk-dev/wiki/server";
-import { expect, it, onTestFinished, vi } from "vitest";
+import { afterAll, expect, it, onTestFinished, vi } from "vitest";
 import { createJiraGitLabChange } from "./index.js";
-import { createJiraGitLabLauncher, jiraGitLabParamsCodec } from "./launch.js";
+import {
+	createJiraGitLabLauncher,
+	type JiraGitLabParams,
+	jiraGitLabParamsCodec,
+} from "./launch.js";
 import { parseJiraModelLabels } from "./models.js";
+
+const gitSeeds = new LocalGitSeedCache();
+afterAll(() => gitSeeds.close());
 
 function fixture(bindingPatch: Record<string, unknown> = {}, https = false) {
 	const root = mkdtempSync(join(tmpdir(), "jira-retained-"));
@@ -34,7 +42,7 @@ function fixture(bindingPatch: Record<string, unknown> = {}, https = false) {
 	const git = new LocalGit(root);
 	const gitlab = new LocalGitLabAdapter(root);
 	for (const name of ["monitor", "other"])
-		gitlab.addProject(`team/${name}`, git.seed({ owner: "team", name }).bare);
+		gitlab.addProject(`team/${name}`, gitSeeds.copy(git, { owner: "team", name }));
 	const jira = new LocalJiraSplitAdapter();
 	const parent: JiraIssue = {
 		id: "10",
@@ -132,6 +140,7 @@ function fixture(bindingPatch: Record<string, unknown> = {}, https = false) {
 					},
 				},
 		settings: {
+			findSubject: () => null,
 			discover: (input: { identity: string }) => ({ ...input, id: input.identity }),
 			resolve: () => ({ value: [...mappings], sources: [] }),
 		} as unknown as ScopedSettingsResolver,
@@ -162,6 +171,93 @@ function fixture(bindingPatch: Record<string, unknown> = {}, https = false) {
 		},
 	};
 }
+
+function readiness(params: JiraGitLabParams) {
+	return {
+		params,
+		signal: new AbortController().signal,
+		waiting: (message: string) => ({ kind: "waiting" as const, message }),
+		abort: (message: string) => ({ kind: "abort" as const, message }),
+		bindInitialProjects: (binding: InitialProcessBinding<JiraGitLabParams>) => ({
+			kind: "bind" as const,
+			binding,
+		}),
+	};
+}
+
+it("waits for every component, then resolves the complete repository set with the captured model", async () => {
+	const f = fixture({}, true);
+	const mappings = [...f.mappings];
+	f.child.fields.components.push({ id: "201", name: "Client" });
+	let configured = false;
+	f.services.settings.resolve = ((_field, context) => ({
+		value:
+			configured || context["jira.component"] === JSON.stringify([f.jira.baseUrl, "200"])
+				? mappings
+				: [],
+		sources: [],
+	})) as ScopedSettingsResolver["resolve"];
+	f.launcher.configure({ ...f.services, modelLabels: { "leitwerk-model-sol": "sol" } });
+	f.child.fields.labels.push("leitwerk-model-sol");
+	const pending = await f.resolve();
+	expect(jiraGitLabParamsCodec.parse(JSON.parse(JSON.stringify(pending.params)))).toEqual(
+		pending.params,
+	);
+	expect(pending.projects).toEqual([]);
+	expect(await f.launcher.ready(readiness(pending.params))).toMatchObject({
+		kind: "waiting",
+		message: expect.stringContaining("Client"),
+	});
+	expect(f.preflights).toEqual([]);
+	configured = true;
+	f.child.fields.labels = ["use-leitwerk", "leitwerk-model-unknown"];
+	const result = await f.launcher.ready(readiness(pending.params));
+	expect(result).toMatchObject({
+		kind: "bind",
+		binding: {
+			params: {
+				modelSelection: { profileId: "sol" },
+				repositories: [expect.objectContaining({ projectId: 1 })],
+			},
+		},
+	});
+	expect(f.preflights).toHaveLength(1);
+});
+
+it("waits for issues without components and reports all missing mappings", async () => {
+	const f = fixture();
+	f.child.id = "12";
+	f.jira.issues.set("12", f.child);
+	f.mappings.splice(0);
+	f.child.fields.components.push({ id: "201", name: "Client" });
+	let launch = await f.resolve();
+	expect(await f.launcher.ready(readiness(launch.params))).toMatchObject({
+		kind: "waiting",
+		message: expect.stringContaining("Service, Client"),
+	});
+	f.child.fields.components = [];
+	launch = await f.resolve();
+	expect(await f.launcher.ready(readiness(launch.params))).toMatchObject({
+		kind: "waiting",
+		message: expect.stringContaining("Assign at least one component"),
+	});
+});
+
+it("rechecks mappings changed during preflight instead of binding stale repositories", async () => {
+	const f = fixture();
+	const mapping = f.mappings.splice(0);
+	const launch = await f.resolve();
+	f.mappings.push(...mapping);
+	if (!f.services.ssh) throw new Error("Missing SSH fixture");
+	f.services.ssh.preflight = async () => {
+		f.mappings.splice(0);
+		return { ok: true };
+	};
+	expect(await f.launcher.ready(readiness(launch.params))).toMatchObject({
+		kind: "waiting",
+		message: expect.stringContaining("changed during startup checks"),
+	});
+});
 
 it("captures the beta trigger and model selection without changing the issue identity", async () => {
 	const f = fixture({}, true);
@@ -206,6 +302,21 @@ it("validates configured model labels and leaves unlabelled runs on normal defau
 		"model_labels",
 	);
 	expect((await fixture({}, true).resolve()).defaultModelProfileId).toBeUndefined();
+});
+
+it("launches with a Markdown prompt and keeps Jira markup in the captured issue", async () => {
+	const f = fixture({}, true);
+	f.child.fields.description =
+		"h2. Requirements\n\n* *Check* {{user_name}}\n\n{code:text}\n*literal*\n{code}";
+	const captured = structuredClone(f.child);
+	const launch = await f.resolve();
+	expect(launch.params.prompt).toBe(
+		"APP-11: Shared requirement\n\n## Requirements\n\n- **Check** `user_name`\n\n```text\n*literal*\n```",
+	);
+	expect(launch.params.issue).toEqual(captured);
+	expect(f.child).toEqual(captured);
+	f.child.fields.description = null;
+	expect((await f.resolve()).params.prompt).toBe("APP-11: Shared requirement\n\n");
 });
 
 it("admits unchanged issues when Jira plugin and viewing metadata change between reads", async () => {
@@ -355,7 +466,40 @@ it("ordinary tickets use a deduplicated component union and reject inactive, emp
 	f.mappings.push(JSON.stringify({ ...JSON.parse(f.mappings[0]), gitlabProfile: "other" }));
 	await expect(f.resolve()).rejects.toThrow("Conflicting profiles");
 	f.child.fields.components = [];
-	await expect(f.resolve()).rejects.toThrow("No repositories mapped");
+	expect((await f.resolve()).params).toMatchObject({
+		repositories: [],
+		startup: { projectIds: ["100"] },
+	});
+});
+
+it("keeps saved repository selections discoverable when they do not match the search", async () => {
+	const f = fixture({}, true);
+	const choices = await f.launcher.mapping.choices?.(
+		{},
+		{ search: "other", values: [f.mappings[0]] },
+	);
+	expect(choices?.map((choice) => choice.value)).toEqual([f.mappings[1], f.mappings[0]]);
+});
+
+it("searches only on demand and caches queries across components while admission reads live metadata", async () => {
+	const f = fixture({}, true);
+	const listProjects = vi.spyOn(f.services.gitlab.client(), "listProjects");
+	const searchProjects = vi.spyOn(f.services.gitlab.client(), "searchProjects");
+	const getProject = vi.spyOn(f.services.gitlab.client(), "getProject");
+	const choices = f.launcher.mapping.choices;
+	if (!choices) throw new Error("Missing repository choices");
+	expect(await choices({})).toEqual([]);
+	expect(await choices({}, { search: " m " })).toEqual([]);
+	expect(searchProjects).not.toHaveBeenCalled();
+	await choices({ "jira.component": "first" }, { search: "monitor" });
+	await choices({ "jira.component": "second" }, { search: "other", values: [f.mappings[0]] });
+	f.launcher.configure({ ...f.services });
+	await choices({ "jira.component": "first" }, { search: " MONITOR " });
+	expect(searchProjects).toHaveBeenCalledTimes(2);
+	expect(listProjects).not.toHaveBeenCalled();
+	expect(getProject).not.toHaveBeenCalled();
+	await f.resolve();
+	expect(getProject).toHaveBeenCalled();
 });
 
 it("keeps saved repository selections discoverable when they do not match the search", async () => {
@@ -449,4 +593,14 @@ it.each([
 	const getProject = client.getProject;
 	client.getProject = async (id) => ({ ...(await getProject(id)), http_url_to_repo: url });
 	await expect(f.resolve()).rejects.toThrow(/origin|HTTPS/);
+});
+
+it("authorizes authenticated Jira reads for every LLM workflow turn", () => {
+	const { process } = createJiraGitLabChange({ docker: false });
+	const params = { wikiTopicId: null } as unknown as JiraGitLabParams;
+	for (const { definition: turn } of process.turns.values()) {
+		if (turn.kind !== "llm") continue;
+		const tools = turn.resolveIntegrationTools?.(params, {} as never) ?? turn.integrationTools;
+		expect(tools).toEqual(expect.arrayContaining(["jira_get_source_issue", "jira_get_issue"]));
+	}
 });

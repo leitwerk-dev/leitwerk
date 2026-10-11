@@ -7,6 +7,7 @@ export const DEFAULT_CONTINUE_PROMPT = "continue";
 /** @internal */
 export const FAILED_TURN_RECOVERY_CODES = [
 	"generic_continue",
+	"outcome_rejected",
 	"missing_outcome_tool",
 	"missing_markdown_result",
 	"missing_required_tool_calls",

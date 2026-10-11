@@ -60,6 +60,7 @@ export function normalizeTurnProgressReport(value: unknown): TurnProgressReport 
 	if (!value || typeof value !== "object" || Array.isArray(value)) return null;
 	const raw = value as Record<string, unknown>;
 	const title = text(raw.title, 160);
+	const summary = text(raw.summary, 2000);
 	if (!title || !Array.isArray(raw.steps) || raw.steps.length > 50) return null;
 	const ids = new Set<string>();
 	const steps = raw.steps.flatMap((value) => {
@@ -81,13 +82,13 @@ export function normalizeTurnProgressReport(value: unknown): TurnProgressReport 
 			},
 		];
 	});
-	if (steps.length !== raw.steps.length || steps.length === 0) return null;
+	if (steps.length !== raw.steps.length || (steps.length === 0 && !summary)) return null;
 	const links = normalizeTurnProgressLinks(raw.links);
 	if (!links) return null;
 	return {
 		title,
 		steps,
-		...(text(raw.summary, 2000) ? { summary: text(raw.summary, 2000) } : {}),
+		...(summary ? { summary } : {}),
 		...(links.length > 0 ? { links } : {}),
 	};
 }

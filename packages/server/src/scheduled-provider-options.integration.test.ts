@@ -17,6 +17,7 @@ import { createDefaultTestProcessGraphRegistry } from "./test-helpers/process-fi
 function setup(options: { defaultAccount?: () => string | undefined } = {}) {
 	const deps = createTestDeps();
 	const config = getDefaultConfig();
+	config.pi.default_model_profile = "scheduled-model";
 	config.pi.model_profiles = [
 		{ id: "scheduled-model", provider: "scheduled-provider", model_id: "scheduled-model" },
 	];

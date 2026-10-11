@@ -41,8 +41,8 @@ function serializeJson(value: unknown): string | null {
 	return serialized ?? null;
 }
 
-function normalizeProjectInputs(
-	launchConfig: ProcessLaunchConfig,
+export function normalizeProjectInputs(
+	launchConfig: Pick<ProcessLaunchConfig, "projects">,
 	commitMessages?: CommitMessageConfig,
 ): ProcessLaunchPlan["projectInputs"] {
 	return (launchConfig.projects ?? []).map((project) => ({

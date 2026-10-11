@@ -44,7 +44,7 @@ export const gitlabPublicationRequest = (mr: GitLabMergeRequest): PublicationReq
 	merge_commit_sha: mr.merge_commit_sha,
 });
 const callFor =
-	(ctx: PublicationContext<GitLabPublicationParams>) =>
+	(ctx: Pick<PublicationContext<unknown>, "callIntegrationTool">) =>
 	<T>(name: string, args: Record<string, unknown> = {}) =>
 		ctx.callIntegrationTool(name, { projectKey: "repo", ...args }) as Promise<T>;
 
@@ -109,7 +109,7 @@ export function gitlabPublicationEvidenceForRequest(
 	return { kind: "observed", ...key };
 }
 /** Shared GitLab publication and repair operations. @public */
-export function createGitLabPublicationAdapter<P extends GitLabPublicationParams>(
+export function createGitLabPublicationAdapter<P extends Partial<GitLabPublicationParams>>(
 	sources: PublicationSource<P>[],
 	namespace = "gitlabRepoChange",
 	describeRequest = (ctx: PublicationContext<P>) => ({
@@ -173,8 +173,10 @@ export function createGitLabPublicationAdapter<P extends GitLabPublicationParams
 			],
 			ci: ["gitlab_observe_merge_request", "gitlab_list_failed_jobs", "gitlab_get_job_trace"],
 		},
-		identity: (ctx) =>
-			resolvePullRequestGitIdentity(ctx, "gitlab", ctx.params.gitlabProfile, false),
+		identity: (ctx) => {
+			if (!ctx.params.gitlabProfile) throw new Error("GitLab repository binding is not resolved");
+			return resolvePullRequestGitIdentity(ctx, "gitlab", ctx.params.gitlabProfile, false);
+		},
 		async ensureRequest(ctx) {
 			return gitlabPublicationRequest(
 				await callFor(ctx)<GitLabMergeRequest>("gitlab_ensure_merge_request", describeRequest(ctx)),

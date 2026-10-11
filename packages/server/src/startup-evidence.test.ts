@@ -69,6 +69,40 @@ const run = (): LaunchRun =>
 		revision: 0,
 	}) as LaunchRun;
 
+it("projects pending startup prerequisites without inventing a worker attempt", () => {
+	const value = buildStartupEvidence({
+		process: {
+			...process(),
+			currentExecution: null,
+			lifecycleStatus: "waiting",
+			metadata: {
+				turnWait: {
+					id: "wait_1",
+					turnId: "plan",
+					revision: 1,
+					status: "waiting",
+					nextCheckAt: 1000,
+					failures: 0,
+					message: "Map Service in Settings",
+					initialSelection: true,
+					start: { turnId: "plan" },
+				},
+			},
+		},
+		turnStarts: [],
+		leases: [],
+		turnRecords: [],
+	});
+	expect(value.attempts).toEqual([]);
+	const projected = projectLaunchRunStartup(run(), value, { status: "completed" });
+	expect(projected.status).toBe("starting");
+	expect(projected.steps.find((step) => step.id === "start_worker")).toMatchObject({
+		status: "pending",
+		label: "Waiting for startup prerequisites",
+		safeSummary: "Map Service in Settings",
+	});
+});
+
 function evidence(
 	input: { leases?: WorkerLease[]; starts?: TurnStartRecord[]; records?: ProcessTurnRecord[] } = {},
 ) {

@@ -9,6 +9,7 @@ import {
 	postProcessTurnContinue,
 	registerSkill,
 	submitQuestionAnswers,
+	validateLauncher,
 } from "./api.js";
 
 const CONFIG_KEY = Symbol.for("leitwerk.uiRuntimeTransportConfig");
@@ -185,5 +186,53 @@ describe("API errors", () => {
 
 		expect(error).toBeInstanceOf(ApiResponseError);
 		expect(error).toMatchObject({ status: 404 });
+	});
+});
+
+describe("validateLauncher", () => {
+	const request = {
+		title: null,
+		launcherInput: { prompt: "Draft" },
+		modelConfig: {},
+		schedule: { mode: "now" as const },
+		skillIds: [],
+	};
+	it("passes schedule context separately from launch inputs", async () => {
+		const fetchImpl = vi.fn(async () => Response.json({ errors: [] }));
+		(globalThis as GlobalWithConfig)[CONFIG_KEY] = { fetchImpl: fetchImpl as typeof fetch };
+		await validateLauncher("test", { ...request, futureExecutionId: "schedule/id" });
+		expect(fetchImpl).toHaveBeenCalledWith(
+			"/api/launchers/test/validate?futureExecutionId=schedule%2Fid",
+			expect.objectContaining({ method: "POST", body: JSON.stringify(request) }),
+		);
+	});
+	it.each([200, 400])("preserves structured validation errors from HTTP %s", async (status) => {
+		const errors = [{ code: "required", fieldId: "repo", message: "Choose a repository" }];
+		const fetchImpl = vi.fn(async () => Response.json({ errors }, { status }));
+		(globalThis as GlobalWithConfig)[CONFIG_KEY] = { fetchImpl: fetchImpl as typeof fetch };
+		const controller = new AbortController();
+		await expect(validateLauncher("test/launcher", request, controller.signal)).resolves.toEqual(
+			errors,
+		);
+		expect(fetchImpl).toHaveBeenCalledWith(
+			"/api/launchers/test%2Flauncher/validate",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify(request),
+				signal: controller.signal,
+			}),
+		);
+	});
+	it.each([
+		{ status: 503, body: { error: "Validation unavailable" } },
+		{ status: 200, body: {} },
+		{ status: 200, body: { errors: [{}] } },
+	])("rejects unavailable or malformed validation results: $status $body", async ({
+		status,
+		body,
+	}) => {
+		const fetchImpl = vi.fn(async () => Response.json(body, { status }));
+		(globalThis as GlobalWithConfig)[CONFIG_KEY] = { fetchImpl: fetchImpl as typeof fetch };
+		await expect(validateLauncher("test", request)).rejects.toThrow();
 	});
 });

@@ -59,6 +59,7 @@ async function createFilesystemWatcherHarness(args: {
 					},
 				},
 			};
+			config.pi.default_model_profile = "filesystem-watcher-model";
 			config.pi.model_profiles = [
 				{
 					id: "filesystem-watcher-model",

@@ -135,6 +135,47 @@ function liveRecord() {
 }
 
 describe("buildChronicleProjection", () => {
+	it("uses automatic-turn activity summaries and a neutral running fallback", () => {
+		const record = { ...liveRecord(), turnType: "automatic" as const };
+		const progress = { title: "Ticket publication", summary: "Creating ticket 3 of 8", steps: [] };
+		expect(buildProjection({ turnRecords: [{ ...record, progress }] }).liveTail).toMatchObject({
+			stateLabel: progress.summary,
+			activitySummary: progress.summary,
+			progress,
+		});
+		expect(buildProjection({ turnRecords: [record] }).liveTail).toMatchObject({
+			stateLabel: "Running…",
+		});
+	});
+
+	it("shows preparation activity until model activity starts or preparation completes", () => {
+		const progress = { title: "Preparation", summary: "Fetching source evidence", steps: [] };
+		const record = { ...liveRecord(), progress };
+		expect(buildProjection({ turnRecords: [record] }).liveTail?.activitySummary).toBe(
+			progress.summary,
+		);
+		const running = buildProjection({
+			turnRecords: [record],
+			activeTurn: makeActiveTurn({
+				assistant: { text: "", thinking: "Inspecting evidence", lastUpdatedAt: null },
+			}),
+		}).liveTail;
+		expect(running?.activitySummary).toBeUndefined();
+		expect(running?.stateLabel).toBe("Reasoning");
+		const completed = buildProjection({
+			turnRecords: [
+				{
+					...record,
+					progress: {
+						...progress,
+						steps: [{ id: "fetch", label: "Fetch evidence", status: "completed" }],
+					},
+				},
+			],
+		}).liveTail;
+		expect(completed?.activitySummary).toBeUndefined();
+	});
+
 	it("projects automatic-turn progress before its result", () => {
 		const progress = {
 			title: "Delivery progress",

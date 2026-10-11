@@ -165,11 +165,17 @@ export interface KubernetesProcessVolumeConfig {
 
 /** @internal */
 export interface KubernetesDockerConfig {
+	/** Default profile for Docker processes without an explicit process/component profile. @internal */
+	worker_runtime_profile?: string;
+	/** Docker-only selector keys override matching global Pod selector keys. @internal */
+	node_selector?: Record<string, string>;
 	/** Pod RuntimeClass selected for every Docker-requiring process. @internal */
 	runtime_class_name?: string;
 	/** Pod user-namespace policy passed directly to spec.hostUsers. @internal */
 	host_users?: boolean;
-	/** @internal Opt in to the verified gVisor Docker wrapper and guest capabilities. */
+	/** Trusted sandbox policy for a separately qualified cluster runtime. @internal */
+	isolation?: "gvisor" | "virtual-machine";
+	/** Legacy alias for isolation: gvisor when isolation is omitted. @internal */
 	gvisor?: boolean;
 	/** StorageClass selected for the process's single retained PVC. @internal */
 	process_storage_class_name?: string;
@@ -217,6 +223,11 @@ export interface LocalWorkerRunnerConfig {
 
 /** @internal */
 export interface KubernetesRunnerConfig {
+	/** Optional worker image preparation on eligible nodes; disabled by default. @internal */
+	image_preload?: {
+		/** @internal */
+		enabled: boolean;
+	};
 	/** Dedicated namespace where the singleton server runs. @internal */
 	server_namespace: string;
 	/** Safe DNS prefix used to derive one namespace per process instance. @internal */
@@ -394,6 +405,8 @@ export interface LeitwerkConfig extends ConfigSnapshot {
 	internal_tls?: InternalTlsConfig;
 	/** Git repositories scanned for operator-managed skills. @internal */
 	skill_repositories?: SkillRepositoryConfig[];
+	/** Installed skill IDs included in new launches unless replaced by process defaults. @public */
+	default_skills?: string[];
 	/** Server-owned repository-aware commit-message generation rules. @internal */
 	commit_messages?: CommitMessageConfig;
 	/** Bounded archive and extraction ceilings for local session transfer. @internal */

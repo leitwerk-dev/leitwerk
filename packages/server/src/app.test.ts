@@ -4,9 +4,10 @@ import {
 	type ExternalSourceArmingLike,
 	type ExternalSourceServiceLike,
 } from "@leitwerk-dev/process-sdk";
+import { createTestAppContext } from "@leitwerk-dev/test-support/integration";
 import { emptyPollResult } from "@leitwerk-dev/watcher-utils";
 import { describe, expect, it, vi } from "vitest";
-import { type AppContext, type AppOptions, createAppContext } from "./app.js";
+import type { AppContext, AppOptions } from "./app.js";
 import { getDefaultConfig } from "./config/index.js";
 import {
 	createFixtureAutomaticTurn,
@@ -23,7 +24,7 @@ function createLocalApp(options: Partial<AppOptions> = {}, maxParallelProcesses?
 	config.server.port = 0;
 	if (maxParallelProcesses !== undefined)
 		config.workers.max_parallel_processes = maxParallelProcesses;
-	return createAppContext({
+	return createTestAppContext({
 		config,
 		logger: false,
 		extensionCatalog: buildExtensionCatalogFromModules([]),
@@ -315,7 +316,7 @@ describe("createAppContext", () => {
 			},
 		};
 
-		const ctx = await createAppContext({
+		const ctx = await createTestAppContext({
 			config,
 			extensionCatalog: buildExtensionCatalogFromModules([]),
 		});

@@ -66,6 +66,15 @@ export interface PublicationParams {
 	baseBranch: string;
 }
 
+/** Narrow process params to a resolved repository before publication. @public */
+export function requirePublicationParams<P>(params: P): P & PublicationParams {
+	const value = asUnknownRecord(params);
+	for (const key of ["owner", "repo", "workBranch", "baseBranch"])
+		if (typeof value?.[key] !== "string" || !value[key])
+			throw new Error("Repository binding is not resolved");
+	return params as P & PublicationParams;
+}
+
 /** @public */
 export type PublicationContext<P> = FlowAutomaticRunContext<P, RepositoryChangeState>;
 
@@ -156,7 +165,7 @@ export interface PublicationSource<P> {
 }
 
 /** @public */
-export interface RepositoryChangePublicationAdapter<P extends PublicationParams> {
+export interface RepositoryChangePublicationAdapter<P> {
 	/** Optional server maintenance uses existing business turns and adds no worker positions. @public */
 	maintenance?: {
 		/** @public */ source: ExternalActionSource<
@@ -179,7 +188,7 @@ export interface RepositoryChangePublicationAdapter<P extends PublicationParams>
 		/** @internal */
 		key: string;
 		/** @internal */
-		params: P;
+		params: P & PublicationParams;
 	}[];
 	/** Reconcile remote terminal state before new writes or source cancellation. @public */
 	observeTerminal?(
@@ -462,7 +471,7 @@ export function patchPublicationState(
 
 /** @public */
 export function applyPublicationEvidence(
-	params: PublicationParams,
+	params: unknown,
 	current: PublicationState,
 	evidence: PublicationEvidence,
 	countFailure = true,
@@ -482,15 +491,16 @@ export function applyPublicationEvidence(
 				ciRecoveryCycles: current.ciRecoveryCycles + (countFailure ? 1 : 0),
 			};
 		case "conflict": {
+			const repository = requirePublicationParams(params);
 			const conflict = validateConflict(
 				evidence.conflict,
 				{
-					owner: params.owner,
-					repo: params.repo,
+					owner: repository.owner,
+					repo: repository.repo,
 					prNumber: current.prNumber ?? 0,
 					headSha: current.headSha ?? "",
-					headBranch: params.workBranch,
-					baseBranch: params.baseBranch,
+					headBranch: repository.workBranch,
+					baseBranch: repository.baseBranch,
 				},
 				current.lastConflictKey,
 			);
@@ -557,7 +567,7 @@ function deliveryProgress(value: PublicationState, label: string, activeStepId?:
 }
 
 /** @public */
-export function createRepositoryChangePublication<P extends PublicationParams>(
+export function createRepositoryChangePublication<P>(
 	adapter: RepositoryChangePublicationAdapter<P>,
 ) {
 	const ids = adapter.ids;
@@ -641,7 +651,7 @@ export function createRepositoryChangePublication<P extends PublicationParams>(
 			(adapter.repositories || adapter.unchanged) &&
 			!repositoryHasChanges(
 				ctx.repo.get("repo").fsPath,
-				ctx.params.baseBranch,
+				ctx.repo.get("repo").baseBranch,
 				ctx.repo.get("repo").key,
 			)
 		) {

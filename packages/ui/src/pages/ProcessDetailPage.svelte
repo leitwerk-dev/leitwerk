@@ -305,7 +305,7 @@ function handlePageKeydown(event: KeyboardEvent) {
 	if (shouldIgnorePlainShortcut(event)) return;
 	if (event.key === "Escape" && inspectorTarget) {
 		event.preventDefault();
-		inspectorNavigation.back();
+		inspectorNavigation.returnToProcess();
 	} else if (event.key === "i" && !inspectorTarget) {
 		event.preventDefault();
 		toggleProcessInfoOverlay();
@@ -318,14 +318,14 @@ function dismissLaunchWarning() {
 }
 
 function toggleProcessInfoOverlay() {
-	if (inspectorTarget) inspectorNavigation.showChronicle();
+	if (inspectorTarget) inspectorNavigation.returnToProcess();
 	else inspectorNavigation.visit({ scope: "process", section: "overview" });
 }
 function closeProcessInfoOverlay() {
-	inspectorNavigation.showChronicle();
+	inspectorNavigation.returnToProcess();
 }
 function closeBlockingDetailOverlays() {
-	if (inspectorTarget) inspectorNavigation.showChronicle();
+	if (inspectorTarget) inspectorNavigation.returnToProcess();
 }
 function openReasoningDetails(turnRecordId: string, itemId?: string) {
 	inspectorNavigation.visit({ scope: "execution", turnRecordId, section: "trace", itemId });
@@ -386,7 +386,7 @@ function openReasoningDetails(turnRecordId: string, itemId?: string) {
 
   {#if inspectorTarget}
     <ProcessInspector {instanceId} target={inspectorTarget} detail={$detailState.data} error={$detailState.error}
-      onNavigate={inspectorNavigation.visit} onBack={inspectorNavigation.back} onChronicle={inspectorNavigation.showChronicle}
+      onNavigate={inspectorNavigation.visit} onReturn={inspectorNavigation.returnToProcess} onChronicle={inspectorNavigation.showChronicle}
       onReady={inspectorNavigation.restoreContent}
       onShowSummary={waitingReport && summaryDismissed ? showSummary : undefined} />
   {/if}

@@ -13,6 +13,7 @@ import type {
 	StartupRecoverySummary,
 } from "@leitwerk-dev/protocol";
 import { completeLaunchWhenReady, failLaunchRun } from "./launch-pipeline.js";
+import { pendingTurnWait } from "./process-engine/turn-wait-state.js";
 
 export interface StartupEvidenceInput {
 	process: ProcessInstance;
@@ -23,6 +24,7 @@ export interface StartupEvidenceInput {
 }
 
 export interface StartupEvidence {
+	readiness?: { message: string | null };
 	attempts: readonly StartupAttemptSummary[];
 	currentAttempt: StartupAttemptSummary | null;
 	authoritativeAttemptId: string | null;
@@ -259,6 +261,9 @@ export function buildStartupEvidence(input: StartupEvidenceInput): StartupEviden
 		null;
 	return {
 		attempts: recoveredAttempts,
+		...(pendingTurnWait(input.process)?.initialSelection
+			? { readiness: { message: pendingTurnWait(input.process)?.message ?? null } }
+			: {}),
 		currentAttempt,
 		authoritativeAttemptId: authoritative?.startRecordId ?? null,
 		recovery: buildStartupRecovery(input.process, turnStartsById),
@@ -343,6 +348,21 @@ export function projectLaunchRunStartup(
 			}),
 		};
 		const failedStep = attempt?.steps.find((step) => step.status === "failed");
+		if (!attempt && evidence.readiness) {
+			next = {
+				...next,
+				steps: next.steps.map((step) =>
+					step.id === "start_worker"
+						? {
+								...step,
+								status: "pending",
+								label: "Waiting for startup prerequisites",
+								safeSummary: evidence.readiness?.message ?? "Checking startup prerequisites…",
+							}
+						: step,
+				),
+			};
+		}
 		if (failedStep) {
 			next = failLaunchRun(
 				next,

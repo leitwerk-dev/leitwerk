@@ -88,6 +88,30 @@ export function buildProcessLauncherRegistry(
 			[],
 	});
 
+	async function resolveUiLauncher(
+		launcherId: string,
+		input: Record<string, unknown>,
+		ctx: LauncherContext,
+		preview: boolean,
+	) {
+		const { launcher, ui } = requireUiLauncher(launcherId);
+		const resolve = preview
+			? (ui.resolvePreviewConfig ?? ui.resolveLaunchConfig)
+			: ui.resolveLaunchConfig;
+		const resolved = await resolve.call(ui, input, createLauncherContext(launcher.processId, ctx));
+		if (!resolved.ok) return resolved;
+		const result = buildResolvedProcessLauncher(
+			launcher,
+			resolved.launchConfig,
+			options.commitMessages,
+		);
+		if (preview) result.launchPlan.preview = true;
+		return {
+			ok: true as const,
+			launcher: result,
+		};
+	}
+
 	const uiLaunchers = [...launchers.values()]
 		.filter((launcher) => launcher.definition.ui)
 		.map(
@@ -142,22 +166,10 @@ export function buildProcessLauncherRegistry(
 		},
 
 		async resolveUiLauncher(launcherId, input, ctx = {}) {
-			const { launcher, ui } = requireUiLauncher(launcherId);
-			const resolved = await ui.resolveLaunchConfig(
-				input,
-				createLauncherContext(launcher.processId, ctx),
-			);
-			if (!resolved.ok) {
-				return resolved;
-			}
-			return {
-				ok: true as const,
-				launcher: buildResolvedProcessLauncher(
-					launcher,
-					resolved.launchConfig,
-					options.commitMessages,
-				),
-			};
+			return resolveUiLauncher(launcherId, input, ctx, false);
+		},
+		async resolveUiLauncherPreview(launcherId, input, ctx = {}) {
+			return resolveUiLauncher(launcherId, input, ctx, true);
 		},
 	};
 }

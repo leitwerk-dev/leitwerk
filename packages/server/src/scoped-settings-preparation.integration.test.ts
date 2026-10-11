@@ -18,7 +18,7 @@ import { createTestTurnStart } from "./test-helpers/process-model-fixtures.js";
 import {
 	createSettingsFixture,
 	model,
-	repositoryInstructions,
+	repositoryLabel,
 } from "./test-helpers/scoped-settings-fixtures.js";
 
 async function setup() {
@@ -105,6 +105,50 @@ async function setup() {
 }
 
 describe("scoped settings at the turn preparation boundary", () => {
+	it("records the Docker fallback profile in a prepared LLM start while retaining explicit choices", async () => {
+		const fixture = await setup();
+		const { config, catalog, repos, deps } = fixture;
+		config.workers.runner = "kubernetes";
+		if (!config.kubernetes) throw new Error("Expected Kubernetes config");
+		config.kubernetes.docker = { worker_runtime_profile: "docker_vm" };
+		config.worker_runtime_profiles = {
+			generic: { image: "registry.test/ordinary:1" },
+			docker_vm: { image: "registry.test/docker:1", resources: { limits: { memory: "16Gi" } } },
+		};
+		const definition = catalog.processes.get("settings_process");
+		if (!definition) throw new Error("Expected process definition");
+		definition.runtime = { docker: true };
+		const process = repos.processes.create({ processId: definition.id, selectedTurnId: "run" });
+		const processActionRegistry = buildProcessActionRegistry(catalog);
+		for (const expected of ["docker_vm", "generic"]) {
+			if (expected === "generic") {
+				config.process_configs ??= {};
+				config.process_configs[definition.id] = {
+					...config.process_configs[definition.id],
+					turn_configs: config.process_configs[definition.id]?.turn_configs ?? {},
+					worker_runtime_profile: "generic",
+				};
+			}
+			const writes = createWrites({
+				turnStartWrites: [
+					{
+						kind: "create",
+						input: createTestTurnStart({ instanceId: process.id, turnId: "run" }),
+					},
+				],
+			});
+			expect(
+				await prepareCreatedTurnStarts({ ...deps, processActionRegistry }, process, writes),
+			).toEqual({ ok: true });
+			const write = writes.turnStartWrites[0];
+			if (write.kind !== "create") throw new Error("Expected prepared turn start");
+			expect(write.input.state).toMatchObject({
+				kind: "starting",
+				start: { kind: "llm", workerRuntimeProfileId: expected },
+			});
+		}
+	});
+
 	it("records the installed Pi runtime version in prepared resource snapshots", async () => {
 		const { repos, prepare, deps } = await setup();
 		const process = repos.processes.create({
@@ -131,7 +175,7 @@ describe("scoped settings at the turn preparation boundary", () => {
 	});
 
 	it.each([
-		repositoryInstructions,
+		repositoryLabel,
 		model,
 	])("recovers corrected $key settings on an operator startup retry", async (definition) => {
 		const { repos, settings, write, createCommands } = await setup();
@@ -168,7 +212,7 @@ describe("scoped settings at the turn preparation boundary", () => {
 			kind: "preparation_failed",
 			code: "invalid_model_configuration",
 		});
-		write(definition.key, definition.key === model.key ? "second" : "Corrected instructions");
+		write(definition.key, definition.key === model.key ? "second" : "Corrected report label");
 		expect((await commands.retryStartup(process.id, blocked.id)).ok).toBe(true);
 		const recovered = repos.processes.getById(process.id);
 		if (recovered?.currentExecution?.kind !== "worker_start") throw new Error("Missing start");
@@ -182,18 +226,18 @@ describe("scoped settings at the turn preparation boundary", () => {
 			expect.objectContaining({ turnId: "review", turnType: "human", status: "succeeded" }),
 		]);
 	});
-	it("captures model and instructions together, retains recovery snapshots, and resolves edits for a new operator retry", async () => {
+	it("captures model and settings together, retains recovery snapshots, and resolves edits for a new operator retry", async () => {
 		const { repos, write, prepare, deps, policy } = await setup();
 		const process = repos.processes.create({
 			processId: "settings_process",
 			selectedTurnId: "run",
 		});
 		write(model.key, "second");
-		write(repositoryInstructions.key, "Before preparation");
+		write(repositoryLabel.key, "Before preparation");
 		const first = prepare(process);
 		// Resource assembly yields; edits during it belong only to a later start.
 		write(model.key, "first");
-		write(repositoryInstructions.key, "After preparation");
+		write(repositoryLabel.key, "After preparation");
 		expect(await first.done).toEqual({ ok: true });
 		const firstWrite = first.writes.turnStartWrites[0];
 		if (firstWrite.kind !== "create") throw new Error("Expected created start");
@@ -205,12 +249,8 @@ describe("scoped settings at the turn preparation boundary", () => {
 				scopedSettings: {
 					values: expect.arrayContaining([
 						expect.objectContaining({ key: model.key, value: "second" }),
+						expect.objectContaining({ key: repositoryLabel.key, value: "Before preparation" }),
 					]),
-					instructions: [
-						expect.objectContaining({
-							setting: expect.objectContaining({ value: "Before preparation" }),
-						}),
-					],
 				},
 			},
 		});
@@ -234,11 +274,9 @@ describe("scoped settings at the turn preparation boundary", () => {
 					start: {
 						model: { profileId: "first" },
 						scopedSettings: {
-							instructions: [
-								expect.objectContaining({
-									setting: expect.objectContaining({ value: "After preparation" }),
-								}),
-							],
+							values: expect.arrayContaining([
+								expect.objectContaining({ key: repositoryLabel.key, value: "After preparation" }),
+							]),
 						},
 					},
 				},
@@ -246,7 +284,7 @@ describe("scoped settings at the turn preparation boundary", () => {
 		});
 	});
 
-	it("parks invalid required instructions without sending a worker start", async () => {
+	it("parks invalid required settings without sending a worker start", async () => {
 		const { repos, prepare } = await setup();
 		const process = repos.processes.create({
 			processId: "settings_process",
@@ -254,7 +292,7 @@ describe("scoped settings at the turn preparation boundary", () => {
 		});
 		repos.scopedSettings.write({
 			subjectId: "instance",
-			key: repositoryInstructions.key,
+			key: repositoryLabel.key,
 			value: 123,
 			mode: "replace",
 			reset: false,
@@ -276,7 +314,7 @@ describe("scoped settings at the turn preparation boundary", () => {
 			},
 		});
 	});
-	it("resolves scheduled actions at dispatch using the same model and instructions as the current preview", async () => {
+	it("resolves scheduled actions at dispatch using the same model and settings as the current preview", async () => {
 		const { repos, policy, settings, deps, write, createCommands } = await setup();
 		const commands = createCommands();
 		const process = repos.processes.create({
@@ -287,7 +325,7 @@ describe("scoped settings at the turn preparation boundary", () => {
 			paramsJson: "{}",
 		});
 		write(model.key, "first");
-		write(repositoryInstructions.key, "When scheduled");
+		write(repositoryLabel.key, "When scheduled");
 		const scheduled = repos.futureExecutions.create({
 			kind: "action",
 			scheduleKind: "once",
@@ -298,7 +336,7 @@ describe("scoped settings at the turn preparation boundary", () => {
 			nextRunAt: "2026-09-26T06:00:00Z",
 		});
 		write(model.key, "second");
-		write(repositoryInstructions.key, "When dispatched");
+		write(repositoryLabel.key, "When dispatched");
 		const preview = policy.evaluate({
 			kind: "process_turn",
 			process,

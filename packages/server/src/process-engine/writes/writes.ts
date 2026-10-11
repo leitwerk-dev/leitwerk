@@ -18,7 +18,10 @@ import type {
 import type { CreateProcessEventInput } from "../../db/process-event-repo.js";
 import type { UpdateProcessInstanceInput } from "../../db/process-instance-repo.js";
 import type { CreateProcessLeafOutcomeSnapshotInput } from "../../db/process-leaf-outcome-snapshot-repo.js";
-import type { UpdateProcessProjectInput } from "../../db/process-project-repo.js";
+import type {
+	CreateProcessProjectInput,
+	UpdateProcessProjectInput,
+} from "../../db/process-project-repo.js";
 import type {
 	CreateProcessTurnAnnotationInput,
 	UpdateProcessTurnAnnotationInput,
@@ -176,6 +179,8 @@ export interface Writes {
 		/** @internal */
 		input: UpdateProcessProjectInput;
 	};
+	/** Initial bindings, committed before the first worker start. @internal */
+	initialProjects?: CreateProcessProjectInput[];
 	/** @internal */
 	turnRecordWrites: TurnRecordWrite[];
 	/** @internal */
@@ -222,6 +227,7 @@ export function createWrites(init: Partial<Writes> = {}): Writes {
 		processPatch: init.processPatch ?? {},
 		changedFields: [...(init.changedFields ?? [])],
 		...(init.projectWrite ? { projectWrite: init.projectWrite } : {}),
+		...(init.initialProjects ? { initialProjects: [...init.initialProjects] } : {}),
 		turnRecordWrites: [...(init.turnRecordWrites ?? [])],
 		turnStartWrites: [...(init.turnStartWrites ?? [])],
 		mappedRunWrites: [...(init.mappedRunWrites ?? [])],
@@ -251,6 +257,11 @@ export function mergeWrites(...writesList: Array<Writes | undefined>): Writes {
 		if (writes.projectWrite) {
 			if (merged.projectWrite) throw new Error("Cannot merge multiple process-project writes");
 			merged.projectWrite = writes.projectWrite;
+		}
+		if (writes.initialProjects) {
+			if (merged.initialProjects)
+				throw new Error("Cannot merge multiple initial repository bindings");
+			merged.initialProjects = writes.initialProjects;
 		}
 		merged.turnRecordWrites.push(...writes.turnRecordWrites);
 		merged.turnStartWrites.push(...writes.turnStartWrites);

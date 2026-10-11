@@ -12,6 +12,7 @@ import { createToolRendererIndex } from "../../../lib/tool-call-rendering.js";
 import { wsStore } from "../../../lib/ws.svelte.js";
 import ExecutionDetails from "./ExecutionDetails.svelte";
 import { createInspectionData } from "./inspection-data.svelte.js";
+import type { ChronicleTarget } from "./inspector-navigation.js";
 import ProcessReference from "./ProcessReference.svelte";
 
 interface Props {
@@ -20,8 +21,8 @@ interface Props {
 	detail: ProcessDetailData | null;
 	error: string | null;
 	onNavigate: (target: InspectorTarget) => void;
-	onBack: () => void;
-	onChronicle: (target?: { turnRecordId?: string; turnId?: string }) => void;
+	onReturn: () => void;
+	onChronicle: (target: ChronicleTarget) => void;
 	onShowSummary?: () => void;
 	onReady?: () => boolean | void;
 }
@@ -31,7 +32,7 @@ let {
 	detail,
 	error,
 	onNavigate,
-	onBack,
+	onReturn,
 	onChronicle,
 	onShowSummary,
 	onReady = () => {},
@@ -60,6 +61,9 @@ const data = createInspectionData({
 	},
 });
 const execution = $derived(data.summary?.execution);
+const hasAncestorBreadcrumb = $derived(
+	target.scope === "step" || (target.scope === "execution" && Boolean(execution)),
+);
 const step = $derived(
 	detail?.processFlow.nodes.find(
 		(node) => node.turnId === (target.scope === "step" ? target.turnId : execution?.turnId),
@@ -89,11 +93,10 @@ const sections = $derived(
      The chronicle retains actions and drafts while hidden. Finish: review and document the built surface. -->
 <section class="inspector" aria-labelledby="inspector-heading" data-section="process-inspector">
   <header class="inspector-header">
-    <div class="inspector-controls">
-      <button class="ui-button" onclick={onBack}>Back</button>
-      <button class="ui-button" data-action="show-in-chronicle" onclick={() => onChronicle()}>Show in chronicle</button>
+    <div class="inspector-navigation">
+      <p class="breadcrumbs"><button class="breadcrumb" onclick={() => hasAncestorBreadcrumb ? onNavigate({scope:"process", section:"overview"}) : onReturn()}>{detail?.process.title ?? detail?.processDisplayName ?? instanceId}</button>{#if target.scope === "execution" && execution}<span aria-hidden="true"> / </span><button class="breadcrumb" onclick={() => onNavigate({scope:"step", turnId:execution.turnId})}>{step?.description ?? execution.turnId}</button><span aria-hidden="true"> / </span>Execution{:else if target.scope === "step"}<span aria-hidden="true"> / </span>Workflow step{/if}</p>
+      <button class="ui-button return-button" data-action="return-to-process" onclick={onReturn}>Return to process</button>
     </div>
-    <p class="breadcrumbs"><button class="breadcrumb" onclick={() => onNavigate({scope:"process", section:"overview"})}>{detail?.process.title ?? detail?.processDisplayName ?? instanceId}</button>{#if target.scope === "execution" && execution}<span aria-hidden="true"> / </span><button class="breadcrumb" onclick={() => onNavigate({scope:"step", turnId:execution.turnId})}>{step?.description ?? execution.turnId}</button><span aria-hidden="true"> / </span>Execution{:else if target.scope === "step"}<span aria-hidden="true"> / </span>Workflow step{/if}</p>
     <div class="identity-row"><h1 id="inspector-heading" tabindex="-1">{target.scope === "execution" ? `${step?.description ?? execution?.turnId ?? "Execution"}${execution ? ` · Attempt ${execution.attemptNumber}` : ""}` : target.scope === "step" ? step?.description ?? target.turnId : "Process inspector"}</h1>
     {#if target.scope === "execution"}<div class="execution-nav"><button class="ui-button" aria-label="Previous execution" disabled={!data.summary?.previousTurnRecordId} onclick={() => data.summary?.previousTurnRecordId && onNavigate({scope:"execution", turnRecordId:data.summary.previousTurnRecordId, section:target.section})}>Previous</button><button class="ui-button" aria-label="Next execution" disabled={!data.summary?.nextTurnRecordId} onclick={() => data.summary?.nextTurnRecordId && onNavigate({scope:"execution", turnRecordId:data.summary.nextTurnRecordId, section:target.section})}>Next</button></div>{/if}</div>
     {#if target.scope === "execution"}
@@ -113,7 +116,7 @@ const sections = $derived(
     {#if target.scope === "invalid"}<p role="status">{target.reason}</p>
     {:else if !detail}<p role="status">{error ?? "Loading process…"}</p>
     {:else if target.scope === "execution"}
-      <ExecutionDetails {target} {data} toolRendererIndex={renderers} questions={detail?.questionRequests.filter(request => request.turnRecordId === target.turnRecordId) ?? []} {onNavigate} onChronicle={() => onChronicle()} {onReady} />
+      <ExecutionDetails {target} {data} toolRendererIndex={renderers} questions={detail?.questionRequests.filter(request => request.turnRecordId === target.turnRecordId) ?? []} {onNavigate} onChronicle={() => onChronicle({turnRecordId:target.turnRecordId})} {onReady} />
     {:else}<ProcessReference {detail} {target} {onNavigate} {onChronicle} {onShowSummary} {onReady} />{/if}
   </div>
 </section>
@@ -125,14 +128,16 @@ const sections = $derived(
 .context-summary {display:flex; gap:var(--space-sm) var(--space-md); align-items:baseline; justify-content:space-between; flex-wrap:wrap; padding:var(--space-sm) var(--space-md); background:var(--chronicle-panel-muted); border-radius:var(--radius-sm); font-size:var(--type-body-sm); margin-top:var(--space-sm);} .context-summary p {margin:0; overflow-wrap:anywhere;} .context-summary > div {display:flex; gap:var(--space-md); flex-wrap:wrap;}
 .inspector {display:flex; flex-direction:column; height:100%; min-height:0; min-width:0; background:var(--chronicle-card-surface); color:var(--chronicle-text);}
 .inspector-header {flex:none; padding:var(--space-md) var(--space-xl) 0; border-bottom:1px solid var(--chronicle-border);}
-.inspector-controls {display:flex; justify-content:space-between; gap:var(--space-sm); margin-bottom:var(--space-sm);}
-.breadcrumbs {display:flex; align-items:baseline; flex-wrap:wrap; gap:var(--space-xs); margin:0 0 var(--space-xs); font-size:var(--type-body-sm); color:var(--chronicle-text-muted); overflow-wrap:anywhere;}
+.inspector-navigation {display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:var(--space-xs) var(--space-md); margin-bottom:var(--space-xs);}
+.return-button {flex:none; margin-left:auto;}
+.breadcrumbs {display:flex; align-items:baseline; flex-wrap:wrap; min-width:0; gap:var(--space-xs); margin:0; font-size:var(--type-body-sm); color:var(--chronicle-text-muted); overflow-wrap:anywhere;}
+.breadcrumbs .breadcrumb {min-height:44px; text-align:left;}
 h1 {margin:0; font-size:var(--type-title-md); font-weight:650; line-height:1.4; overflow-wrap:anywhere;}
 nav {display:flex; flex-wrap:wrap; gap:var(--space-xs) var(--space-lg); margin-top:var(--space-md);}
 nav a {color:var(--chronicle-text-muted); text-decoration:none; padding:var(--space-sm) 0; border-bottom:2px solid transparent; font-size:var(--type-body-sm); font-weight:600;}
 nav a[aria-current] {color:var(--chronicle-accent); border-bottom-color:var(--chronicle-accent);}
 nav a:hover {color:var(--chronicle-text);}
-a:focus-visible, h1:focus-visible {outline:2px solid var(--chronicle-accent); outline-offset:4px;}
+a:focus-visible, button:focus-visible, h1:focus-visible {outline:2px solid var(--chronicle-accent); outline-offset:4px;}
 .inspector-scroll {flex:1; min-height:0; min-width:0; overflow:auto; padding:var(--space-lg) var(--space-xl) var(--space-xl); overscroll-behavior:contain; scrollbar-gutter:stable;}
 @media(max-width:960px) {.inspector {height:calc(100dvh - 84px - env(safe-area-inset-top));}}
 @media(max-width:720px) {.inspector-header {padding:var(--space-md) var(--space-sm) 0;} .inspector-scroll {padding:var(--space-md) var(--space-sm);} nav {gap:var(--space-sm); margin-top:var(--space-sm);} nav a {font-size:var(--type-caption); min-height:44px; display:flex; align-items:center;} }

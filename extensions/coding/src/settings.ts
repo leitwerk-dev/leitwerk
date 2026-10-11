@@ -10,6 +10,36 @@ export const codingPurposes = {
 	review: "coding.review",
 } as const;
 
+/** @internal */
+export const commitMessageGitTimeout: SettingDefinition<number> = {
+	key: "coding.commit_message_git_timeout_ms",
+	schemaVersion: 1,
+	scopes: ["instance", "repository"],
+	merge: "replace",
+	defaultValue: 60_000,
+	schema: {
+		parse(value) {
+			if (
+				typeof value !== "number" ||
+				!Number.isSafeInteger(value) ||
+				value <= 0 ||
+				value > 2_147_483_647
+			) {
+				throw new Error(
+					"Git timeout must be a positive integer of at most 2147483647 milliseconds",
+				);
+			}
+			return value;
+		},
+	},
+	form: {
+		label: "Commit-message Git timeout (milliseconds)",
+		group: "Implementation",
+		control: "number",
+		description: "Deadline per Git inspection command. Defaults to 60000 ms (60 seconds).",
+	},
+};
+
 function model(key: string, label: string, group: string): SettingDefinition<string | null> {
 	return {
 		key,
@@ -33,39 +63,17 @@ function model(key: string, label: string, group: string): SettingDefinition<str
 }
 
 /** @public */
-export const repositoryInstructions: SettingDefinition<string> = {
-	key: "coding.repository_instructions",
-	schemaVersion: 1,
-	scopes: ["instance", "repository"],
-	merge: "instructions",
-	defaultValue: "",
-	schema: {
-		parse(value) {
-			if (typeof value !== "string") throw new Error("Instructions must be text");
-			return value;
-		},
-	},
-	form: {
-		label: "Repository instructions",
-		group: "Instructions",
-		control: "textarea",
-		description:
-			"Included in planning, implementation, and review. Use repository-specific guidance; credentials belong in provider configuration.",
-	},
-};
-
-/** @public */
 export const codingSettings: ScopedSettingsDeclaration = {
 	settings: [
 		model("coding.planning_model", "Planning model", "Planning"),
 		model("coding.implementation_model", "Implementation model", "Implementation"),
 		model("coding.review_model", "Review model", "Review"),
-		repositoryInstructions,
+		commitMessageGitTimeout,
 	],
 	purposes: Object.entries(codingPurposes).map(([name, id]) => ({
 		id,
 		label: name,
 		modelSettingKey: `coding.${name}_model`,
-		instructionSettingKeys: [repositoryInstructions.key],
+		...(name === "implementation" ? { settingKeys: [commitMessageGitTimeout.key] } : {}),
 	})),
 };

@@ -115,7 +115,7 @@ describe("turn-outcomes", () => {
 			["number", 1.5, Infinity, "a finite number", "finite numbers"],
 			["boolean", false, 0, "a boolean", "booleans"],
 			["object", { key: "value" }, [], "an object", "objects"],
-		] as const)("validates %s scalars and array items", (type, valid, invalid, label, plural) => {
+		] as const)("validates %s scalars and array items", (type, valid, invalid) => {
 			for (const array of [false, true]) {
 				const turn = createTestLlmTurn("validate", {
 					done: {
@@ -137,7 +137,7 @@ describe("turn-outcomes", () => {
 				expect(validate(invalid)).toEqual({
 					ok: false,
 					code: "invalid_value",
-					message: `validate.done expects value to be ${array ? `an array of ${plural}` : label}`,
+					message: `validate.done: value${array ? "[0]" : ""}: expected ${type === "number" ? "a finite number" : type === "object" ? "an object" : type}`,
 				});
 			}
 		});
@@ -270,4 +270,52 @@ describe("turn-outcomes", () => {
 			expect(res?.code).toBe("missing_instance_id");
 		});
 	});
+});
+
+it("validates nested object parameters, enums, and source excerpt requirements", () => {
+	const turn = createTestLlmTurn("inspect", {
+		done: {
+			description: "Assessment saved",
+			parameters: {
+				assessment: {
+					type: "object",
+					description: "Assessment",
+					required: true,
+					requiredProperties: ["decision", "evidence"],
+					additionalProperties: false,
+					properties: {
+						decision: { type: "string", enum: ["create", "blocked"] },
+						evidence: {
+							type: "array",
+							items: {
+								type: "object",
+								required: ["excerpt"],
+								additionalProperties: false,
+								properties: { excerpt: { type: "string", minLength: 1 } },
+							},
+						},
+					},
+				},
+			},
+		},
+	});
+	const validate = (assessment: unknown) =>
+		validateTurnOutcome(
+			{
+				instanceId: "agent",
+				turnRecordId: "record",
+				turnId: "inspect",
+				outcome: "done",
+				params: { assessment },
+			},
+			turn,
+		);
+	expect(validate({ decision: "create", evidence: [{ excerpt: "source" }] })).toBeNull();
+	for (const assessment of [
+		{ decision: "create" },
+		{ decision: "create_ticket", evidence: [] },
+		{ decision: "create", evidence: [{ excerpt: "" }] },
+		{ decision: "create", evidence: [], ticket: {} },
+	])
+		expect(validate(assessment)?.code).toBe("invalid_assessment");
 });

@@ -17,6 +17,8 @@ export interface GitOps {
 	clone(repoLocator: string, targetDir: string): Promise<void>;
 	/** @internal */
 	checkout(repoDir: string, branch: string): Promise<void>;
+	/** Refuse dirty worktrees and pin an exact commit. @internal */
+	checkoutRevision?(repoDir: string, revision: string): Promise<void>;
 	/** @internal */
 	createBranch(repoDir: string, branchName: string, startPoint: string): Promise<void>;
 	/** @internal */
@@ -134,7 +136,15 @@ async function collectMaterializedEntries(
 	const entries: ComponentManifestEntry[] = [];
 	for (const comp of plan.components) {
 		try {
-			entries.push(reusable.get(comp.key) ?? (await materializeComponentEntry(plan, comp, git)));
+			const retained = reusable.get(comp.key);
+			if (retained?.revision) {
+				if (!git.checkoutRevision) throw new Error("Pinned repository checkout is unavailable");
+				const dir = componentDir(plan.workspaceRoot, comp.key);
+				await git.checkoutRevision(dir, retained.revision);
+				if ((await git.getHeadSha(dir)).toLowerCase() !== retained.revision.toLowerCase())
+					throw new Error("Recovered checkout HEAD does not match captured commit");
+			}
+			entries.push(retained ?? (await materializeComponentEntry(plan, comp, git)));
 		} catch (e) {
 			errors.push(`${comp.key}: ${e instanceof Error ? e.message : String(e)}`);
 		}
@@ -263,7 +273,10 @@ export async function prepareOnDemandRunRoot(
 	plan: RunRootPlan,
 	git: RunRootGitOps,
 	projectKey?: string,
+	revision?: string,
 ): Promise<MaterializeResult> {
+	if (revision !== undefined && (!projectKey || !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(revision)))
+		throw new Error("Use a captured full commit SHA");
 	if (
 		projectKey !== undefined &&
 		!plan.components.some((component) => component.key === projectKey)
@@ -280,7 +293,24 @@ export async function prepareOnDemandRunRoot(
 		),
 	};
 	// Selection only omits missing components, so retained entries keep the same validation.
-	return repairRunRoot(validation, selected, git);
+	const result = await repairRunRoot(validation, selected, git);
+	if (revision !== undefined) {
+		if (!git.checkoutRevision) throw new Error("Pinned repository checkout is unavailable");
+		const dir = componentDir(plan.workspaceRoot, projectKey!);
+		await git.checkoutRevision(dir, revision);
+		const headSha = await git.getHeadSha(dir);
+		if (headSha.toLowerCase() !== revision.toLowerCase())
+			throw new Error("Checkout HEAD does not match captured commit");
+		return finalizeRunRoot(
+			selected,
+			git,
+			result.manifest.components.map((entry) =>
+				entry.key === projectKey ? { ...entry, headSha, revision } : entry,
+			),
+			[],
+		);
+	}
+	return result;
 }
 
 export async function validateRunRoot(

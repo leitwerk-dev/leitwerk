@@ -36,6 +36,11 @@ const workflowTransitions: JiraTransition[] = [
 		name: "Request review",
 		to: { id: "4", name: "In Review", statusCategory: { key: "indeterminate" } },
 	},
+	{
+		id: "51",
+		name: "Verify change",
+		to: { id: "5", name: "In Verification", statusCategory: { key: "indeterminate" } },
+	},
 ];
 
 /** @internal */

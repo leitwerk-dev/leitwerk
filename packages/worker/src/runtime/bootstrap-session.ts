@@ -15,6 +15,7 @@ import { DockerRegistryCredentials } from "../docker-registry-credentials.js";
 import type { InputItem } from "../input-consumer.js";
 import type { PiTreeHandle, PiTreeHandleFactory } from "../pi-adapter.js";
 import type { WorkerSessionSnapshotExchange } from "../session-snapshot-exchange.js";
+import { transportErrorDetails } from "../transport-error.js";
 import { isLlmWorkerStartPayload } from "../worker-start-payload.js";
 import type { RunRootGitOps } from "../workspace/run-root.js";
 import type { WorkerRuntimeScheduler } from "./adapters.js";
@@ -27,6 +28,7 @@ import {
 import type { WorkerRuntimeSettings } from "./settings.js";
 
 interface PreparedSessionBase {
+	outcomeContract?: Record<string, unknown>;
 	scopedSettings?: import("@leitwerk-dev/domain").ScopedSettingsSnapshot;
 	processSnapshot: ProcessInstance;
 	projectSnapshots: ProcessProject[];
@@ -100,6 +102,8 @@ function validatePreparedSession(input: {
 		);
 	}
 	const base = {
+		outcomeContract:
+			turnStartState.start?.kind === "llm" ? turnStartState.start.outcomeContract : undefined,
 		processSnapshot: bootstrapped.processSnapshot,
 		projectSnapshots: bootstrapped.projectSnapshots,
 		resolvedWorkerProcess: process,
@@ -253,7 +257,7 @@ export class WorkerLiveResources {
 					level: "warn",
 					code: "session_snapshot.upload_failed",
 					message: `Session snapshot upload failed: ${error instanceof Error ? error.message : String(error)}`,
-					details: { attempt, reason },
+					details: { attempt, reason, transport: transportErrorDetails(error) },
 				});
 				if (attempt < 3) await this.deps.scheduler.sleep(100 * attempt);
 			}
@@ -261,6 +265,7 @@ export class WorkerLiveResources {
 		if (!metadata.required) return;
 		throw new Error(
 			`Mandatory session snapshot upload failed before ${reason}: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+			{ cause: lastError },
 		);
 	}
 

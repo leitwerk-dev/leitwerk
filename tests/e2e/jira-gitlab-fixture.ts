@@ -1,4 +1,4 @@
-import { writeFileSync } from "node:fs";
+import { rmSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -42,9 +42,35 @@ export async function jiraFixture(
 		emptyFindings?: boolean;
 		labelDuringSimplification?: boolean;
 		cancelAfterFirstPublication?: boolean;
+		unmapped?: boolean;
+		toolchainUnavailable?: boolean;
 	} = {},
 ) {
+	const commandPath = process.env.PATH;
+	const restoreCommandPath = () => {
+		if (commandPath === undefined) delete process.env.PATH;
+		else process.env.PATH = commandPath;
+	};
 	const root = await mkdtemp(path.join(tmpdir(), "leitwerk-jira-change-"));
+	const miseCommand = path.join(root, "mise");
+	const toolchainFailure = path.join(root, "toolchain-unavailable");
+	writeFileSync(
+		miseCommand,
+		`#!/bin/sh
+case "$1" in
+  --version) echo 'mise 2026.8.14';;
+  install)
+    if [ -f "${toolchainFailure}" ]; then
+      echo 'Toolchain installation unavailable' >&2
+      exit 1
+    fi;;
+  ls) echo '{}';;
+  *) exit 2;;
+esac
+`,
+		{ mode: 0o755 },
+	);
+	if (options.toolchainUnavailable) writeFileSync(toolchainFailure, "");
 	const git = new LocalGit(root);
 	const remotes = ["service", "client"].map(
 		(name) => git.seed({ owner: "team", name, files: { "README.md": `${name}\n` } }).bare,
@@ -75,7 +101,7 @@ export async function jiraFixture(
 			components: [
 				{ id: "200", name: "Service" },
 				{ id: "201", name: "Client" },
-				{ id: "202", name: "Unmapped" },
+				{ id: "202", name: "Shared" },
 			],
 			labels: [
 				"use-leitwerk-beta",
@@ -269,16 +295,23 @@ export async function jiraFixture(
 			listen,
 			extensionCatalog: catalog,
 			appOverrides: {
+				turnWait: { pollIntervalMs: 50 },
 				localWorkerSpawnImpl: createInProcessWorkerSpawn({
 					extensionCatalog: catalog,
 					piFactory: pi,
+					// In-process workers share PATH; each real worker starts with a fresh environment.
+					async beforeTurnBootstrap() {
+						restoreCommandPath();
+					},
 				}),
 			},
 			configOverride(config) {
+				config.development_tools.local.mise_command = miseCommand;
 				config.storage.sqlite_path = path.join(root, "state.sqlite");
 				config.storage.tree_files_dir = path.join(root, "trees");
 				config.storage.process_workspaces_dir = path.join(root, "workspaces");
 				config.pi.agent_dir = path.join(root, "pi");
+				config.pi.default_model_profile = "fake";
 				config.pi.model_profiles = [
 					{ id: "fake", provider: "jira-test-model", model_id: "fake", thinking_level: "off" },
 				];
@@ -301,8 +334,12 @@ export async function jiraFixture(
 		});
 	}
 	onFinished(async () => {
-		await harness?.ctx.app.close();
-		await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+		try {
+			await harness?.ctx.app.close();
+		} finally {
+			restoreCommandPath();
+			await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+		}
 	});
 	await start(false);
 	const settings = harness.ctx.deps.scopedSettingsService;
@@ -312,6 +349,7 @@ export async function jiraFixture(
 	for (const [component, projectIds] of [
 		["200", [1]],
 		["201", [1, 2]],
+		["202", options.unmapped ? [] : [1]],
 	] as const) {
 		const subject = subjects.find(
 			(subject) =>
@@ -337,7 +375,8 @@ export async function jiraFixture(
 	}
 	await harness.ctx.listen({ host: "127.0.0.1", port: 0, useBoundAddressAsBaseUrl: true });
 	const driver = createProcessDriver(() => harness.ctx);
-	const wait: typeof driver.wait = (id, turn, lifecycle = "waiting", timeout = 12000) =>
+	// Repository Git and tool preparation share the full suite's subprocess load.
+	const wait: typeof driver.wait = (id, turn, lifecycle = "waiting", timeout = 30000) =>
 		driver.waitForProcess(
 			id,
 			(process) => {
@@ -391,6 +430,37 @@ export async function jiraFixture(
 		git,
 		state,
 		poll,
+		async mapComponent(componentId: string, projectIds: number[]) {
+			const settings = harness.ctx.deps.scopedSettingsService;
+			if (!settings) throw new Error("Missing scoped settings");
+			const subject = settings
+				.listScopes()
+				.subjects.find(
+					(subject) =>
+						subject.scopeType === "jira.component" &&
+						JSON.parse(subject.identity)[1] === componentId,
+				);
+			if (!subject) throw new Error("Missing component subject");
+			const preview = await settings.preview(subject.id);
+			settings.write({
+				subjectId: subject.id,
+				key: flow.launcher.mapping.key,
+				value: projectIds.map((projectId) =>
+					JSON.stringify({
+						origin: gitlab.baseUrl,
+						projectId,
+						gitlabProfile: "team",
+						sshProfile: "team",
+					}),
+				),
+				mode: "replace",
+				reset: false,
+				expectedRevision:
+					preview.fields.find((field) => field.key === flow.launcher.mapping.key)?.override
+						?.revision ?? 0,
+				actor: SYSTEM_ACTOR,
+			});
+		},
 		waitForPlanBypass: (id: string, planRevision: number) =>
 			waitForValue(
 				() =>
@@ -418,6 +488,10 @@ export async function jiraFixture(
 		},
 		setUnavailable(value: boolean) {
 			issueUnavailable = value;
+		},
+		setToolchainUnavailable(value: boolean) {
+			if (value) writeFileSync(toolchainFailure, "");
+			else rmSync(toolchainFailure, { force: true });
 		},
 		async pollDiscovery() {
 			clock += 30000;
@@ -463,6 +537,8 @@ export async function jiraFixture(
 				id,
 				options.noChanges ? null : "deliver_change",
 				options.noChanges ? "completed" : "waiting",
+				// Initial delivery includes several worker turns and publication to both repositories.
+				30000,
 			);
 			return id;
 		},
