@@ -46,33 +46,21 @@ export function synthesizeStubToolArgs(
 
 /** @internal */
 export function createSchemaDrivenToolCallScriptResolver(): StubToolCallScriptResolver {
-	return ({ tools }: StubToolCallScriptResolverContext) => {
+	return ({ tools: availableTools }: StubToolCallScriptResolverContext) => {
+		// Failure requires an explicit script; the default stub completes successful turns.
+		const tools = availableTools.filter((tool) => tool.name !== "abort_turn");
 		const markdownTool = tools.find((tool) => tool.name === "markdown_result");
 		const completionTool = tools.find(
 			(tool) => tool.name !== "markdown_result" && tool.name !== "upload_result_images",
 		);
-		if (markdownTool && completionTool) {
-			return {
-				calls: [
-					{
-						toolName: markdownTool.name,
-						args: synthesizeStubToolArgs(markdownTool.parameters),
-					},
-					{
-						toolName: completionTool.name,
-						args: synthesizeStubToolArgs(completionTool.parameters),
-					},
-				],
-			};
-		}
-		const tool = markdownTool ?? completionTool ?? tools[0];
-		if (!tool) {
-			return undefined;
-		}
-		return {
-			toolName: tool.name,
-			args: synthesizeStubToolArgs(tool.parameters),
-		};
+		const selectedTools =
+			markdownTool && completionTool
+				? [markdownTool, completionTool]
+				: [markdownTool ?? completionTool ?? tools[0]];
+		const calls = selectedTools
+			.filter((tool) => tool !== undefined)
+			.map((tool) => ({ toolName: tool.name, args: synthesizeStubToolArgs(tool.parameters) }));
+		return calls.length > 1 ? { calls } : calls[0];
 	};
 }
 

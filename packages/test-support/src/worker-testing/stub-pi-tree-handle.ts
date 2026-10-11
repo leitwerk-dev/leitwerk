@@ -692,7 +692,7 @@ export class StubPiTreeHandle implements PiTreeHandle {
 					createdEntryIds.push(intermediateEntryId);
 				}
 			}
-		} else if (tools.size > 0 && !hasScriptedChunks) {
+		} else if ([...tools.keys()].some((name) => name !== "abort_turn") && !hasScriptedChunks) {
 			throw new Error(
 				`Stub Pi prompt requires a stub tool-call script when tools are provided (${[...tools.keys()].join(", ")})`,
 			);

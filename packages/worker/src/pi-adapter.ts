@@ -189,17 +189,9 @@ export async function inspectPiTreeForPlanning(
 		path.dirname(input.treeFile),
 		input.sessionCwd,
 	);
-	const entries: Array<Pick<PiTreeEntry, "id" | "parentId">> = [];
-	const visit = (nodes: readonly PiTreeNode[]) => {
-		for (const node of nodes) {
-			entries.push({ id: node.entry.id, parentId: node.entry.parentId });
-			visit(node.children);
-		}
-	};
-	visit(manager.getTree() as unknown as readonly PiTreeNode[]);
 	return {
 		currentLeafId: manager.getLeafId() ?? null,
-		entries,
+		entries: manager.getEntries().map(({ id, parentId }) => ({ id, parentId })),
 	};
 }
 
@@ -234,8 +226,10 @@ interface PiBeforeToolCallContext {
 	toolCall: { name: string };
 }
 
+type PiTurnDecision = { action: "end" | "continue" } | undefined;
+
 interface PiAgentLoopConfig {
-	shouldStopAfterTurn?: (...args: unknown[]) => boolean | Promise<boolean>;
+	finishTurn?: (...args: unknown[]) => PiTurnDecision | Promise<PiTurnDecision>;
 	[key: string]: unknown;
 }
 
@@ -399,18 +393,20 @@ function validateRequestedActiveTools(
 	}
 }
 
-function toPiRunDetails(input: {
-	loadedAgentsFiles: Array<{ path: string; content: string }>;
-	loadedSkills: Array<{ name: string; path: string }>;
-	availableToolNames: string[];
-}): PiRunDetails {
+function toPiRunDetails(
+	{ resourceLoader }: AgentSessionServices,
+	availableToolNames: readonly string[],
+): PiRunDetails {
 	return {
-		loadedAgentsFiles: input.loadedAgentsFiles.map((file) => ({
-			path: file.path,
-			sizeBytes: Buffer.byteLength(file.content, "utf8"),
+		loadedAgentsFiles: resourceLoader.getAgentsFiles().agentsFiles.map(({ path, content }) => ({
+			path,
+			sizeBytes: Buffer.byteLength(content, "utf8"),
 		})),
-		loadedSkills: input.loadedSkills.map((skill) => ({ name: skill.name, path: skill.path })),
-		availableToolNames: [...input.availableToolNames],
+		loadedSkills: resourceLoader.getSkills().skills.map(({ name, filePath }) => ({
+			name,
+			path: filePath,
+		})),
+		availableToolNames: [...availableToolNames],
 	};
 }
 
@@ -590,18 +586,18 @@ class TerminalAcknowledgementRuntime {
 		this.clearTimeout();
 	}
 
-	onTurnCompleted(args: readonly unknown[]): boolean | null {
+	onTurnCompleted(args: readonly unknown[]): PiTurnDecision {
 		const state = this.control.state();
 		if (!this.acknowledgementTurnStarted) {
-			if (state !== "outcome_accepted") return null;
+			if (state !== "outcome_accepted") return undefined;
 			this.acknowledgementTurnStarted = true;
-			return false;
+			return { action: "continue" };
 		}
 		if (state === "outcome_accepted") {
 			const context = isObjectLike(args[0]) ? (args[0] as PiCompletedTurnContext) : null;
 			this.settleFromMessage(context?.message);
 		}
-		return true;
+		return { action: "end" };
 	}
 
 	async run(run: () => Promise<void>): Promise<void> {
@@ -883,18 +879,22 @@ function summarizeSessionGlobalDiagnosticDetails(
 	return keys.length > 0 ? { ...base, keys } : base;
 }
 
-function buildKnownSessionGlobalDiagnostic(
-	event: AgentSessionEvent,
-	code: string,
-	message: string,
-): PiSessionDiagnostic {
-	return buildSessionDiagnostic({
-		level: "info",
-		code,
-		message,
-		timestamp: readSessionEventTimestamp(event),
-		details: summarizeSessionGlobalDiagnosticDetails(event),
-	});
+const SESSION_GLOBAL_EVENT_MESSAGES = new Map([
+	["session_info_changed", "Pi session info changed"],
+	["agent_start", "Pi agent run started"],
+	["agent_end", "Pi agent run ended"],
+	["agent_settled", "Pi agent run settled"],
+	["queue_update", "Pi session queue updated"],
+]);
+
+const TOOL_CALL_EVENT_TYPES = {
+	toolcall_start: "toolcall.start",
+	toolcall_delta: "toolcall.delta",
+	toolcall_end: "toolcall.end",
+} as const;
+
+function singlePiEvent(event: PiEvent): AgentSessionEventTranslation {
+	return { piEvents: [event], diagnostics: [] };
 }
 
 function buildUnknownSessionEventDiagnostic(
@@ -957,16 +957,18 @@ export function translateAgentSessionEventEnvelope(
 		turnSequence: number;
 	},
 ): AgentSessionEventTranslation {
-	const runtimeEventType = (event as unknown as { type?: unknown }).type;
-	if (runtimeEventType === "session_info_changed") {
+	const globalMessage = SESSION_GLOBAL_EVENT_MESSAGES.get(event.type);
+	if (globalMessage) {
 		return {
 			piEvents: [],
 			diagnostics: [
-				buildKnownSessionGlobalDiagnostic(
-					event,
-					"pi.session_info_changed",
-					"Pi session info changed",
-				),
+				buildSessionDiagnostic({
+					level: "info",
+					code: `pi.${event.type}`,
+					message: globalMessage,
+					timestamp: readSessionEventTimestamp(event),
+					details: summarizeSessionGlobalDiagnosticDetails(event),
+				}),
 			],
 		};
 	}
@@ -980,32 +982,22 @@ export function translateAgentSessionEventEnvelope(
 			state.turnSequence = turnIndex;
 			const turnId = `turn-${turnIndex}`;
 			state.currentTurnId = turnId;
-			return {
-				piEvents: [
-					{
-						type: "turn.start",
-						turnId,
-						data: {},
-						timestamp: toIsoTimestamp((event as { timestamp?: unknown }).timestamp),
-					},
-				],
-				diagnostics: [],
-			};
+			return singlePiEvent({
+				type: "turn.start",
+				turnId,
+				data: {},
+				timestamp: toIsoTimestamp((event as { timestamp?: unknown }).timestamp),
+			});
 		}
 		case "turn_end": {
 			const turnId = state.currentTurnId ?? `turn-${state.turnSequence}`;
 			state.currentTurnId = null;
-			return {
-				piEvents: [
-					{
-						type: "turn.end",
-						turnId,
-						data: {},
-						timestamp: toIsoTimestamp((event.message as { timestamp?: unknown }).timestamp),
-					},
-				],
-				diagnostics: [],
-			};
+			return singlePiEvent({
+				type: "turn.end",
+				turnId,
+				data: {},
+				timestamp: toIsoTimestamp((event.message as { timestamp?: unknown }).timestamp),
+			});
 		}
 		case "message_start":
 			return { piEvents: [], diagnostics: [] };
@@ -1021,71 +1013,25 @@ export function translateAgentSessionEventEnvelope(
 			const timestamp = toIsoTimestamp((event.message as { timestamp?: unknown }).timestamp);
 			switch (event.assistantMessageEvent.type) {
 				case "text_delta":
-					return {
-						piEvents: [
-							{
-								type: "stream.delta",
-								turnId,
-								data: {
-									text: event.assistantMessageEvent.delta,
-									streamType: "text",
-								},
-								timestamp,
-							},
-						],
-						diagnostics: [],
-					};
 				case "thinking_delta":
-					return {
-						piEvents: [
-							{
-								type: "stream.delta",
-								turnId,
-								data: {
-									text: event.assistantMessageEvent.delta,
-									streamType: "thinking",
-								},
-								timestamp,
-							},
-						],
-						diagnostics: [],
-					};
+					return singlePiEvent({
+						type: "stream.delta",
+						turnId,
+						data: {
+							text: event.assistantMessageEvent.delta,
+							streamType: event.assistantMessageEvent.type === "text_delta" ? "text" : "thinking",
+						},
+						timestamp,
+					});
 				case "toolcall_start":
-					return {
-						piEvents: [
-							{
-								type: "toolcall.start",
-								turnId,
-								data: normalizePiEventData(assistantMessageEvent),
-								timestamp,
-							},
-						],
-						diagnostics: [],
-					};
 				case "toolcall_delta":
-					return {
-						piEvents: [
-							{
-								type: "toolcall.delta",
-								turnId,
-								data: normalizePiEventData(assistantMessageEvent),
-								timestamp,
-							},
-						],
-						diagnostics: [],
-					};
 				case "toolcall_end":
-					return {
-						piEvents: [
-							{
-								type: "toolcall.end",
-								turnId,
-								data: normalizePiEventData(assistantMessageEvent),
-								timestamp,
-							},
-						],
-						diagnostics: [],
-					};
+					return singlePiEvent({
+						type: TOOL_CALL_EVENT_TYPES[event.assistantMessageEvent.type],
+						turnId,
+						data: normalizePiEventData(assistantMessageEvent),
+						timestamp,
+					});
 				case "start":
 				case "done":
 				case "error":
@@ -1167,79 +1113,59 @@ export function translateAgentSessionEventEnvelope(
 			return { piEvents, diagnostics: [] };
 		}
 		case "auto_retry_start":
-			return {
-				piEvents: [
-					{
-						type: "retry.start",
-						turnId: activeTurnId(state),
-						data: {
-							attempt: event.attempt,
-							maxAttempts: event.maxAttempts,
-							delayMs: event.delayMs,
-							errorMessage: event.errorMessage,
-							message: describeRetryStart({
-								attempt: event.attempt,
-								maxAttempts: event.maxAttempts,
-								delayMs: event.delayMs,
-								errorMessage: event.errorMessage,
-							}),
-						},
-						timestamp: new Date().toISOString(),
-					},
-				],
-				diagnostics: [],
-			};
+			return singlePiEvent({
+				type: "retry.start",
+				turnId: activeTurnId(state),
+				data: {
+					attempt: event.attempt,
+					maxAttempts: event.maxAttempts,
+					delayMs: event.delayMs,
+					errorMessage: event.errorMessage,
+					message: describeRetryStart({
+						attempt: event.attempt,
+						maxAttempts: event.maxAttempts,
+						delayMs: event.delayMs,
+						errorMessage: event.errorMessage,
+					}),
+				},
+				timestamp: new Date().toISOString(),
+			});
 		case "auto_retry_end": {
 			const finalError = readNonEmptyString(event.finalError);
-			return {
-				piEvents: [
-					{
-						type: "retry.end",
-						turnId: activeTurnId(state),
-						data: {
-							success: event.success,
-							attempt: event.attempt,
-							...(finalError ? { finalError } : {}),
-							message: describeRetryEnd({
-								success: event.success,
-								attempt: event.attempt,
-								finalError,
-							}),
-						},
-						timestamp: new Date().toISOString(),
-					},
-				],
-				diagnostics: [],
-			};
+			return singlePiEvent({
+				type: "retry.end",
+				turnId: activeTurnId(state),
+				data: {
+					success: event.success,
+					attempt: event.attempt,
+					...(finalError ? { finalError } : {}),
+					message: describeRetryEnd({
+						success: event.success,
+						attempt: event.attempt,
+						finalError,
+					}),
+				},
+				timestamp: new Date().toISOString(),
+			});
 		}
 		case "tool_execution_start":
-			return {
-				piEvents: [
-					{
-						type: "tool.call",
-						turnId: state.currentTurnId ?? `turn-tool-${event.toolCallId}`,
-						data: {
-							toolCallId: event.toolCallId,
-							name: event.toolName,
-							arguments: event.args,
-						},
-						timestamp: new Date().toISOString(),
-					},
-				],
-				diagnostics: [],
-			};
+			return singlePiEvent({
+				type: "tool.call",
+				turnId: state.currentTurnId ?? `turn-tool-${event.toolCallId}`,
+				data: {
+					toolCallId: event.toolCallId,
+					name: event.toolName,
+					arguments: event.args,
+				},
+				timestamp: new Date().toISOString(),
+			});
 		case "tool_execution_update":
-			return {
-				piEvents: [
-					{
-						type: "tool.update",
-						turnId: state.currentTurnId ?? `turn-tool-${event.toolCallId}`,
-						data: normalizePiEventData(event as unknown as Record<string, unknown>),
-						timestamp: readSessionEventTimestamp(event),
-					},
-				],
-				diagnostics: [],
-			};
+			return singlePiEvent({
+				type: "tool.update",
+				turnId: state.currentTurnId ?? `turn-tool-${event.toolCallId}`,
+				data: normalizePiEventData(event as unknown as Record<string, unknown>),
+				timestamp: readSessionEventTimestamp(event),
+			});
 		case "tool_execution_end": {
 			const turnId = state.currentTurnId ?? `turn-tool-${event.toolCallId}`;
 			const timestamp = new Date().toISOString();
@@ -1255,7 +1181,7 @@ export function translateAgentSessionEventEnvelope(
 				timestamp,
 			};
 			if (!event.isError) {
-				return { piEvents: [toolResultEvent], diagnostics: [] };
+				return singlePiEvent(toolResultEvent);
 			}
 			return {
 				piEvents: [
@@ -1278,57 +1204,13 @@ export function translateAgentSessionEventEnvelope(
 			};
 		}
 		case "compaction_start":
-			return {
-				piEvents: [
-					{
-						type: "compaction.start",
-						turnId: activeTurnId(state),
-						data: normalizePiEventData(event as unknown as Record<string, unknown>),
-						timestamp: readSessionEventTimestamp(event),
-					},
-				],
-				diagnostics: [],
-			};
 		case "compaction_end":
-			return {
-				piEvents: [
-					{
-						type: "compaction.end",
-						turnId: activeTurnId(state),
-						data: normalizePiEventData(event as unknown as Record<string, unknown>),
-						timestamp: readSessionEventTimestamp(event),
-					},
-				],
-				diagnostics: [],
-			};
-		case "agent_start":
-			return {
-				piEvents: [],
-				diagnostics: [
-					buildKnownSessionGlobalDiagnostic(event, "pi.agent_start", "Pi agent run started"),
-				],
-			};
-		case "agent_end":
-			return {
-				piEvents: [],
-				diagnostics: [
-					buildKnownSessionGlobalDiagnostic(event, "pi.agent_end", "Pi agent run ended"),
-				],
-			};
-		case "agent_settled":
-			return {
-				piEvents: [],
-				diagnostics: [
-					buildKnownSessionGlobalDiagnostic(event, "pi.agent_settled", "Pi agent run settled"),
-				],
-			};
-		case "queue_update":
-			return {
-				piEvents: [],
-				diagnostics: [
-					buildKnownSessionGlobalDiagnostic(event, "pi.queue_update", "Pi session queue updated"),
-				],
-			};
+			return singlePiEvent({
+				type: event.type === "compaction_start" ? "compaction.start" : "compaction.end",
+				turnId: activeTurnId(state),
+				data: normalizePiEventData(event as unknown as Record<string, unknown>),
+				timestamp: readSessionEventTimestamp(event),
+			});
 		default:
 			return {
 				piEvents: [],
@@ -1498,8 +1380,10 @@ export class SdkPiTreeHandle implements PiTreeHandle {
 			options.activeTools !== undefined ? [...options.activeTools] : [];
 		validateRequestedActiveTools(requestedActiveToolNames, this.availableToolNames);
 		const previousActiveToolNames = this.session.getActiveToolNames();
-		const needsRuntimeHooks =
-			options.shouldBlockToolCall !== undefined || options.terminalAcknowledgement !== undefined;
+		const needsFinishTurnHook = Boolean(
+			options.terminalAcknowledgement || options.shouldStopAfterTurn,
+		);
+		const needsRuntimeHooks = options.shouldBlockToolCall !== undefined || needsFinishTurnHook;
 		if (
 			customTools.length === 0 &&
 			!needsRuntimeHooks &&
@@ -1521,8 +1405,7 @@ export class SdkPiTreeHandle implements PiTreeHandle {
 		const previousCustomTools = [...mutableSession._customTools];
 		const previousBeforeToolCall = mutableAgent.beforeToolCall;
 		const previousCreateLoopConfig = mutableAgent.createLoopConfig;
-		const loopConfigHook = previousCreateLoopConfig;
-		if (options.terminalAcknowledgement && typeof loopConfigHook !== "function") {
+		if (needsFinishTurnHook && typeof previousCreateLoopConfig !== "function") {
 			throw new Error("Pi SDK version incompatible: agent loop configuration hook unavailable");
 		}
 		const terminalAcknowledgement = options.terminalAcknowledgement
@@ -1553,22 +1436,18 @@ export class SdkPiTreeHandle implements PiTreeHandle {
 				}
 				return await previousBeforeToolCall?.(context as never, signal);
 			};
-			if (terminalAcknowledgement && typeof loopConfigHook === "function") {
+			if (needsFinishTurnHook && typeof previousCreateLoopConfig === "function") {
 				mutableAgent.createLoopConfig = (loopOptions?: unknown) => {
-					const baseConfig = loopConfigHook.call(mutableAgent, loopOptions);
-					const previousShouldStop = baseConfig.shouldStopAfterTurn;
+					const baseConfig = previousCreateLoopConfig.call(mutableAgent, loopOptions);
+					const previousFinishTurn = baseConfig.finishTurn;
 					return {
 						...baseConfig,
-						shouldStopAfterTurn: async (...args: unknown[]) => {
-							const acknowledgementDecision =
-								terminalAcknowledgement?.onTurnCompleted(args) ?? null;
-							if (acknowledgementDecision !== null) {
-								return acknowledgementDecision;
-							}
-							if (typeof previousShouldStop === "function") {
-								return await previousShouldStop(...args);
-							}
-							return false;
+						finishTurn: async (...args: unknown[]) => {
+							if (options.shouldStopAfterTurn?.()) return { action: "end" };
+							return (
+								terminalAcknowledgement?.onTurnCompleted(args) ??
+								(await previousFinishTurn?.(...args))
+							);
 						},
 					};
 				};
@@ -1797,24 +1676,7 @@ export class SdkPiTreeHandle implements PiTreeHandle {
 		}
 		branch.assertResult("continue", entryId, entryId);
 		const timestamp = this.getEntry(entryId)?.timestamp ?? new Date().toISOString();
-		this.emitSubscribedEvent({
-			type: "inspection",
-			turnId: activeTurnId(this.eventState),
-			timestamp,
-			data: {
-				capture: {
-					version: 1,
-					id: `entry:${entryId}`,
-					timestamp,
-					fact: {
-						kind: "entry_link",
-						entryId,
-						piTurnId: activeTurnId(this.eventState),
-						role: "user",
-					},
-				},
-			},
-		});
+		this.emitEntryLink(entryId, timestamp, "user");
 		return entryId;
 	}
 
@@ -1856,27 +1718,31 @@ export class SdkPiTreeHandle implements PiTreeHandle {
 		this.sessionUnsubscribe = this.session.subscribe((event) => this.emitSessionEvent(event));
 	}
 
+	private emitEntryLink(entryId: string, timestamp: string, role: string): void {
+		const turnId = activeTurnId(this.eventState);
+		this.emitSubscribedEvent({
+			type: "inspection",
+			turnId,
+			timestamp,
+			data: {
+				capture: {
+					version: 1,
+					id: `entry:${entryId}`,
+					timestamp,
+					fact: { kind: "entry_link", entryId, piTurnId: turnId, role },
+				},
+			},
+		});
+	}
+
 	private emitSessionEvent(event: AgentSessionEvent): void {
 		if (event.type === "entry_appended") {
 			const entry = event.entry;
-			this.emitSubscribedEvent({
-				type: "inspection",
-				turnId: activeTurnId(this.eventState),
-				timestamp: entry.timestamp,
-				data: {
-					capture: {
-						version: 1,
-						id: `entry:${entry.id}`,
-						timestamp: entry.timestamp,
-						fact: {
-							kind: "entry_link",
-							entryId: entry.id,
-							piTurnId: activeTurnId(this.eventState),
-							role: entry.type === "message" ? entry.message.role : entry.type,
-						},
-					},
-				},
-			});
+			this.emitEntryLink(
+				entry.id,
+				entry.timestamp,
+				entry.type === "message" ? entry.message.role : entry.type,
+			);
 			return;
 		}
 		const translated = translateAgentSessionEventEnvelope(event, this.eventState);
@@ -1995,37 +1861,20 @@ function validateManagedLoadedResources(input: {
 	const skills = input.services.resourceLoader.getSkills().skills;
 	const prompts = input.services.resourceLoader.getPrompts().prompts;
 	const agentsFiles = input.services.resourceLoader.getAgentsFiles().agentsFiles;
-	for (const extension of extensions) {
-		assertLoadedPathAllowed({
-			path: extension.resolvedPath,
-			agentDir: input.agentDir,
-			workspaceRoot: input.workspaceRoot,
-			kind: "extension",
-		});
-	}
-	for (const skill of skills) {
-		assertLoadedPathAllowed({
-			path: skill.filePath,
-			agentDir: input.agentDir,
-			workspaceRoot: input.workspaceRoot,
-			kind: "skill",
-		});
-	}
-	for (const prompt of prompts) {
-		assertLoadedPathAllowed({
-			path: prompt.filePath,
-			agentDir: input.agentDir,
-			workspaceRoot: input.workspaceRoot,
-			kind: "prompt",
-		});
-	}
-	for (const agentsFile of agentsFiles) {
-		assertLoadedPathAllowed({
-			path: agentsFile.path,
-			agentDir: input.agentDir,
-			workspaceRoot: input.workspaceRoot,
-			kind: "context file",
-		});
+	for (const [kind, paths] of [
+		["extension", extensions.map((extension) => extension.resolvedPath)],
+		["skill", skills.map((skill) => skill.filePath)],
+		["prompt", prompts.map((prompt) => prompt.filePath)],
+		["context file", agentsFiles.map((file) => file.path)],
+	] as const) {
+		for (const loadedPath of paths) {
+			assertLoadedPathAllowed({
+				path: loadedPath,
+				agentDir: input.agentDir,
+				workspaceRoot: input.workspaceRoot,
+				kind,
+			});
+		}
 	}
 
 	const loadedResourceIds: string[] = [];
@@ -2229,14 +2078,7 @@ export class SdkPiTreeHandleFactory implements PiTreeHandleFactory {
 			agentDir: opts.agentDir,
 			workspaceRoot: opts.workspaceRoot,
 		});
-		const runDetails = toPiRunDetails({
-			loadedAgentsFiles: services.resourceLoader.getAgentsFiles().agentsFiles,
-			loadedSkills: services.resourceLoader.getSkills().skills.map((skill) => ({
-				name: skill.name,
-				path: skill.filePath,
-			})),
-			availableToolNames: opts.piConfig?.availableToolNames ?? [],
-		});
+		const runDetails = toPiRunDetails(services, opts.piConfig?.availableToolNames ?? []);
 		this.preparedServices.set(managedServicesKey(opts.agentDir, opts.sessionCwd), services);
 		return {
 			loadedResourceIds,
@@ -2306,14 +2148,7 @@ export class SdkPiTreeHandleFactory implements PiTreeHandleFactory {
 			noTools: "builtin",
 		});
 		getMutableSession(session)._refreshToolRegistry({ activeToolNames: [] });
-		const runDetails = toPiRunDetails({
-			loadedAgentsFiles: services.resourceLoader.getAgentsFiles().agentsFiles,
-			loadedSkills: services.resourceLoader.getSkills().skills.map((skill) => ({
-				name: skill.name,
-				path: skill.filePath,
-			})),
-			availableToolNames,
-		});
+		const runDetails = toPiRunDetails(services, availableToolNames);
 		return new SdkPiTreeHandle(session, {
 			treeFile: opts.treeFile,
 			isResumed: opts.resume,

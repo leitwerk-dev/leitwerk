@@ -118,6 +118,20 @@ export async function executeLogicalPromptPlan<TOutcome extends string>(input: {
 	const taint = (reason: string) => input.emit?.({ kind: "session_tainted", reason });
 	let currentPlan = input.plan;
 	let compactionContinueAttempts = 0;
+	const requestCompactionContinuation = (resultPiEntryId: string | null, afterError = false) => {
+		compactionContinueAttempts += 1;
+		trace({
+			level: "info",
+			code: afterError
+				? "turn.compaction_error_continue_requested"
+				: "turn.compaction_continue_requested",
+			message: `Turn '${input.turnId}' requested an explicit continue after ${afterError ? "context-window compaction" : "compaction"}`,
+			turnRecordId: input.turnRecordId,
+			turnId: input.turnId,
+			details: { attempt: compactionContinueAttempts, resultPiEntryId },
+		});
+		currentPlan = DEFAULT_CONTINUATION_PLAN;
+	};
 	const reportFailure = (
 		error: unknown,
 		args: {
@@ -158,21 +172,18 @@ export async function executeLogicalPromptPlan<TOutcome extends string>(input: {
 	for (;;) {
 		const plan = currentPlan;
 		const guardSuspension = new PromptGuardSuspension();
-		const promptOptions =
-			input.toolSession.tools.length > 0
-				? {
-						tools: input.toolSession.tools,
-						activeTools: input.toolSession.activeTools,
-						shouldBlockToolCall: (toolName: string) =>
-							input.toolSession.shouldBlockToolCall(toolName),
-						suspendPromptGuards: () => guardSuspension.suspend(),
-						terminalAcknowledgement: {
-							...input.toolSession.terminalAcknowledgement,
-							timeoutMs: TERMINAL_ACKNOWLEDGEMENT_TIMEOUT_MS,
-							isOperatorAbortRequested: () => input.operatorAbortSignal?.aborted === true,
-						},
-					}
-				: { activeTools: input.toolSession.activeTools };
+		const promptOptions = {
+			tools: input.toolSession.tools,
+			activeTools: input.toolSession.activeTools,
+			shouldBlockToolCall: (toolName: string) => input.toolSession.shouldBlockToolCall(toolName),
+			shouldStopAfterTurn: () => Boolean(input.toolSession.getCompletionState().abortReason),
+			suspendPromptGuards: () => guardSuspension.suspend(),
+			terminalAcknowledgement: {
+				...input.toolSession.terminalAcknowledgement,
+				timeoutMs: TERMINAL_ACKNOWLEDGEMENT_TIMEOUT_MS,
+				isOperatorAbortRequested: () => input.operatorAbortSignal?.aborted === true,
+			},
+		};
 
 		let runPrompt = () =>
 			plan.kind === "continue"
@@ -237,6 +248,7 @@ export async function executeLogicalPromptPlan<TOutcome extends string>(input: {
 				);
 			}
 			const completionState = input.toolSession.getCompletionState();
+			if (completionState.abortReason) throw new Error(completionState.abortReason);
 			const acknowledgementFailure = input.toolSession.terminalAcknowledgement.failureReason();
 			if (acknowledgementFailure) {
 				trace({
@@ -255,19 +267,7 @@ export async function executeLogicalPromptPlan<TOutcome extends string>(input: {
 					compactionContinueAttempts,
 				})
 			) {
-				compactionContinueAttempts += 1;
-				trace({
-					level: "info",
-					code: "turn.compaction_continue_requested",
-					message: `Turn '${input.turnId}' requested an explicit continue after compaction`,
-					turnRecordId: input.turnRecordId,
-					turnId: input.turnId,
-					details: {
-						attempt: compactionContinueAttempts,
-						resultPiEntryId: attempt.result.resultEntryId,
-					},
-				});
-				currentPlan = DEFAULT_CONTINUATION_PLAN;
+				requestCompactionContinuation(attempt.result.resultEntryId);
 				continue;
 			}
 			return {
@@ -276,6 +276,13 @@ export async function executeLogicalPromptPlan<TOutcome extends string>(input: {
 				resolvedOutcome,
 			};
 		} catch (error: unknown) {
+			const { abortReason } = input.toolSession.getCompletionState();
+			if (abortReason)
+				return input.reportFailedTurn(
+					"llm_error",
+					`Turn aborted by LLM: ${abortReason}`,
+					input.piHandle.getLeafId(),
+				);
 			if (
 				shouldAutoContinueAfterCompactionError({
 					error,
@@ -283,19 +290,7 @@ export async function executeLogicalPromptPlan<TOutcome extends string>(input: {
 					compactionContinueAttempts,
 				})
 			) {
-				compactionContinueAttempts += 1;
-				trace({
-					level: "info",
-					code: "turn.compaction_error_continue_requested",
-					message: `Turn '${input.turnId}' requested an explicit continue after context-window compaction`,
-					turnRecordId: input.turnRecordId,
-					turnId: input.turnId,
-					details: {
-						attempt: compactionContinueAttempts,
-						resultPiEntryId: input.piHandle.getLeafId(),
-					},
-				});
-				currentPlan = DEFAULT_CONTINUATION_PLAN;
+				requestCompactionContinuation(input.piHandle.getLeafId(), true);
 				continue;
 			}
 			return reportFailure(error, {

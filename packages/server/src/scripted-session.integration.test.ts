@@ -103,10 +103,17 @@ async function fixture(resolver: StubToolCallScriptResolver) {
 	};
 }
 
-it("retries a failed worker turn through HTTP without losing its input or failure record", async () => {
+it.each([
+	"provider failure",
+	"LLM abort",
+])("retains the failed turn and input across HTTP retry and restart after %s", async (failureMode) => {
+	const aborted = failureMode === "LLM abort";
 	let calls = 0;
 	const f = await fixture(() => {
-		if (++calls === 1) throw new Error("Scripted provider failure");
+		if (++calls === 1) {
+			if (!aborted) throw new Error("Scripted provider failure");
+			return { toolName: "abort_turn", args: { reason: "Required dependency is unavailable" } };
+		}
 		return {
 			calls: [],
 			textChunks: ["Recovered result"],
@@ -122,21 +129,36 @@ it("retries a failed worker turn through HTTP without losing its input or failur
 	);
 	expect(reasoning.statusCode).toBe(200);
 	expect(reasoning.json().reasoning.piInput.fullPrompt).toContain(prompt);
+	if (aborted) {
+		expect(failed).toMatchObject({
+			errorClass: "llm_error",
+			errorSummary: "Turn aborted by LLM: Required dependency is unavailable",
+			turnResultMarkdown: null,
+		});
+		const session = await f.ctx.app.inject(`/api/processes/${f.id}/session`);
+		expect(session.body).toContain("abort_turn");
+		expect(session.body).toContain("Required dependency is unavailable");
+		expect(calls).toBe(1);
+		await f.restart();
+		expect(f.ctx.deps.processes.getById(f.id)?.lifecycleStatus).toBe("error");
+		expect(f.ctx.deps.turnRecords.getById(failed.id)).toEqual(failed);
+	}
 	const retried = await f.ctx.app.inject({ method: "POST", url: `/api/processes/${f.id}/retry` });
 	expect(retried.statusCode, retried.body).toBe(200);
 	await f.wait("completed");
 	expect(calls).toBe(2);
 	const records = f.ctx.deps.turnRecords.listByInstance(f.id);
-	expect(records).toHaveLength(2);
-	expect(records.find((record) => record.id === failed.id)?.status).toBe("failed");
-	expect(records.filter((record) => record.status === "succeeded")).toHaveLength(1);
-	await f.restart();
-	expect(f.ctx.deps.turnRecords.listByInstance(f.id)).toEqual(records);
-	const retained = await f.ctx.app.inject(
-		`/api/processes/${f.id}/turn-records/${failed.id}/reasoning`,
-	);
-	expect(retained.statusCode).toBe(200);
-	expect(retained.json().reasoning.piInput.fullPrompt).toContain(prompt);
+	expect(records.map((record) => record.status)).toEqual(["failed", "succeeded"]);
+	expect(records[0].id).toBe(failed.id);
+	if (!aborted) {
+		await f.restart();
+		expect(f.ctx.deps.turnRecords.listByInstance(f.id)).toEqual(records);
+		const retained = await f.ctx.app.inject(
+			`/api/processes/${f.id}/turn-records/${failed.id}/reasoning`,
+		);
+		expect(retained.statusCode).toBe(200);
+		expect(retained.json().reasoning.piInput.fullPrompt).toContain(prompt);
+	}
 });
 
 it("retains long streamed output and thinking in session files and durable turn results after restart", async () => {

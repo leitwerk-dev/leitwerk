@@ -83,7 +83,9 @@ test.use({
 			]),
 		useInProcessWorker: true,
 		toolCallScriptResolver: async ({ tools }) => {
-			if (tools.every((tool) => tool.name === "upload_result_images")) {
+			if (
+				tools.every((tool) => tool.name === "upload_result_images" || tool.name === "abort_turn")
+			) {
 				return {
 					calls: [],
 					textChunks: ["# A garden poem\n\nThe garden wakes beneath the sun."],
