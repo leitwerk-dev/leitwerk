@@ -108,6 +108,43 @@ mutable model settings. Workflow and step contracts describe the current definit
 They are not a launch-time configuration snapshot. Step links reveal matching
 executions in the Chronicle without adding another execution table.
 
+The Workflow graph uses `@leitwerk-dev/workflow-graph`, shared with the standalone
+synthetic preview (`npm run dev:workflow-graph`). The shortest route from the primary
+entry to **Completed** forms one horizontal line; conditional work and rework sit
+beside it. Operator decisions remain visible turns. Their outgoing connections are
+ordered by destination, keeping revision and cancellation routes separate.
+Incoming and outgoing connections use distinct ports. A side path rejoins the main
+line from its own side, through the middle of the gap between rows. A leftward
+connection stays neutral when it advances the workflow; amber marks a return to
+earlier work in a cycle.
+State-routed outcomes label each arrow with its branch condition. Hover details
+retain the common outcome name and explain the declared condition. These labels
+describe possible routes; graph inspection does not evaluate current state or
+predict which route a running process will take.
+A mapped LLM turn encloses one
+activity, a next-item path, and an internal **Collect results** junction. Collection
+combines ordered results and routes once, including for an empty collection.
+
+Hover and keyboard focus distinguish the enclosure, activity, and collection.
+Feedback follows the current target while selection persists. Collection highlights
+its diamond and label without obscuring connectors; repeat tooltips sit outside the
+enclosure. Arrows also respond directly to hover and keyboard focus, highlighting
+only that route, including its continuation inside a repeat. Next-item paths are
+neutral until highlighted; all highlighted routes use blue. Arrow interaction
+preserves the selected step and its details. Selection opens local details,
+**Open turn details** navigates to the step
+contract, and Escape restores focus to the exact graph control. Closing details
+dismisses the tooltip, including when focus returns to its opener. A new hover
+replaces earlier focus feedback; leaving it does not restore an older tooltip.
+Narrow canvases
+scroll within the page and put details below the graph.
+
+LLM activities show a declared tool count. Tool disclosures start closed with names
+only; opening one shows its category and available description. Runtime-resolved
+integration tools are indicated separately and are not evaluated for the definition
+graph. Author details expose declared product names. Execution Configuration remains
+the source for tools and inputs captured for an actual execution.
+
 Every execution has **Trace**, **Context**, and **Configuration**. Its persistent
 header identifies the record, status and context origin. Trace preserves message
 roles, ordered content blocks, tools and operational events. Show reasoning targets

@@ -194,8 +194,22 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 					"acceptanceCriteria",
 					"Requested outcomes for the repository change, without expanding scope",
 				)
-				.routeByState({ approval: "plan_decision", bypass: "implement" }, ({ ctx }) =>
-					ctx.state.routing?.plan?.skip ? "bypass" : "approval",
+				.routeByState(
+					{
+						approval: {
+							to: "plan_decision",
+							label: "Approval required",
+							description:
+								"When the process policy requires an operator to approve the saved plan.",
+						},
+						bypass: {
+							to: "implement",
+							label: "Skip plan approval",
+							description:
+								"When the process policy skips plan approval, for example through the Skip plan approval launcher option.",
+						},
+					},
+					({ ctx }) => (ctx.state.routing?.plan?.skip ? "bypass" : "approval"),
 				)
 				.effect(async ({ ctx, event }) => {
 					const planRevision = ctx.process.planRevision + 1;
@@ -270,7 +284,20 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 			tool
 				.description("Implementation and checks are complete; continue to delivery")
 				.routeByState(
-					{ simplify: "simplify_implementation", skip: "generate_commit_message" },
+					{
+						simplify: {
+							to: "simplify_implementation",
+							label: "Simplification enabled",
+							description:
+								"When the process policy enables simplification. This is the default unless a launcher option or source policy skips it.",
+						},
+						skip: {
+							to: "generate_commit_message",
+							label: "Skip simplification",
+							description:
+								"When simplification is skipped, for example through the Skip simplification launcher option or the leitwerk-skip-simplification source label.",
+						},
+					},
 					({ ctx }) => (ctx.state.routing?.simplification?.skip ? "skip" : "simplify"),
 				)
 				.effect(async ({ ctx }) => ({

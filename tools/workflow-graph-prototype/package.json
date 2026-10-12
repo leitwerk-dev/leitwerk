@@ -1,0 +1,11 @@
+{
+	"name": "workflow-graph-prototype",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "vite --host 127.0.0.1 --port 4320 --strictPort",
+		"build": "vite build",
+		"check": "biome check . && vite build"
+	}
+}

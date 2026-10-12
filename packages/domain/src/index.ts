@@ -107,6 +107,7 @@ export type {
 	ProcessFlowEdge,
 	ProcessFlowEndState,
 	ProcessFlowNode,
+	ProcessFlowTool,
 	ProcessFlowView,
 	ProcessTurnTerminalLifecycleStatus,
 	ProcessTurnTransition,

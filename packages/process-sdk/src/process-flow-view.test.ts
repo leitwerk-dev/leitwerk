@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { emptyParamsCodec } from "./codecs.js";
 import type { TurnDefinition } from "./define-process.js";
 import { automaticTurn, defineProcess, humanTurn, llmTurn } from "./define-process.js";
-import { buildProcessFlowView, collapseRoutingTurns } from "./process-flow-view.js";
-import { toProcessGraphView } from "./process-graph.js";
+import { buildProcessFlowView } from "./process-flow-view.js";
+import { serializeProcessGraph, toProcessGraphView } from "./process-graph.js";
 
 const stateCodec = {
 	parse(value: unknown): Record<string, unknown> {
@@ -153,6 +153,57 @@ describe("buildProcessFlowView", () => {
 
 		const labelled = view.edges.find((edge) => edge.from === "draft" && edge.to === "commit");
 		expect(labelled?.label).toBe("Plan Saved");
+	});
+
+	it("preserves branch conditions without evaluating state or changing route identities", () => {
+		const process = defineFlow({
+			entry: "draft",
+			turns: {
+				draft: llmTurn({
+					description: "Draft",
+					availableTools: [],
+					branchType: "primary",
+					context: "fresh",
+					prompt: () => "Draft",
+					outcomes: {
+						plan_saved: {
+							description: "Save plan",
+							parameters: {},
+							branches: {
+								approval: {
+									to: "review",
+									label: "Approval required",
+									description: "An operator must approve the saved plan.",
+								},
+								bypass: { complete: true },
+							},
+							choose: () => {
+								throw new Error("Definition inspection must not choose a route");
+							},
+						},
+					},
+				}),
+				review: human({ description: "Review", actions: { approve: { complete: true } } }),
+			},
+		});
+		const view = buildProcessFlowView(toProcessGraphView(process));
+		expect(view.edges.filter((edge) => edge.from === "draft")).toMatchObject([
+			{
+				to: "review",
+				label: "Plan Saved",
+				condition: {
+					label: "Approval required",
+					description: "An operator must approve the saved plan.",
+				},
+			},
+			{ lifecycleStatus: "completed", label: "Plan Saved", condition: { label: "Bypass" } },
+		]);
+		expect(
+			serializeProcessGraph(new Map([[process.id, process]]), process.id).turnTransitions.draft,
+		).toEqual([
+			{ nextTurnId: "review", trigger: "approval", outcome: "plan_saved" },
+			{ lifecycleStatus: "completed", trigger: "bypass", outcome: "plan_saved" },
+		]);
 	});
 
 	it("always reports an aborted end state, synthesized when no transition targets it", () => {
@@ -321,162 +372,111 @@ describe("buildProcessFlowView", () => {
 		});
 	});
 
-	it("omits operator-decision turns and keeps only work nodes and end states", () => {
+	it("preserves operator decisions and their actual routes", () => {
 		const process = defineFlow({
 			entry: "draft",
-			happyPath: ["draft", "decision", "commit"],
 			turns: {
-				draft: llm({ description: "Draft", outcomes: { saved: { to: "decision" } } }),
+				draft: llm({ description: "Draft", outcomes: { done: { to: "decision" } } }),
 				decision: human({
-					description: "Operator decision",
-					actions: { approve: { to: "commit" }, revise: { to: "draft" } },
+					description: "Review",
+					actions: { approve: { to: "publish" }, revise: { to: "draft" } },
 				}),
-				commit: llm({ description: "Commit", turnEnd: { complete: true } }),
+				publish: llm({ description: "Publish", turnEnd: { complete: true } }),
 			},
 		});
-
 		const view = buildProcessFlowView(toProcessGraphView(process));
-
-		expect(view.nodes.some((node) => node.turnId === "decision")).toBe(false);
-		expect(view.nodes.every((node) => node.turnType !== "human")).toBe(true);
-		expect(view.spine).toEqual(["draft", "commit"]);
+		expect(view.spine).toEqual(["draft", "decision", "publish"]);
+		expect(view.nodes.find((node) => node.turnId === "decision")?.turnType).toBe("human");
+		expect(view.edges.map((edge) => [edge.from, edge.to])).toEqual([
+			["draft", "decision"],
+			["decision", "publish"],
+			["decision", "draft"],
+			["publish", null],
+		]);
 	});
-});
 
-describe("collapseRoutingTurns", () => {
-	it("merges an operator decision into its work anchor and re-emits actions from it", () => {
+	it("uses the shortest successful path even when the authored happy path is longer", () => {
 		const process = defineFlow({
-			entry: "draft",
-			happyPath: ["draft", "implement"],
+			entry: "start",
+			happyPath: ["start", "review", "publish"],
 			turns: {
-				draft: llm({ description: "Draft", outcomes: { saved: { to: "decision" } } }),
-				decision: human({
-					description: "Operator decision",
-					actions: { approve: { to: "implement" }, revise: { to: "draft" } },
+				start: llm({
+					description: "Start",
+					outcomes: {
+						review: { to: "review" },
+						ready: { to: "publish" },
+						cancel: { lifecycleStatus: "aborted" },
+					},
 				}),
-				implement: llm({ description: "Implement", turnEnd: { complete: true } }),
+				review: human({ description: "Review", actions: { approve: { to: "publish" } } }),
+				publish: llm({ description: "Publish", turnEnd: { complete: true } }),
 			},
 		});
-
-		const collapsed = collapseRoutingTurns(toProcessGraphView(process));
-
-		expect([...collapsed.turns.keys()].sort()).toEqual(["draft", "implement"]);
-		// `decision` anchors to `draft` (its only work predecessor). The edge into the
-		// decision becomes a self-loop on `draft`, and the decision's actions are
-		// re-emitted from `draft`.
-		const draftTransitions = collapsed.turns.get("draft")?.transitions ?? [];
-		expect(draftTransitions).toContainEqual({ nextTurnId: "implement", outcome: "approve" });
-		expect(draftTransitions).toContainEqual({ nextTurnId: "draft", outcome: "revise" });
+		expect(buildProcessFlowView(toProcessGraphView(process)).spine).toEqual(["start", "publish"]);
 	});
 
-	it("remaps entry turns that are operator decisions to their anchor", () => {
-		const process = defineFlow({
-			entry: "decision",
-			turns: {
-				decision: human({
-					description: "Operator decision",
-					actions: { begin: { to: "work" } },
-				}),
-				work: llm({ description: "Work", turnEnd: { complete: true } }),
-			},
-		});
-
-		const collapsed = collapseRoutingTurns(toProcessGraphView(process));
-
-		// The decision has no work predecessor, so it falls back to the first declared
-		// work turn (`work`), which is also its entry remap target.
-		expect([...collapsed.entryTurnIds]).toEqual(["work"]);
-	});
-
-	it("resolves terminal transitions declared on an operator decision onto its anchor", () => {
+	it("retains declared self-return routes", () => {
 		const process = defineFlow({
 			entry: "work",
 			turns: {
-				work: llm({ description: "Work", outcomes: { saved: { to: "decision" } } }),
-				decision: human({
-					description: "Operator decision",
-					actions: { finish: { complete: true }, bail: { lifecycleStatus: "aborted" } },
+				work: llm({
+					description: "Work",
+					outcomes: { again: { to: "work" }, done: { complete: true } },
 				}),
 			},
 		});
-
-		const collapsed = collapseRoutingTurns(toProcessGraphView(process));
-
-		const workTransitions = collapsed.turns.get("work")?.transitions ?? [];
-		expect(workTransitions).toContainEqual({ lifecycleStatus: "completed", outcome: "finish" });
-		expect(workTransitions).toContainEqual({ lifecycleStatus: "aborted", outcome: "bail" });
-	});
-
-	it("drops operator-decision turns from the happy path", () => {
-		const process = defineFlow({
-			entry: "draft",
-			happyPath: ["draft", "decision", "commit"],
-			turns: {
-				draft: llm({ description: "Draft", outcomes: { saved: { to: "decision" } } }),
-				decision: human({
-					description: "Operator decision",
-					actions: { approve: { to: "commit" } },
-				}),
-				commit: llm({ description: "Commit", turnEnd: { complete: true } }),
-			},
+		expect(buildProcessFlowView(toProcessGraphView(process)).edges).toContainEqual({
+			from: "work",
+			to: "work",
+			lifecycleStatus: null,
+			kind: "loopback",
+			label: "Again",
 		});
-
-		const collapsed = collapseRoutingTurns(toProcessGraphView(process));
-
-		expect(collapsed.happyPath).toEqual(["draft", "commit"]);
 	});
-
-	it("never invents a work→work edge that no single declared transition connects", () => {
-		// review reaches its decision via no_issues; the decision can simplify, but
-		// `simplify` belongs to the implementation decision anchored on `implement`,
-		// not to `review`. No `review -> simplify` edge may appear.
+	it("projects mapped turns and static tools without evaluating runtime callbacks", () => {
 		const process = defineFlow({
-			entry: "implement",
-			happyPath: ["implement", "commit"],
+			entry: "assess",
 			turns: {
-				review: llm({
-					description: "Review",
-					outcomes: { no_issues: { to: "impl_decision" } },
-				}),
-				implement: llm({ description: "Implement", outcomes: { done: { to: "impl_decision" } } }),
-				impl_decision: human({
-					description: "Implementation decision",
-					actions: {
-						merge: { to: "commit" },
-						revise: { to: "implement" },
-						simplify: { to: "simplify" },
-						review: { to: "review" },
+				assess: llmTurn({
+					description: "Assess each item",
+					availableTools: ["read"],
+					integrationTools: ["read_status"],
+					askQuestions: true,
+					resolveIntegrationTools: () => {
+						throw new Error("Must not resolve runtime tools for a definition graph");
+					},
+					branchType: "primary",
+					context: "fresh",
+					prompt: () => "Assess",
+					outcomes: { submit_finding: { description: "Yield one finding", parameters: {} } },
+					forEach: {
+						items: () => {
+							throw new Error("Must not freeze items for a definition graph");
+						},
+						itemCodec: stateCodec,
+						resultCodec: stateCodec,
+						key: () => "item",
+						yields: { submit_finding: () => ({}) },
+						collect: ({ state }) => state,
+						routing: { kind: "static", lifecycleStatus: "completed" },
 					},
 				}),
-				simplify: llm({ description: "Simplify", outcomes: { done: { to: "impl_decision" } } }),
-				commit: llm({ description: "Commit", turnEnd: { complete: true } }),
 			},
 		});
-
-		const collapsed = collapseRoutingTurns(toProcessGraphView(process));
-
-		// `impl_decision` anchors to `implement` (happy-path work predecessor).
-		const reviewTransitions = collapsed.turns.get("review")?.transitions ?? [];
-		expect(reviewTransitions.some((t) => t.nextTurnId === "simplify")).toBe(false);
-		// review's only declared edge resolves to the anchor and is a self-loop on review? No:
-		// review -> impl_decision resolves to review -> implement.
-		expect(reviewTransitions).toContainEqual({ nextTurnId: "implement", outcome: "no_issues" });
-
-		// The `simplify` action lives only on the anchor that owns it.
-		const implementTransitions = collapsed.turns.get("implement")?.transitions ?? [];
-		expect(implementTransitions).toContainEqual({ nextTurnId: "simplify", outcome: "simplify" });
-	});
-
-	it("leaves graphs without routing turns unchanged", () => {
-		const process = defineFlow({
-			entry: "draft",
-			turns: {
-				draft: llm({ description: "Draft", outcomes: { saved: { to: "commit" } } }),
-				commit: llm({ description: "Commit", turnEnd: { complete: true } }),
-			},
+		const view = buildProcessFlowView(toProcessGraphView(process));
+		expect(view.nodes).toHaveLength(1);
+		expect(view.nodes[0]).toMatchObject({
+			repetition: "sequential",
+			hasDynamicTools: true,
+			tools: [
+				{ name: "read", category: "workspace" },
+				{ name: "read_status", category: "integration" },
+				{ name: "ask_questions", category: "question" },
+				{ name: "submit_finding", category: "outcome", description: "Yield one finding" },
+			],
 		});
-
-		const graph = toProcessGraphView(process);
-		expect(collapseRoutingTurns(graph)).toBe(graph);
+		expect(view.edges).toHaveLength(1);
+		expect(view.edges[0].lifecycleStatus).toBe("completed");
+		expect(JSON.parse(JSON.stringify(view))).toEqual(view);
 	});
 });

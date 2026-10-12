@@ -1,11 +1,14 @@
 import type {
+	ProcessFlowEdge,
+	ProcessFlowNode,
+	ProcessFlowTool,
 	ProcessSemanticEntryRefKey,
 	ProcessTurnTransition,
 	ProcessTurnType,
 	SerializedProcessGraph,
 	TurnId,
 } from "@leitwerk-dev/domain";
-import { isValidProcessProductName } from "@leitwerk-dev/domain";
+import { humanizeProcessLabel, isValidProcessProductName, trimToNull } from "@leitwerk-dev/domain";
 import type { TurnDefinition } from "./define-process.js";
 import type { ExtensionProcessDefinition, ProcessTurnBinding } from "./extension-api.js";
 import { getProcessTurnTransitions } from "./process-definition-internals.js";
@@ -21,8 +24,14 @@ export interface ProcessGraphTurnView {
 	turnType: ProcessTurnType;
 	/** @internal */
 	description: string;
+	/** Definition-only display metadata; never evaluates turn callbacks. @internal */
+	repetition?: ProcessFlowNode["repetition"];
 	/** @internal */
-	transitions: readonly ProcessTurnTransition[];
+	tools?: ProcessFlowTool[];
+	/** @internal */
+	hasDynamicTools?: boolean;
+	/** @internal */
+	transitions: readonly (ProcessTurnTransition & Pick<ProcessFlowEdge, "condition">)[];
 	/** Display labels for external triggers; durable route identities remain unchanged. @internal */
 	transitionLabels?: Readonly<Record<string, string>>;
 	/** @internal */
@@ -107,7 +116,32 @@ function toTurnView(
 	return {
 		turnType: definition.kind,
 		description: definition.description,
-		transitions: getProcessTurnTransitions(binding),
+		...(definition.kind === "llm"
+			? {
+					...(definition.forEach ? { repetition: "sequential" as const } : {}),
+					tools: declaredFlowTools(definition),
+					hasDynamicTools: definition.resolveIntegrationTools !== undefined,
+				}
+			: {}),
+		transitions: getProcessTurnTransitions(binding).map((transition) => {
+			const outcome =
+				(definition.kind === "llm" || definition.kind === "automatic") && transition.outcome
+					? definition.outcomes?.[transition.outcome]
+					: undefined;
+			if (!outcome || !("branches" in outcome) || !transition.trigger) return transition;
+			const branch = Object.entries(outcome.branches).find(
+				([id, spec]) => (spec.trigger ?? id) === transition.trigger,
+			)?.[1];
+			if (!branch) return transition;
+			const description = trimToNull(branch.description);
+			return {
+				...transition,
+				condition: {
+					label: trimToNull(branch.label) ?? humanizeProcessLabel(transition.trigger),
+					...(description ? { description } : {}),
+				},
+			};
+		}),
 		...(Object.keys(transitionLabels).length ? { transitionLabels } : {}),
 		...(definition.kind === "human" && definition.reviewProduct
 			? { reviewProduct: definition.reviewProduct }
@@ -138,6 +172,35 @@ function toTurnView(
 			? { turnResultMarkdownRequired: true }
 			: {}),
 	};
+}
+
+function declaredFlowTools(
+	definition: Extract<TurnDefinition, { kind: "llm" }>,
+): ProcessFlowTool[] {
+	return [
+		...definition.availableTools.map((name) => ({
+			name,
+			category: "workspace" as const,
+			description: null,
+		})),
+		...(definition.integrationTools ?? []).map((name) => ({
+			name,
+			category: "integration" as const,
+			description: null,
+		})),
+		...(definition.askQuestions
+			? [
+					{
+						name: "ask_questions",
+						category: "question" as const,
+						description: "Ask the operator structured questions.",
+					},
+				]
+			: []),
+		...Object.entries(definition.outcomes ?? {}).flatMap(([name, outcome]) =>
+			outcome ? [{ name, category: "outcome" as const, description: outcome.description }] : [],
+		),
+	];
 }
 
 /**
@@ -225,7 +288,9 @@ export function serializeProcessGraph(
 	const definition = getProcessGraph(registry, processId);
 	const turnTransitions: Record<TurnId, ProcessTurnTransition[]> = {};
 	for (const [turnId, turn] of definition.turns) {
-		turnTransitions[turnId] = turn.transitions.map((transition) => ({ ...transition }));
+		turnTransitions[turnId] = turn.transitions.map(
+			({ condition: _condition, ...transition }) => transition,
+		);
 	}
 	return {
 		id: definition.id,

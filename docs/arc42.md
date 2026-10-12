@@ -75,6 +75,7 @@ protection from loss. See [backup boundaries](operations.md).
 | `watcher-utils`, `external-writes` | Polling coordination and retry-safe external writes. |
 | `worker-runners` | Local, Docker, and Kubernetes execution and read-only export. |
 | `session-transfer`, `pi-session-transfer` | Portable exports and local Pi import/recovery. |
+| `workflow-graph` | Pure workflow layout and the Svelte renderer shared by the UI and synthetic preview. |
 | `server`, `worker`, `ui` | Runtime composition and interaction. |
 
 Provider and process behavior belongs to its extension, not to a privileged core

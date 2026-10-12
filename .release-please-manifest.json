@@ -36,5 +36,6 @@
 	"extensions/example-processes": "0.3.1",
 	"extensions/mattpocock-skills": "0.3.1",
 	"packages/wiki": "0.3.1",
+	"packages/workflow-graph": "0.3.1",
 	"extensions/skills": "0.3.1"
 }

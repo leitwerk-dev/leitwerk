@@ -116,6 +116,9 @@
 		},
 		{
 			"path": "extensions/mattpocock-skills"
+		},
+		{
+			"path": "packages/workflow-graph"
 		}
 	],
 	"files": []

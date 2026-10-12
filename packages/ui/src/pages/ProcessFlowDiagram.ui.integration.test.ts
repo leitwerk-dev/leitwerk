@@ -1,251 +1,295 @@
 // @vitest-environment jsdom
-
 import type { ProcessFlowView } from "@leitwerk-dev/domain";
-import { flushSync, mount, unmount } from "svelte";
-import { afterEach, describe, expect, it } from "vitest";
+import { flushSync, mount, tick, unmount } from "svelte";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import ProcessFlowDiagram from "./ProcessFlowDiagram.svelte";
 
-const mountedApps: Array<ReturnType<typeof mount>> = [];
-
-const flowView: ProcessFlowView = {
-	processId: "local_repo_change_process",
-	entryTurnIds: ["generate_plan"],
-	spine: ["generate_plan", "implement", "commit_and_merge"],
+const mounted: Array<ReturnType<typeof mount>> = [];
+const flow: ProcessFlowView = {
+	processId: "test",
+	entryTurnIds: ["assess"],
+	spine: ["assess", "publish"],
 	nodes: [
 		{
-			turnId: "generate_plan",
-			description: "Draft plan",
+			turnId: "assess",
+			description: "Assess component",
 			turnType: "llm",
 			role: "spine",
 			spineIndex: 0,
 			anchorTurnId: null,
 			isEntry: true,
+			repetition: "sequential",
+			tools: [
+				{ name: "read", category: "workspace", description: "Read workspace files." },
+				{ name: "submit_finding", category: "outcome", description: "Yield one finding." },
+			],
+			hasDynamicTools: true,
 		},
 		{
-			turnId: "implement",
-			description: "Implement change",
-			turnType: "llm",
+			turnId: "publish",
+			description: "Publish",
+			turnType: "automatic",
 			role: "spine",
 			spineIndex: 1,
 			anchorTurnId: null,
 			isEntry: false,
 		},
 		{
-			turnId: "commit_and_merge",
-			description: "Commit and merge",
-			turnType: "automatic",
-			role: "spine",
-			spineIndex: 2,
-			anchorTurnId: null,
-			isEntry: false,
-		},
-		{
-			turnId: "review_plan",
-			description: "Review plan",
-			turnType: "llm",
+			turnId: "review",
+			description: "Review recommendation",
+			turnType: "human",
 			role: "branch",
 			spineIndex: null,
-			anchorTurnId: "generate_plan",
-			isEntry: false,
-		},
-		{
-			turnId: "resolve_merge_conflict",
-			description: "Resolve merge conflict",
-			turnType: "llm",
-			role: "branch",
-			spineIndex: null,
-			anchorTurnId: "commit_and_merge",
+			anchorTurnId: "assess",
 			isEntry: false,
 		},
 	],
 	edges: [
-		{
-			from: "generate_plan",
-			to: "implement",
-			lifecycleStatus: null,
-			kind: "forward",
-			label: "plan_approved",
-		},
-		{
-			from: "commit_and_merge",
-			to: null,
-			lifecycleStatus: "completed",
-			kind: "terminal",
-			label: "finalized",
-		},
+		{ from: "assess", to: "publish", kind: "forward", lifecycleStatus: null, label: "Ready" },
+		{ from: "assess", to: "review", kind: "forward", lifecycleStatus: null, label: "Review" },
+		{ from: "review", to: "publish", kind: "forward", lifecycleStatus: null, label: "Approve" },
+		{ from: "publish", to: null, kind: "terminal", lifecycleStatus: "completed", label: "Done" },
 	],
-	endStates: [
-		{ lifecycleStatus: "aborted", synthetic: true },
-		{ lifecycleStatus: "completed", synthetic: false },
-	],
+	endStates: [{ lifecycleStatus: "completed", synthetic: false }],
 };
-
-function mountSubject(props: Record<string, unknown>) {
+function subject(props: Record<string, unknown> = {}) {
 	const target = document.createElement("div");
-	document.body.appendChild(target);
-	const app = mount(ProcessFlowDiagram, { target, props });
-	mountedApps.push(app);
-	return { app, target };
+	document.body.append(target);
+	mounted.push(mount(ProcessFlowDiagram, { target, props: { flow, ...props } }));
+	flushSync();
+	return target;
 }
-
 afterEach(async () => {
-	for (const app of mountedApps.splice(0)) await unmount(app);
+	for (const app of mounted.splice(0)) await unmount(app);
 	document.body.innerHTML = "";
 });
-
-describe("ProcessFlowDiagram", () => {
-	it("renders only the spine and the completed end state in happy mode", () => {
-		const { target } = mountSubject({ flow: flowView, mode: "happy" });
-
-		const diagram = target.querySelector('[data-section="process-flow-diagram"]');
-		expect(diagram?.getAttribute("data-flow-mode")).toBe("happy");
-
-		const renderedTurns = [...target.querySelectorAll("[data-flow-turn-id]")].map((node) =>
-			node.getAttribute("data-flow-turn-id"),
+function button(target: HTMLElement, part: string) {
+	const element = target.querySelector<HTMLButtonElement>(
+		`[data-flow-turn-id="assess"][data-part="${part}"]`,
+	);
+	if (!element) throw new Error(`Missing ${part}`);
+	return element;
+}
+function route(target: HTMLElement, from: string, to: string, section = "outer") {
+	const outer = target.querySelector<SVGGElement>(
+		`[data-flow-edge-from="${from}"][data-flow-edge-to="${to}"]`,
+	);
+	const element = target.querySelector<SVGGElement>(
+		`[data-route-id="${outer?.dataset.routeId}"][data-route-section="${section}"]`,
+	);
+	if (!element) throw new Error(`Missing ${from} → ${to} ${section}`);
+	return element;
+}
+function hover(element: Element, entering = true) {
+	element.dispatchEvent(new MouseEvent(entering ? "mouseenter" : "mouseleave"));
+	flushSync();
+}
+describe("shared workflow graph integration", () => {
+	it("shows distinct branch conditions and explains their shared outcome on hover", () => {
+		const conditionalFlow: ProcessFlowView = {
+			...flow,
+			edges: flow.edges.map((edge) =>
+				edge.from === "assess"
+					? {
+							...edge,
+							label: "Assessment ready",
+							condition:
+								edge.to === "publish"
+									? {
+											label: "Skip review",
+											description: "The process policy permits direct publication.",
+										}
+									: {
+											label: "Review required",
+											description: "An operator must review the findings.",
+										},
+						}
+					: edge,
+			),
+		};
+		const target = subject({ mode: "full", flow: conditionalFlow });
+		const direct = route(target, "assess", "publish");
+		const review = route(target, "assess", "review");
+		expect(direct.querySelector("text")?.textContent).toBe("Skip review");
+		expect(review.querySelector("text")?.textContent).toBe("Review required");
+		hover(direct);
+		expect(target.querySelector('[role="tooltip"]')?.textContent).toContain(
+			"After Assessment ready",
 		);
-		expect(renderedTurns).toEqual(["generate_plan", "implement", "commit_and_merge"]);
-
-		// Branch turns are not shown on the happy path.
-		expect(renderedTurns).not.toContain("review_plan");
-
-		// The completed terminal closes the happy path; abort is not shown here.
-		expect(target.querySelector('[data-flow-end-state="completed"]')).toBeTruthy();
-		expect(target.querySelector('[data-flow-end-state="aborted"]')).toBeNull();
+		expect(target.querySelector('[role="tooltip"]')?.textContent).toContain(
+			"The process policy permits direct publication.",
+		);
+		hover(direct, false);
+		button(target, "turn").click();
+		flushSync();
+		expect(target.querySelector(".outgoing")?.textContent).toContain("Skip review");
+		expect(target.querySelector(".outgoing")?.textContent).toContain("Review required");
 	});
-
-	it("renders a connected SVG graph with nodes and edges in full mode", () => {
-		const { target } = mountSubject({ flow: flowView, mode: "full" });
-
-		const diagram = target.querySelector('[data-section="process-flow-diagram"]');
-		expect(diagram?.getAttribute("data-flow-mode")).toBe("full");
-
-		// The chart is a real SVG, not a list of chips.
-		expect(target.querySelector("svg.flow-svg")).toBeTruthy();
-
-		// Every turn node is drawn as an SVG group keyed by its turn id.
-		const turnIds = [...target.querySelectorAll("g[data-flow-turn-id]")].map((node) =>
-			node.getAttribute("data-flow-turn-id"),
+	it("keeps the launch overview compact and expands the shared renderer", () => {
+		const target = subject({ expandable: true });
+		expect(target.querySelector('[aria-label="Shortest successful path"]')?.textContent).toContain(
+			"For each item",
 		);
-		expect(turnIds).toContain("generate_plan");
-		expect(turnIds).toContain("implement");
-		expect(turnIds).toContain("commit_and_merge");
-		expect(turnIds).toContain("review_plan");
-		expect(turnIds).toContain("resolve_merge_conflict");
-
-		// The completed terminal is drawn as its own end-state node.
-		expect(target.querySelector('g[data-flow-end-state="completed"]')).toBeTruthy();
-
-		// Edges are drawn as paths that actually connect the work nodes.
-		const edge = target.querySelector(
-			'path.flow-edge[data-flow-edge-from="generate_plan"][data-flow-edge-to="implement"]',
-		);
-		expect(edge).toBeTruthy();
-		expect(edge?.getAttribute("d")?.length ?? 0).toBeGreaterThan(0);
-		expect(edge?.getAttribute("marker-end")).toMatch(/url\(#.+arrow-forward\)/);
+		const toggle = target.querySelector<HTMLButtonElement>(".flow-toggle");
+		toggle?.click();
+		flushSync();
+		expect(target.querySelector(".workflow-graph")).toBeTruthy();
+		expect(target.querySelectorAll(".repeat-group button")).toHaveLength(3);
+		toggle?.click();
+		flushSync();
+		expect(target.querySelector(".workflow-graph")).toBeNull();
 	});
-
-	it("uses unique SVG marker ids for separate full diagram instances", () => {
-		mountSubject({ flow: flowView, mode: "full" });
-		mountSubject({ flow: flowView, mode: "full" });
-
-		const markerIds = [...document.querySelectorAll("marker.flow-marker")]
-			.map((marker) => marker.id)
-			.filter(Boolean);
-		expect(markerIds).toHaveLength(8);
-		expect(new Set(markerIds).size).toBe(markerIds.length);
-
-		for (const edge of document.querySelectorAll("path.flow-edge")) {
-			const markerEnd = edge.getAttribute("marker-end") ?? "";
-			const referencedId = markerEnd.match(/#([^)]*)/)?.[1];
-			expect(referencedId).toBeTruthy();
-			expect(markerIds).toContain(referencedId);
+	it("inspects a mapped activity without leaving the graph and discloses tool names", async () => {
+		const onSelectTurn = vi.fn(),
+			target = subject({ mode: "full", onSelectTurn });
+		button(target, "turn").click();
+		flushSync();
+		await tick();
+		expect(onSelectTurn).not.toHaveBeenCalled();
+		expect(target.querySelectorAll(".tool-disclosure")).toHaveLength(2);
+		expect(target.querySelector(".tool-disclosure summary")?.textContent?.trim()).toBe("read");
+		expect(target.querySelector("details[open]")).toBeNull();
+		expect(target.querySelector(".dynamic-tools")?.textContent).toContain("when this turn starts");
+		target.querySelector<HTMLButtonElement>(".inspect-turn")?.click();
+		expect(onSelectTurn).toHaveBeenCalledWith("assess");
+	});
+	it("gives group, item work and collection independent feedback while selected", () => {
+		const target = subject({ mode: "full" });
+		button(target, "turn").click();
+		flushSync();
+		for (const part of ["repeat", "turn", "collect"]) {
+			button(target, part).dispatchEvent(new MouseEvent("mouseenter"));
+			flushSync();
+			expect(button(target, part).classList.contains("highlighted")).toBe(true);
+			expect(target.querySelectorAll(".repeat-group .highlighted")).toHaveLength(1);
+			button(target, part).dispatchEvent(new MouseEvent("mouseleave"));
+			flushSync();
 		}
-	});
-
-	it("collapses to the happy strip with a disclosure toggle when expandable", () => {
-		const { target } = mountSubject({ flow: flowView, mode: "happy", expandable: true });
-
-		const disclosure = target.querySelector('[data-section="process-flow-disclosure"]');
-		expect(disclosure).toBeTruthy();
-
-		const toggle = target.querySelector<HTMLButtonElement>("button.flow-toggle");
-		expect(toggle).toBeTruthy();
-		expect(toggle?.getAttribute("aria-expanded")).toBe("false");
-		expect(toggle?.textContent?.trim()).toContain("Show full flow");
-
-		// Collapsed: happy strip is shown, full SVG chart is not.
-		expect(target.querySelector('[data-flow-mode="happy"]')).toBeTruthy();
-		expect(target.querySelector("svg.flow-svg")).toBeNull();
-
-		// The same caret toggle persists across states and stays out of the strip.
-		expect(target.querySelector('[data-flow-mode="happy"]')?.contains(toggle ?? null)).toBe(false);
-
-		// Expanding reveals the full directed chart in place.
-		toggle?.click();
+		expect(button(target, "turn").classList.contains("chosen")).toBe(true);
+		button(target, "collect").click();
 		flushSync();
-		expect(target.querySelector('[data-flow-mode="happy"]')).toBeNull();
-		expect(target.querySelector("svg.flow-svg")).toBeTruthy();
-
-		// Same button, now reflecting the expanded state.
-		expect(toggle?.getAttribute("aria-expanded")).toBe("true");
-		expect(toggle?.textContent?.trim()).toContain("Hide flow");
-
-		// Collapsing returns to the strip.
-		toggle?.click();
+		expect(target.querySelector(".step-inspector h3")?.textContent).toBe("Collect results");
+		expect(target.querySelector(".available-tools")).toBeNull();
+		expect(target.querySelector(".step-inspector")?.textContent).toContain("empty collection");
+	});
+	it("retains selection when moving from enclosure to activity and restores exact keyboard focus", async () => {
+		const target = subject({ mode: "full" });
+		button(target, "repeat").click();
 		flushSync();
-		expect(target.querySelector("svg.flow-svg")).toBeNull();
-		expect(target.querySelector('[data-flow-mode="happy"]')).toBeTruthy();
+		await tick();
+		button(target, "turn").click();
+		flushSync();
+		await tick();
+		expect(target.querySelector(".step-inspector")).toBeTruthy();
+		button(target, "turn").focus();
+		target
+			.querySelector(".workflow-graph")
+			?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+		flushSync();
+		await tick();
+		expect(target.querySelector(".step-inspector")).toBeNull();
+		expect(document.activeElement).toBe(button(target, "turn"));
+		expect(target.querySelector('[role="tooltip"]')).toBeNull();
 	});
-
-	it("renders nothing when no flow view is provided", () => {
-		const { target } = mountSubject({ mode: "full" });
-
-		expect(target.querySelector('[data-section="process-flow-diagram"]')).toBeNull();
+	it("dismisses previews on close and does not restore an earlier hover", async () => {
+		const target = subject({ mode: "full" });
+		const activity = button(target, "turn");
+		activity.focus();
+		activity.click();
+		flushSync();
+		await tick();
+		const close = target.querySelector<HTMLButtonElement>('[aria-label="Close step details"]');
+		if (!close) throw new Error("Missing close button");
+		close.focus();
+		close.click();
+		flushSync();
+		await tick();
+		await vi.waitFor(() => expect(document.activeElement).toBe(activity));
+		expect(target.querySelector('[role="tooltip"]')).toBeNull();
+		expect(target.querySelectorAll(".highlighted, .route-active")).toHaveLength(0);
+		const collect = button(target, "collect");
+		hover(collect);
+		expect(target.querySelector('[role="tooltip"] strong')?.textContent).toBe("Collect results");
+		hover(collect, false);
+		expect(target.querySelector('[role="tooltip"]')).toBeNull();
+		expect(target.querySelectorAll(".highlighted, .route-active")).toHaveLength(0);
 	});
-
-	it("reads the flow view from a launcher summary", () => {
-		const { target } = mountSubject({
-			launcher: {
-				id: "launcher",
-				processId: "local_repo_change_process",
-				displayName: "Local Repo Change",
-				label: "Local Repo Change",
-				description: "desc",
-				card: { title: "Local Repo Change", description: "desc" },
-				launchConfigSchema: { id: "form", title: "form", fields: [], submitLabel: "Go" },
-				processFlow: flowView,
-			},
-			mode: "happy",
-		});
-
-		const renderedTurns = [...target.querySelectorAll("[data-flow-turn-id]")].map((node) =>
-			node.getAttribute("data-flow-turn-id"),
+	it("lets pointer feedback replace keyboard feedback without reviving it on leave", () => {
+		const target = subject({ mode: "full" });
+		const activity = button(target, "turn");
+		activity.focus();
+		flushSync();
+		expect(target.querySelector('[role="tooltip"] strong')?.textContent).toBe("Assess component");
+		const collect = button(target, "collect");
+		hover(collect);
+		expect(target.querySelector('[role="tooltip"] strong')?.textContent).toBe("Collect results");
+		hover(collect, false);
+		expect(target.querySelector('[role="tooltip"]')).toBeNull();
+	});
+	it("uses separate markers for each mounted graph", () => {
+		subject({ mode: "full" });
+		subject({ mode: "full" });
+		const ids = [...document.querySelectorAll("marker")].map((marker) => marker.id);
+		expect(ids).toHaveLength(6);
+		expect(new Set(ids).size).toBe(ids.length);
+	});
+	it("keeps unrelated repeat exits neutral when highlighting publication", () => {
+		const target = subject({ mode: "full" });
+		const publish = target.querySelector('[data-flow-turn-id="publish"]');
+		if (!publish) throw new Error("Missing publication turn");
+		hover(publish);
+		for (const section of ["outer", "exit"]) {
+			expect(route(target, "assess", "publish", section).classList.contains("route-active")).toBe(
+				true,
+			);
+			expect(route(target, "assess", "review", section).classList.contains("route-active")).toBe(
+				false,
+			);
+		}
+		expect(route(target, "review", "publish").classList.contains("route-active")).toBe(true);
+		expect(target.querySelector('[data-route-section="loop"].route-active')).toBeNull();
+	});
+	it.each([
+		"outer",
+		"exit",
+	])("highlights a complete route from its %s segment without replacing step selection", (section) => {
+		const target = subject({ mode: "full" });
+		button(target, "repeat").click();
+		flushSync();
+		const arrow = route(target, "assess", "publish", section);
+		hover(arrow);
+		expect(target.querySelectorAll(".route-active")).toHaveLength(2);
+		for (const segment of ["outer", "exit"])
+			expect(route(target, "assess", "publish", segment).classList.contains("route-active")).toBe(
+				true,
+			);
+		expect(button(target, "repeat").classList.contains("chosen")).toBe(true);
+		expect(target.querySelector(".step-inspector h3")?.textContent).toBe("For each item");
+		expect(target.querySelector('[role="tooltip"]')?.textContent).toContain(
+			"Assess component → Publish",
 		);
-		expect(renderedTurns).toEqual(["generate_plan", "implement", "commit_and_merge"]);
+		hover(arrow, false);
+		expect(route(target, "assess", "review").classList.contains("route-active")).toBe(true);
 	});
-
-	it("gives the full chart a key and an accessible summary", () => {
-		const { target } = mountSubject({ flow: flowView, mode: "full" });
-
-		// A legend explains the visual language instead of leaving it implicit.
-		const legend = target.querySelector(".flow-legend");
-		expect(legend).toBeTruthy();
-		expect(legend?.textContent).toContain("Happy path");
-		expect(legend?.textContent).toContain("Completed");
-
-		// The SVG is described for assistive tech rather than collapsing to one label.
-		const svg = target.querySelector("svg.flow-svg");
-		const describedBy = svg?.getAttribute("aria-describedby");
-		expect(describedBy).toBeTruthy();
-		const summary = target.querySelector(`#${describedBy}`);
-		expect(summary?.textContent).toContain("Happy path");
-		expect(summary?.textContent).toContain("Draft plan");
-
-		// Each node carries its own accessible name within a list.
-		const nodeList = target.querySelector('g.flow-nodes[role="list"]');
-		expect(nodeList).toBeTruthy();
-		const planNode = target.querySelector('g[data-flow-turn-id="generate_plan"]');
-		expect(planNode?.getAttribute("role")).toBe("listitem");
-		expect(planNode?.getAttribute("aria-label")).toContain("Draft plan");
+	it("keeps next-item repetition neutral and previews internal routes independently", () => {
+		const target = subject({ mode: "full" });
+		const loop = target.querySelector('[data-route-section="loop"]');
+		if (!loop) throw new Error("Missing next-item route");
+		expect(loop.querySelector(".route-line")?.getAttribute("stroke")).toBe("var(--graph-route)");
+		expect(loop.querySelector(".route-line")?.getAttribute("marker-end")).toContain("arrow-normal");
+		for (const section of ["loop", "results"]) {
+			const arrow = target.querySelector(`[data-route-section="${section}"]`);
+			if (!arrow) throw new Error(`Missing ${section} route`);
+			hover(arrow);
+			expect(target.querySelectorAll(".route-active")).toHaveLength(1);
+			expect(arrow.querySelector(".route-line")?.getAttribute("stroke")).toBe(
+				"var(--graph-accent)",
+			);
+			expect(arrow.querySelector(".route-line")?.getAttribute("marker-end")).toContain(
+				"arrow-active",
+			);
+			hover(arrow, false);
+			expect(target.querySelectorAll(".route-active")).toHaveLength(0);
+		}
 	});
 });
