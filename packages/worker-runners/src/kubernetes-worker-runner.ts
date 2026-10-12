@@ -146,6 +146,15 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 	const exporterImage = options.exporterImage;
 	const helperRelays = options.helperRelays;
 	const serverCaFile = options.serverCaFile?.trim();
+	const serverCaConfig = serverCaFile
+		? {
+				serverCaConfigMap: {
+					name: KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_NAME,
+					key: KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_KEY,
+					mountPath: KUBERNETES_WORKER_SERVER_CA_MOUNT_PATH,
+				},
+			}
+		: {};
 	const namespaceForProcess = (instanceId: string) =>
 		kubernetesProcessNamespaceName(instanceId, options.processNamespacePrefix);
 	const delay =
@@ -360,15 +369,7 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 				namespace: processNamespace,
 				...(options.pod ?? {}),
 				...(input.docker && options.docker ? { docker: options.docker } : {}),
-				...(serverCaFile
-					? {
-							serverCaConfigMap: {
-								name: KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_NAME,
-								key: KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_KEY,
-								mountPath: KUBERNETES_WORKER_SERVER_CA_MOUNT_PATH,
-							},
-						}
-					: {}),
+				...serverCaConfig,
 			});
 			observer?.report("allocating_runtime");
 			try {
@@ -495,15 +496,7 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 					namespace,
 					...(options.pod ?? {}),
 					imagePullPolicy: options.exporterImagePullPolicy,
-					...(serverCaFile
-						? {
-								serverCaConfigMap: {
-									name: KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_NAME,
-									key: KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_KEY,
-									mountPath: KUBERNETES_WORKER_SERVER_CA_MOUNT_PATH,
-								},
-							}
-						: {}),
+					...serverCaConfig,
 				},
 			);
 			await client.createPod(manifest);

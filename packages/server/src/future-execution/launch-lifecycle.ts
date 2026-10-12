@@ -66,7 +66,7 @@ import { planConsumeFutureExecution } from "./transition-planner.js";
 export interface FutureExecutionIssue extends LauncherValidationError {}
 
 /** @internal */
-type LaunchFailure =
+export type LaunchFailure =
 	| {
 			/** @internal */
 			kind: "invalid";
@@ -148,31 +148,10 @@ export type LaunchMutationOutcome =
 export interface NormalizedScheduledLaunchInput extends ParsedLauncherRequestBody {}
 
 /** @internal */
-export type ValidatedLaunchSchedule =
-	| {
-			/** @internal */
-			mode: "now";
-			/** @internal */
-			nextRunAt: null;
-			/** @internal */
-			cronExpression: null;
-	  }
-	| {
-			/** @internal */
-			mode: "once";
-			/** @internal */
-			nextRunAt: string;
-			/** @internal */
-			cronExpression: null;
-	  }
-	| {
-			/** @internal */
-			mode: "cron";
-			/** @internal */
-			nextRunAt: string;
-			/** @internal */
-			cronExpression: string;
-	  };
+export type ValidatedLaunchSchedule = Extract<
+	ReturnType<typeof validateScheduleRequestInput>,
+	{ ok: true }
+>["value"];
 
 /** @internal */
 export interface PreparedLaunch {
@@ -296,34 +275,6 @@ function launchFailureOutcome(
 		: { kind: "failed", issue };
 }
 
-function resolveScheduledLaunchUpdateRequest(
-	execution: FutureExecution,
-	request: NormalizedScheduledLaunchInput,
-	existingPayload: FutureLaunchPayload,
-) {
-	const schedule = request.scheduleProvided
-		? ({ ok: true, value: request.schedule } as const)
-		: resolveStoredScheduleRequest(execution);
-	if (!schedule.ok) return schedule;
-	return {
-		ok: true as const,
-		value: {
-			title: request.titleProvided ? request.title : existingPayload.launchPlan.processInput.title,
-			titleProvided: true,
-			launcherInput: request.launcherInputProvided
-				? request.launcherInput
-				: existingPayload.launcherInput,
-			launcherInputProvided: true,
-			skillIds: request.skillIds ?? existingPayload.selectedSkillIds,
-			modelConfig: request.modelConfigProvided ? request.modelConfig : existingPayload.modelConfig,
-			modelConfigProvided: request.modelConfigProvided,
-			schedule: schedule.value,
-			scheduleProvided: true,
-			actor: existingPayload.actor,
-		},
-	};
-}
-
 function preservedScheduleSkills(
 	payload: FutureLaunchPayload,
 	selectedSkillIds: readonly string[] | undefined,
@@ -334,6 +285,53 @@ function preservedScheduleSkills(
 	return previous.size === selected.size && [...selected].every((id) => previous.has(id))
 		? payload.resourceSelections
 		: undefined;
+}
+
+function normalizeScheduledLaunchUpdate(
+	execution: FutureExecution,
+	request: NormalizedScheduledLaunchInput,
+	expectedLauncherId?: string,
+) {
+	const parsed = parseFutureLaunchPayloadJson(execution.payloadJson);
+	if (!parsed.ok)
+		return {
+			ok: false as const,
+			outcome: invalidOutcome("invalid_payload", "Scheduled launch payload is invalid"),
+		};
+	const payload = parsed.value;
+	const launcherId = execution.launcherId ?? payload.launchPlan.launcherId;
+	if (expectedLauncherId !== undefined && launcherId !== expectedLauncherId)
+		return {
+			ok: false as const,
+			outcome: invalidOutcome("invalid_schedule", "Schedule belongs to another launcher"),
+		};
+	const schedule = request.scheduleProvided
+		? ({ ok: true, value: request.schedule } as const)
+		: resolveStoredScheduleRequest(execution);
+	if (!schedule.ok)
+		return { ok: false as const, outcome: { kind: "invalid" as const, issues: [schedule.issue] } };
+	return {
+		ok: true as const,
+		value: {
+			launcherId,
+			request: {
+				title: request.titleProvided ? request.title : payload.launchPlan.processInput.title,
+				titleProvided: true,
+				launcherInput: request.launcherInputProvided
+					? request.launcherInput
+					: payload.launcherInput,
+				launcherInputProvided: true,
+				skillIds: request.skillIds ?? payload.selectedSkillIds,
+				modelConfig: request.modelConfigProvided ? request.modelConfig : payload.modelConfig,
+				modelConfigProvided: request.modelConfigProvided,
+				schedule: schedule.value,
+				scheduleProvided: true,
+				actor: payload.actor,
+			},
+			baseLaunchPlan: payload.launchPlan,
+			resourceSelections: preservedScheduleSkills(payload, request.skillIds),
+		},
+	};
 }
 
 export function createFutureLaunchLifecycle(
@@ -508,12 +506,10 @@ export function createFutureLaunchLifecycle(
 		actor?: Actor,
 	): Promise<LaunchMutationOutcome> {
 		const opened = deps.launchPipeline.open({ launcherId: existing.launcherId, origin: "ui" });
-		type ResolvedRevision = {
-			payload: FutureLaunchPayload;
-			request: NormalizedScheduledLaunchInput;
-			launcher: ResolvedProcessLauncher;
-			actor: Actor;
-		};
+		type ResolvedRevision = Extract<
+			ReturnType<typeof normalizeScheduledLaunchUpdate>,
+			{ ok: true }
+		>["value"] & { launcher: ResolvedProcessLauncher; actor: Actor };
 		const result = await deps.launchPipeline.run<
 			ResolvedRevision,
 			PreparedLaunch & { actor: Actor },
@@ -527,23 +523,19 @@ export function createFutureLaunchLifecycle(
 				});
 				if (!deps.launcherService)
 					return failure({ kind: "unavailable", reason: "Launcher service is not available" });
-				const parsed = parseFutureLaunchPayloadJson(existing.payloadJson);
-				if (!parsed.ok)
-					return failure(invalidOutcome("invalid_payload", "Scheduled launch payload is invalid"));
-				const launchRequest = resolveScheduledLaunchUpdateRequest(existing, request, parsed.value);
-				if (!launchRequest.ok) return failure({ kind: "invalid", issues: [launchRequest.issue] });
+				const update = normalizeScheduledLaunchUpdate(existing, request);
+				if (!update.ok) return failure(update.outcome);
 				const resolved = await deps.launcherService.resolveUiLauncher(
-					existing.launcherId ?? parsed.value.launchPlan.launcherId,
-					launchRequest.value.launcherInput,
+					update.value.launcherId,
+					update.value.request.launcherInput,
 				);
 				if (!resolved.ok) return failure(launcherResolutionFailure(resolved));
 				return {
 					kind: "resolved",
 					value: {
-						payload: parsed.value,
-						request: launchRequest.value,
+						...update.value,
 						launcher: resolved.launcher,
-						actor: actor ?? launchRequest.value.actor ?? SYSTEM_ACTOR,
+						actor: actor ?? update.value.request.actor ?? SYSTEM_ACTOR,
 					},
 				};
 			},
@@ -561,10 +553,8 @@ export function createFutureLaunchLifecycle(
 			},
 			async prepare(resolved) {
 				const prepared = await prepareLaunchInternal({
+					...resolved,
 					launcherId: resolved.launcher.launcherId,
-					request: resolved.request,
-					baseLaunchPlan: resolved.payload.launchPlan,
-					resourceSelections: preservedScheduleSkills(resolved.payload, request.skillIds),
 					operationTime,
 					resolvedLauncher: resolved.launcher,
 				});
@@ -664,30 +654,9 @@ export function createFutureLaunchLifecycle(
 				if (!existing || existing.kind !== "launch") {
 					return { ok: false, outcome: { kind: "not_found", target: "launch" } };
 				}
-				const parsed = parseFutureLaunchPayloadJson(existing.payloadJson);
-				if (!parsed.ok) {
-					return {
-						ok: false,
-						outcome: invalidOutcome("invalid_payload", "Scheduled launch payload is invalid"),
-					};
-				}
-				if ((existing.launcherId ?? parsed.value.launchPlan.launcherId) !== launcherId) {
-					return {
-						ok: false,
-						outcome: invalidOutcome("invalid_schedule", "Schedule belongs to another launcher"),
-					};
-				}
-				const launchRequest = resolveScheduledLaunchUpdateRequest(existing, request, parsed.value);
-				if (!launchRequest.ok) {
-					return { ok: false, outcome: { kind: "invalid", issues: [launchRequest.issue] } };
-				}
-				return prepareLaunchInternal({
-					launcherId,
-					request: launchRequest.value,
-					baseLaunchPlan: parsed.value.launchPlan,
-					resourceSelections: preservedScheduleSkills(parsed.value, request.skillIds),
-					resolvedLauncher: opts.resolvedLauncher,
-				});
+				const update = normalizeScheduledLaunchUpdate(existing, request, launcherId);
+				if (!update.ok) return update;
+				return prepareLaunchInternal({ ...update.value, resolvedLauncher: opts.resolvedLauncher });
 			}
 			return prepareLaunchInternal({
 				launcherId,
@@ -818,23 +787,14 @@ export function createFutureLaunchLifecycle(
 				if (!existing || existing.kind !== "launch") return { kind: "not_found", target: "launch" };
 				if (request.scheduleProvided && request.schedule.mode === "now")
 					return launchScheduledNow(existing, request, operationTime, opts?.actor);
-				const parsed = parseFutureLaunchPayloadJson(existing.payloadJson);
-				if (!parsed.ok)
-					return invalidOutcome("invalid_payload", "Scheduled launch payload is invalid");
-				const launchRequest = resolveScheduledLaunchUpdateRequest(existing, request, parsed.value);
-				if (!launchRequest.ok) return { kind: "invalid", issues: [launchRequest.issue] };
-				const prepared = await prepareLaunchInternal({
-					launcherId: existing.launcherId ?? parsed.value.launchPlan.launcherId,
-					request: launchRequest.value,
-					baseLaunchPlan: parsed.value.launchPlan,
-					resourceSelections: preservedScheduleSkills(parsed.value, request.skillIds),
-					operationTime,
-				});
+				const update = normalizeScheduledLaunchUpdate(existing, request);
+				if (!update.ok) return update.outcome;
+				const prepared = await prepareLaunchInternal({ ...update.value, operationTime });
 				if (!prepared.ok) return prepared.outcome;
 				return persistPreparedLaunch({
 					...prepared.prepared,
 					existing,
-					actor: opts?.actor ?? launchRequest.value.actor ?? SYSTEM_ACTOR,
+					actor: opts?.actor ?? update.value.request.actor ?? SYSTEM_ACTOR,
 				});
 			});
 		},

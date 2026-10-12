@@ -1,6 +1,6 @@
 import { ADMIN_ACTOR } from "@leitwerk-dev/domain";
 import type { SettingsPreview } from "@leitwerk-dev/protocol/http-contracts";
-import { mount, tick, unmount } from "svelte";
+import { tick } from "svelte";
 import type { Writable } from "svelte/store";
 import { afterEach, expect, it, vi } from "vitest";
 import {
@@ -10,6 +10,7 @@ import {
 	fetchSettingsScopes,
 } from "../lib/settings.js";
 import { wsStore } from "../lib/ws.svelte.js";
+import { mountTest, unmountTests } from "../test-support/mount.js";
 import SettingsPage from "./SettingsPage.svelte";
 
 vi.mock("../lib/settings.js", async (original) => ({
@@ -25,7 +26,6 @@ vi.mock("../lib/ws.svelte.js", async () => {
 });
 const connection = wsStore as Writable<{ reconnectCount: number }>;
 const key = "reports.title";
-const apps: ReturnType<typeof mount>[] = [];
 function preview(id: string, revision = 0, value = `${id} saved`): SettingsPreview {
 	const stamp = {
 		createdAt: "2026-09-01T12:00:00Z",
@@ -110,14 +110,11 @@ async function render() {
 	vi.mocked(fetchSettingsPreview).mockImplementation(async (id) =>
 		preview(id, id === "repo-b" ? 1 : 0),
 	);
-	const target = document.createElement("div");
-	document.body.append(target);
-	apps.push(mount(SettingsPage, { target }));
+	mountTest(SettingsPage, {});
 	await vi.waitFor(() => expect(document.querySelector(".setting-field")).not.toBeNull());
 }
 afterEach(async () => {
-	for (const app of apps.splice(0)) await unmount(app);
-	document.body.innerHTML = "";
+	await unmountTests();
 	vi.resetAllMocks();
 	connection.set({ reconnectCount: 0 });
 });

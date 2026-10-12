@@ -47,6 +47,14 @@ class JiraSourceIneligibleError extends Error {
 	}
 }
 
+function eligibleSource(issue: JiraIssue, event: JiraWatcherEvent): boolean {
+	return (
+		issue.id === event.issue.id &&
+		jiraEligible(issue, event.triggerLabel) &&
+		event.projects.includes(issue.fields.project.id)
+	);
+}
+
 /** @public */
 export interface RepositoryMapping {
 	/** @public */
@@ -379,12 +387,7 @@ export function createJiraGitLabLauncher() {
 		const { jira, gitlab, ssh, settings, wiki, publications } = requireServices();
 		const client = jira.client(event.profile);
 		const issue = await client.getIssue(event.issue.id, signal);
-		if (
-			issue.id !== event.issue.id ||
-			!jiraEligible(issue, event.triggerLabel) ||
-			!event.projects.includes(issue.fields.project.id)
-		)
-			throw new JiraSourceIneligibleError();
+		if (!eligibleSource(issue, event)) throw new JiraSourceIneligibleError();
 		const triggerLabel = jiraTriggerLabel(event.triggerLabel);
 		const modelSelection = retained
 			? retained.modelSelection
@@ -664,11 +667,7 @@ export function createJiraGitLabLauncher() {
 					const issue = await requireServices()
 						.jira.client(event.profile)
 						.getIssue(event.issue.id, signal);
-					if (
-						issue.id !== event.issue.id ||
-						!jiraEligible(issue, event.triggerLabel) ||
-						!event.projects.includes(issue.fields.project.id)
-					)
+					if (!eligibleSource(issue, event))
 						throw new SafeLaunchPreparationError(
 							"Jira source issue is no longer eligible",
 							"Restore the watcher label and project eligibility before launching.",
@@ -698,17 +697,14 @@ export function createJiraGitLabLauncher() {
 			if (client.baseUrl !== params.jiraBaseUrl) throw new Error("Jira installation changed");
 			const issue = await client.getIssue(params.issueId, signal);
 			if (issue.id !== params.issueId) throw new Error("Jira issue identity changed");
-			if (
-				!jiraEligible(issue, params.jiraTriggerLabel) ||
-				!params.startup.projectIds.includes(issue.fields.project.id)
-			)
-				return context.abort("Jira source is no longer eligible; startup cancelled");
 			const event: JiraWatcherEvent = {
 				profile: params.jiraProfile,
 				triggerLabel: params.jiraTriggerLabel,
 				projects: params.startup.projectIds,
 				issue,
 			};
+			if (!eligibleSource(issue, event))
+				return context.abort("Jira source is no longer eligible; startup cancelled");
 			const launch = await resolve(event, {}, params, signal);
 			if (launch.params.startup) {
 				const missing = launch.params.issue.fields.components.filter(

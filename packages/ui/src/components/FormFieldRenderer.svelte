@@ -53,6 +53,14 @@ const markerAttrs = $derived(
 	marker === "action" ? { "data-action-form-field": true } : { "data-launcher-form-field": true },
 );
 const invalid = $derived(errors.length > 0);
+const controlAttrs = $derived({
+	id,
+	...markerAttrs,
+	required: field.required ? true : undefined,
+	"aria-describedby": describedBy,
+	"aria-invalid": invalid,
+	"aria-required": field.required ? true : undefined,
+});
 const stringValue = $derived(String(value ?? ""));
 const booleanValue = $derived(value === true);
 let search = $state("");
@@ -72,14 +80,9 @@ const visibleOptions = $derived(
 	{#if field.kind === "boolean"}
 		<div class="checkbox-row">
 			<input
-				id={id}
-				{...markerAttrs}
+				{...controlAttrs}
 				type="checkbox"
-				required={field.required ? true : undefined}
 				checked={booleanValue}
-				aria-describedby={describedBy}
-				aria-invalid={invalid}
-				aria-required={field.required ? true : undefined}
 				onchange={(event) => onValueChange(field, (event.currentTarget as HTMLInputElement).checked)}
 			/>
 			<label for={id} class="checkbox-label">
@@ -118,15 +121,10 @@ const visibleOptions = $derived(
 
 	{#if field.kind === "textarea"}
 		<textarea
-			id={id}
-			{...markerAttrs}
+			{...controlAttrs}
 			rows={textareaRows}
-			required={field.required ? true : undefined}
 			value={stringValue}
 			placeholder={field.placeholder ?? undefined}
-			aria-describedby={describedBy}
-			aria-invalid={invalid}
-			aria-required={field.required ? true : undefined}
 			oninput={(event) => onValueChange(field, (event.currentTarget as HTMLTextAreaElement).value)}
 			onblur={onTextBlur}
 		></textarea>
@@ -156,13 +154,8 @@ const visibleOptions = $derived(
 		</div>
 	{:else if field.kind === "select"}
 		<select
-			id={id}
-			{...markerAttrs}
+			{...controlAttrs}
 			value={stringValue}
-			required={field.required ? true : undefined}
-			aria-describedby={describedBy}
-			aria-invalid={invalid}
-			aria-required={field.required ? true : undefined}
 			onchange={(event) => onValueChange(field, (event.currentTarget as HTMLSelectElement).value)}
 		>
 			<option value="">Choose an option</option>
@@ -179,15 +172,10 @@ const visibleOptions = $derived(
 		<!-- boolean input rendered above -->
 	{:else}
 		<input
-			id={id}
-			{...markerAttrs}
+			{...controlAttrs}
 			type={field.kind === "number" ? "number" : "text"}
-			required={field.required ? true : undefined}
 			value={stringValue}
 			placeholder={field.placeholder ?? undefined}
-			aria-describedby={describedBy}
-			aria-invalid={invalid}
-			aria-required={field.required ? true : undefined}
 			oninput={(event) => onValueChange(field, (event.currentTarget as HTMLInputElement).value)}
 			onblur={onTextBlur}
 		/>

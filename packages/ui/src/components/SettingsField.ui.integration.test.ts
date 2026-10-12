@@ -1,5 +1,5 @@
 import type { SettingFieldView, SettingsPreview } from "@leitwerk-dev/protocol/http-contracts";
-import { mount, tick, unmount } from "svelte";
+import { tick } from "svelte";
 import { afterEach, expect, it, vi } from "vitest";
 import {
 	changeSettings,
@@ -7,6 +7,7 @@ import {
 	fetchSettingsPreview,
 	SettingsRequestError,
 } from "../lib/settings.js";
+import { mountTest, unmountTests } from "../test-support/mount.js";
 import SettingsField from "./SettingsField.svelte";
 
 vi.mock("../lib/settings.js", async (original) => ({
@@ -15,7 +16,6 @@ vi.mock("../lib/settings.js", async (original) => ({
 	changeSettings: vi.fn(),
 	fetchSettingsPreview: vi.fn(),
 }));
-const apps: ReturnType<typeof mount>[] = [];
 const field: SettingFieldView = {
 	key: "test.repositories",
 	owner: "test",
@@ -35,14 +35,7 @@ async function render(
 	editing = true,
 	onSaved: (preview: SettingsPreview) => void = () => {},
 ) {
-	const target = document.createElement("div");
-	document.body.append(target);
-	apps.push(
-		mount(SettingsField, {
-			target,
-			props: { field: configured, subjectId: "component", onSaved },
-		}),
-	);
+	mountTest(SettingsField, { field: configured, subjectId: "component", onSaved });
 	await tick();
 	if (!editing) return;
 	const edit = document.querySelector<HTMLButtonElement>("button");
@@ -51,8 +44,7 @@ async function render(
 	await tick();
 }
 afterEach(async () => {
-	for (const app of apps.splice(0)) await unmount(app);
-	document.body.innerHTML = "";
+	await unmountTests();
 	vi.resetAllMocks();
 	vi.useRealTimers();
 });

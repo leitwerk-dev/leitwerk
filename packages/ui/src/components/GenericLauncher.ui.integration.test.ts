@@ -8,7 +8,6 @@ import type {
 	ScheduleConfigInput,
 	UiLauncherSummary,
 } from "@leitwerk-dev/protocol/http-contracts";
-import { mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	fetchLauncherDefaults,
@@ -20,9 +19,8 @@ import {
 	updateScheduledLaunch,
 	validateLauncher,
 } from "../lib/api.js";
+import { mountTest, unmountTests } from "../test-support/mount.js";
 import GenericLauncher from "./GenericLauncher.svelte";
-
-const mountedApps: Array<ReturnType<typeof mount>> = [];
 
 const serverDefaultProfile = {
 	id: "claude_fast",
@@ -76,6 +74,12 @@ function createLauncher(
 			],
 		},
 	};
+}
+
+function createRecentValuesLauncher() {
+	const launcher = createLauncher();
+	launcher.launchConfigSchema.fields[0].rememberRecentValues = true;
+	return launcher;
 }
 
 function createPreview(
@@ -146,16 +150,6 @@ function resetDefaultMocks() {
 
 resetDefaultMocks();
 
-function createDeferred<T>() {
-	let resolve!: (value: T) => void;
-	let reject!: (error?: unknown) => void;
-	const promise = new Promise<T>((res, rej) => {
-		resolve = res;
-		reject = rej;
-	});
-	return { promise, resolve, reject };
-}
-
 async function flush() {
 	await Promise.resolve();
 	await Promise.resolve();
@@ -189,6 +183,30 @@ async function waitForSelector(
 	throw new Error(`Timed out waiting for selector: ${selector}`);
 }
 
+async function selectScheduleMode(target: HTMLElement, mode: ScheduleConfigInput["mode"]) {
+	const radios = target.querySelectorAll<HTMLInputElement>(
+		'input[name="test-launcher-form-schedule-mode"]',
+	);
+	radios[["now", "once", "cron"].indexOf(mode)]?.click();
+	await flush();
+}
+
+async function getScheduleControls(target: HTMLElement) {
+	const field = (id: string) => waitForSelector(target, `#test-launcher-form-schedule-${id}`);
+	return {
+		dateInput: (await field("date")) as HTMLInputElement,
+		hourSelect: (await field("hour")) as HTMLSelectElement,
+		minuteSelect: (await field("minute")) as HTMLSelectElement,
+	};
+}
+
+function setControlValue(control: HTMLInputElement | HTMLSelectElement, value: string) {
+	control.value = value;
+	control.dispatchEvent(
+		new Event(control instanceof HTMLSelectElement ? "change" : "input", { bubbles: true }),
+	);
+}
+
 function mountSubject(
 	options: {
 		launcher?: UiLauncherSummary;
@@ -200,24 +218,15 @@ function mountSubject(
 		editingFutureLaunch?: FutureLaunchSummary;
 	} = {},
 ) {
-	const target = document.createElement("div");
-	document.body.appendChild(target);
 	const onLaunched = vi.fn();
-	const app = mount(GenericLauncher, {
-		target,
-		props: {
+	return {
+		...mountTest(GenericLauncher, {
+			...options,
 			launcher: options.launcher ?? createLauncher(),
-			initialTitle: options.initialTitle,
-			initialValues: options.initialValues,
-			initialSkillIds: options.initialSkillIds ?? null,
-			initialModelConfig: options.initialModelConfig ?? null,
-			initialSchedule: options.initialSchedule ?? null,
-			editingFutureLaunch: options.editingFutureLaunch,
 			onLaunched,
-		},
-	});
-	mountedApps.push(app);
-	return { app, onLaunched, target };
+		}),
+		onLaunched,
+	};
 }
 
 async function getModelSummary(target: HTMLElement): Promise<HTMLElement> {
@@ -260,8 +269,7 @@ async function ensureAdvancedEditorOpen(target: HTMLElement) {
 }
 
 afterEach(async () => {
-	for (const app of mountedApps.splice(0)) await unmount(app);
-	document.body.innerHTML = "";
+	await unmountTests();
 	window.localStorage.clear();
 	vi.restoreAllMocks();
 	vi.clearAllMocks();
@@ -922,17 +930,7 @@ describe("GenericLauncher", () => {
 	});
 
 	it("stores and reuses recent values for opted-in text fields after a successful launch", async () => {
-		const launcher = createLauncher({
-			fields: [
-				{
-					id: "repoPath",
-					label: "Repo Path",
-					kind: "text",
-					required: true,
-					rememberRecentValues: true,
-				},
-			],
-		});
+		const launcher = createRecentValuesLauncher();
 		const firstMount = mountSubject({ launcher });
 		await flush();
 
@@ -947,8 +945,7 @@ describe("GenericLauncher", () => {
 		await waitForValidation(firstMount.target);
 		(firstMount.target.querySelector('button[type="submit"]') as HTMLButtonElement | null)?.click();
 		await flush();
-		await unmount(firstMount.app);
-		mountedApps.splice(mountedApps.indexOf(firstMount.app), 1);
+		await firstMount.dispose();
 
 		const secondMount = mountSubject({ launcher });
 		await flush();
@@ -968,17 +965,7 @@ describe("GenericLauncher", () => {
 	});
 
 	it("surfaces server-provided recent values for opted-in text fields", async () => {
-		const launcher = createLauncher({
-			fields: [
-				{
-					id: "repoPath",
-					label: "Repo Path",
-					kind: "text",
-					required: true,
-					rememberRecentValues: true,
-				},
-			],
-		});
+		const launcher = createRecentValuesLauncher();
 		vi.mocked(fetchLauncherRecentValues).mockResolvedValueOnce({
 			repoPath: ["/tmp/server-recent-repo"],
 		});
@@ -1001,17 +988,7 @@ describe("GenericLauncher", () => {
 	});
 
 	it("treats recent-value persistence as best effort and still completes the launch", async () => {
-		const launcher = createLauncher({
-			fields: [
-				{
-					id: "repoPath",
-					label: "Repo Path",
-					kind: "text",
-					required: true,
-					rememberRecentValues: true,
-				},
-			],
-		});
+		const launcher = createRecentValuesLauncher();
 		const setItemSpy = vi
 			.spyOn(Object.getPrototypeOf(window.localStorage), "setItem")
 			.mockImplementationOnce(() => {
@@ -1030,17 +1007,7 @@ describe("GenericLauncher", () => {
 	});
 
 	it("does not remember credential-bearing absolute repo urls", async () => {
-		const launcher = createLauncher({
-			fields: [
-				{
-					id: "repoPath",
-					label: "Repo Path",
-					kind: "text",
-					required: true,
-					rememberRecentValues: true,
-				},
-			],
-		});
+		const launcher = createRecentValuesLauncher();
 		const firstMount = mountSubject({ launcher });
 		await flush();
 
@@ -1062,18 +1029,8 @@ describe("GenericLauncher", () => {
 	});
 
 	it("stores the submitted recent value even if the field changes before the launch resolves", async () => {
-		const launcher = createLauncher({
-			fields: [
-				{
-					id: "repoPath",
-					label: "Repo Path",
-					kind: "text",
-					required: true,
-					rememberRecentValues: true,
-				},
-			],
-		});
-		const deferredLaunch = createDeferred<Awaited<ReturnType<typeof launchLauncher>>>();
+		const launcher = createRecentValuesLauncher();
+		const deferredLaunch = Promise.withResolvers<Awaited<ReturnType<typeof launchLauncher>>>();
 		vi.mocked(launchLauncher).mockReturnValueOnce(deferredLaunch.promise);
 		const firstMount = mountSubject({ launcher });
 		await flush();
@@ -1100,8 +1057,7 @@ describe("GenericLauncher", () => {
 			projects: [],
 		});
 		await flush();
-		await unmount(firstMount.app);
-		mountedApps.splice(mountedApps.indexOf(firstMount.app), 1);
+		await firstMount.dispose();
 
 		const secondMount = mountSubject({ launcher });
 		await flush();
@@ -1122,28 +1078,12 @@ describe("GenericLauncher", () => {
 		const { target } = mountSubject();
 		await flush();
 
-		const scheduleRadios = target.querySelectorAll<HTMLInputElement>(
-			'input[name="test-launcher-form-schedule-mode"]',
-		);
-		scheduleRadios[1]?.click();
-		await flush();
-
-		const oncePicker = (await waitForSelector(
+		await selectScheduleMode(target, "once");
+		const oncePicker = await waitForSelector(
 			target,
 			'[data-section="launcher-schedule-once-picker"]',
-		)) as HTMLElement;
-		const dateInput = (await waitForSelector(
-			target,
-			"#test-launcher-form-schedule-date",
-		)) as HTMLInputElement;
-		const hourSelect = (await waitForSelector(
-			target,
-			"#test-launcher-form-schedule-hour",
-		)) as HTMLSelectElement;
-		const minuteSelect = (await waitForSelector(
-			target,
-			"#test-launcher-form-schedule-minute",
-		)) as HTMLSelectElement;
+		);
+		const { dateInput, hourSelect, minuteSelect } = await getScheduleControls(target);
 
 		expect(oncePicker.dataset.timeFormat).toBe("24-hour");
 		expect(target.querySelector('input[type="time"]')).toBeNull();
@@ -1151,12 +1091,9 @@ describe("GenericLauncher", () => {
 		expect(hourSelect.options[1]?.value).toBe("00");
 		expect(hourSelect.options[24]?.value).toBe("23");
 
-		dateInput.value = "2026-04-24";
-		dateInput.dispatchEvent(new Event("input", { bubbles: true }));
-		hourSelect.value = "18";
-		hourSelect.dispatchEvent(new Event("change", { bubbles: true }));
-		minuteSelect.value = "45";
-		minuteSelect.dispatchEvent(new Event("change", { bubbles: true }));
+		setControlValue(dateInput, "2026-04-24");
+		setControlValue(hourSelect, "18");
+		setControlValue(minuteSelect, "45");
 		await flush();
 
 		await waitForValidation(target);
@@ -1173,58 +1110,23 @@ describe("GenericLauncher", () => {
 		);
 	});
 
-	it("prefills the combined once picker from the initial schedule", async () => {
-		const { target } = mountSubject({
-			initialSchedule: {
-				mode: "once",
-				runAt: new Date(2026, 3, 24, 18, 45, 0, 0).toISOString(),
-			},
-		});
-		await flush();
-
-		const dateInput = (await waitForSelector(
-			target,
-			"#test-launcher-form-schedule-date",
-		)) as HTMLInputElement;
-		const hourSelect = (await waitForSelector(
-			target,
-			"#test-launcher-form-schedule-hour",
-		)) as HTMLSelectElement;
-		const minuteSelect = (await waitForSelector(
-			target,
-			"#test-launcher-form-schedule-minute",
-		)) as HTMLSelectElement;
-
-		expect(dateInput.value).toBe("2026-04-24");
-		expect(hourSelect.value).toBe("18");
-		expect(minuteSelect.value).toBe("45");
-	});
-
-	it("prefills the combined once picker with the current date and time", async () => {
-		vi.useFakeTimers({ toFake: ["Date"] });
-		vi.setSystemTime(new Date(2026, 3, 24, 18, 45, 0, 0));
-		const { target } = mountSubject();
-		await flush();
-
-		const scheduleRadios = target.querySelectorAll<HTMLInputElement>(
-			'input[name="test-launcher-form-schedule-mode"]',
+	it.each([
+		"initial schedule",
+		"current date and time",
+	])("prefills the combined once picker from the %s", async (source) => {
+		const runAt = new Date(2026, 3, 24, 18, 45, 0, 0);
+		if (source === "current date and time") {
+			vi.useFakeTimers({ toFake: ["Date"] });
+			vi.setSystemTime(runAt);
+		}
+		const { target } = mountSubject(
+			source === "initial schedule"
+				? { initialSchedule: { mode: "once", runAt: runAt.toISOString() } }
+				: {},
 		);
-		scheduleRadios[1]?.click();
 		await flush();
-
-		const dateInput = (await waitForSelector(
-			target,
-			"#test-launcher-form-schedule-date",
-		)) as HTMLInputElement;
-		const hourSelect = (await waitForSelector(
-			target,
-			"#test-launcher-form-schedule-hour",
-		)) as HTMLSelectElement;
-		const minuteSelect = (await waitForSelector(
-			target,
-			"#test-launcher-form-schedule-minute",
-		)) as HTMLSelectElement;
-
+		if (source === "current date and time") await selectScheduleMode(target, "once");
+		const { dateInput, hourSelect, minuteSelect } = await getScheduleControls(target);
 		expect(dateInput.value).toBe("2026-04-24");
 		expect(hourSelect.value).toBe("18");
 		expect(minuteSelect.value).toBe("45");
@@ -1234,11 +1136,7 @@ describe("GenericLauncher", () => {
 		const { target } = mountSubject();
 		await flush();
 
-		const scheduleRadios = target.querySelectorAll<HTMLInputElement>(
-			'input[name="test-launcher-form-schedule-mode"]',
-		);
-		scheduleRadios[2]?.click();
-		await flush();
+		await selectScheduleMode(target, "cron");
 
 		const cronExample = (await waitForSelector(
 			target,
@@ -1255,62 +1153,28 @@ describe("GenericLauncher", () => {
 		expect(vi.mocked(previewCronExpression)).toHaveBeenLastCalledWith("0 13 * * *");
 	});
 
-	it("ignores stale cron previews after leaving cron mode", async () => {
-		const deferredPreview = createDeferred<string>();
+	it.each([
+		"leaving cron mode",
+		"clearing the cron field",
+	])("ignores stale cron previews after %s", async (action) => {
+		const deferredPreview = Promise.withResolvers<string>();
 		vi.mocked(previewCronExpression).mockReturnValueOnce(deferredPreview.promise);
 		const { target } = mountSubject();
 		await flush();
-
-		const scheduleRadios = target.querySelectorAll<HTMLInputElement>(
-			'input[name="test-launcher-form-schedule-mode"]',
-		);
-		scheduleRadios[2]?.click();
-		await flush();
-
+		await selectScheduleMode(target, "cron");
 		const cronInput = (await waitForSelector(
 			target,
 			"#test-launcher-form-schedule-cron",
 		)) as HTMLInputElement;
-		cronInput.value = "0 13 * * *";
-		cronInput.dispatchEvent(new Event("input", { bubbles: true }));
+		setControlValue(cronInput, "0 13 * * *");
 		await flush();
-
-		scheduleRadios[0]?.click();
-		await flush();
-
+		if (action === "leaving cron mode") await selectScheduleMode(target, "now");
+		else {
+			setControlValue(cronInput, "");
+			await flush();
+		}
 		deferredPreview.resolve(new Date(2026, 3, 24, 18, 45).toISOString());
 		await flush();
-
-		expect(target.textContent).not.toContain("Next run:");
-	});
-
-	it("ignores stale cron previews after the cron field is cleared", async () => {
-		const deferredPreview = createDeferred<string>();
-		vi.mocked(previewCronExpression).mockReturnValueOnce(deferredPreview.promise);
-		const { target } = mountSubject();
-		await flush();
-
-		const scheduleRadios = target.querySelectorAll<HTMLInputElement>(
-			'input[name="test-launcher-form-schedule-mode"]',
-		);
-		scheduleRadios[2]?.click();
-		await flush();
-
-		const cronInput = (await waitForSelector(
-			target,
-			"#test-launcher-form-schedule-cron",
-		)) as HTMLInputElement;
-		cronInput.value = "0 13 * * *";
-		cronInput.dispatchEvent(new Event("input", { bubbles: true }));
-		await flush();
-
-		cronInput.value = "";
-		cronInput.dispatchEvent(new Event("input", { bubbles: true }));
-		await flush();
-
-		deferredPreview.resolve(new Date(2026, 3, 24, 18, 45).toISOString());
-		await flush();
-
 		expect(target.textContent).not.toContain("Next run:");
 	});
 });
@@ -1511,7 +1375,7 @@ describe("launcher selection presets", () => {
 	it("clears selections and overrides when project changes and ignores older option responses", async () => {
 		const { target, choices, checkbox, selected } = selectionFixture();
 		await flush();
-		const older = createDeferred<typeof choices>();
+		const older = Promise.withResolvers<typeof choices>();
 		vi.mocked(fetchLauncherOptions).mockReturnValueOnce(older.promise);
 		checkbox("components", "Component b").click();
 		await flush();
@@ -1636,12 +1500,12 @@ describe("launcher validation while editing", () => {
 	});
 
 	it("ignores obsolete responses, flushes on blur and aborts validation on unmount", async () => {
-		const older = createDeferred<Awaited<ReturnType<typeof validateLauncher>>>();
-		const newer = createDeferred<Awaited<ReturnType<typeof validateLauncher>>>();
+		const older = Promise.withResolvers<Awaited<ReturnType<typeof validateLauncher>>>();
+		const newer = Promise.withResolvers<Awaited<ReturnType<typeof validateLauncher>>>();
 		vi.mocked(validateLauncher)
 			.mockReturnValueOnce(older.promise)
 			.mockReturnValueOnce(newer.promise);
-		const { target, app } = mountSubject();
+		const { target, dispose } = mountSubject();
 		await flush();
 		const olderSignal = required(vi.mocked(validateLauncher).mock.calls[0]?.[2]);
 		edit(input(target), "new draft");
@@ -1656,14 +1520,13 @@ describe("launcher validation while editing", () => {
 		expect(target.textContent).toContain("Unavailable repository");
 		expect(button(target).disabled).toBe(true);
 
-		const pending = createDeferred<Awaited<ReturnType<typeof validateLauncher>>>();
+		const pending = Promise.withResolvers<Awaited<ReturnType<typeof validateLauncher>>>();
 		vi.mocked(validateLauncher).mockReturnValueOnce(pending.promise);
 		edit(input(target), "last draft");
 		input(target).dispatchEvent(new FocusEvent("blur"));
 		await flush();
 		const signal = required(vi.mocked(validateLauncher).mock.lastCall?.[2]);
-		await unmount(app);
-		mountedApps.splice(mountedApps.indexOf(app), 1);
+		await dispose();
 		expect(signal.aborted).toBe(true);
 		pending.resolve([]);
 	});

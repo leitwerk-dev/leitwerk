@@ -502,36 +502,6 @@ it("searches only on demand and caches queries across components while admission
 	expect(getProject).toHaveBeenCalled();
 });
 
-it("keeps saved repository selections discoverable when they do not match the search", async () => {
-	const f = fixture({}, true);
-	const choices = await f.launcher.mapping.choices?.(
-		{},
-		{ search: "other", values: [f.mappings[0]] },
-	);
-	expect(choices?.map((choice) => choice.value)).toEqual([f.mappings[1], f.mappings[0]]);
-});
-
-it("searches only on demand and caches queries across components while admission reads live metadata", async () => {
-	const f = fixture({}, true);
-	const listProjects = vi.spyOn(f.services.gitlab.client(), "listProjects");
-	const searchProjects = vi.spyOn(f.services.gitlab.client(), "searchProjects");
-	const getProject = vi.spyOn(f.services.gitlab.client(), "getProject");
-	const choices = f.launcher.mapping.choices;
-	if (!choices) throw new Error("Missing repository choices");
-	expect(await choices({})).toEqual([]);
-	expect(await choices({}, { search: " m " })).toEqual([]);
-	expect(searchProjects).not.toHaveBeenCalled();
-	await choices({ "jira.component": "first" }, { search: "monitor" });
-	await choices({ "jira.component": "second" }, { search: "other", values: [f.mappings[0]] });
-	f.launcher.configure({ ...f.services });
-	await choices({ "jira.component": "first" }, { search: " MONITOR " });
-	expect(searchProjects).toHaveBeenCalledTimes(2);
-	expect(listProjects).not.toHaveBeenCalled();
-	expect(getProject).not.toHaveBeenCalled();
-	await f.resolve();
-	expect(getProject).toHaveBeenCalled();
-});
-
 it("admits a retained split over HTTPS without an SSH provider and pins only credential references", async () => {
 	const f = fixture({}, true);
 	const choices = await f.launcher.mapping.choices?.({}, { search: "team" });

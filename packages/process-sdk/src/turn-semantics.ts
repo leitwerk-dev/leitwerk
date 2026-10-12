@@ -131,16 +131,6 @@ function validateOutcomeTurnResultContract<TParams = unknown, TState = unknown>(
 	return errors;
 }
 
-function isValidOutcomeToolArrayItemType(type: unknown): boolean {
-	return (
-		type === "string" ||
-		type === "number" ||
-		type === "boolean" ||
-		type === "object" ||
-		type === "array"
-	);
-}
-
 function validateOutcomeToolParameters<TParams = unknown, TState = unknown>(
 	turnKindLabel: string,
 	turnId: string,
@@ -180,7 +170,7 @@ function validateOutcomeToolParameters<TParams = unknown, TState = unknown>(
 					errors.push(`${context} is an array and must declare items`);
 				} else if (
 					!paramSpec.items.anyOf &&
-					!isValidOutcomeToolArrayItemType(paramSpec.items.type)
+					!["string", "number", "boolean", "object", "array"].includes(paramSpec.items.type ?? "")
 				) {
 					errors.push(
 						`${context} declares unsupported array item type '${String(paramSpec.items.type)}'`,

@@ -1,12 +1,18 @@
 import { type Component, mount, unmount } from "svelte";
 import { afterEach } from "vitest";
 
-const mounted: ReturnType<typeof mount>[] = [];
+const mounted = new Set<ReturnType<typeof mount>>();
 
-afterEach(async () => {
-	for (const app of mounted.splice(0)) await unmount(app);
+/** @internal */
+export async function unmountTests() {
+	for (const app of [...mounted]) {
+		mounted.delete(app);
+		await unmount(app);
+	}
 	document.body.replaceChildren();
-});
+}
+
+afterEach(unmountTests);
 
 /** @internal */
 export function mountTest<Props extends Record<string, unknown>>(
@@ -16,6 +22,13 @@ export function mountTest<Props extends Record<string, unknown>>(
 	const target = document.createElement("div");
 	document.body.append(target);
 	const app = mount(component, { target, props });
-	mounted.push(app);
-	return { app, target };
+	mounted.add(app);
+	return {
+		app,
+		target,
+		/** @internal */
+		async dispose() {
+			if (mounted.delete(app)) await unmount(app);
+		},
+	};
 }

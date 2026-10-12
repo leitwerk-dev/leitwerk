@@ -25,7 +25,11 @@ import {
 	type FutureExecutionExecutorDeps,
 	type FutureExecutionItemOutcome,
 } from "./execution.js";
-import { createFutureLaunchLifecycle, type FutureExecutionIssue } from "./launch-lifecycle.js";
+import {
+	createFutureLaunchLifecycle,
+	type FutureExecutionIssue,
+	type LaunchFailure as LifecycleFailure,
+} from "./launch-lifecycle.js";
 import { evaluateFutureModelSelection } from "./model-projection.js";
 import { reconcileFutureExecutionModelBlocks } from "./reconciliation.js";
 import {
@@ -60,39 +64,6 @@ export interface FutureExecutionLifecycleOptions {
 	/** @internal */
 	now?: () => Date;
 }
-
-/** @internal */
-type LifecycleFailure =
-	| {
-			/** @internal */
-			kind: "invalid";
-			/** @internal */
-			issues: readonly FutureExecutionIssue[];
-	  }
-	| {
-			/** @internal */
-			kind: "not_found";
-			/** @internal */
-			target: "future_execution" | "launch" | "action" | "process";
-	  }
-	| {
-			/** @internal */
-			kind: "conflict";
-			/** @internal */
-			issue: FutureExecutionIssue;
-	  }
-	| {
-			/** @internal */
-			kind: "unavailable";
-			/** @internal */
-			reason: string;
-	  }
-	| {
-			/** @internal */
-			kind: "failed";
-			/** @internal */
-			issue: FutureExecutionIssue;
-	  };
 
 /** @internal */
 export type ActionMutationOutcome =

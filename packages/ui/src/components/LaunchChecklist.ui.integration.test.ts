@@ -14,14 +14,6 @@ vi.mock("../lib/api.js", () => ({
 	fetchLaunchRun: vi.fn(),
 }));
 
-function deferred<T>() {
-	let resolve!: (value: T) => void;
-	const promise = new Promise<T>((done) => {
-		resolve = done;
-	});
-	return { promise, resolve };
-}
-
 function launchRun(revision: number, safeSummary: string): LaunchRun {
 	return {
 		id: "launch-1",
@@ -58,7 +50,7 @@ afterEach(async () => {
 
 describe("LaunchChecklist", () => {
 	it("ignores an older request that resolves after a WebSocket refresh", async () => {
-		const stale = deferred<LaunchRun>();
+		const stale = Promise.withResolvers<LaunchRun>();
 		vi.mocked(fetchLaunchRun)
 			.mockReturnValueOnce(stale.promise)
 			.mockResolvedValueOnce(launchRun(2, "New launch state"));

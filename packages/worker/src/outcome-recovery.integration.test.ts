@@ -1,16 +1,10 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { createServer } from "node:http";
-import type { AddressInfo } from "node:net";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import type { LlmTurnDefinition } from "@leitwerk-dev/process-sdk";
 import { FakeLlmProvider } from "@leitwerk-dev/test-support";
 import { createManualWorkerRuntimeScheduler } from "@leitwerk-dev/test-support/worker-testing";
-import { createTestConfigSnapshot } from "@leitwerk-dev/worker-protocol";
-import { expect, it, onTestFinished, vi } from "vitest";
+import { expect, it, vi } from "vitest";
 import { executeLogicalPromptPlan, type LogicalTurnPromptPlan } from "./logical-prompt-runner.js";
 import { runMissingToolRecovery } from "./missing-tool-recovery-runner.js";
-import { SdkPiTreeHandleFactory } from "./pi-adapter.js";
+import { createPiProviderFixture } from "./test-helpers/pi-provider.js";
 import {
 	createTurnOutcomeToolSession,
 	type ToolCompletionSnapshot,
@@ -37,69 +31,7 @@ async function fixture(
 	turnDef = defaultTurnDef,
 	validation?: (params: Record<string, unknown>) => string[],
 ) {
-	const root = await mkdtemp(path.join(tmpdir(), "leitwerk-outcome-recovery-"));
-	onTestFinished(() => rm(root, { recursive: true, force: true }));
-	const server = createServer(async (request, response) => {
-		let body = "";
-		for await (const chunk of request) body += chunk;
-		const answer = llm.respond(body);
-		const toolCalls = answer.toolCalls?.map((call, index) => ({
-			index,
-			id: `call-${llm.calls.length}-${index}`,
-			type: "function",
-			function: { name: call.name, arguments: JSON.stringify(call.arguments) },
-		}));
-		const chunk = (delta: unknown, finishReason: string | null) =>
-			`data: ${JSON.stringify({
-				id: `completion-${llm.calls.length}`,
-				object: "chat.completion.chunk",
-				created: 1,
-				model: "test-model",
-				choices: [{ index: 0, delta, finish_reason: finishReason }],
-			})}\n\n`;
-		response.writeHead(200, { "content-type": "text/event-stream" });
-		response.end(
-			chunk({ role: "assistant", content: answer.content, tool_calls: toolCalls }, null) +
-				chunk({}, toolCalls?.length ? "tool_calls" : "stop") +
-				"data: [DONE]\n\n",
-		);
-	});
-	await new Promise<void>((resolve, reject) => {
-		server.once("error", reject);
-		server.listen(0, "127.0.0.1", resolve);
-	});
-	onTestFinished(() => new Promise<void>((resolve) => server.close(() => resolve())));
-	const agentDir = path.join(root, "agent");
-	const extensionDir = path.join(agentDir, "extensions", "test-provider");
-	await mkdir(extensionDir, { recursive: true });
-	await writeFile(path.join(agentDir, "auth.json"), "{}\n");
-	await writeFile(
-		path.join(extensionDir, "index.ts"),
-		`export default function (pi) {
-			pi.registerProvider("test-provider", {
-				baseUrl: "http://127.0.0.1:${(server.address() as AddressInfo).port}/v1",
-				apiKey: "test-key", api: "openai-completions",
-				models: [{ id: "test-model", name: "Test model", reasoning: false, input: ["text"],
-					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-					contextWindow: 32768, maxTokens: 1024 }]
-			});
-		}`,
-	);
-	const config = createTestConfigSnapshot();
-	config.pi.agent_dir = agentDir;
-	config.pi.default_model_profile = "test-profile";
-	config.pi.model_profiles = [
-		{ id: "test-profile", provider: "test-provider", model_id: "test-model" },
-	];
-	const piHandle = await new SdkPiTreeHandleFactory().createPrimaryTreeHandle({
-		instanceId: "outcome-recovery-test",
-		treeFile: path.join(root, "tree.jsonl"),
-		workspaceRoot: root,
-		resume: false,
-		configSnapshot: config,
-		modelProfileId: "test-profile",
-	});
-	onTestFinished(() => piHandle.close());
+	const piHandle = await createPiProviderFixture((_request, body) => llm.respond(body));
 	const validateOutcome = vi.fn(async ({ params }: { params: Record<string, unknown> }) =>
 		validation
 			? validation(params)
@@ -139,18 +71,25 @@ async function fixture(
 			executeLogicalPromptPlan: execute,
 		});
 	};
-	return { run, piHandle, validateOutcome, reportFailedTurn };
+	return { run, piHandle, toolSession, validateOutcome, reportFailedTurn };
 }
 
 it("aborts in the real Pi loop without acknowledgement, further tools, or outcome recovery", async () => {
 	const llm = new FakeLlmProvider();
-	llm.onPrompt(() => ({
-		content: "",
-		toolCalls: [
-			{ name: "abort_turn", arguments: { reason: "Pinned dependency cannot be downloaded" } },
-			{ name: "plan_saved", arguments: { citation: "captured", markdown: "Must not publish" } },
-		],
-	}));
+	llm.onPrompt(() =>
+		llm.calls.length > 1
+			? { content: "Unexpected extra model call" }
+			: {
+					content: "",
+					toolCalls: [
+						{ name: "abort_turn", arguments: { reason: "Pinned dependency cannot be downloaded" } },
+						{
+							name: "plan_saved",
+							arguments: { citation: "captured", markdown: "Must not publish" },
+						},
+					],
+				},
+	);
 	const f = await fixture(llm);
 	await expect(f.run()).rejects.toThrow(
 		"Turn aborted by LLM: Pinned dependency cannot be downloaded",
@@ -161,6 +100,8 @@ it("aborts in the real Pi loop without acknowledgement, further tools, or outcom
 	expect(f.piHandle.getEntry(entryId ?? "")).toBeDefined();
 	expect(f.reportFailedTurn).toHaveBeenCalledOnce();
 	expect(f.validateOutcome).not.toHaveBeenCalled();
+	expect(f.toolSession.getCompletionState().selectedOutcome).toBeNull();
+	expect(f.toolSession.getCompletionState().markdownState.publicationCount).toBe(0);
 	expect(llm.calls).toHaveLength(1);
 });
 

@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
-import { setTimeout as delay } from "node:timers/promises";
 import type {
 	ImagePreloadApi,
 	ImagePreparationPod,
 	PreparationNode,
 } from "./kubernetes-image-preload-api.js";
+import { buildPreparationPodSpec, createPreparationController } from "./kubernetes-preparation.js";
 
 export const IMAGE_PRELOAD_LABEL = "leitwerk.dev/image-preload";
 const NODE_UID = "leitwerk.dev/preparation-node-uid";
@@ -107,8 +107,6 @@ export function createKubernetesImagePreload(options: {
 		`lw-image-${hash(`${uid}/${image}`).slice(0, 40)}`;
 	const reported = new Map<string, string>();
 	const failedSince = new Map<string, number>();
-	let controller: AbortController | undefined;
-	let running: Promise<void> | undefined;
 
 	function owned(pod: ImagePreparationPod) {
 		const annotations = pod.metadata.annotations ?? {};
@@ -179,36 +177,19 @@ export function createKubernetesImagePreload(options: {
 				ownerReferences: [{ apiVersion: "v1", kind: "Node", name: node.metadata.name, uid }],
 			},
 			spec: {
+				...buildPreparationPodSpec({
+					...options,
+					image,
+					imagePullPolicy: "IfNotPresent",
+					nodeSelector: { ...nodeSelector },
+				}),
 				nodeName: node.metadata.name,
-				restartPolicy: "Never",
-				serviceAccountName: "default",
-				automountServiceAccountToken: false,
-				nodeSelector: { ...nodeSelector },
-				tolerations: options.tolerations ?? [],
-				imagePullSecrets: (options.imagePullSecrets ?? []).map((name) => ({ name })),
 				securityContext: {
 					runAsNonRoot: true,
 					runAsUser: 1000,
 					runAsGroup: 1000,
 					seccompProfile: { type: "RuntimeDefault" },
 				},
-				containers: [
-					{
-						name: "prepare",
-						image,
-						imagePullPolicy: "IfNotPresent",
-						command: ["node", "-e", "process.exit(0)"],
-						resources: {
-							requests: { cpu: "1m", memory: "32Mi" },
-							limits: { cpu: "100m", memory: "64Mi" },
-						},
-						securityContext: {
-							allowPrivilegeEscalation: false,
-							readOnlyRootFilesystem: true,
-							capabilities: { drop: ["ALL"] },
-						},
-					},
-				],
 			},
 		};
 	}
@@ -286,36 +267,12 @@ export function createKubernetesImagePreload(options: {
 	return {
 		/** @internal */
 		reconcile,
-		/** @internal */
-		start() {
-			if (controller) return;
-			controller = new AbortController();
-			const { signal } = controller;
-			running = (async () => {
-				while (!signal.aborted) {
-					try {
-						await reconcile(signal);
-					} catch {
-						if (!signal.aborted)
-							options.onEvent?.({
-								component: "image-preparation",
-								outcome: "failed",
-								reason: "discovery_failed",
-							});
-					}
-					try {
-						await delay(INTERVAL, undefined, { signal });
-					} catch {
-						break;
-					}
-				}
-			})();
-		},
-		/** @internal */
-		async stop() {
-			controller?.abort();
-			await running;
-			controller = undefined;
-		},
+		...createPreparationController(reconcile, INTERVAL, () =>
+			options.onEvent?.({
+				component: "image-preparation",
+				outcome: "failed",
+				reason: "discovery_failed",
+			}),
+		),
 	};
 }

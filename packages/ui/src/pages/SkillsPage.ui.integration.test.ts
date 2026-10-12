@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 
-import { mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	fetchInstalledSkillDetail,
@@ -10,6 +9,7 @@ import {
 	removeSkill,
 } from "../lib/api.js";
 import { navigate } from "../lib/router.svelte";
+import { mountTest, unmountTests } from "../test-support/mount.js";
 import SkillsPage from "./SkillsPage.svelte";
 
 const usage = {
@@ -66,8 +66,6 @@ vi.mock("../lib/router.svelte", () => ({
 	navigate: vi.fn(),
 }));
 
-const mountedApps: Array<ReturnType<typeof mount>> = [];
-
 function catalog() {
 	return {
 		repositories: [
@@ -93,10 +91,7 @@ async function flush() {
 }
 
 function mountSubject(props: { detailKind?: string; skillId?: string } = {}) {
-	const target = document.createElement("div");
-	document.body.append(target);
-	mountedApps.push(mount(SkillsPage, { target, props }));
-	return target;
+	return mountTest(SkillsPage, props).target;
 }
 
 function click(element: Element | null) {
@@ -110,10 +105,9 @@ function choose(element: Element | null, value: string) {
 	element.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-afterEach(() => {
-	for (const app of mountedApps.splice(0)) unmount(app);
+afterEach(async () => {
+	await unmountTests();
 	vi.clearAllMocks();
-	document.body.innerHTML = "";
 });
 
 describe("SkillsPage", () => {

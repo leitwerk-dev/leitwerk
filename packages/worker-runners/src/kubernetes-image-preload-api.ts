@@ -1,3 +1,4 @@
+import { createPreparationApi, type PreparationRequest } from "./kubernetes-preparation-api.js";
 import type { PoolObject } from "./kubernetes-volume-pool-api.js";
 
 /** @internal */
@@ -71,87 +72,25 @@ export interface ImagePreloadApi {
 	deletePod(namespace: string, pod: ImagePreparationPod, signal: AbortSignal): Promise<void>;
 }
 
-type Request = <T>(input: {
-	/** @internal */
-	method: string;
-	/** @internal */
-	path: string;
-	/** @internal */
-	body?: unknown;
-	/** @internal */
-	ok?: readonly number[];
-	/** @internal */
-	signal?: AbortSignal;
-}) => Promise<{
-	/** @internal */
-	status: number;
-	/** @internal */
-	body: T | null;
-}>;
-
 /** @internal */
-export function createImagePreloadApi(request: Request): ImagePreloadApi {
+export function createImagePreloadApi(request: PreparationRequest): ImagePreloadApi {
+	const api = createPreparationApi(request, "image-preparation");
 	const pods = (namespace: string, name?: string) =>
 		`/api/v1/namespaces/${encodeURIComponent(namespace)}/pods${name ? `/${encodeURIComponent(name)}` : ""}`;
-	const bounded = (signal: AbortSignal) => AbortSignal.any([signal, AbortSignal.timeout(10_000)]);
-	async function list<T>(path: string, selector: string, signal: AbortSignal): Promise<T[]> {
-		const items: T[] = [];
-		let cursor = "";
-		do {
-			const query = new URLSearchParams({ labelSelector: selector, limit: "100" });
-			if (cursor) query.set("continue", cursor);
-			const response = await request<{
-				/** @internal */ items: T[] /** @internal */;
-				metadata?: {
-					/** @internal */ continue?: string;
-				};
-			}>({
-				method: "GET",
-				path: `${path}?${query}`,
-				signal: bounded(signal),
-			});
-			if (!response.body) throw new Error("Missing image-preparation list response");
-			items.push(...response.body.items);
-			cursor = response.body.metadata?.continue ?? "";
-		} while (cursor);
-		return items;
-	}
 	return {
-		listNodes: (signal) => list<PreparationNode>("/api/v1/nodes", "", signal),
+		listNodes: (signal) => api.list<PreparationNode>("/api/v1/nodes", "", signal),
 		listPods: (namespace, selector, signal) =>
-			list<ImagePreparationPod>(pods(namespace), selector, signal),
-		async getPod(namespace, name, signal) {
-			const response = await request<ImagePreparationPod>({
-				method: "GET",
-				path: pods(namespace, name),
-				ok: [200, 404],
-				signal: bounded(signal),
-			});
-			return response.status === 404 ? null : response.body;
-		},
-		async createPod(namespace, pod, signal) {
-			await request({
-				method: "POST",
-				path: pods(namespace),
-				body: pod,
-				ok: [201, 409],
-				signal: bounded(signal),
-			});
-		},
-		async deletePod(namespace, pod, signal) {
-			if (!pod.metadata.uid) throw new Error("Image preparation Pod identity is missing");
-			await request({
-				method: "DELETE",
-				path: pods(namespace, pod.metadata.name),
-				body: {
-					apiVersion: "v1",
-					kind: "DeleteOptions",
-					preconditions: { uid: pod.metadata.uid },
-					gracePeriodSeconds: 1,
-				},
-				ok: [200, 202, 404],
-				signal: bounded(signal),
-			});
-		},
+			api.list<ImagePreparationPod>(pods(namespace), selector, signal),
+		getPod: (namespace, name, signal) =>
+			api.get<ImagePreparationPod>(pods(namespace, name), signal),
+		createPod: (namespace, pod, signal) => api.create(pods(namespace), pod, signal),
+		deletePod: (namespace, pod, signal) =>
+			api.delete(
+				pods(namespace, pod.metadata.name),
+				pod.metadata.uid,
+				signal,
+				"Image preparation Pod",
+				1,
+			),
 	};
 }

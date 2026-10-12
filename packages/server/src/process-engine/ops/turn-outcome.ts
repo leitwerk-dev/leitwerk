@@ -294,70 +294,43 @@ export const TurnOutcome = defineOperation<"turn_outcome", TurnOutcomeInput, voi
 			});
 		}
 		const existing = ctx.deps.turnRecords.getById(payload.turnRecordId);
-		const completedTurnRecord: ProcessTurnRecord = existing
-			? {
-					...existing,
-					turnType: payload.turnType ?? existing.turnType,
-					status: "succeeded" as const,
-					resultPiEntryId: payload.resultPiEntryId ?? null,
-					modelProfileId: existing.modelProfileId,
-					turnResultMarkdown: payload.turnResultMarkdown ?? null,
-					endedAt: recordedAt,
-					errorSummary: null,
-					errorClass: null,
-				}
-			: {
-					id: payload.turnRecordId,
-					instanceId: input.instanceId,
-					turnId: payload.turnId,
-					turnType: payload.turnType,
-					status: "succeeded",
-					attemptNumber: 1,
-					parentTurnRecordId: null,
-					pathType: payload.pathType ?? "primary",
-					forkPiEntryId: payload.forkPiEntryId ?? null,
-					resultPiEntryId: payload.resultPiEntryId ?? null,
-					modelProfileId: null,
-					turnResultMarkdown: payload.turnResultMarkdown ?? null,
-					errorSummary: null,
-					errorClass: null,
-					startedAt: recordedAt,
-					endedAt: recordedAt,
-				};
+		const completion = {
+			turnType: payload.turnType,
+			status: "succeeded" as const,
+			resultPiEntryId: payload.resultPiEntryId ?? null,
+			turnResultMarkdown: payload.turnResultMarkdown ?? null,
+			endedAt: recordedAt,
+		};
+		const completedTurnRecord: ProcessTurnRecord = {
+			...(existing ?? {
+				id: payload.turnRecordId,
+				instanceId: input.instanceId,
+				turnId: payload.turnId,
+				attemptNumber: 1,
+				parentTurnRecordId: null,
+				pathType: payload.pathType ?? "primary",
+				forkPiEntryId: payload.forkPiEntryId ?? null,
+				modelProfileId: null,
+				startedAt: recordedAt,
+			}),
+			...completion,
+			turnType: existing ? (payload.turnType ?? existing.turnType) : payload.turnType,
+			errorSummary: null,
+			errorClass: null,
+		};
 		if (existing) {
 			baseWrites.turnRecordWrites.push({
 				kind: "update",
 				id: payload.turnRecordId,
-				input: {
-					turnType: payload.turnType,
-					status: "succeeded",
-					resultPiEntryId: payload.resultPiEntryId ?? null,
-					turnResultMarkdown: payload.turnResultMarkdown ?? null,
-					endedAt: recordedAt,
-				},
+				input: completion,
 			});
 		} else {
+			const { modelProfileId, ...recordInput } = completedTurnRecord;
 			baseWrites.turnRecordWrites.push({
 				kind: "create",
 				input: {
-					id: completedTurnRecord.id,
-					instanceId: completedTurnRecord.instanceId,
-					turnId: completedTurnRecord.turnId,
-					turnType: completedTurnRecord.turnType,
-					status: completedTurnRecord.status,
-					attemptNumber: completedTurnRecord.attemptNumber,
-					parentTurnRecordId: completedTurnRecord.parentTurnRecordId,
-					pathType: completedTurnRecord.pathType,
-					forkPiEntryId: completedTurnRecord.forkPiEntryId,
-					resultPiEntryId: completedTurnRecord.resultPiEntryId,
-					...(completedTurnRecord.modelProfileId !== null
-						? { modelProfileId: completedTurnRecord.modelProfileId }
-						: {}),
-					turnResultMarkdown: completedTurnRecord.turnResultMarkdown,
-					errorSummary: completedTurnRecord.errorSummary,
-					errorClass: completedTurnRecord.errorClass,
-					startedAt: completedTurnRecord.startedAt,
-					endedAt: completedTurnRecord.endedAt,
+					...recordInput,
+					...(modelProfileId !== null ? { modelProfileId } : {}),
 				},
 			});
 		}

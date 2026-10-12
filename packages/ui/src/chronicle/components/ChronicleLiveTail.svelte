@@ -225,25 +225,13 @@ const screenReaderStatus = $derived.by(() => {
 
 	.stop-trigger {
 		align-self: flex-start;
-		min-height: 34px;
-		padding: 0 14px;
-		border-radius: 999px;
 		border: 1px solid var(--chronicle-danger-border);
 		background: var(--chronicle-card-surface);
 		color: var(--chronicle-danger-text);
-		font: inherit;
-		font-size: 13px;
-		font-weight: 600;
-		cursor: pointer;
 	}
 
 	.stop-trigger:hover:not(:disabled) {
 		background: var(--chronicle-danger-surface);
-	}
-
-	.stop-trigger:disabled {
-		opacity: 0.5;
-		cursor: default;
 	}
 
 	.stop-confirm {
@@ -270,6 +258,7 @@ const screenReaderStatus = $derived.by(() => {
 		gap: 8px;
 	}
 
+	.stop-trigger,
 	.stop-cancel,
 	.stop-confirm-btn {
 		min-height: 34px;
@@ -301,6 +290,7 @@ const screenReaderStatus = $derived.by(() => {
 		opacity: 0.9;
 	}
 
+	.stop-trigger:disabled,
 	.stop-cancel:disabled,
 	.stop-confirm-btn:disabled {
 		opacity: 0.5;

@@ -143,16 +143,18 @@ let modelConfigPreviewLoadToken = 0;
 $effect(() =>
 	onSettingsChanged(() => {
 		settingsRevision += 1;
-		void loadModelConfigPreview(
-			fieldInputValues,
-			buildLaunchModelConfigFromValues({ defaultModelProfileId, turnModelProfileIds }),
-		);
+		void loadModelConfigPreview(fieldInputValues, buildLaunchModelConfig());
 	}, true),
 );
 let cronPreviewToken = 0;
 let deferredDependentRefreshValues: Record<string, LauncherFieldInputValue> | null = null;
 
 const launcherSkills = $derived(launcher.skills ?? []);
+const recentValueFields = $derived(
+	launcher.launchConfigSchema.fields.filter(
+		(field) => field.kind === "text" && field.rememberRecentValues === true,
+	),
+);
 const modelCustomizationState = $derived(
 	getLauncherModelCustomizationState({ defaultModelProfileId, turnModelProfileIds }),
 );
@@ -282,10 +284,11 @@ const cronExamples = [
 	{ expression: "30 8 * * 1", label: "Mondays at 08:30 UTC" },
 ] as const;
 const MAX_PROCESS_TITLE_LENGTH = 80;
-
-function buildTitleDomId(): string {
-	return `${launcher.launchConfigSchema.id}-process-title`;
-}
+const scheduleModes = [
+	{ mode: "now", label: "Start now" },
+	{ mode: "once", label: "Start later" },
+	{ mode: "cron", label: "Run on cron" },
+] as const;
 
 function buildFieldDomId(fieldId: string): string {
 	return `${launcher.launchConfigSchema.id}-${fieldId}`;
@@ -365,10 +368,7 @@ function loadRecentFieldValuesFromStorage(): Record<string, readonly string[]> {
 		return {};
 	}
 	const nextValues: Record<string, readonly string[]> = {};
-	for (const field of launcher.launchConfigSchema.fields) {
-		if (field.kind !== "text" || field.rememberRecentValues !== true) {
-			continue;
-		}
+	for (const field of recentValueFields) {
 		nextValues[field.id] = readLauncherRecentValues(storage, launcher.id, field.id);
 	}
 	return nextValues;
@@ -378,10 +378,7 @@ function mergeRecentFieldValues(
 	...sources: readonly Record<string, readonly string[]>[]
 ): Record<string, readonly string[]> {
 	const nextValues: Record<string, readonly string[]> = {};
-	for (const field of launcher.launchConfigSchema.fields) {
-		if (field.kind !== "text" || field.rememberRecentValues !== true) {
-			continue;
-		}
+	for (const field of recentValueFields) {
 		nextValues[field.id] = normalizeLauncherRecentValues(
 			sources.flatMap((source) => source[field.id] ?? []),
 		);
@@ -404,10 +401,7 @@ function rememberSuccessfulLauncherFieldValues(launcherInput: Record<string, unk
 		return;
 	}
 	const nextValues = { ...recentFieldValuesById };
-	for (const field of launcher.launchConfigSchema.fields) {
-		if (field.kind !== "text" || field.rememberRecentValues !== true) {
-			continue;
-		}
+	for (const field of recentValueFields) {
 		nextValues[field.id] = writeLauncherRecentValue(
 			storage,
 			launcher.id,
@@ -639,12 +633,8 @@ async function loadOptions(values: Record<string, LauncherFieldInputValue>) {
 }
 
 function refreshDependentLauncherState(values: Record<string, LauncherFieldInputValue>) {
-	const nextModelConfig = buildLaunchModelConfigFromValues({
-		defaultModelProfileId,
-		turnModelProfileIds,
-	});
 	void loadOptions(values);
-	void loadModelConfigPreview(values, nextModelConfig);
+	void loadModelConfigPreview(values, buildLaunchModelConfig());
 }
 
 function scheduleDependentLauncherRefresh(
@@ -783,11 +773,6 @@ function getStringValue(fieldId: string): string {
 	return typeof value === "string" ? value : "";
 }
 
-function getNumberValue(fieldId: string): string {
-	const value = fieldInputValues[fieldId];
-	return typeof value === "string" ? value : "";
-}
-
 function getBooleanValue(fieldId: string): boolean {
 	return fieldInputValues[fieldId] === true;
 }
@@ -889,36 +874,21 @@ function setFieldValue(
 	);
 }
 
-function setDefaultModelProfileValue(value: string) {
+function refreshEditedModelConfig() {
 	touchField("model-config");
-	defaultModelProfileId = value;
 	submitError = null;
 	clearDeferredDependentRefresh();
-	void loadModelConfigPreview(
-		fieldInputValues,
-		buildLaunchModelConfigFromValues({
-			defaultModelProfileId: value,
-			turnModelProfileIds,
-		}),
-	);
+	void loadModelConfigPreview(fieldInputValues, buildLaunchModelConfig());
+}
+
+function setDefaultModelProfileValue(value: string) {
+	defaultModelProfileId = value;
+	refreshEditedModelConfig();
 }
 
 function setTurnModelProfileValue(turnId: string, value: string) {
-	touchField("model-config");
-	const nextTurnModelProfileIds = {
-		...turnModelProfileIds,
-		[turnId]: value,
-	};
-	turnModelProfileIds = nextTurnModelProfileIds;
-	submitError = null;
-	clearDeferredDependentRefresh();
-	void loadModelConfigPreview(
-		fieldInputValues,
-		buildLaunchModelConfigFromValues({
-			defaultModelProfileId,
-			turnModelProfileIds: nextTurnModelProfileIds,
-		}),
-	);
+	turnModelProfileIds = { ...turnModelProfileIds, [turnId]: value };
+	refreshEditedModelConfig();
 }
 
 function openModelConfigEditor() {
@@ -932,36 +902,14 @@ function closeModelConfigEditor() {
 }
 
 function cancelModelConfigEditing() {
-	touchField("model-config");
-	const nextTurnModelProfileIds = turnModelProfileIdsBeforeEditing ?? { ...turnModelProfileIds };
-	turnModelProfileIds = nextTurnModelProfileIds;
-	submitError = null;
-	modelConfigPreviewError = null;
-	clearDeferredDependentRefresh();
+	turnModelProfileIds = turnModelProfileIdsBeforeEditing ?? { ...turnModelProfileIds };
 	closeModelConfigEditor();
-	void loadModelConfigPreview(
-		fieldInputValues,
-		buildLaunchModelConfigFromValues({
-			defaultModelProfileId,
-			turnModelProfileIds: nextTurnModelProfileIds,
-		}),
-	);
+	refreshEditedModelConfig();
 }
 
 function resetModelConfigToRecommended() {
-	touchField("model-config");
-	const nextTurnModelProfileIds = createTurnModelProfileIds({});
-	turnModelProfileIds = nextTurnModelProfileIds;
-	submitError = null;
-	modelConfigPreviewError = null;
-	clearDeferredDependentRefresh();
-	void loadModelConfigPreview(
-		fieldInputValues,
-		buildLaunchModelConfigFromValues({
-			defaultModelProfileId,
-			turnModelProfileIds: nextTurnModelProfileIds,
-		}),
-	);
+	turnModelProfileIds = createTurnModelProfileIds({});
+	refreshEditedModelConfig();
 }
 
 function resetCronPreviewState(invalidatePending = false) {
@@ -971,11 +919,6 @@ function resetCronPreviewState(invalidatePending = false) {
 	cronPreviewAt = null;
 	cronPreviewError = null;
 	cronPreviewBusy = false;
-}
-
-function clearScheduleSubmissionState() {
-	submitError = null;
-	submitSuccess = null;
 }
 
 function prefillScheduledRunAtFromNowIfBlank() {
@@ -995,7 +938,7 @@ function setScheduleMode(value: ScheduleConfigInput["mode"]) {
 	if (value === "once") {
 		prefillScheduledRunAtFromNowIfBlank();
 	}
-	clearScheduleSubmissionState();
+	clearSubmissionState();
 	if (value !== "cron") {
 		resetCronPreviewState(true);
 	}
@@ -1004,19 +947,19 @@ function setScheduleMode(value: ScheduleConfigInput["mode"]) {
 function setScheduledRunDate(value: string) {
 	touchField("schedule-date");
 	scheduledRunOnDate = value;
-	clearScheduleSubmissionState();
+	clearSubmissionState();
 }
 
 function setScheduledRunHour(value: string) {
 	touchField("schedule-date");
 	scheduledRunAtHour = value;
-	clearScheduleSubmissionState();
+	clearSubmissionState();
 }
 
 function setScheduledRunMinute(value: string) {
 	touchField("schedule-date");
 	scheduledRunAtMinute = value;
-	clearScheduleSubmissionState();
+	clearSubmissionState();
 }
 
 function getScheduledRunTimeValue(): string {
@@ -1194,23 +1137,15 @@ async function handleSubmit(event: SubmitEvent) {
 		const title = buildSubmittedTitle();
 		const launcherInput = buildLaunchInput();
 		const modelConfig = buildLaunchModelConfig();
-		const result = editingFutureLaunch
-			? await updateScheduledLaunch(
-					editingFutureLaunch.id,
-					title,
-					launcherInput,
-					modelConfig,
-					schedule,
-					selectedSkillIds,
-				)
-			: await launchLauncher(
-					launcher.id,
-					title,
-					launcherInput,
-					modelConfig,
-					schedule,
-					selectedSkillIds,
-				);
+		const submit = editingFutureLaunch ? updateScheduledLaunch : launchLauncher;
+		const result = await submit(
+			editingFutureLaunch?.id ?? launcher.id,
+			title,
+			launcherInput,
+			modelConfig,
+			schedule,
+			selectedSkillIds,
+		);
 		switch (result.kind) {
 			case "launch_started":
 				activeLaunchRunId = result.launchRunId;
@@ -1342,9 +1277,9 @@ async function handleSubmit(event: SubmitEvent) {
 
 		<form class="launcher-fields" novalidate onsubmit={handleSubmit}>
 			<div class="field-group title-field">
-				<label class="field-label" for={buildTitleDomId()}>Title</label>
+				<label class="field-label" for={buildFieldDomId("process-title")}>Title</label>
 				<input
-					id={buildTitleDomId()}
+					id={buildFieldDomId("process-title")}
 					aria-invalid={getFieldErrors("process-title").length > 0}
 					aria-describedby={getFieldErrors("process-title").length ? fieldErrorsDomId("process-title") : undefined}
 					onblur={() => blurField("process-title")}
@@ -1366,11 +1301,7 @@ async function handleSubmit(event: SubmitEvent) {
 				<FormFieldRenderer
 					{field}
 					id={buildFieldDomId(field.id)}
-					value={field.kind === "boolean"
-						? getBooleanValue(field.id)
-						: field.kind === "number"
-							? getNumberValue(field.id)
-							: getStringValue(field.id)}
+					value={field.kind === "boolean" ? getBooleanValue(field.id) : getStringValue(field.id)}
 					errors={getFieldErrors(field.id)}
 					descriptionId={fieldDescriptionDomId(field.id)}
 					errorId={fieldErrorsDomId(field.id)}
@@ -1588,33 +1519,17 @@ async function handleSubmit(event: SubmitEvent) {
 				</div>
 
 				<div class="schedule-mode-grid" role="radiogroup" aria-label="When to run">
-					<label class="schedule-choice" data-selected={scheduleMode === "now"}>
-						<input
-							type="radio"
-							name={`${launcher.launchConfigSchema.id}-schedule-mode`}
-							checked={scheduleMode === "now"}
-							onchange={() => setScheduleMode("now")}
-						/>
-						<span>Start now</span>
-					</label>
-					<label class="schedule-choice" data-selected={scheduleMode === "once"}>
-						<input
-							type="radio"
-							name={`${launcher.launchConfigSchema.id}-schedule-mode`}
-							checked={scheduleMode === "once"}
-							onchange={() => setScheduleMode("once")}
-						/>
-						<span>Start later</span>
-					</label>
-					<label class="schedule-choice" data-selected={scheduleMode === "cron"}>
-						<input
-							type="radio"
-							name={`${launcher.launchConfigSchema.id}-schedule-mode`}
-							checked={scheduleMode === "cron"}
-							onchange={() => setScheduleMode("cron")}
-						/>
-						<span>Run on cron</span>
-					</label>
+					{#each scheduleModes as option (option.mode)}
+						<label class="schedule-choice" data-selected={scheduleMode === option.mode}>
+							<input
+								type="radio"
+								name={`${launcher.launchConfigSchema.id}-schedule-mode`}
+								checked={scheduleMode === option.mode}
+								onchange={() => setScheduleMode(option.mode)}
+							/>
+							<span>{option.label}</span>
+						</label>
+					{/each}
 				</div>
 
 				{#if scheduleMode === "once"}

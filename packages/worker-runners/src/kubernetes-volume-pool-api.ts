@@ -1,3 +1,5 @@
+import { createPreparationApi, type PreparationRequest } from "./kubernetes-preparation-api.js";
+
 /** Kubernetes objects used for native PVC provisioning and safe PV rebinding. @internal */
 export interface PoolObject {
 	/** @internal */
@@ -115,102 +117,34 @@ export interface VolumePoolApi {
 	delete(kind: string, namespace: string, object: PoolObject, signal: AbortSignal): Promise<void>;
 }
 
-type Request = <T>(input: {
-	method: string;
-	path: string;
-	body?: unknown;
-	contentType?: string;
-	ok?: readonly number[];
-	signal?: AbortSignal;
-}) => Promise<{ status: number; body: T | null }>;
-
-export function createVolumePoolApi(request: Request): VolumePoolApi {
+/** @internal */
+export function createVolumePoolApi(request: PreparationRequest): VolumePoolApi {
+	const api = createPreparationApi(request, "volume-pool");
 	const path = (kind: string, namespace: string, name?: string) =>
 		`/api/v1/${namespace ? `namespaces/${encodeURIComponent(namespace)}/` : ""}${kind}${name ? `/${encodeURIComponent(name)}` : ""}`;
-	const bounded = (signal: AbortSignal) => AbortSignal.any([signal, AbortSignal.timeout(10_000)]);
 	const classes = "/apis/storage.k8s.io/v1/storageclasses";
-	async function list<T>(collection: string, selector: string, signal: AbortSignal): Promise<T[]> {
-		const items: T[] = [];
-		let cursor = "";
-		do {
-			const query = new URLSearchParams({
-				labelSelector: selector,
-				limit: "100",
-				...(cursor ? { continue: cursor } : {}),
-			});
-			const response = await request<{ items: T[]; metadata?: { continue?: string } }>({
-				method: "GET",
-				path: `${collection}?${query}`,
-				signal: bounded(signal),
-			});
-			if (!response.body) throw new Error("Missing volume-pool list response");
-			items.push(...response.body.items);
-			cursor = response.body.metadata?.continue ?? "";
-		} while (cursor);
-		return items;
-	}
 
 	return {
-		async getStorageClass(name, signal) {
-			const response = await request<PoolStorageClass>({
-				method: "GET",
-				path: `${classes}/${encodeURIComponent(name)}`,
-				ok: [200, 404],
-				signal: bounded(signal),
-			});
-			return response.status === 404 ? null : response.body;
-		},
-		listStorageClasses(selector, signal) {
-			return list<PoolStorageClass>(classes, selector, signal);
-		},
-		async createStorageClass(value, signal) {
-			await request({
-				method: "POST",
-				path: classes,
-				body: value,
-				ok: [201, 409],
-				signal: bounded(signal),
-			});
-		},
-		async deleteStorageClass(value, signal) {
-			if (!value.metadata.uid) throw new Error("Staging StorageClass identity is missing");
-			await request({
-				method: "DELETE",
-				path: `${classes}/${encodeURIComponent(value.metadata.name)}`,
-				body: {
-					apiVersion: "v1",
-					kind: "DeleteOptions",
-					preconditions: { uid: value.metadata.uid },
-				},
-				ok: [200, 202, 404],
-				signal: bounded(signal),
-			});
-		},
-		list(kind, namespace, selector, signal) {
-			return list<PoolObject>(path(kind, namespace), selector, signal);
-		},
-		async get(kind, namespace, name, signal) {
-			const result = await request<PoolObject>({
-				method: "GET",
-				path: path(kind, namespace, name),
-				ok: [200, 404],
-				signal: bounded(signal),
-			});
-			return result.status === 404 ? null : result.body;
-		},
-		async create(kind, namespace, object, signal) {
-			await request({
-				method: "POST",
-				path: path(kind, namespace),
-				body: object,
-				ok: [201, 409],
-				signal: bounded(signal),
-			});
-		},
+		getStorageClass: (name, signal) =>
+			api.get<PoolStorageClass>(`${classes}/${encodeURIComponent(name)}`, signal),
+		listStorageClasses: (selector, signal) => api.list<PoolStorageClass>(classes, selector, signal),
+		createStorageClass: (value, signal) => api.create(classes, value, signal),
+		deleteStorageClass: (value, signal) =>
+			api.delete(
+				`${classes}/${encodeURIComponent(value.metadata.name)}`,
+				value.metadata.uid,
+				signal,
+				"Staging StorageClass",
+			),
+		list: (kind, namespace, selector, signal) =>
+			api.list<PoolObject>(path(kind, namespace), selector, signal),
+		get: (kind, namespace, name, signal) =>
+			api.get<PoolObject>(path(kind, namespace, name), signal),
+		create: (kind, namespace, object, signal) => api.create(path(kind, namespace), object, signal),
 		async patchVolume(volume, operations, signal) {
 			if (!volume.metadata.uid || !volume.metadata.resourceVersion)
 				throw new Error("PV identity is missing");
-			await request({
+			await api.request({
 				method: "PATCH",
 				path: path("persistentvolumes", "", volume.metadata.name),
 				contentType: "application/json-patch+json",
@@ -219,23 +153,16 @@ export function createVolumePoolApi(request: Request): VolumePoolApi {
 					{ op: "test", path: "/metadata/resourceVersion", value: volume.metadata.resourceVersion },
 					...operations,
 				],
-				signal: bounded(signal),
+				signal,
 			});
 		},
-		async delete(kind, namespace, object, signal) {
-			if (!object.metadata.uid) throw new Error("Preparation resource identity is missing");
-			await request({
-				method: "DELETE",
-				path: path(kind, namespace, object.metadata.name),
-				body: {
-					apiVersion: "v1",
-					kind: "DeleteOptions",
-					preconditions: { uid: object.metadata.uid },
-					gracePeriodSeconds: 1,
-				},
-				ok: [200, 202, 404],
-				signal: bounded(signal),
-			});
-		},
+		delete: (kind, namespace, object, signal) =>
+			api.delete(
+				path(kind, namespace, object.metadata.name),
+				object.metadata.uid,
+				signal,
+				"Preparation resource",
+				1,
+			),
 	};
 }

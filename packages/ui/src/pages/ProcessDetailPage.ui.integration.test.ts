@@ -433,16 +433,6 @@ function createEmptyPrimaryPathSnapshot(): PrimaryPathSnapshot {
 	};
 }
 
-function createDeferred<T>() {
-	let resolve!: (value: T) => void;
-	let reject!: (error?: unknown) => void;
-	const promise = new Promise<T>((res, rej) => {
-		resolve = res;
-		reject = rej;
-	});
-	return { promise, resolve, reject };
-}
-
 function createBasePiSessionEntries() {
 	return [
 		{
@@ -1940,7 +1930,7 @@ describe("ProcessDetailPage", () => {
 		await flushUi();
 		expect(mockFetchInspectionTrace).toHaveBeenCalledTimes(1);
 		const restored = buildMockReasoningResponse("agt_1", "trn_live");
-		const pending = createDeferred<typeof restored>();
+		const pending = Promise.withResolvers<typeof restored>();
 		mockFetchInspectionTrace.mockImplementationOnce(() => pending.promise);
 		mockWs.set({ status: "connected", serverVersion: null, reconnectCount: 2 });
 		await flushUi();
@@ -1960,7 +1950,7 @@ describe("ProcessDetailPage", () => {
 		const { target } = await mountSubject(createLiveReasoningTransitionDetail());
 		await flushUi();
 		const stale = buildMockReasoningResponse("agt_1", "trn_live");
-		const pending = createDeferred<typeof stale>();
+		const pending = Promise.withResolvers<typeof stale>();
 		mockFetchInspectionTrace.mockImplementationOnce(() => pending.promise);
 		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
 		await flushUi();
@@ -2943,7 +2933,7 @@ describe("ProcessDetailPage", () => {
 	});
 
 	it("retries the detail load when live-turn metadata arrives before the first detail response resolves", async () => {
-		const pendingInitialDetail = createDeferred<ProcessDetailData>();
+		const pendingInitialDetail = Promise.withResolvers<ProcessDetailData>();
 		let fetchCallCount = 0;
 		mockFetchProcessDetail.mockReset();
 		mockFetchProcessDetail.mockImplementation(async () => {
@@ -4979,7 +4969,7 @@ describe("ProcessDetailPage", () => {
 			},
 			traceItems: [{ kind: "thinking", text: "Stale response must not win." }],
 		};
-		const pendingStaleResponse = createDeferred<typeof staleResponse>();
+		const pendingStaleResponse = Promise.withResolvers<typeof staleResponse>();
 		let reasoningCallCount = 0;
 		mockFetchInspectionTrace.mockReset();
 		mockFetchInspectionTrace.mockImplementation(

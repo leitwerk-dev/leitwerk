@@ -87,6 +87,19 @@ const launcherTestStateCodec: Codec<LauncherTestState> = {
 	},
 };
 
+function parseLauncherTestInput(input: Record<string, unknown>) {
+	const repoPath = typeof input.repoPath === "string" ? input.repoPath.trim() : "";
+	const prompt = typeof input.prompt === "string" ? input.prompt.trim() : "";
+	const missing = !repoPath ? "repoPath" : !prompt ? "prompt" : null;
+	if (missing) {
+		return {
+			ok: false as const,
+			errors: [{ code: "required", fieldId: missing, message: `${missing} is required` }],
+		};
+	}
+	return { ok: true as const, repoPath, prompt };
+}
+
 const launcherTestProcess = defineProcess<LauncherTestParams, LauncherTestState>({
 	id: "launcher_test_process",
 	displayName: "Launcher Test Process",
@@ -144,20 +157,9 @@ const launcherTestProcess = defineProcess<LauncherTestParams, LauncherTestState>
 					};
 				},
 				resolveLaunchConfig(input) {
-					const repoPath = typeof input.repoPath === "string" ? input.repoPath.trim() : "";
-					const prompt = typeof input.prompt === "string" ? input.prompt.trim() : "";
-					if (!repoPath) {
-						return {
-							ok: false,
-							errors: [{ code: "required", fieldId: "repoPath", message: "repoPath is required" }],
-						};
-					}
-					if (!prompt) {
-						return {
-							ok: false,
-							errors: [{ code: "required", fieldId: "prompt", message: "prompt is required" }],
-						};
-					}
+					const parsed = parseLauncherTestInput(input);
+					if (!parsed.ok) return parsed;
+					const { repoPath, prompt } = parsed;
 					const baseBranch =
 						typeof input.baseBranch === "string" && input.baseBranch.trim() !== ""
 							? input.baseBranch.trim()
@@ -210,20 +212,9 @@ const launcherTestProcess = defineProcess<LauncherTestParams, LauncherTestState>
 					return { repoPath: "", prompt: "" };
 				},
 				resolveLaunchConfig(input) {
-					const repoPath = typeof input.repoPath === "string" ? input.repoPath.trim() : "";
-					const prompt = typeof input.prompt === "string" ? input.prompt.trim() : "";
-					if (!repoPath) {
-						return {
-							ok: false,
-							errors: [{ code: "required", fieldId: "repoPath", message: "repoPath is required" }],
-						};
-					}
-					if (!prompt) {
-						return {
-							ok: false,
-							errors: [{ code: "required", fieldId: "prompt", message: "prompt is required" }],
-						};
-					}
+					const parsed = parseLauncherTestInput(input);
+					if (!parsed.ok) return parsed;
+					const { repoPath, prompt } = parsed;
 					return {
 						ok: true,
 						launchConfig: {
@@ -256,20 +247,9 @@ const launcherTestProcess = defineProcess<LauncherTestParams, LauncherTestState>
 					return { repoPath: "/tmp/prefilled-model", baseBranch: "main", prompt: "Ship it" };
 				},
 				resolveLaunchConfig(input) {
-					const repoPath = typeof input.repoPath === "string" ? input.repoPath.trim() : "";
-					const prompt = typeof input.prompt === "string" ? input.prompt.trim() : "";
-					if (!repoPath) {
-						return {
-							ok: false,
-							errors: [{ code: "required", fieldId: "repoPath", message: "repoPath is required" }],
-						};
-					}
-					if (!prompt) {
-						return {
-							ok: false,
-							errors: [{ code: "required", fieldId: "prompt", message: "prompt is required" }],
-						};
-					}
+					const parsed = parseLauncherTestInput(input);
+					if (!parsed.ok) return parsed;
+					const { repoPath, prompt } = parsed;
 					const baseBranch =
 						typeof input.baseBranch === "string" && input.baseBranch.trim() !== ""
 							? input.baseBranch.trim()
@@ -366,20 +346,9 @@ const fixedModelLauncherProcess = defineProcess<LauncherTestParams, LauncherTest
 					submitLabel: "Launch",
 				},
 				resolveLaunchConfig(input) {
-					const repoPath = typeof input.repoPath === "string" ? input.repoPath.trim() : "";
-					const prompt = typeof input.prompt === "string" ? input.prompt.trim() : "";
-					if (!repoPath) {
-						return {
-							ok: false,
-							errors: [{ code: "required", fieldId: "repoPath", message: "repoPath is required" }],
-						};
-					}
-					if (!prompt) {
-						return {
-							ok: false,
-							errors: [{ code: "required", fieldId: "prompt", message: "prompt is required" }],
-						};
-					}
+					const parsed = parseLauncherTestInput(input);
+					if (!parsed.ok) return parsed;
+					const { repoPath, prompt } = parsed;
 					return {
 						ok: true,
 						launchConfig: {

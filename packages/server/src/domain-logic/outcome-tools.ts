@@ -11,7 +11,6 @@ import {
 	type TurnDefinition,
 	validateOutcomeParameters,
 } from "@leitwerk-dev/process-sdk";
-import * as v from "valibot";
 import { isTurnAvailableForProcessGraph, type ProcessGraphRegistry } from "../process-graph.js";
 
 interface OutcomeToolValidationContract {
@@ -156,11 +155,7 @@ function validateTurnEndResultParams(
 	params: Record<string, unknown>,
 	expectedParams: Record<string, unknown>,
 ): OutcomeValidationFailure | null {
-	const parsed = v.safeParse(
-		v.custom((value) => jsonValuesEqual(value, expectedParams)),
-		params,
-	);
-	if (parsed.success) {
+	if (jsonValuesEqual(params, expectedParams)) {
 		return null;
 	}
 	return validationFailure(
