@@ -57,6 +57,7 @@ export {
 	type ProgrammaticLaunchResultLike,
 	type QueuedProcessInputLike,
 	type RegisteredProcessWatcherLike,
+	type WaitingProcessRestart,
 	type WatcherLaunchResultLike,
 } from "./core-capabilities.js";
 export {

@@ -17,6 +17,7 @@ import type {
 	DeferredProcessActivationSnapshotResult,
 	PreparedDeferredProcessActivation,
 	ProcessActionServiceLike,
+	WaitingProcessRestart,
 } from "@leitwerk-dev/process-sdk";
 import type { LeitwerkConfig } from "../config/config-types.js";
 import type { RepositoryBundle } from "../db/repositories.js";
@@ -278,6 +279,8 @@ export interface ProcessEngine {
 		opts?: {
 			/** @internal */
 			actor?: Actor;
+			/** @internal */
+			restart?: WaitingProcessRestart;
 		},
 	): Promise<EngineResult<void>>;
 	/** @internal */
