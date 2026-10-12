@@ -481,6 +481,16 @@ once before freezing their item list; explicit item retries check again.
 
 ### Watchers
 
+To restart a waiting instance with new revision data, call
+`deps.commands.startProcess(instanceId, turnId, { restart })`. Supply the captured
+waiting turn, serialized parameters and state in `restart.expected`, the new
+`restart.stateJson`, and an optional repository key and old/new base in
+`restart.project`. The server checks that the process is still idle and waiting
+at that exact snapshot, then commits state, repository base, and turn selection
+under one process lock and transaction. `restart_superseded` means another action
+changed the snapshot; skip it and discover again. Providers must not write these
+changes directly before starting a turn.
+
 Watchers start processes from external events. The source extension owns parsing,
 presentation, polling, and provider policy. The server owns launch admission and
 deduplication. See [Watchers](watchers.md).

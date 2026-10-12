@@ -582,6 +582,30 @@ export interface QueuedProcessInputLike {
 	actor?: Actor;
 }
 
+/** A prepared restart committed only while the captured waiting position is current. @public */
+export interface WaitingProcessRestart {
+	/** @public */
+	expected: {
+		/** @public */
+		turnId: TurnId;
+		/** @public */
+		paramsJson: string | null;
+		/** @public */
+		stateJson: string | null;
+	};
+	/** @public */
+	stateJson: string;
+	/** Optional repository base change committed with state and turn selection. @public */
+	project?: {
+		/** @public */
+		key: string;
+		/** @public */
+		expectedBaseBranch: string;
+		/** @public */
+		baseBranch: string;
+	};
+}
+
 /** @public */
 export interface ProcessEngineLike {
 	/** Commit background facts against the snapshot that was read, without a turn attempt. @internal */
@@ -620,7 +644,14 @@ export interface ProcessEngineLike {
 		}
 	>;
 	/** @internal */
-	startProcess(instanceId: string, startTurnId: TurnId): Promise<ProcessEngineResultLike>;
+	startProcess(
+		instanceId: string,
+		startTurnId: TurnId,
+		opts?: {
+			/** @public */
+			restart?: WaitingProcessRestart;
+		},
+	): Promise<ProcessEngineResultLike>;
 	/** @public */
 	abortProcess(
 		instanceId: string,
