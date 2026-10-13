@@ -1073,7 +1073,7 @@ describe("generic review integration", () => {
 			instanceId: process.id,
 			actionId: "approve_plan",
 			payloadJson: "{",
-			nextRunAt: "2026-04-26T09:00:00.000Z",
+			nextRunAt: futureIso(),
 		});
 
 		try {
@@ -1103,7 +1103,7 @@ describe("generic review integration", () => {
 			instanceId: process.id,
 			actionId: "approve_plan",
 			payloadJson: JSON.stringify({ input: {}, nextTurnModelProfileId: null }),
-			nextRunAt: "2026-04-26T09:00:00.000Z",
+			nextRunAt: futureIso(),
 		});
 
 		try {
