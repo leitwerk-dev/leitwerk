@@ -1,8 +1,24 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { testAuthConfig } from "../auth/auth-test-helpers.js";
-import { getDefaultConfig, sanitizeConfigForLogging, validateConfig } from "./config-loader.js";
+import {
+	applyConfigDefaults,
+	getDefaultConfig,
+	loadConfig,
+	sanitizeConfigForLogging,
+	validateConfig,
+} from "./config-loader.js";
+
+function validConfig(): ReturnType<typeof getDefaultConfig> {
+	const config = getDefaultConfig();
+	addTestModelProfiles(config);
+	return config;
+}
 
 function addTestModelProfiles(config: ReturnType<typeof getDefaultConfig>): void {
+	config.pi.default_model_profile = "claude_fast";
 	config.pi.model_profiles = [
 		{ id: "claude_fast", provider: "test", model_id: "fast" },
 		{ id: "local_qwen", provider: "test", model_id: "local" },
@@ -10,15 +26,98 @@ function addTestModelProfiles(config: ReturnType<typeof getDefaultConfig>): void
 }
 
 function kubernetesConfig(): ReturnType<typeof getDefaultConfig> {
-	const config = getDefaultConfig();
+	const config = validConfig();
 	config.workers.runner = "kubernetes";
 	config.worker_runtime_profiles = { generic: { image: "ghcr.io/example/generic:1" } };
 	return config;
 }
 
+describe("required global model default", () => {
+	it.each([
+		undefined,
+		null,
+		"",
+		"   ",
+		7,
+		"missing",
+	])("rejects %s without choosing a profile", (value) => {
+		const config = validConfig();
+		const raw = { ...config, pi: { ...config.pi, default_model_profile: value } };
+		expect(validateConfig(raw)).toContainEqual(expect.stringContaining("pi.default_model_profile"));
+		const directory = mkdtempSync(path.join(tmpdir(), "leitwerk-model-default-"));
+		onTestFinished(() => rmSync(directory, { recursive: true, force: true }));
+		const file = path.join(directory, "config.json");
+		writeFileSync(file, JSON.stringify(raw));
+		expect(loadConfig(file)).toMatchObject({
+			ok: false,
+			error: expect.stringContaining("pi.default_model_profile"),
+		});
+	});
+
+	it("requires a configured profile even with an empty catalog", () => {
+		const config = validConfig();
+		config.pi.model_profiles = [];
+		expect(validateConfig(config as unknown as Record<string, unknown>)).toContainEqual(
+			expect.stringContaining("Unknown model profile 'claude_fast' at pi.default_model_profile"),
+		);
+	});
+
+	it("accepts a default other than the first catalog entry", () => {
+		const config = validConfig();
+		config.pi.default_model_profile = "local_qwen";
+		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([]);
+	});
+
+	it("does not start with built-in defaults when no configuration file exists", () => {
+		const directory = mkdtempSync(path.join(tmpdir(), "leitwerk-model-default-"));
+		onTestFinished(() => rmSync(directory, { recursive: true, force: true }));
+		expect(loadConfig(path.join(directory, "missing.yaml"))).toMatchObject({
+			ok: false,
+			error: expect.stringContaining("pi.default_model_profile"),
+		});
+	});
+});
+
 describe("validateConfig", () => {
+	it("preserves omitted and empty process skill defaults without checking installation", () => {
+		const config = applyConfigDefaults({
+			...validConfig(),
+			default_skills: ["shared-guidance", "shared-guidance"],
+			process_configs: {
+				inherited: {},
+				replaced: { default_skills: ["review-guidance"] },
+				disabled: { default_skills: [] },
+			},
+		});
+		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([]);
+		expect(config.default_skills).toEqual(["shared-guidance", "shared-guidance"]);
+		expect(config.process_configs?.inherited.default_skills).toBeUndefined();
+		expect(config.process_configs?.replaced.default_skills).toEqual(["review-guidance"]);
+		expect(config.process_configs?.disabled.default_skills).toEqual([]);
+		expect(getDefaultConfig().default_skills).toEqual([]);
+	});
+
+	it.each([
+		"",
+		" ",
+		"../skill",
+		"some/skill",
+		"a".repeat(85),
+		7,
+		null,
+	])("rejects invalid default skill ID %s at either scope", (id) => {
+		for (const extra of [
+			{ default_skills: [id] },
+			{ process_configs: { demo: { default_skills: [id] } } },
+		]) {
+			expect(validateConfig({ ...validConfig(), ...extra })).toContainEqual(
+				expect.stringContaining("default_skills"),
+			);
+		}
+	});
+
 	it.each(["128Mi", "1Gi", "50Gi", "1.5Gi"])("accepts process storage_size %s", (size) => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		config.process_configs = { test_process: { storage_size: size, turn_configs: {} } };
 		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([]);
 	});
@@ -32,7 +131,7 @@ describe("validateConfig", () => {
 		128,
 		null,
 	])("rejects invalid process storage_size %s", (storage_size) => {
-		const config = { ...getDefaultConfig(), process_configs: { test_process: { storage_size } } };
+		const config = { ...validConfig(), process_configs: { test_process: { storage_size } } };
 		expect(
 			validateConfig(config).some((error) =>
 				error.includes("process_configs.test_process.storage_size"),
@@ -78,20 +177,39 @@ describe("validateConfig", () => {
 			),
 		).toEqual([]);
 	});
+	it("requires immutable images in every profile only when image preloading is enabled", () => {
+		const config = kubernetesConfig();
+		if (!config.kubernetes) throw new Error("Missing Kubernetes defaults");
+		config.kubernetes.image_preload = { enabled: false };
+		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([]);
+		config.kubernetes.image_preload.enabled = true;
+		expect(validateConfig(config as unknown as Record<string, unknown>)).toContainEqual(
+			expect.stringContaining("worker_runtime_profiles.generic.image must be digest-qualified"),
+		);
+		config.worker_runtime_profiles = {
+			generic: { image: `registry.example/worker@sha256:${"a".repeat(64)}` },
+		};
+		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([]);
+		config.worker_runtime_profiles.mutable = { image: "registry.example/worker:latest" };
+		expect(validateConfig(config as unknown as Record<string, unknown>)).toContainEqual(
+			expect.stringContaining("worker_runtime_profiles.mutable.image must be digest-qualified"),
+		);
+	});
 
 	it("accepts a valid full config", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		config.server.host = "0.0.0.0";
 		const errors = validateConfig(config as unknown as Record<string, unknown>);
 		expect(errors).toEqual([]);
 	});
 
 	it("defaults auth.enabled to false", () => {
-		expect(getDefaultConfig().auth?.enabled).toBe(false);
+		expect(validConfig().auth?.enabled).toBe(false);
 	});
 
 	it("starts with an empty stock model profile catalog", () => {
 		expect(getDefaultConfig().pi.model_profiles).toEqual([]);
+		expect(getDefaultConfig().pi.default_model_profile).toBe("");
 	});
 
 	it("reports wrong types", () => {
@@ -114,7 +232,7 @@ describe("validateConfig", () => {
 	});
 
 	it("accepts process Pi prompt template overrides", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		config.process_configs = {
 			test_process: {
 				default_model_profile: undefined,
@@ -132,7 +250,7 @@ describe("validateConfig", () => {
 	});
 
 	it("accepts configured worker runtime profiles referenced by components and processes", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		config.worker_runtime_profiles = {
 			generic: { image: "ghcr.io/example/generic:1" },
 			node22: { image: "ghcr.io/example/node22:1" },
@@ -153,7 +271,7 @@ describe("validateConfig", () => {
 	});
 
 	it("rejects references to unknown worker runtime profiles", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		config.worker_runtime_profiles = { generic: { image: "ghcr.io/example/generic:1" } };
 		config.workers.default_runtime_profile = "missing-default";
 		config.components = {
@@ -181,8 +299,33 @@ describe("validateConfig", () => {
 		).toBe(true);
 	});
 
+	it("validates a Docker fallback profile and scoped selector without changing ordinary defaults", () => {
+		const config = validConfig();
+		config.workers.runner = "kubernetes";
+		if (!config.kubernetes) throw new Error("Expected Kubernetes config");
+		config.kubernetes.docker = {
+			runtime_class_name: "qualified-vm",
+			isolation: "virtual-machine",
+			process_storage_class_name: "retained-storage",
+			worker_runtime_profile: "docker_vm",
+			node_selector: { "kubernetes.io/hostname": "vm-worker" },
+		};
+		expect(validateConfig(config)).toContain(
+			"Unknown worker runtime profile 'docker_vm' at kubernetes.docker.worker_runtime_profile",
+		);
+		config.worker_runtime_profiles = {
+			...config.worker_runtime_profiles,
+			docker_vm: { image: "registry.test/worker:vm", resources: { limits: { memory: "16Gi" } } },
+		};
+		expect(validateConfig(config)).toEqual([]);
+		config.kubernetes.docker.worker_runtime_profile = "";
+		expect(validateConfig(config)).toContainEqual(
+			expect.stringContaining("kubernetes.docker.worker_runtime_profile"),
+		);
+	});
+
 	it("accepts Kubernetes runner config with default runtime profile", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		config.workers.runner = "kubernetes";
 		config.worker_runtime_profiles = {
 			generic: {
@@ -205,6 +348,36 @@ describe("validateConfig", () => {
 		}
 
 		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([]);
+	});
+
+	it.each([
+		{ isolation: "gvisor" as const },
+		{ isolation: "virtual-machine" as const },
+		{ gvisor: true },
+		{ isolation: "gvisor" as const, gvisor: true },
+		{ isolation: "virtual-machine" as const, gvisor: false },
+	])("accepts sandbox Docker isolation %j without host_users", (selection) => {
+		const config = kubernetesConfig();
+		if (!config.kubernetes) throw new Error("Missing Kubernetes config");
+		config.kubernetes.docker = {
+			runtime_class_name: "qualified-sandbox",
+			process_storage_class_name: "docker-process",
+			...selection,
+		};
+		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([]);
+	});
+
+	it.each([
+		{ isolation: "gvisor", gvisor: false },
+		{ isolation: "virtual-machine", gvisor: true },
+		{ isolation: "gvisor", host_users: false },
+		{ isolation: "virtual-machine", host_users: true },
+		{ gvisor: true, host_users: false },
+		{ isolation: "host-kernel" },
+	])("rejects inconsistent or unknown Docker isolation %j", (docker) => {
+		const config = kubernetesConfig();
+		const errors = validateConfig({ ...config, kubernetes: { ...config.kubernetes, docker } });
+		expect(errors).toContainEqual(expect.stringContaining("kubernetes.docker"));
 	});
 
 	it.each([20, 24])("validates Kubernetes Docker names and address-pool prefix %s", (size) => {
@@ -234,7 +407,7 @@ describe("validateConfig", () => {
 	});
 
 	it("rejects Kubernetes runner config before pod creation when required wiring is missing", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		config.workers.runner = "kubernetes";
 		config.worker_runtime_profiles = {};
 		expect(config.kubernetes).toBeDefined();
@@ -301,7 +474,7 @@ describe("validateConfig", () => {
 	});
 
 	it("rejects non-positive session snapshot byte limits", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		config.workers.session_snapshot_max_size_bytes = -1;
 		const errors = validateConfig(config as unknown as Record<string, unknown>);
 		expect(errors).toContain(
@@ -310,7 +483,7 @@ describe("validateConfig", () => {
 	});
 
 	it("rejects Docker runner config without a worker runtime profile catalog and default", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		config.worker_runtime_profiles = {};
 		config.workers.default_runtime_profile = "";
 
@@ -324,7 +497,7 @@ describe("validateConfig", () => {
 	});
 
 	it("allows local runner without image/profile selection requirements", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		config.workers.runner = "local";
 		config.worker_runtime_profiles = {};
 		config.workers.default_runtime_profile = "";
@@ -340,7 +513,7 @@ describe("validateConfig", () => {
 	});
 
 	it("rejects the removed profile-level dind contract", () => {
-		const config = getDefaultConfig() as unknown as Record<string, unknown>;
+		const config = validConfig() as unknown as Record<string, unknown>;
 		(config.docker as Record<string, unknown>).dind = { privileged: true };
 		(config.worker_runtime_profiles as Record<string, unknown>).generic = {
 			image: "worker",
@@ -356,14 +529,14 @@ describe("validateConfig", () => {
 		"privileged",
 		"sysbox-runc",
 	] as const)("accepts Docker private daemon isolation %s", (isolation) => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		expect(config.docker).toBeDefined();
 		if (config.docker) config.docker.private_daemon = { isolation };
 		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([]);
 	});
 
 	it("rejects unsupported Docker private daemon isolation", () => {
-		const config = getDefaultConfig() as unknown as Record<string, unknown>;
+		const config = validConfig() as unknown as Record<string, unknown>;
 		(config.docker as Record<string, unknown>).private_daemon = { isolation: "automatic" };
 		expect(validateConfig(config)).toContainEqual(
 			expect.stringContaining("docker.private_daemon.isolation"),
@@ -371,7 +544,7 @@ describe("validateConfig", () => {
 	});
 
 	it("accepts internal TLS with cert, key, https worker URL, and runner CA file", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		config.internal_tls = {
 			enabled: true,
 			cert_file: "/etc/tls/server.crt",
@@ -386,7 +559,7 @@ describe("validateConfig", () => {
 	});
 
 	it("rejects internal TLS client CA because worker client certificates are not wired", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		config.internal_tls = {
 			enabled: true,
 			cert_file: "/etc/tls/server.crt",
@@ -400,7 +573,7 @@ describe("validateConfig", () => {
 	});
 
 	it("rejects enabled internal TLS missing cert and key files", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		config.internal_tls = { enabled: true };
 		const errors = validateConfig(config as unknown as Record<string, unknown>);
 		expect(errors.some((e) => e.includes("internal_tls.cert_file is required"))).toBe(true);
@@ -408,13 +581,13 @@ describe("validateConfig", () => {
 	});
 
 	it("ignores internal TLS file requirements when disabled", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		config.internal_tls = { enabled: false };
 		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([]);
 	});
 
 	it("rejects production worker TLS when the runner URL is not https or CA-backed", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		config.internal_tls = {
 			enabled: true,
 			cert_file: "/etc/tls/server.crt",
@@ -446,7 +619,7 @@ describe("validateConfig", () => {
 	});
 
 	it("rejects https worker URLs when the internal listener is not serving TLS", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		expect(config.docker).toBeDefined();
 		if (config.docker) {
 			config.docker.server_url = "https://leitwerk-server:8080";
@@ -457,7 +630,7 @@ describe("validateConfig", () => {
 	});
 
 	it("accepts pi retry overrides that defer provider timeout and retry count to SDK defaults", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		config.pi.retry = {
 			enabled: true,
 			max_retries: 2,
@@ -480,14 +653,14 @@ describe("validateConfig", () => {
 			"local_worker.process_volume_root was removed; remove the key because local workers use storage.process_workspaces_dir and storage.tree_files_dir directly",
 		],
 	] as const)("rejects legacy %s.%s with migration guidance", (section, key, message) => {
-		const config = getDefaultConfig() as unknown as Record<string, unknown>;
+		const config = validConfig() as unknown as Record<string, unknown>;
 		(config[section] as Record<string, unknown>)[key] = "legacy-value";
 
 		expect(validateConfig(config)).toContain(message);
 	});
 
 	it("rejects directly configured skills with repository migration guidance", () => {
-		const config = getDefaultConfig() as unknown as Record<string, unknown>;
+		const config = validConfig() as unknown as Record<string, unknown>;
 		config.skills = [{ id: "review", source: { kind: "local", path: "../shared-skills/review" } }];
 
 		expect(validateConfig(config)).toContain(
@@ -496,7 +669,7 @@ describe("validateConfig", () => {
 	});
 
 	it("accepts a configured process title generation model profile and retry policy", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		addTestModelProfiles(config);
 		config.pi.process_title_generation.model_profile = "claude_fast";
 		config.pi.process_title_generation.retry = {
@@ -509,7 +682,7 @@ describe("validateConfig", () => {
 	});
 
 	it("accepts model profiles that omit thinking_level", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		config.pi.model_profiles = [
 			{
 				id: "title_fast",
@@ -517,16 +690,17 @@ describe("validateConfig", () => {
 				model_id: "qwen3.6-35b-a3b",
 			},
 		];
+		config.pi.default_model_profile = "title_fast";
 		config.pi.process_title_generation.model_profile = "title_fast";
 
 		expect(validateConfig(config as unknown as Record<string, unknown>)).toEqual([]);
 	});
 
 	it("accepts string provider_options and rejects non-string values", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		config.pi.model_profiles = [
 			{
-				id: "profile",
+				id: "claude_fast",
 				provider: "provider",
 				model_id: "model",
 				provider_options: { preferred_account: "team" },
@@ -582,7 +756,7 @@ describe("validateConfig", () => {
 	});
 
 	it("rejects an invalid process title generation retry policy", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		config.pi.process_title_generation.retry.max_attempts = 0;
 
 		const errors = validateConfig(config as unknown as Record<string, unknown>);
@@ -592,7 +766,7 @@ describe("validateConfig", () => {
 	});
 
 	it("rejects an unknown process title generation model profile", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		config.pi.process_title_generation.model_profile = "missing_profile";
 
 		const errors = validateConfig(config as unknown as Record<string, unknown>);
@@ -602,7 +776,7 @@ describe("validateConfig", () => {
 	});
 
 	it("rejects a blank process title generation model profile", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		config.pi.process_title_generation.model_profile = "";
 
 		const errors = validateConfig(config as unknown as Record<string, unknown>);
@@ -614,7 +788,7 @@ describe("validateConfig", () => {
 	});
 
 	it("accepts valid allowed_model_profiles", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		addTestModelProfiles(config);
 		config.process_configs = {
 			test_process: {
@@ -629,7 +803,7 @@ describe("validateConfig", () => {
 	});
 
 	it("rejects empty allowed_model_profiles array", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		config.process_configs = {
 			test_process: {
 				allowed_model_profiles: [],
@@ -646,7 +820,7 @@ describe("validateConfig", () => {
 	});
 
 	it("rejects unknown profile in allowed_model_profiles", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		addTestModelProfiles(config);
 		config.process_configs = {
 			test_process: {
@@ -666,7 +840,7 @@ describe("validateConfig", () => {
 	});
 
 	it("accepts an inherited default_model_profile outside allowed_model_profiles", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		addTestModelProfiles(config);
 		config.process_configs = {
 			test_process: {
@@ -681,7 +855,7 @@ describe("validateConfig", () => {
 	});
 
 	it("accepts an inherited turn model_profile outside allowed_model_profiles", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		addTestModelProfiles(config);
 		config.process_configs = {
 			test_process: {
@@ -700,7 +874,7 @@ describe("validateConfig", () => {
 	});
 
 	it("accepts removed inherited process and turn defaults", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		addTestModelProfiles(config);
 		config.process_configs = {
 			test_process: {
@@ -713,7 +887,7 @@ describe("validateConfig", () => {
 	});
 
 	it("keeps watcher configuration opaque until its extension source validates it", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		config.process_configs = {
 			poem_creator_process: {
 				turn_configs: {},
@@ -731,6 +905,7 @@ describe("validateConfig", () => {
 
 describe("auth config validation", () => {
 	function errorsFor(config: ReturnType<typeof getDefaultConfig>): string[] {
+		addTestModelProfiles(config);
 		return validateConfig(config as unknown as Record<string, unknown>);
 	}
 
@@ -743,7 +918,7 @@ describe("auth config validation", () => {
 	});
 
 	it("accepts GitHub OAuth with organization membership authorization", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		config.server.base_url = "https://leitwerk.example.test";
 		config.auth = {
 			enabled: true,
@@ -792,7 +967,7 @@ describe("auth config validation", () => {
 	});
 
 	it("rejects relative server base URLs", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		config.server.base_url = "/leitwerk";
 
 		expectErrorContaining(errorsFor(config), "server.base_url", "absolute http(s) URL");
@@ -838,7 +1013,7 @@ describe("auth config validation", () => {
 
 describe("sanitizeConfigForLogging", () => {
 	it("redacts sensitive values and keeps non-sensitive fields readable", () => {
-		const config = getDefaultConfig();
+		const config = validConfig();
 		config.notifications.all.url = "https://hooks.example.test/all";
 		config.notifications.squad.routes.backend = {
 			url: "https://hooks.example.test/backend",

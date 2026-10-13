@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 
-import { mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	fetchInstalledSkillDetail,
@@ -10,6 +9,7 @@ import {
 	removeSkill,
 } from "../lib/api.js";
 import { navigate } from "../lib/router.svelte";
+import { mountTest, unmountTests } from "../test-support/mount.js";
 import SkillsPage from "./SkillsPage.svelte";
 
 const usage = {
@@ -66,8 +66,6 @@ vi.mock("../lib/router.svelte", () => ({
 	navigate: vi.fn(),
 }));
 
-const mountedApps: Array<ReturnType<typeof mount>> = [];
-
 function catalog() {
 	return {
 		repositories: [
@@ -93,10 +91,7 @@ async function flush() {
 }
 
 function mountSubject(props: { detailKind?: string; skillId?: string } = {}) {
-	const target = document.createElement("div");
-	document.body.append(target);
-	mountedApps.push(mount(SkillsPage, { target, props }));
-	return target;
+	return mountTest(SkillsPage, props).target;
 }
 
 function click(element: Element | null) {
@@ -110,13 +105,46 @@ function choose(element: Element | null, value: string) {
 	element.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-afterEach(() => {
-	for (const app of mountedApps.splice(0)) unmount(app);
+afterEach(async () => {
+	await unmountTests();
 	vi.clearAllMocks();
-	document.body.innerHTML = "";
 });
 
 describe("SkillsPage", () => {
+	it("shows bundled skills and their instructions without install or remove actions", async () => {
+		const bundled = {
+			...installed,
+			id: "writing",
+			label: "Writing",
+			registrationKind: "bundled" as const,
+			sourceExtensionId: "example-skills",
+		};
+		vi.mocked(fetchSkills).mockResolvedValue({ ...catalog(), installedSkills: [bundled] });
+		vi.mocked(fetchInstalledSkillDetail).mockResolvedValue({
+			...bundled,
+			skillMarkdown: "# Writing\nWrite clear documentation.",
+			processes: [],
+			revisions: [],
+		});
+		const target = mountSubject({ detailKind: "installed", skillId: "writing" });
+		await flush();
+		expect(target.textContent).toContain("Bundled");
+		expect(target.textContent).toContain("example-skills");
+		expect(target.textContent).toContain("automatically available to every AI step");
+		expect(target.textContent).toContain("Automatic");
+		expect(target.textContent).not.toContain("Revision history");
+		expect(
+			[...target.querySelectorAll("button")].some((button) =>
+				/^(Remove|Install skill|Update skill)$/.test(button.textContent?.trim() ?? ""),
+			),
+		).toBe(false);
+		click(target.querySelector('[role="tab"][aria-controls="skill-instructions"]'));
+		await flush();
+		expect(target.querySelector("#skill-instructions")?.textContent).toContain(
+			"Write clear documentation.",
+		);
+	});
+
 	it("separates installed skills from remote candidates and displays configured repositories in a modal popup", async () => {
 		vi.mocked(fetchSkills).mockResolvedValue(catalog());
 		const target = mountSubject();

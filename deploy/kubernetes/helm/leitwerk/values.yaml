@@ -77,6 +77,9 @@ server:
       clientTimeout: 30s
       toastTtl: 6s
     piAgentDir: /var/lib/leitwerk/pi
+    # Required for chart-generated configuration: select an ID from piModelProfiles.
+    piDefaultModelProfile: ""
+    piModelProfiles: []
     piRetry:
       enabled: true
       maxRetries: 3
@@ -169,11 +172,22 @@ kubernetes:
     accessModes:
       - ReadWriteOnce
     mountPath: /state
+  imagePreload:
+    enabled: false
   # Enables process definitions that declare runtime.docker. The chart does not
   # install the RuntimeClass or StorageClass.
   docker:
     enabled: false
+    # Fallback only; explicit process and component profiles retain precedence.
+    workerRuntimeProfile: ""
+    # These keys override matching kubernetes.pod.nodeSelector keys for Docker workers.
+    nodeSelector: {}
     runtimeClassName: ""
+    # Select gvisor or virtual-machine only after qualifying the cluster runtime.
+    isolation: ""
+    # Legacy gVisor alias; omit when using isolation.
+    gvisor: null
+    # Used only when neither sandbox isolation nor the legacy alias is enabled.
     hostUsers: false
     processStorageClassName: ""
   pod:

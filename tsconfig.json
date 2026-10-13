@@ -16,6 +16,9 @@
 	},
 	"references": [
 		{
+			"path": "extensions/skills"
+		},
+		{
 			"path": "packages/domain"
 		},
 		{

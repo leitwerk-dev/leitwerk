@@ -2,6 +2,23 @@ import { describe, expect, it } from "vitest";
 import { normalizeTurnProgressReport, recordTurnProgress } from "./turn-progress.js";
 
 describe("turn progress reports", () => {
+	it("accepts text-only activity and rejects empty or malformed reports", () => {
+		expect(
+			normalizeTurnProgressReport({
+				title: " Publication ",
+				summary: " Creating ticket 3 of 8 ",
+				steps: [],
+			}),
+		).toEqual({ title: "Publication", summary: "Creating ticket 3 of 8", steps: [] });
+		for (const report of [
+			{ title: "Publication", steps: [] },
+			{ title: "Publication", summary: "   ", steps: [] },
+			{ title: "Publication", summary: "Creating a ticket", steps: [{ id: "bad" }] },
+		]) {
+			expect(normalizeTurnProgressReport(report)).toBeNull();
+		}
+	});
+
 	it("normalizes an ordered report with external resources", () => {
 		expect(
 			normalizeTurnProgressReport({

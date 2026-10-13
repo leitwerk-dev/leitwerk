@@ -57,6 +57,8 @@ export interface RecordCommit {
 	/** @internal */
 	committedProject: ProcessProject | null;
 	/** @internal */
+	initialProjects?: ProcessProject[];
+	/** @internal */
 	committedTurnRecords: ProcessTurnRecord[];
 	/** @internal */
 	committedLeafOutcomeSnapshots: ProcessLeafOutcomeSnapshot[];
@@ -265,6 +267,11 @@ export function commitWrites(
 				`Process project '${committedProject.id}' does not belong to '${instanceId}'`,
 			);
 		}
+		const initialProjects = (writes.initialProjects ?? []).map((project) => {
+			if (project.instanceId !== instanceId)
+				throw new Error("Initial repository belongs to another process");
+			return repos.projects.create(project);
+		});
 
 		for (const write of writes.pendingExternalSourceFireWrites) {
 			if (write.kind === "create") {
@@ -305,6 +312,7 @@ export function commitWrites(
 			processBefore,
 			processAfter,
 			committedProject,
+			initialProjects,
 			committedTurnRecords,
 			turnEventSequences,
 			committedLeafOutcomeSnapshots,
@@ -327,6 +335,8 @@ export function deriveReactions(
 		effects.push({ kind: "broadcast", frame });
 	}
 	if (commit.committedProject) effects.push(buildProjectUpdatedEffect(commit.committedProject));
+	for (const project of commit.initialProjects ?? [])
+		effects.push(buildProjectUpdatedEffect(project));
 	if (writes.changedFields.length > 0) {
 		const includeClosedAt =
 			commit.processAfter !== null &&

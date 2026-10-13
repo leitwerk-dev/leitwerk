@@ -55,6 +55,14 @@ const review = flow
 	})
 	.description("Review one item")
 	.freshPrimary()
+	.prepare(({ item }) => ({ itemId: item.id }))
+	.validateOutcome(({ item, prepared }, outcome) => {
+		if ((prepared as { itemId: string }).itemId !== item.id)
+			return ["Preparation belongs to another item"];
+		return outcome.outcome === "keep" && outcome.params.reason !== "relevant"
+			? [`Explain why ${item.name} is relevant before keeping it`]
+			: [];
+	})
 	.buildPrompt(
 		(ctx) =>
 			`Review ${ctx.item.name} (${ctx.itemIndex + 1} of ${ctx.itemCount}); state ${JSON.stringify(ctx.state)}`,
@@ -93,14 +101,34 @@ const processDefinition = flow
 	.initialState((params) => ({ pending: params.items, kept: [] }))
 	.turn(review)
 	.turn(summarize)
+	.ui((api) =>
+		api.leafOutcome({
+			rendererId: "mapped-test:item",
+			capture({ mappedResult }) {
+				return mappedResult
+					? {
+							rendererId: "mapped-test:item",
+							schemaVersion: 1,
+							props: mappedResult as unknown as Record<string, unknown>,
+							fallbackMarkdown: JSON.stringify(mappedResult),
+						}
+					: null;
+			},
+		}),
+	)
 	.define();
 
-async function fixture(items: Item[], resolver: StubToolCallScriptResolver) {
+async function fixture(
+	items: Item[],
+	resolver: StubToolCallScriptResolver,
+	definition = processDefinition,
+) {
 	const persistent = createPersistentIntegrationFixture("leitwerk-mapped-turn-");
 	onTestFinished(persistent.dispose);
 	const config = persistent.createConfig();
 	config.workers.shutdown_grace_period = "100ms";
 	config.extension_loading.sources = [];
+	config.pi.default_model_profile = "mapped-model";
 	config.pi.model_profiles = [
 		{
 			id: "mapped-model",
@@ -118,7 +146,7 @@ async function fixture(items: Item[], resolver: StubToolCallScriptResolver) {
 				piProvider: "ollama",
 			}),
 			setupCatalog(api) {
-				api.registerProcess(processDefinition);
+				api.registerProcess(definition);
 			},
 		},
 	]);
@@ -135,7 +163,7 @@ async function fixture(items: Item[], resolver: StubToolCallScriptResolver) {
 		});
 	const h = await open();
 	const process = h.ctx.deps.processes.create({
-		processId: processDefinition.id,
+		processId: definition.id,
 		lifecycleStatus: "discovered",
 		selectedTurnId: null,
 		defaultModelProfileId: "mapped-model",
@@ -165,6 +193,40 @@ const items: Item[] = [
 	{ id: "b", name: "Bravo" },
 	{ id: "c", name: "Charlie" },
 ];
+
+it("returns correction feedback and accepts only the corrected assessment within one mapped turn", async () => {
+	const responses: unknown[] = [];
+	const f = await fixture([items[0]], (context) => {
+		if (!context.iteration)
+			return { calls: [{ toolName: "summarized", args: {} }], textChunks: ["Summary"] };
+		return {
+			calls: [{ toolName: "keep", args: { reason: "guess", markdown: "Invalid draft" } }],
+			afterToolResult(call, result) {
+				responses.push(result);
+				return call.args.reason === "guess"
+					? { toolName: "keep", args: { reason: "relevant", markdown: "Verified draft" } }
+					: undefined;
+			},
+		};
+	});
+	await f.wait("completed");
+	expect(responses[0]).toMatchObject({
+		ok: false,
+		status: "invalid",
+		errors: ["Explain why Alpha is relevant before keeping it"],
+	});
+	expect(responses[1]).toMatchObject({ status: "ok", outcome: "keep" });
+	const records = f.ctx.deps.turnRecords
+		.listByInstance(f.id)
+		.filter((record) => record.turnId === "review_item");
+	expect(records).toHaveLength(1);
+	expect(records[0].status).toBe("succeeded");
+	const [run] = f.ctx.deps.mappedRuns.listByInstance(f.id);
+	expect(f.ctx.deps.mappedRuns.listItems(run.id)[0].resultJson).toBe('{"id":"a","keep":true}');
+	expect(f.ctx.deps.leafOutcomeSnapshots.listByInstance(f.id)).toContainEqual(
+		expect.objectContaining({ turnRecordId: records[0].id, props: { id: "a", keep: true } }),
+	);
+});
 
 it("runs one durable LLM turn per frozen item, retries the failed item, and collects once", async () => {
 	const prompts: string[] = [];
@@ -290,4 +352,91 @@ it("collects an empty item list without starting an item turn", async () => {
 	expect(f.ctx.deps.mappedRuns.listByInstance(f.id)).toEqual([
 		expect.objectContaining({ status: "completed", itemCount: 0 }),
 	]);
+});
+
+it("freezes each item's resolved union on the server and retains it through restart", async () => {
+	let prefix = "initial";
+	const resolvedItems: string[] = [];
+	const choice = (tag: string) => ({
+		type: "object" as const,
+		properties: { kind: { type: "string" as const, enum: [tag] } },
+		required: ["kind"],
+		additionalProperties: false,
+	});
+	const mapped = flow
+		.mappedLlm<Params, State, Item, Result>("review_item", {
+			items: ({ state }) => state.pending,
+			itemCodec,
+			resultCodec,
+			key: ({ item }) => item.id,
+		})
+		.description("Resolve item action")
+		.freshPrimary()
+		.buildPrompt(({ item }) => `Review ${item.name}`)
+		.outcomeTool("decide", (outcome) =>
+			outcome
+				.description("Decide")
+				.union("action", [choice("placeholder")], { required: true })
+				.resolveParameters(({ item }) => {
+					resolvedItems.push(item.id);
+					return {
+						action: {
+							description: "Action",
+							required: true,
+							anyOf: [choice(`${prefix}:${item.id}`)],
+						},
+					};
+				})
+				.strictSchema()
+				.yield(({ ctx }) => ({ id: ctx.item.id, keep: true })),
+		)
+		.collect(({ state }, results) => ({ ...state, kept: results.map((result) => result.id) }))
+		.complete();
+	const definition = flow
+		.process<Params, State>("frozen_contract_test")
+		.displayName("Frozen contract")
+		.entry("review_item")
+		.codecs({
+			params: { parse: (value) => value as Params, serialize: (value) => value },
+			state: { parse: (value) => value as State, serialize: (value) => value },
+		})
+		.initialState((params) => ({ pending: params.items, kept: [] }))
+		.turn(mapped)
+		.define();
+	const f = await fixture(
+		items.slice(0, 2),
+		(context) => {
+			const item = context.iteration!.item as Item;
+			const tag = `${prefix}:${item.id}`;
+			// Change the live definition after the prepared start, before acceptance.
+			prefix = "changed";
+			return {
+				calls: [
+					{
+						toolName: "decide",
+						args: { action: { kind: tag }, markdown: `Reviewed ${item.name}` },
+					},
+				],
+			};
+		},
+		definition,
+	);
+	await f.wait("completed");
+	expect(resolvedItems).toEqual(["a", "b"]);
+	const starts = f.ctx.deps.turnStarts.listByInstance(f.id);
+	const contracts = starts.map((start) =>
+		start.state.kind === "accepted" && start.state.start?.kind === "llm"
+			? start.state.start.outcomeContract
+			: null,
+	);
+	expect(contracts).toMatchObject([
+		{
+			outcomes: {
+				decide: { strictSchema: true, parameters: { action: { anyOf: [choice("initial:a")] } } },
+			},
+		},
+		{ outcomes: { decide: { parameters: { action: { anyOf: [choice("changed:b")] } } } } },
+	]);
+	await f.restart();
+	expect(f.ctx.deps.turnStarts.listByInstance(f.id)).toEqual(starts);
 });

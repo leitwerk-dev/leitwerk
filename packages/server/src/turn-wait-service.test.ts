@@ -46,6 +46,7 @@ function setup(
 	const processGraphs = createProcessGraphRegistry([definition]);
 	const registry = buildProcessActionRegistry({ processes: processGraphs });
 	const config = getDefaultConfig();
+	config.pi.default_model_profile = "fixture-profile";
 	config.pi.model_profiles = [
 		{ id: "fixture-profile", provider: "fixture-provider", model_id: "fixture-model" },
 	];
@@ -115,6 +116,145 @@ function setup(
 }
 
 describe("server-owned turn readiness", () => {
+	it("keeps configuration diagnostics on the normal interval without inflating activity or attempts", async () => {
+		let ready = false;
+		const s = setup(
+			(ctx) => ready || ctx.waiting("Map Service in Settings; startup resumes automatically."),
+		);
+		await s.start();
+		const service = s.service();
+		await service.poll();
+		expect(pendingTurnWait(s.read())).toMatchObject({
+			message: "Map Service in Settings; startup resumes automatically.",
+			failures: 0,
+			nextCheckAt: 1100,
+		});
+		const old = "2000-01-01T00:00:00.000Z";
+		s.deps.db.$client
+			.prepare("UPDATE process_instances SET updated_at = ? WHERE id = ?")
+			.run(old, s.process.id);
+		s.advance();
+		await service.poll();
+		expect(s.read().updatedAt).toBe(old);
+		expect(s.counts()).toEqual([0, 0, 0, 0]);
+		ready = true;
+		s.advance();
+		await service.poll();
+		expect(s.counts()).toEqual([1, 0, 0, 1]);
+	});
+
+	it("commits all initial bindings before admitting a worker, including across a service restart", async () => {
+		const s = setup(
+			(ctx) =>
+				ctx.projects.length > 0 ||
+				ctx.bindInitialProjects({
+					params: {},
+					metadata: { source: { issueId: "1" } },
+					projects: ["one", "two"].map((key) => ({
+						key,
+						repoLocator: `https://example.test/${key}.git`,
+						baseBranch: "main",
+						workBranch: "change",
+						settingsRepository: { origin: "https://example.test", repositoryId: key },
+					})),
+				}),
+		);
+		await s.start();
+		const service = s.service();
+		await service.poll();
+		expect(s.read()).toMatchObject({
+			lifecycleStatus: "waiting",
+			metadata: { source: { issueId: "1" } },
+		});
+		expect(
+			s.deps.projects
+				.listByInstance(s.process.id)
+				.map((p) => [p.key, p.metadata?.settingsRepository]),
+		).toEqual([
+			["one", { origin: "https://example.test", repositoryId: "one" }],
+			["two", { origin: "https://example.test", repositoryId: "two" }],
+		]);
+		expect(s.counts()).toEqual([0, 0, 0, 0]);
+		await service.stop();
+		await s.service().poll();
+		expect(s.counts()).toEqual([1, 0, 0, 1]);
+		expect(s.deps.projects.listByInstance(s.process.id)).toHaveLength(2);
+	});
+
+	it("discards late initial bindings after Stop", async () => {
+		const entered = Promise.withResolvers<void>();
+		const release = Promise.withResolvers<void>();
+		const s = setup(async (ctx) => {
+			entered.resolve();
+			await release.promise;
+			return ctx.bindInitialProjects({
+				params: {},
+				projects: [
+					{ key: "repo", repoLocator: "https://example.test/repo.git", baseBranch: "main" },
+				],
+			});
+		});
+		await s.start();
+		const check = s.service().poll();
+		await entered.promise;
+		await s.engine.abortProcess(s.process.id);
+		release.resolve();
+		await check;
+		expect(s.read().lifecycleStatus).toBe("aborted");
+		expect(s.deps.projects.listByInstance(s.process.id)).toHaveLength(0);
+		expect(s.counts()).toEqual([0, 0, 0, 0]);
+	});
+
+	it("rolls back parameters, metadata and all projects if binding cannot commit", async () => {
+		const s = setup((ctx) =>
+			ctx.bindInitialProjects({
+				params: {},
+				metadata: { source: "new" },
+				projects: ["one", "two"].map((key) => ({
+					key,
+					repoLocator: `https://example.test/${key}.git`,
+					baseBranch: "main",
+				})),
+			}),
+		);
+		await s.start();
+		const before = s.read();
+		s.deps.db.$client.exec(
+			"CREATE TRIGGER reject_second_binding BEFORE INSERT ON process_projects WHEN NEW.key = 'two' BEGIN SELECT RAISE(ABORT, 'test binding failure'); END",
+		);
+		await s.service().poll();
+		expect(s.read()).toEqual(before);
+		expect(s.deps.projects.listByInstance(s.process.id)).toEqual([]);
+		expect(s.counts()).toEqual([0, 0, 0, 0]);
+	});
+
+	it("refuses to replace existing project bindings", async () => {
+		const s = setup((ctx) =>
+			ctx.bindInitialProjects({
+				params: {},
+				projects: [{ key: "new", repoLocator: "https://example.test/new.git", baseBranch: "main" }],
+			}),
+		);
+		s.deps.projects.create({
+			instanceId: s.process.id,
+			key: "original",
+			repoLocator: "https://example.test/original.git",
+			baseBranch: "main",
+		});
+		await s.start();
+		await s.service().poll();
+		expect(s.read().lifecycleStatus).toBe("error");
+		expect(s.deps.projects.listByInstance(s.process.id).map((p) => p.key)).toEqual(["original"]);
+		expect(s.counts()).toEqual([0, 0, 0, 0]);
+	});
+
+	it("aborts a cancelled source without allocating a worker", async () => {
+		const s = setup((ctx) => ctx.abort("Source trigger removed"));
+		await s.start();
+		await s.service().poll();
+		expect(s.read()).toMatchObject({ lifecycleStatus: "aborted", selectedTurnId: null });
+		expect(s.counts()).toEqual([0, 0, 0, 0]);
+	});
 	it("waits before freezing mapped items and preserves the next gate after an empty collection", async () => {
 		let ready = false;
 		const predicate = () => ready;

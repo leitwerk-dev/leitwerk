@@ -95,7 +95,7 @@ export async function launchSandbox(options: SandboxLauncherOptions): Promise<vo
 		throw new Error(`Sandbox is already running or its pid file is stale: ${pidFile}`);
 	assertStorageOwner(root, input.paths.directory, realpathSync(options.compositionEntry));
 	const config = sandboxConfig(input);
-	input.modelProfileId = config.pi.model_profiles[0].id;
+	input.modelProfileId = config.pi.default_model_profile;
 	const factory: SandboxCompositionFactory = (
 		await import(pathToFileURL(options.compositionEntry).href)
 	).default;

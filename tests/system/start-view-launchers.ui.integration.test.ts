@@ -260,6 +260,7 @@ const launcherUiTestExtension: LeitwerkExtensionModule = {
 };
 
 function configureLauncherModel(config: LeitwerkConfig) {
+	config.pi.default_model_profile = "claude_fast";
 	config.pi.model_profiles = [
 		{
 			id: "claude_fast",
@@ -285,7 +286,8 @@ async function findButton(label: string): Promise<HTMLButtonElement> {
 
 async function clickButton(label: string): Promise<void> {
 	const button = await findButton(label);
-	button.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+	await waitFor(() => expect(button.disabled).toBe(false));
+	button.click();
 }
 
 async function findInputById<T extends HTMLElement>(id: string): Promise<T> {
@@ -579,7 +581,7 @@ describe("start view launcher UI", () => {
 		}
 	});
 
-	it("preserves raw numeric input until submit so server validation can reject invalid numbers", async () => {
+	it("validates raw numeric input before launch without changing the entered value", async () => {
 		let harness: MountedUiHarness<Record<string, never>> | null = null;
 
 		try {
@@ -592,24 +594,32 @@ describe("start view launcher UI", () => {
 			await setTextControlValue("local_repo_flow_form-repoPath", "/tmp/number-test-repo");
 			await setTextControlValue("local_repo_flow_form-prompt", "Validate number handling");
 			await setUnsafeInputValue("local_repo_flow_form-maxTurns", "-");
-			await clickButton("Launch Process");
 			await waitFor(() =>
-				expect(document.body.textContent).toContain("Process startup needs attention"),
+				expect(document.body.textContent).toContain("Max Turns must be a number"),
 			);
-			const startupSummary = await findButton("Process startup needs attention");
-			expect(startupSummary.getAttribute("aria-expanded")).toBe("false");
-			await clickButton("Process startup needs attention");
-			await clickButton("Try again");
-			const maxTurnsInput = document.getElementById(
-				"local_repo_flow_form-maxTurns",
-			) as HTMLInputElement | null;
-			expect(maxTurnsInput?.value).toBe("-");
+			const maxTurnsInput = await findInputById<HTMLInputElement>("local_repo_flow_form-maxTurns");
+			expect(maxTurnsInput.value).toBe("-");
+			expect(maxTurnsInput.getAttribute("aria-invalid")).toBe("true");
+			expect(
+				maxTurnsInput
+					.getAttribute("aria-describedby")
+					?.split(" ")
+					.map((id) => document.getElementById(id)?.textContent)
+					.join(" "),
+			).toContain("Max Turns must be a number");
+			expect((await findButton("Launch Process")).disabled).toBe(true);
+			expect(
+				harness.fetchHarness.count(
+					"/api/launchers/launcher_ui_test_process.local_repo_ui/launch-runs",
+				),
+			).toBe(0);
+			expect(harness.testApp.ctx.deps.processes.listAll()).toHaveLength(0);
 		} finally {
 			await teardownMountedUiHarness(harness);
 		}
 	});
 
-	it("shows server validation errors for invalid launcher input", async () => {
+	it("shows required field errors before launch and enables launch after correction", async () => {
 		let harness: MountedUiHarness<Record<string, never>> | null = null;
 
 		try {
@@ -620,18 +630,25 @@ describe("start view launcher UI", () => {
 			});
 
 			await setTextControlValue("local_repo_flow_form-repoPath", "");
-			await clickButton("Launch Process");
-			await clickButton("Process startup needs attention");
-			await waitFor(() =>
-				expect(document.body.textContent).toContain(
-					"Review the highlighted launcher fields and try again.",
+			await waitFor(() => expect(document.body.textContent).toContain("Required."));
+			const repoPathInput = await findInputById<HTMLInputElement>("local_repo_flow_form-repoPath");
+			expect(repoPathInput.value).toBe("");
+			expect(repoPathInput.getAttribute("aria-invalid")).toBe("true");
+			expect(
+				document.getElementById(repoPathInput.getAttribute("aria-describedby") ?? "")?.textContent,
+			).toContain("Required.");
+			const launchButton = await findButton("Launch Process");
+			expect(launchButton.disabled).toBe(true);
+			await setTextControlValue("local_repo_flow_form-repoPath", "/tmp/corrected-repo");
+			await waitFor(() => expect(launchButton.disabled).toBe(false));
+			expect(repoPathInput.getAttribute("aria-invalid")).toBe("false");
+			expect(document.body.textContent).not.toContain("Required.");
+			expect(
+				harness.fetchHarness.count(
+					"/api/launchers/launcher_ui_test_process.local_repo_ui/launch-runs",
 				),
-			);
-			await clickButton("Try again");
-			const repoPathInput = document.getElementById(
-				"local_repo_flow_form-repoPath",
-			) as HTMLInputElement | null;
-			expect(repoPathInput?.value).toBe("");
+			).toBe(0);
+			expect(harness.testApp.ctx.deps.processes.listAll()).toHaveLength(0);
 		} finally {
 			await teardownMountedUiHarness(harness);
 		}

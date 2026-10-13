@@ -4,7 +4,11 @@ import type {
 	ProcessProject,
 	TurnOutcomePayload,
 } from "@leitwerk-dev/domain";
-import { SafeOutcomePlanningError } from "@leitwerk-dev/process-sdk";
+import {
+	applyOutcomeContract,
+	resolveOutcomeContract,
+	SafeOutcomePlanningError,
+} from "@leitwerk-dev/process-sdk";
 import type { RepositoryBundle } from "../../db/repositories.js";
 import {
 	checkTurnOutcomeAvailability,
@@ -123,6 +127,8 @@ async function buildProcessTurnOutcomeEffectWrites(
 
 /** @internal */
 export interface TurnOutcomePlanningInput {
+	/** Frozen declarations from the accepted start. @internal */
+	outcomeContract?: Record<string, unknown>;
 	/** @internal */
 	process: ProcessInstance;
 	/** @internal */
@@ -148,10 +154,41 @@ export async function buildTurnOutcomeWrites(
 	input: TurnOutcomePlanningInput,
 ): Promise<WriteBuildResult> {
 	const knownProjectKeys = new Set(input.projects.map((project) => project.key));
-	const turnDefinition = input.processActionRegistry.getTurnDefinition(
+	let turnDefinition = input.processActionRegistry.getTurnDefinition(
 		input.process.processId,
 		input.payload.turnId,
 	);
+	if (turnDefinition?.kind === "llm") {
+		try {
+			let snapshot = input.outcomeContract;
+			if (!snapshot) {
+				const ref = input.iteration;
+				const item = ref ? input.mappedRuns?.getItem(ref.runId, ref.itemIndex) : undefined;
+				const run = ref ? input.mappedRuns?.getById(ref.runId) : undefined;
+				snapshot = {
+					...resolveOutcomeContract(
+						turnDefinition,
+						input.processActionRegistry.resolveContextData(input.process.processId, input.process),
+						ref && item && run
+							? {
+									...ref,
+									item: JSON.parse(item.itemJson),
+									itemLabel: item.label,
+									itemCount: run.itemCount,
+								}
+							: undefined,
+					),
+				};
+			}
+			turnDefinition = applyOutcomeContract(turnDefinition, snapshot);
+		} catch (error) {
+			return {
+				ok: false,
+				code: "invalid_outcome_contract",
+				message: error instanceof Error ? error.message : "Invalid outcome contract",
+			};
+		}
+	}
 	const availabilityError = checkTurnOutcomeAvailability(
 		input.processGraphs,
 		turnDefinition,

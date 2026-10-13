@@ -62,10 +62,20 @@ function fixture() {
 		expect(transition).toHaveBeenCalledOnce();
 		return transition.mock.calls[0][0] as { turnId: string; state: RepositoryChangeState };
 	}
-	return { readLabels, outcome };
+	return { process, readLabels, outcome };
 }
 
 describe("repository change routing", () => {
+	it("gives commit-message generation read-only tools and the actual implementation evidence", () => {
+		const { process } = fixture();
+		const turn = process.turns.get("generate_commit_message")?.definition;
+		expect(turn).toMatchObject({
+			kind: "llm",
+			availableTools: ["read", "grep", "find", "ls"],
+			consumedProducts: ["plan", "implementation-summary"],
+			prepare: expect.any(Function),
+		});
+	});
 	it.each(["ui", "issue"])("only permits launcher plan bypass for %s origin", async (origin) => {
 		const f = fixture();
 		f.readLabels.mockResolvedValue(["leitwerk-skip-plan-decision"]);

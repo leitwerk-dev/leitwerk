@@ -719,6 +719,7 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 				config: deps.config,
 				processId: process.processId,
 				componentKeys: deps.projects.listByInstance(process.id).map((project) => project.key),
+				docker: deps.processGraphs.get(process.processId)?.runtime?.docker === true,
 			}),
 		);
 		if (!selection.ok) {

@@ -433,16 +433,6 @@ function createEmptyPrimaryPathSnapshot(): PrimaryPathSnapshot {
 	};
 }
 
-function createDeferred<T>() {
-	let resolve!: (value: T) => void;
-	let reject!: (error?: unknown) => void;
-	const promise = new Promise<T>((res, rej) => {
-		resolve = res;
-		reject = rej;
-	});
-	return { promise, resolve, reject };
-}
-
 function createBasePiSessionEntries() {
 	return [
 		{
@@ -1940,14 +1930,14 @@ describe("ProcessDetailPage", () => {
 		await flushUi();
 		expect(mockFetchInspectionTrace).toHaveBeenCalledTimes(1);
 		const restored = buildMockReasoningResponse("agt_1", "trn_live");
-		const pending = createDeferred<typeof restored>();
+		const pending = Promise.withResolvers<typeof restored>();
 		mockFetchInspectionTrace.mockImplementationOnce(() => pending.promise);
 		mockWs.set({ status: "connected", serverVersion: null, reconnectCount: 2 });
 		await flushUi();
 		expect(mockFetchInspectionTrace).toHaveBeenCalledTimes(2);
 		expect(target.textContent).toContain("Keep this live reasoning intact.");
 		expect(target.querySelector("[data-section=process-inspector]")).toBeTruthy();
-		target.querySelector<HTMLButtonElement>('[data-action="show-in-chronicle"]')?.click();
+		target.querySelector<HTMLButtonElement>('[data-action="return-to-process"]')?.click();
 		await flushUi();
 		pending.resolve(restored);
 		mockWs.set({ status: "connected", serverVersion: null, reconnectCount: 3 });
@@ -1960,7 +1950,7 @@ describe("ProcessDetailPage", () => {
 		const { target } = await mountSubject(createLiveReasoningTransitionDetail());
 		await flushUi();
 		const stale = buildMockReasoningResponse("agt_1", "trn_live");
-		const pending = createDeferred<typeof stale>();
+		const pending = Promise.withResolvers<typeof stale>();
 		mockFetchInspectionTrace.mockImplementationOnce(() => pending.promise);
 		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
 		await flushUi();
@@ -2943,7 +2933,7 @@ describe("ProcessDetailPage", () => {
 	});
 
 	it("retries the detail load when live-turn metadata arrives before the first detail response resolves", async () => {
-		const pendingInitialDetail = createDeferred<ProcessDetailData>();
+		const pendingInitialDetail = Promise.withResolvers<ProcessDetailData>();
 		let fetchCallCount = 0;
 		mockFetchProcessDetail.mockReset();
 		mockFetchProcessDetail.mockImplementation(async () => {
@@ -3205,7 +3195,7 @@ describe("ProcessDetailPage", () => {
 		expect(disclosure.open).toBe(true);
 	});
 
-	it("shows both the failed turn and the recovery rail item", async () => {
+	it("shows one failed turn rail item with recovery details", async () => {
 		const { target } = await mountSubject(createContinuableFailedDetail());
 		await flushUi();
 
@@ -3216,10 +3206,13 @@ describe("ProcessDetailPage", () => {
 			'[data-section="action-required-indicator"][data-rail-tone="error_recovery"]',
 		);
 		expect(failedTurnButton).toBeTruthy();
-		expect(recoveryButton).toBeTruthy();
+		expect(recoveryButton).toBeNull();
 		expect(failedTurnButton?.dataset.state).toBe("failed");
 		expect(failedTurnButton?.querySelector(".rail-detail")?.textContent).toContain("Failed");
-		expect(recoveryButton?.querySelector(".rail-title")?.textContent).toContain("Implement Fix");
+		expect(failedTurnButton?.querySelector(".rail-title")?.textContent).toContain("Implement Fix");
+		expect(failedTurnButton?.querySelector(".rail-detail")?.textContent).toContain(
+			"The turn failed and can be retried or continued.",
+		);
 	});
 
 	it("renders recovery inside the latest failed turn even when an older leaf outcome exists", async () => {
@@ -3279,7 +3272,7 @@ describe("ProcessDetailPage", () => {
 		expect(requireContinuePromptField(target).value).toBe("Resume with the existing notes.");
 	});
 
-	it("opens the latest failed-turn reasoning from the recovery rail item", async () => {
+	it("opens the latest failed-turn reasoning from the single failed-turn rail item", async () => {
 		const { target, viewport } = await mountSubject(createContinuableFailedDetail());
 		installViewportMetrics(viewport, { clientHeight: 900, scrollHeight: 2_400 });
 		await flushUi();
@@ -3293,9 +3286,10 @@ describe("ProcessDetailPage", () => {
 		await flushUi();
 
 		const recoveryButton = target.querySelector<HTMLButtonElement>(
-			'[data-rail-tone="error_recovery"]',
+			'[data-rail-kind="turn"][data-turn-record-id="trn_2"]',
 		);
 		expect(recoveryButton).toBeTruthy();
+		expect(target.querySelector('[data-rail-tone="error_recovery"]')).toBeNull();
 		recoveryButton?.click();
 		await flushUi();
 
@@ -3335,11 +3329,10 @@ describe("ProcessDetailPage", () => {
 			'[data-section="current-turn-recovery"]',
 		);
 		expect(failedTurnButton).toBeTruthy();
-		expect(recoveryButton).toBeTruthy();
+		expect(recoveryButton).toBeNull();
 		expect(failedTurnSection).toBeTruthy();
 		expect(recoverySection).toBeTruthy();
 		expect(failedTurnButton?.dataset.active).toBe("true");
-		expect(recoveryButton?.dataset.active).toBe("false");
 		expect(failedTurnSection?.dataset.focused).toBe("true");
 		expect(recoverySection?.dataset.focused).toBe("false");
 	});
@@ -3414,7 +3407,7 @@ describe("ProcessDetailPage", () => {
 		target.querySelector<HTMLButtonElement>('[data-action="open-reasoning-details"]')?.click();
 		await flushUi();
 		const closeOverlay = target.querySelector<HTMLButtonElement>(
-			'[data-action="show-in-chronicle"]',
+			'[data-action="return-to-process"]',
 		);
 		expect(closeOverlay).toBeTruthy();
 		expect(document.activeElement).toBe(target.querySelector("#inspector-heading"));
@@ -3563,10 +3556,9 @@ describe("ProcessDetailPage", () => {
 			'[data-section="chronicle-turn"][data-turn-record-id="trn_2"]',
 		);
 		expect(failedTurnButton).toBeTruthy();
-		expect(recoveryButton).toBeTruthy();
+		expect(recoveryButton).toBeNull();
 		expect(failedTurnSection).toBeTruthy();
 		expect(failedTurnButton?.dataset.active).toBe("true");
-		expect(recoveryButton?.dataset.active).toBe("false");
 		expect(failedTurnSection?.dataset.focused).toBe("true");
 	});
 
@@ -4977,7 +4969,7 @@ describe("ProcessDetailPage", () => {
 			},
 			traceItems: [{ kind: "thinking", text: "Stale response must not win." }],
 		};
-		const pendingStaleResponse = createDeferred<typeof staleResponse>();
+		const pendingStaleResponse = Promise.withResolvers<typeof staleResponse>();
 		let reasoningCallCount = 0;
 		mockFetchInspectionTrace.mockReset();
 		mockFetchInspectionTrace.mockImplementation(
@@ -5132,6 +5124,62 @@ describe("ProcessDetailPage", () => {
 });
 
 describe("inspector return and direct routes", () => {
+	it.each([
+		"button",
+		"breadcrumb",
+		"escape",
+	])("returns to the saved process position after inspecting another execution via %s", async (exit) => {
+		const { target, viewport } = await mountSubject(createContinuableFailedDetail());
+		const metrics = installViewportMetrics(viewport, { clientHeight: 900, scrollHeight: 4000 });
+		await flushUi();
+		editContinuePrompt(target, "Keep this draft while investigating another execution.");
+		metrics.setScrollTop(650);
+		const trigger = target.querySelector<HTMLButtonElement>('[data-action="open-turn-details"]');
+		expect(trigger).toBeTruthy();
+		trigger?.focus();
+		trigger?.click();
+		await flushUi();
+		expect(window.location.search).toContain("turnRecordId=trn_1");
+		target.querySelector<HTMLButtonElement>('[aria-label="Next execution"]')?.click();
+		await flushUi();
+		expect(window.location.search).toContain("turnRecordId=trn_2");
+		if (exit === "button") {
+			target.querySelector<HTMLButtonElement>('[data-action="return-to-process"]')?.click();
+		} else if (exit === "breadcrumb") {
+			target.querySelector<HTMLButtonElement>(".breadcrumbs button")?.click();
+			await flushUi();
+			expect(window.location.search).toBe("?inspect=process&section=overview");
+			target.querySelector<HTMLButtonElement>(".breadcrumbs button")?.click();
+		} else {
+			window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+		}
+		await flushUi();
+		expect(window.location.search).toBe("");
+		expect(target.querySelector('[data-section="process-inspector"]')).toBeNull();
+		expect(requireContinuePromptField(target).value).toBe(
+			"Keep this draft while investigating another execution.",
+		);
+		expect(metrics.getScrollTop()).toBe(650);
+		expect(document.activeElement).toBe(trigger);
+		expect(trigger?.tabIndex).toBe(0);
+		expect(window.history.state.inspection.reveal).toBeUndefined();
+	});
+	it("reveals the explicitly selected execution even when inspection started there", async () => {
+		const { target } = await mountSubject(createInspectionDetail());
+		await flushUi();
+		target.querySelector<HTMLButtonElement>('[data-action="open-turn-details"]')?.click();
+		await flushUi();
+		expect(window.location.search).toContain("turnRecordId=trn_1");
+		expect(target.querySelector('.inspector-header [data-action="show-in-chronicle"]')).toBeNull();
+		const reveal = target.querySelector<HTMLButtonElement>(
+			'.execution-details [data-action="show-in-chronicle"]',
+		);
+		expect(reveal).toBeTruthy();
+		reveal?.click();
+		await flushUi();
+		expect(window.location.search).toBe("");
+		expect(window.history.state.inspection.reveal).toEqual({ turnRecordId: "trn_1" });
+	});
 	it("keeps recovery drafts, scroll and focus while inspecting a process", async () => {
 		const { target, viewport } = await mountSubject(createContinuableFailedDetail());
 		const metrics = installViewportMetrics(viewport, { clientHeight: 900, scrollHeight: 4000 });
@@ -5150,7 +5198,7 @@ describe("inspector return and direct routes", () => {
 		await flushUi();
 		expect(target.querySelector<HTMLElement>(".page-shell")?.hidden).toBe(true);
 		expect(target.querySelector<HTMLElement>(".page-shell")?.inert).toBe(true);
-		target.querySelector<HTMLButtonElement>('[data-action="show-in-chronicle"]')?.click();
+		target.querySelector<HTMLButtonElement>('[data-action="return-to-process"]')?.click();
 		await flushUi();
 		expect(requireContinuePromptField(target).value).toBe("Keep the saved recovery draft.");
 		expect(metrics.getScrollTop()).toBe(650);
@@ -5158,18 +5206,40 @@ describe("inspector return and direct routes", () => {
 	});
 	it.each([
 		"?inspect=process&section=overview",
+		"?inspect=process&section=workflow",
+		"?inspect=process&section=inputs",
+		"?inspect=process&section=context-map",
 		"?inspect=step&turnId=generate_plan",
 		"?inspect=execution&turnRecordId=trn_1&section=trace",
+		"?inspect=execution&turnRecordId=trn_1&section=context",
+		"?inspect=execution&turnRecordId=trn_1&section=configuration",
+		"?inspect=execution&turnRecordId=missing&section=trace",
 		"?inspect=execution",
-	])("renders a directly addressed shell: %s", async (query) => {
-		window.history.replaceState(null, "", "/processes/agt_1" + query);
+	])("returns from a directly addressed shell: %s", async (query) => {
+		if (query.includes("section=context") || query.includes("section=configuration")) {
+			mockFetchInspectionTrace.mockRejectedValue(new Error("Recorded evidence unavailable"));
+		}
+		window.history.replaceState(null, "", `/processes/agt_1${query}`);
 		window.dispatchEvent(new PopStateEvent("popstate"));
 		const { target } = await mountSubject(createInspectionDetail());
 		await flushUi();
 		expect(target.querySelector('[data-section="process-inspector"]')).toBeTruthy();
 		expect(
-			target.querySelector<HTMLButtonElement>('[data-action="show-in-chronicle"]')?.disabled,
+			target.querySelector<HTMLButtonElement>('[data-action="return-to-process"]')?.disabled,
 		).toBe(false);
+		const header = target.querySelector(".inspector-header");
+		expect(header?.textContent).not.toContain("Show in chronicle");
+		expect(
+			[...target.querySelectorAll(".inspector-header button")].some(
+				(button) => button.textContent === "Back",
+			),
+		).toBe(false);
+		target.querySelector<HTMLButtonElement>('[data-action="return-to-process"]')?.click();
+		await flushUi();
+		expect(window.location.pathname).toBe("/processes/agt_1");
+		expect(window.location.search).toBe("");
+		expect(target.querySelector('[data-section="process-inspector"]')).toBeNull();
+		expect(document.activeElement).toBe(target.querySelector(".page-shell h1"));
 	});
 	it("copies the full recorded input without current system settings", async () => {
 		const writeText = vi.fn().mockResolvedValue(undefined);

@@ -96,6 +96,7 @@ export function constructPolicySnapshot(input: {
 	if (configurationIssues.length > 0)
 		throw new ProcessModelPolicyConfigurationError(configurationIssues);
 	return {
+		defaultProfileId: configSnapshot.pi.default_model_profile,
 		profiles,
 		profilesById: new Map(profiles.map((profile) => [profile.id, profile])),
 		processesById,

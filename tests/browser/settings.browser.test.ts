@@ -1,13 +1,55 @@
 import coding from "@leitwerk-dev/coding";
 import examples from "@leitwerk-dev/example-processes";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
+import type { LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
+import showcase from "@leitwerk-dev/showcase-processes";
 import { expect, expectNoPageOverflow, test } from "./fixtures.js";
+
+const reportSettings: LeitwerkExtensionModule = {
+	manifest: { id: "settings-browser", version: "1" },
+	scopedSettings: {
+		settings: [
+			{
+				key: "settings-browser.report_title",
+				schemaVersion: 1,
+				scopes: ["instance", "repository"],
+				merge: "replace",
+				defaultValue: "",
+				schema: {
+					parse(value) {
+						if (typeof value !== "string") throw new Error("Expected report title");
+						return value;
+					},
+				},
+				form: { label: "Report title", group: "Reports", control: "textarea" },
+			},
+		],
+	},
+};
 
 test.use({
 	browserServerOptions: {
 		tempPrefix: "leitwerk-settings-browser-",
-		createExtensionCatalog: () => buildExtensionCatalogFromModules([coding, examples]),
+		createExtensionCatalog: () =>
+			buildExtensionCatalogFromModules([coding, examples, showcase, reportSettings]),
 	},
+});
+
+test("repository instructions cannot be configured", async ({ page, leitwerk: _leitwerk }) => {
+	await page.goto("/settings");
+	await expect(page.getByRole("region", { name: "Planning model", exact: true })).toBeVisible();
+	await expect(
+		page.getByRole("region", { name: "Repository instructions", exact: true }),
+	).toHaveCount(0);
+	const rejected = await page.request.put("/api/settings/overrides", {
+		data: {
+			subjectId: "instance",
+			key: "coding.repository_instructions",
+			value: "Hidden instruction",
+			expectedRevision: 0,
+		},
+	});
+	expect(rejected.status()).toBe(409);
 });
 
 test("repository consolidation retains an open draft and checks its old revision", async ({
@@ -34,7 +76,7 @@ test("repository consolidation retains an open draft and checks its old revision
 		const saved = await page.request.put("/api/settings/overrides", {
 			data: {
 				subjectId: subject.id,
-				key: "coding.repository_instructions",
+				key: "settings-browser.report_title",
 				value: "Shared guidance",
 				mode: "replace",
 				expectedRevision: 0,
@@ -43,9 +85,9 @@ test("repository consolidation retains an open draft and checks its old revision
 		expect(saved.ok()).toBe(true);
 	}
 	await page.goto(`/settings?scope=${subjects[1].id}`);
-	const field = page.getByRole("region", { name: "Repository instructions", exact: true });
+	const field = page.getByRole("region", { name: "Report title", exact: true });
 	await field.getByRole("button", { name: "Edit override" }).click();
-	const input = field.getByLabel("Repository instructions override", { exact: true });
+	const input = field.getByLabel("Report title override", { exact: true });
 	await input.fill("Draft retained after repository merge");
 	expect(
 		settings.discover({
@@ -66,12 +108,12 @@ test("repository consolidation retains an open draft and checks its old revision
 	const preview = await page.request.get(`/api/settings/preview?subjectId=${subjects[0].id}`);
 	expect(
 		(await preview.json()).fields.find(
-			(entry: { key: string }) => entry.key === "coding.repository_instructions",
+			(entry: { key: string }) => entry.key === "settings-browser.report_title",
 		).effective.value,
 	).toBe("Draft retained after repository merge");
 });
 
-test("instruction overrides inherit, compose, reset and preserve conflicting drafts", async ({
+test("settings overrides inherit, replace, reset and preserve conflicting drafts", async ({
 	page,
 	leitwerk,
 }) => {
@@ -86,11 +128,11 @@ test("instruction overrides inherit, compose, reset and preserve conflicting dra
 		baseBranch: "main",
 	});
 	await page.goto("/settings");
-	const field = page.getByRole("region", { name: "Repository instructions", exact: true });
+	const field = page.getByRole("region", { name: "Report title", exact: true });
 	await field.getByRole("button", { name: "Override", exact: true }).click();
-	const input = field.getByLabel("Repository instructions override", { exact: true });
+	const input = field.getByLabel("Report title override", { exact: true });
 	await expect(input).toBeFocused();
-	await input.fill("Installation instructions");
+	await input.fill("Installation report");
 	await field.getByRole("button", { name: "Save override" }).click();
 	await expect(field.getByRole("status")).toContainText("Saved");
 	await expect(field.getByRole("button", { name: "Edit override" })).toBeFocused();
@@ -99,19 +141,16 @@ test("instruction overrides inherit, compose, reset and preserve conflicting dra
 		(subject: { identity: string }) => subject.identity === "locator:/workspace/browser-settings",
 	);
 	await page.getByRole("tab", { name: "Repositories", exact: true }).click();
-	await page.getByLabel("Apply settings to").selectOption(repository.id);
-	await expect(field).toContainText("Installation instructions");
+	await page.getByRole("button", { name: repository.label, exact: true }).click();
+	await expect(field).toContainText("Installation report");
 	await field.getByRole("button", { name: "Override", exact: true }).click();
 	await input.fill("Repository draft");
-	await expect(field.locator(".combined")).toContainText(
-		"Installation instructions\n\nRepository draft",
-	);
 	const external = await page.request.put("/api/settings/overrides", {
 		data: {
 			subjectId: repository.id,
-			key: "coding.repository_instructions",
+			key: "settings-browser.report_title",
 			value: "Another operator's change",
-			mode: "append",
+			mode: "replace",
 			expectedRevision: 0,
 		},
 	});
@@ -123,12 +162,11 @@ test("instruction overrides inherit, compose, reset and preserve conflicting dra
 	await field.getByRole("button", { name: "Save override" }).click();
 	await expect(field.getByRole("status")).toContainText("Saved");
 	await field.getByRole("button", { name: "Edit override" }).click();
-	await field.getByLabel("Instruction behavior").selectOption("replace");
 	await input.fill("");
 	await field.getByRole("button", { name: "Save override" }).click();
 	await expect(field.locator(".effective p")).toHaveText("Empty");
 	await field.getByRole("button", { name: "Use inherited value" }).click();
-	await expect(field.locator(".effective p")).toHaveText("Installation instructions");
+	await expect(field.locator(".effective p")).toHaveText("Installation report");
 	await expect(field.getByRole("status")).toContainText("Inherited value restored");
 	await page.setViewportSize({ width: 390, height: 844 });
 	await expectNoPageOverflow(page);

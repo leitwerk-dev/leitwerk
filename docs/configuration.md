@@ -18,7 +18,8 @@ replaces the default profile map.
 
 `LEITWERK_CONFIG_PATH` selects the configuration file. Without it, the server looks
 for `./leitwerk.yaml`, then `~/.leitwerk/leitwerk.yaml`. Relative extension source
-paths resolve from that file's directory. Use absolute storage paths in deployments.
+paths resolve from that file's directory. A configuration file with a model catalog
+and explicit `pi.default_model_profile` is required. Use absolute storage paths in deployments.
 
 | Environment variable | Effect | Default |
 | --- | --- | --- |
@@ -146,6 +147,30 @@ class, wait for preparation PVCs in the server namespace to disappear. Inspect
 `leitwerk.dev/volume-pool` resources and server warnings if preparation stalls;
 do not clear process claim references to resolve ownership conflicts.
 
+### Preloaded Kubernetes worker images
+
+Set `kubernetes.image_preload.enabled: true` to prepare every configured worker
+image on Ready, schedulable nodes matching the ordinary Pod selector or the
+effective Docker selector, with `kubernetes.pod.tolerations`. Docker selector keys
+override matching ordinary keys. The union has one receipt per node/image pair,
+including when both placements match. It is disabled by default. Every worker profile must use a
+SHA-256 digest-qualified image. Equivalent tagged and untagged digest references
+share preparation. With Helm, also set `kubernetes.imagePreload.enabled=true` to
+grant node read permissions and admit preparation Pods in the server namespace.
+Existing config Secrets need the server setting too.
+
+The server checks eligible nodes at startup and every 30 seconds, independently
+of volume preparation. Each node UID and immutable image reference has one Pod
+that runs `node -e 'process.exit(0)'` with direct pull Secrets, without worker
+credentials, a ServiceAccount token, or a PVC. Successful Pods remain as receipts
+across server restarts. New images and node replacements receive new preparation;
+obsolete owned Pods are removed. Kubernetes retries pending pulls; failed Pods
+are recreated after 30 seconds. Structured logs identify the node and image.
+
+Preparation does not delay server readiness or ordinary process starts.
+Deployment verification can wait for both preparation results. Worker pulls
+remain the fallback if preparation is incomplete or a node later evicts its cache.
+
 ## Worker supervision
 
 | Key under `workers` | Type / default | Contract |
@@ -176,7 +201,12 @@ Kubernetes forwards requests independently of limits.
 
 Selection order is process `worker_runtime_profile`, component
 `worker_runtime_profile`, then the runner default. Conflicting component profiles
-are rejected. Kubernetes uses `kubernetes.default_worker_runtime_profile` before
+are rejected. For Kubernetes processes declaring `runtime.docker`, optional
+`kubernetes.docker.worker_runtime_profile` is the fallback before the ordinary
+runner default. It references the same profile catalog and resource fields; an
+explicit process or component profile still wins. Both turn preflight and each
+worker start, including retry, resolve this rule from the current configuration.
+Kubernetes uses `kubernetes.default_worker_runtime_profile` before
 `workers.default_runtime_profile`. Local execution ignores image/resource settings.
 
 Default runner images also execute isolated session-export helpers and must contain
@@ -238,10 +268,41 @@ Pull-secret copies accept only `kubernetes.io/dockerconfigjson` and copy only
 `.dockerconfigjson`. Match the copy names in Helm values to grant access.
 
 For Docker-requiring processes, `kubernetes.docker` needs `runtime_class_name` and
-`process_storage_class_name`. Set `gvisor: true` for the verified runsc wrapper and
-omit `host_users`; other runtimes need an explicit `host_users` boolean. Operators
-must install and select the runtime and compatible nodes. Ordinary processes ignore
-this block. See [isolation boundaries](security.md#2-secrets-container-isolation).
+`process_storage_class_name`. Set `isolation: gvisor` for the runsc Docker wrapper
+or `isolation: virtual-machine` for a qualified VM runtime with ordinary Linux
+Docker networking. Both sandbox modes omit `host_users`. Without sandbox isolation,
+an explicit `host_users` boolean retains the existing runtime contract.
+
+Legacy `gvisor: true` selects gVisor only when `isolation` is absent. Contradictory
+legacy and explicit selections, unknown isolation values, and `host_users` combined
+with sandbox isolation are rejected. Helm uses `kubernetes.docker.isolation` and
+omits `host_users` for sandbox modes; its `hostUsers` value applies only to the other
+runtime path. The existing chart defaults select no sandbox mode.
+
+Optional `kubernetes.docker.node_selector` overrides matching keys from
+`kubernetes.pod.node_selector` only on Docker worker Pods. Other global keys remain;
+an empty Docker map inherits the global selector. For example, a Docker `hostname`
+key can select a VM node while ordinary workers retain their current hostname.
+RuntimeClass scheduling constraints must agree with the resulting selector.
+Ordinary workers, session-export helpers and volume-pool preparation keep the
+global placement. Image preparation covers the union of both placements.
+Helm exposes these fields as `kubernetes.docker.nodeSelector` and
+`kubernetes.docker.workerRuntimeProfile`.
+
+Use a dedicated profile for a Docker memory/CPU budget, keeping the ordinary
+profile unchanged. Requests reserve scheduling capacity; limits cover the worker
+and nested workloads only when the qualified runtime enforces that boundary.
+Account for RuntimeClass overhead separately. A profile or RuntimeClass name does
+not establish runtime qualification.
+
+Virtual-machine Docker workers require finite CPU and memory limits in the guest's
+cgroup2 namespace. Startup rejects a missing boundary before starting Docker.
+
+Operators must install and qualify the runtime, guest storage and resource limits,
+then select compatible nodes. Isolation is a trusted operator assertion; Leitwerk
+does not infer it from a RuntimeClass name or install a VM runtime. Ordinary
+processes ignore this block. See
+[isolation boundaries](security.md#2-secrets-container-isolation).
 
 Optional `kubernetes.docker.network` supplies trusted `bridge_cidr`, `address_pools`
 (`base`, `size`), and `dns`. Unknown fields and pool sizes smaller than their base
@@ -280,6 +341,7 @@ delivery, not registry-side permissions. See [credential security](security.md#d
 | --- | --- | --- |
 | `pi.agent_dir` | `~/.pi/leitwerk` | Managed resource/credential root; ambient Pi files are ignored. |
 | `pi.model_profiles` | Empty list | Named model choices; see [Models](models.md). |
+| `pi.default_model_profile` | Required; no default | ID in `pi.model_profiles`; catalog order does not select a model. Missing, blank, or unknown values fail startup. |
 | `pi.system_prompt_template` | Built-in prompt | Global Mustache system-prompt template. |
 | `pi.process_title_generation.model_profile` | `null` | Optional configured profile for server-side titles. |
 | `pi.process_title_generation.retry` | `max_attempts: 6`, `base_delay: 5s`, `max_delay: 5m` | Title retry policy; attempts include the first call. |
@@ -308,6 +370,36 @@ repository resources into a running worker.
 Loaded extensions may also contribute [skill packs](skill-packs.md) through package
 metadata. Those skills are installed automatically and managed by the extension.
 Upgrades affect future selections; existing processes retain their pinned revisions.
+
+`default_skills` lists installed skill IDs automatically included in new launches.
+It defaults to `[]`. `process_configs.<processId>.default_skills` replaces the
+global list; omission inherits it, and `[]` disables inherited defaults. Effective
+defaults are combined with explicit launch selections and deduplicated. Skills
+remain available through normal agent discovery; their contents are not appended
+to the system prompt. Extension-bundled skills remain automatically available.
+They appear as **Bundled** on the Skills page, with read-only instructions and
+their owning extension; they are not launcher selections or repository installs.
+
+Skill IDs are validated when configuration loads. Installation and active revisions
+are checked when preparing a launch. An unavailable skill prevents process or
+schedule creation; configuration does not install it automatically. Existing
+processes, retries, and scheduled occurrences retain their pinned revisions.
+Schedule edits preserve those pins when explicit skill selections are unchanged.
+Changing the selection resolves current defaults and active revisions again.
+
+```yaml
+default_skills: [shared-guidance]
+process_configs:
+  review_process:
+    default_skills: [review-guidance]
+  minimal_process:
+    default_skills: []
+```
+
+Launcher validation accepts the optional `futureExecutionId` query parameter on
+`POST /api/launchers/:launcherId/validate` when previewing an existing schedule.
+The schedule must belong to that launcher. Validation then preserves pinned skills
+under the same rules as schedule submission.
 
 `commit_messages.templates.<id>.rules` defines formatting instructions.
 `default_template` selects the fallback, or null uses built-in guidance.

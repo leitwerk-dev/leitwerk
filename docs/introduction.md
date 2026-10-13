@@ -34,6 +34,7 @@ workers:
 
 pi:
   agent_dir: ~/.pi/leitwerk
+  default_model_profile: example_model
   model_profiles:
     - id: example_model
       provider: openai

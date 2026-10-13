@@ -27,9 +27,16 @@ export interface SkillCatalogService {
 export function createSkillCatalogService(input: {
 	repositories: readonly SkillRepositoryConfig[];
 	repos: RepositoryBundle;
+	bundledSkills?: readonly InstalledSkillCatalogDetail[];
 	importRepository?: typeof importSkillRepository;
 }): SkillCatalogService {
 	const importRepository = input.importRepository ?? importSkillRepository;
+	const bundledSkills = new Map((input.bundledSkills ?? []).map((skill) => [skill.id, skill]));
+	for (const skill of input.repos.skills.listAvailable()) {
+		if (bundledSkills.has(skill.id)) {
+			throw new Error(`Bundled skill '${skill.id}' conflicts with an installed skill`);
+		}
+	}
 	const statuses = new Map<string, { lastRefreshedAt: string | null; error: string | null }>();
 	let refreshPromise: Promise<SkillsCatalogResponseBody> | null = null;
 	input.repos.transaction((repos) =>
@@ -52,10 +59,25 @@ export function createSkillCatalogService(input: {
 			};
 		});
 
-	const list = (): SkillsCatalogResponseBody => ({
-		repositories: summaries(),
-		...input.repos.skills.catalog(),
-	});
+	const list = (): SkillsCatalogResponseBody => {
+		const catalog = input.repos.skills.catalog();
+		return {
+			repositories: summaries(),
+			availableSkills: catalog.availableSkills.map((skill) =>
+				bundledSkills.has(skill.id)
+					? { ...skill, conflict: !skill.stale, registered: false, updateAvailable: false }
+					: skill,
+			),
+			installedSkills: [
+				...catalog.installedSkills,
+				...[...bundledSkills.values()].map(
+					({ skillMarkdown, processes, revisions, ...skill }) => skill,
+				),
+			].sort(
+				(left, right) => left.label.localeCompare(right.label) || left.id.localeCompare(right.id),
+			),
+		};
+	};
 
 	const refresh = (): Promise<SkillsCatalogResponseBody> => {
 		if (refreshPromise) return refreshPromise;
@@ -88,17 +110,24 @@ export function createSkillCatalogService(input: {
 		list,
 		refresh,
 		detail(repositoryId, skillId) {
-			return input.repos.skills.getCatalogDetail(repositoryId, skillId);
+			const detail = input.repos.skills.getCatalogDetail(repositoryId, skillId);
+			return detail && bundledSkills.has(skillId)
+				? { ...detail, conflict: !detail.stale, registered: false, updateAvailable: false }
+				: detail;
 		},
 		installedDetail(skillId) {
-			return input.repos.skills.getInstalledDetail(skillId);
+			return bundledSkills.get(skillId) ?? input.repos.skills.getInstalledDetail(skillId);
 		},
 		register(repositoryId, skillId) {
+			if (bundledSkills.has(skillId)) {
+				throw new Error(`Skill '${skillId}' has a conflicting bundled extension skill`);
+			}
 			return input.repos.transaction((repos) =>
 				repos.skills.registerCatalogEntry(repositoryId, skillId),
 			);
 		},
 		remove(skillId) {
+			if (bundledSkills.has(skillId)) return false;
 			return input.repos.transaction((repos) => repos.skills.remove(skillId));
 		},
 	};

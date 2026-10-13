@@ -24,6 +24,11 @@ payload. A destination whose create screen excludes Labels rejects configured
 default labels before approval; requested labels must also be supported by that
 screen.
 
+Ticket descriptions are drafted and reviewed in Markdown. `jira_create_issue`
+converts the approved description to Jira wiki markup before publishing and adds
+its reconciliation marker afterward. Headings, emphasis, links, nested lists,
+tables, quotes and code are supported; code contents remain literal.
+
 The normal approval flow supports creation, revision and discard. Snapshots pin the
 installation (including its context path), project ID, project key and issue type.
 Retry reconciliation scans project issues, including closed issues, for the durable
@@ -36,6 +41,11 @@ persistent local scenarios.
 `@leitwerk-dev/jira` is an opt-in Jira Data Center REST v2 integration. It supports
 paginated discovery and issue/comment reads, including installations below a URL
 context path. Load it with `jira-gitlab-change` to launch coordinated GitLab changes.
+
+`jira_get_source_issue` returns `descriptionMarkdown` for Markdown consumers while
+`fields.description` retains the original Jira wiki markup. The shared
+`jiraToMarkdown` and `markdownToJira` converters preserve code and escaped
+delimiters. Unsupported Jira macros remain readable literal text.
 
 ```yaml
 extensions:
@@ -105,3 +115,9 @@ A durable publication receipt or process binding can retain a wiki topic created
 another publisher. The topic key must identify the same Jira installation, including
 its context path, and immutable source issue ID. The existing topic and page history
 remain in place; a missing or mismatched topic fails without creating a replacement.
+
+Jira read tools use the current process project key and its launch-bound Jira
+profile. `jira_get_source_issue` always reads the launch-pinned source issue;
+`jira_get_issue` reads an explicit `issueKey` or ID, including related issues,
+without accepting credentials or another installation URL. Both return original
+Jira fields and a converted `descriptionMarkdown`.

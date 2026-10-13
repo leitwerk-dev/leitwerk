@@ -145,6 +145,7 @@ function seedAcceptedWorkerTurn(
 }
 
 function configureStartupModel(config: LeitwerkConfig): void {
+	config.pi.default_model_profile = "startup-model";
 	config.pi.model_profiles = [
 		{
 			id: "startup-model",

@@ -6,6 +6,7 @@ import type {
 	WorkerTurnFailedPayload,
 } from "@leitwerk-dev/worker-protocol";
 import type { WorkerDiagnosticPayload } from "../diagnostics.js";
+import { transportErrorDetails } from "../transport-error.js";
 import { classifyRuntimeError, type TurnExecutionError } from "../turn-execution-error.js";
 import type { WorkerRuntimeState } from "./lifecycle-reducer.js";
 import type { WorkerSnapshotPoint } from "./snapshot-policy.js";
@@ -148,7 +149,9 @@ export function normalizeWorkerFailure(failure: WorkerFailure): WorkerFailureDis
 		const turnError = failure.kind === "turn" ? failure.error : null;
 		const summary =
 			failure.kind === "mandatory_snapshot"
-				? `Mandatory session snapshot upload failed before ${failure.point}: ${message}`
+				? message.startsWith(`Mandatory session snapshot upload failed before ${failure.point}: `)
+					? message
+					: `Mandatory session snapshot upload failed before ${failure.point}: ${message}`
 				: (turnError?.message ?? message);
 		const errorClass = turnError?.errorClass ?? classified.errorClass;
 		const payload: WorkerTurnFailedPayload = {
@@ -162,7 +165,12 @@ export function normalizeWorkerFailure(failure: WorkerFailure): WorkerFailureDis
 			resultPiEntryId: correlation.resultPiEntryId ?? null,
 			...(turnError?.failureCode ? { failureCode: turnError.failureCode } : {}),
 			...(failure.kind === "mandatory_snapshot"
-				? { failureDetails: { reason: failure.point } }
+				? {
+						failureDetails: {
+							reason: failure.point,
+							transport: transportErrorDetails(failure.error),
+						},
+					}
 				: turnError?.failureDetails
 					? { failureDetails: turnError.failureDetails }
 					: {}),
@@ -180,6 +188,9 @@ export function normalizeWorkerFailure(failure: WorkerFailure): WorkerFailureDis
 				errorClass,
 				turnRecordId: correlation.turnRecordId,
 				turnId: correlation.turnId,
+				...(failure.kind === "mandatory_snapshot"
+					? { details: payload.failureDetails ?? undefined }
+					: {}),
 			},
 			stderrMessage: summary,
 			terminal: {

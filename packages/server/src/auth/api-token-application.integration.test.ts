@@ -1,7 +1,7 @@
 import type { Actor } from "@leitwerk-dev/domain";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
+import { createTestAppContext } from "@leitwerk-dev/test-support/integration";
 import { expect, it } from "vitest";
-import { createAppContext } from "../app.js";
 import { createAllRepos } from "../db/repositories.js";
 import { createFixtureHumanTurn, createFixtureProcess } from "../test-helpers/process-fixtures.js";
 import { createAuthService } from "./auth-service.js";
@@ -14,7 +14,7 @@ it("preserves the token owner's durable attribution on accepted application muta
 		entry: "review",
 		turns: { review: createFixtureHumanTurn() },
 	});
-	const ctx = await createAppContext({
+	const ctx = await createTestAppContext({
 		logger: false,
 		config,
 		extensionCatalog: buildExtensionCatalogFromModules([

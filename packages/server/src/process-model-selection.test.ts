@@ -129,6 +129,7 @@ const processActionRegistry = {
 	},
 };
 const config = getDefaultConfig();
+config.pi.default_model_profile = "fast";
 config.pi.model_profiles = [{ id: "fast", provider: "fixture", model_id: "model" }];
 config.process_configs = {
 	[processId]: {

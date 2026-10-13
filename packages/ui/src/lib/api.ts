@@ -8,6 +8,7 @@ import type {
 import type {
 	LaunchTicketCreationRequestBody,
 	LaunchTicketCreationResponseBody,
+	PrimaryPathSnapshot,
 	ResolveToolApprovalRequestBody,
 	TicketCreationToolSummary,
 } from "@leitwerk-dev/protocol";
@@ -29,8 +30,10 @@ import type {
 	LauncherOptionsResponseBody,
 	LauncherRecentValuesResponseBody,
 	LaunchersResponseBody,
+	LauncherValidationResponseBody,
 	LaunchRunResponseBody,
 	ModelProviderOptionsResponseBody,
+	PrimaryPathSnapshotResponseBody,
 	ProcessActionModelPreview,
 	ProcessActionModelPreviewResponseBody,
 	ProcessBrowseResponseBody,
@@ -437,6 +440,38 @@ export async function fetchLauncherModelConfigPreview(
 	return body.preview;
 }
 
+export async function validateLauncher(
+	launcherId: string,
+	request: {
+		title: string | null;
+		launcherInput: Record<string, unknown>;
+		modelConfig: LauncherModelConfigDefaults;
+		schedule: ScheduleConfigInput;
+		skillIds: readonly string[];
+		futureExecutionId?: string;
+	},
+	signal?: AbortSignal,
+): Promise<readonly LauncherValidationError[]> {
+	const { futureExecutionId, ...launchRequest } = request;
+	const query = futureExecutionId
+		? `?futureExecutionId=${encodeURIComponent(futureExecutionId)}`
+		: "";
+	const body = await requestJson<LauncherValidationResponseBody>({
+		path: `/api/launchers/${encodeURIComponent(launcherId)}/validate${query}`,
+		init: { ...jsonRequestInit("POST", launchRequest), signal },
+		malformed: "Malformed launcher validation response",
+		onError: (response, body) => {
+			const errors = readLauncherValidationErrors(body);
+			if (response.status === 400 && errors.length > 0) return { errors };
+			throw new Error(readErrorMessage(body) ?? "Couldn't validate the launch values. Try again.");
+		},
+	});
+	if (!Array.isArray(body.errors) || !body.errors.every(isLauncherValidationError)) {
+		throw new Error("Malformed launcher validation response");
+	}
+	return body.errors;
+}
+
 async function parseLauncherErrorResponse(
 	res: Response,
 	fallbackMessagePrefix: string,
@@ -542,6 +577,14 @@ export async function fetchProcessDiagnostics(instanceId: string): Promise<Proce
 		`/api/processes/${encodeURIComponent(instanceId)}/diagnostics`,
 		"Couldn't load this process",
 		"Malformed process diagnostics response",
+	);
+}
+
+export async function fetchPrimaryPathSnapshot(instanceId: string): Promise<PrimaryPathSnapshot> {
+	return requestStatusJson<PrimaryPathSnapshotResponseBody>(
+		`/api/processes/${encodeURIComponent(instanceId)}/primary-path`,
+		"Couldn't load this process",
+		"Malformed primary path snapshot response",
 	);
 }
 

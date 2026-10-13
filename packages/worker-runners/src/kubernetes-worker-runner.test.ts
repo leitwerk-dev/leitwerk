@@ -493,20 +493,36 @@ describe("KubernetesWorkerRunner", () => {
 		expect(client.pods.size).toBe(0);
 	});
 
-	it("preserves incompatible retained process storage when Docker is activated", async () => {
+	it.each([
+		"gvisor",
+		"virtual-machine",
+	] as const)("preserves incompatible retained storage before %s namespace changes", async (isolation) => {
 		const { client, volume } = bindRunner({
-			docker: { runtimeClassName: "gvisor", gvisor: true, processStorageClassName: "longhorn" },
+			docker: {
+				runtimeClassName: "qualified-sandbox",
+				isolation,
+				processStorageClassName: "longhorn",
+			},
 		});
 		await volume.ensure("proc-1");
 		const before = structuredClone([...client.pvcs.values()]);
+		const namespaces = structuredClone([...client.namespaces.values()]);
 		await expect(volume.ensure("proc-1", { docker: true })).rejects.toThrow(/preserve and migrate/);
 		expect([...client.pvcs.values()]).toEqual(before);
+		expect([...client.namespaces.values()]).toEqual(namespaces);
 		expect(client.deletedPvcs).toEqual([]);
 	});
 
-	it("permits guest capabilities only for opted-in gVisor process namespaces", async () => {
+	it.each([
+		"gvisor",
+		"virtual-machine",
+	] as const)("permits guest capabilities only for opted-in %s process namespaces", async (isolation) => {
 		const { client, volume } = bindRunner({
-			docker: { runtimeClassName: "gvisor", gvisor: true, processStorageClassName: "longhorn" },
+			docker: {
+				runtimeClassName: "qualified-sandbox",
+				isolation,
+				processStorageClassName: "longhorn",
+			},
 		});
 		await volume.ensure("docker-process", { docker: true });
 		await volume.ensure("ordinary-process");

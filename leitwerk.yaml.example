@@ -145,6 +145,8 @@ docker:
 #   # api_server_url: https://kubernetes.default.svc
 #   default_worker_runtime_profile: generic
 #   worker_service_account: leitwerk-worker
+#   # Optional; all worker profiles must use digest-qualified images.
+#   image_preload: { enabled: false }
 #   process_volume:
 #     storage_class_name: standard
 #     # Optional pool of fresh volumes; omit to disable.
@@ -155,9 +157,16 @@ docker:
 #   # Required as a complete block only for process definitions that declare
 #   # runtime.docker. Leitwerk does not install either named cluster resource.
 #   docker:
+#     # Optional fallback after explicit process/component profiles.
+#     # worker_runtime_profile: docker_vm
+#     # Keys override matching global Pod selector keys only for Docker workers.
+#     # node_selector: { example.com/worker-pool: qualified-vm }
 #     runtime_class_name: leitwerk-sysbox
 #     host_users: false
-#     # For verified gVisor nodes: omit host_users and set gvisor: true.
+#     # For a qualified sandbox runtime, omit host_users and select one:
+#     # isolation: gvisor
+#     # isolation: virtual-machine
+#     # Legacy gvisor: true is an alias when isolation is omitted.
 #     process_storage_class_name: leitwerk-docker-process
 #   pod:
 #     node_selector: {}
@@ -176,7 +185,8 @@ docker:
 
 # Reusable worker image selections authored only here; repository branch content
 # must never select an image. Selection precedence is process override ->
-# component -> runner default (kubernetes.default_worker_runtime_profile in
+# component -> Kubernetes Docker fallback, when required -> runner default
+# (kubernetes.default_worker_runtime_profile in
 # Kubernetes mode, otherwise workers.default_runtime_profile).
 worker_runtime_profiles:
   generic:
@@ -186,6 +196,11 @@ worker_runtime_profiles:
     #   limits:
     #     cpu: "4"
     #     memory: 8Gi
+  # docker_vm:
+  #   image: ghcr.io/example/leitwerk-worker-generic:0.1.0
+  #   resources:
+  #     requests: { cpu: "4", memory: 16Gi }
+  #     limits: { cpu: "4", memory: 16Gi }
 
 # Internal worker -> server TLS (disabled by default). Public UI/API HTTPS is
 # terminated by a reverse proxy in front of the server; this only secures the
@@ -213,12 +228,13 @@ pi:
       max_retry_delay: 60s
   # Example custom model profiles — replace with your own provider/model pairs:
   # The owning provider extension must be loaded under extensions before a
-  # profile can name it. The stock catalog is empty.
-  # model_profiles:
-  #   - id: deepseek-v4-flash
-  #     provider: deepseek
-  #     model_id: deepseek-v4-flash
-  #     thinking_level: low
+  # profile can name it. Explicitly select a default from the catalog.
+  default_model_profile: deepseek-v4-flash
+  model_profiles:
+    - id: deepseek-v4-flash
+      provider: deepseek
+      model_id: deepseek-v4-flash
+      thinking_level: low
   #     provider_options:
   #       preferred_account: team-default
   #   - id: deepseek-v4-pro
@@ -228,6 +244,8 @@ pi:
 
 process_configs:
   poem_creator_process:
+    # Omit to inherit default_skills. Set [] to opt out or supply a replacement list.
+    # default_skills: [writing-guidance]
     # New Kubernetes PVC capacity; existing volumes are unchanged.
     # Omit to use the extension's resolveStorageSize(), then the global size.
     # Local/Docker runners ignore this setting.
@@ -268,9 +286,14 @@ skill_repositories:
   #   ref: main
   #   path: skills
 
+# Installed skill IDs added to new launches, alongside explicit selections.
+# Skills are discovered normally by the agent; this does not install them.
+default_skills: []
+
 extension_loading:
   # Relative extension sources resolve from this config file's directory.
   sources:
+    - ./extensions/skills
     - ./extensions/models
     - ./extensions/showcase-processes
     - ./extensions/example-processes

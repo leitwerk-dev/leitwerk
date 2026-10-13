@@ -3,6 +3,7 @@ import {
 	type createServerProcessBuilder,
 	flow,
 	type ProcessGraphView,
+	resolveOutcomeContract,
 	SafeOutcomePlanningError,
 	type TurnDefinition,
 } from "@leitwerk-dev/process-sdk";
@@ -571,4 +572,71 @@ describe("buildTurnOutcomeWrites", () => {
 			message: "Candidate evidence is invalid",
 		});
 	});
+});
+
+it("rejects direct terminal submissions against the frozen union before running effects", async () => {
+	const variant = (tag: string) => ({
+		type: "object" as const,
+		properties: { kind: { type: "string" as const, enum: [tag] } },
+		required: ["kind"],
+		additionalProperties: false,
+	});
+	let effects = 0;
+	const turn = flow
+		.llm("decide")
+		.description("Decide")
+		.prompt(() => "Decide")
+		.outcomeTool("done", (outcome) =>
+			outcome
+				.description("Done")
+				.union("action", [variant("skip"), variant("write")], { required: true })
+				.strictSchema()
+				.effect(() => {
+					effects += 1;
+				})
+				.complete(),
+		);
+	const definition = flow
+		.process("union_terminal_test")
+		.displayName("Union test")
+		.entry("decide")
+		.codecs({
+			params: { parse: () => ({}), serialize: (value) => value },
+			state: { parse: () => ({}), serialize: (value) => value },
+		})
+		.initialState(() => ({}))
+		.turn(turn)
+		.define();
+	const graphs = new Map([[definition.id, definition]]);
+	const registry = buildProcessActionRegistry({ processes: graphs });
+	const deps = createTestDeps();
+	const process = deps.processes.create({
+		processId: definition.id,
+		selectedTurnId: "decide",
+		lifecycleStatus: "active",
+	});
+	const contract = resolveOutcomeContract(turn.definition, { params: {}, state: {} });
+	contract.outcomes.done.parameters.action.anyOf = [variant("skip")];
+	const submit = (action: unknown) =>
+		buildTurnOutcomeWrites({
+			process,
+			projects: [],
+			turnRecords: deps.turnRecords,
+			processGraphs: graphs,
+			processActionRegistry: registry,
+			outcomeContract: { ...contract },
+			payload: {
+				instanceId: process.id,
+				turnRecordId: "terminal",
+				turnId: "decide",
+				outcome: "done",
+				params: { action },
+			},
+		});
+	for (const invalid of [{ kind: "skip", placeholder: "none" }, { kind: "write" }, {}])
+		expect(await submit(invalid)).toMatchObject({ ok: false, code: "invalid_action" });
+	expect(effects).toBe(0);
+	const accepted = await submit({ kind: "skip" });
+	expect(accepted).not.toHaveProperty("ok", false);
+	expect(effects).toBe(1);
 });

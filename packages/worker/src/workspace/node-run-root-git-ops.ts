@@ -122,6 +122,23 @@ export class NodeRunRootGitOps implements RunRootGitOps {
 		await this.runGit(["checkout", branch], repoDir);
 	}
 
+	async checkoutRevision(repoDir: string, revision: string): Promise<void> {
+		if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(revision))
+			throw new Error("Use a captured full commit SHA");
+		if ((await this.runGit(["status", "--porcelain", "--untracked-files=all"], repoDir)).trim())
+			throw new Error(
+				"Repository has local changes; preserve or remove them before retrying inspection",
+			);
+		try {
+			await this.runGit(["cat-file", "-e", `${revision}^{commit}`], repoDir);
+		} catch {
+			await this.runGit(["fetch", "origin", revision], repoDir, path.basename(repoDir));
+		}
+		await this.runGit(["checkout", "--detach", revision], repoDir);
+		if ((await this.getHeadSha(repoDir)).toLowerCase() !== revision.toLowerCase())
+			throw new Error("Checkout HEAD does not match captured commit");
+	}
+
 	async createBranch(repoDir: string, branchName: string, startPoint: string): Promise<void> {
 		await this.runGit(["branch", branchName, startPoint], repoDir);
 	}

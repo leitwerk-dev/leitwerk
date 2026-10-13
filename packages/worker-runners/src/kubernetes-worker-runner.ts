@@ -5,6 +5,10 @@ import {
 } from "./helper-process-state-exporter.js";
 import type { KubernetesApiClient } from "./kubernetes-api-client.js";
 import {
+	createKubernetesImagePreload,
+	type ImagePreparationEvent,
+} from "./kubernetes-image-preload.js";
+import {
 	buildKubernetesDockerConfigJsonSecretManifest,
 	buildKubernetesExportHelperPodManifest,
 	buildKubernetesProcessNamespaceManifest,
@@ -23,6 +27,7 @@ import {
 	redactKubernetesDiagnostic,
 	volumeRefFromPvc,
 } from "./kubernetes-manifests.js";
+import { createKubernetesPreparation } from "./kubernetes-preparation.js";
 import { sampleKubernetesStartup, startupReceipt } from "./kubernetes-startup-sampler.js";
 import { createKubernetesVolumePool } from "./kubernetes-volume-pool.js";
 import { UnitExitNotifier } from "./runner-utils.js";
@@ -68,6 +73,13 @@ function boundedKubernetesStartDiagnostic(
 
 /** @internal */
 export interface KubernetesWorkerRunnerOptions {
+	/** @internal */
+	imagePreload?: {
+		/** @internal */
+		images: string[];
+		/** @internal */
+		onEvent?: (event: ImagePreparationEvent) => void;
+	};
 	/** @internal */
 	preProvision?: {
 		/** @internal */
@@ -124,7 +136,7 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 	/** @internal */
 	exporter: ProcessStateExporter;
 	/** @internal */
-	volumePool?: ReturnType<typeof createKubernetesVolumePool>;
+	preparation?: ReturnType<typeof createKubernetesPreparation>;
 } {
 	if (!options.serverUrl || !options.exporterImage || !options.helperRelays) {
 		throw new Error("Kubernetes transfer exporter is not configured");
@@ -134,6 +146,15 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 	const exporterImage = options.exporterImage;
 	const helperRelays = options.helperRelays;
 	const serverCaFile = options.serverCaFile?.trim();
+	const serverCaConfig = serverCaFile
+		? {
+				serverCaConfigMap: {
+					name: KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_NAME,
+					key: KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_KEY,
+					mountPath: KUBERNETES_WORKER_SERVER_CA_MOUNT_PATH,
+				},
+			}
+		: {};
 	const namespaceForProcess = (instanceId: string) =>
 		kubernetesProcessNamespaceName(instanceId, options.processNamespacePrefix);
 	const delay =
@@ -147,7 +168,7 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 			const namespaceManifest = buildKubernetesProcessNamespaceManifest({
 				instanceId,
 				processNamespacePrefix: options.processNamespacePrefix,
-				...(requirements?.docker && options.docker?.gvisor
+				...(requirements?.docker && options.docker?.isolation
 					? { extraLabels: { "pod-security.kubernetes.io/enforce": "privileged" } }
 					: {}),
 			});
@@ -348,15 +369,7 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 				namespace: processNamespace,
 				...(options.pod ?? {}),
 				...(input.docker && options.docker ? { docker: options.docker } : {}),
-				...(serverCaFile
-					? {
-							serverCaConfigMap: {
-								name: KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_NAME,
-								key: KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_KEY,
-								mountPath: KUBERNETES_WORKER_SERVER_CA_MOUNT_PATH,
-							},
-						}
-					: {}),
+				...serverCaConfig,
 			});
 			observer?.report("allocating_runtime");
 			try {
@@ -483,15 +496,7 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 					namespace,
 					...(options.pod ?? {}),
 					imagePullPolicy: options.exporterImagePullPolicy,
-					...(serverCaFile
-						? {
-								serverCaConfigMap: {
-									name: KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_NAME,
-									key: KUBERNETES_WORKER_SERVER_CA_CONFIG_MAP_KEY,
-									mountPath: KUBERNETES_WORKER_SERVER_CA_MOUNT_PATH,
-								},
-							}
-						: {}),
+					...serverCaConfig,
 				},
 			);
 			await client.createPod(manifest);
@@ -518,6 +523,10 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 		},
 	});
 
+	const preparationPullSecrets = (options.pod?.imagePullSecrets ?? []).map(
+		(name) =>
+			options.imagePullSecretCopies?.find((copy) => copy.targetName === name)?.sourceName ?? name,
+	);
 	let volumePool: ReturnType<typeof createKubernetesVolumePool> | undefined;
 	if (options.preProvision) {
 		if (!client.volumePool || !options.volume.storageClassName || !options.serverNamespace) {
@@ -532,14 +541,28 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 			...options.preProvision,
 			image: exporterImage,
 			imagePullPolicy: options.exporterImagePullPolicy,
-			imagePullSecrets: (options.pod?.imagePullSecrets ?? []).map(
-				(name) =>
-					options.imagePullSecretCopies?.find((copy) => copy.targetName === name)?.sourceName ??
-					name,
-			),
+			imagePullSecrets: preparationPullSecrets,
 			nodeSelector: options.pod?.nodeSelector,
 			tolerations: options.pod?.tolerations,
 		});
 	}
-	return { runner, volume, exporter, volumePool };
+	let imagePreload: ReturnType<typeof createKubernetesImagePreload> | undefined;
+	if (options.imagePreload) {
+		if (!client.imagePreload || !options.serverNamespace)
+			throw new Error("Image preloading requires an API and server namespace");
+		imagePreload = createKubernetesImagePreload({
+			api: client.imagePreload,
+			namespace: options.serverNamespace,
+			...options.imagePreload,
+			imagePullSecrets: preparationPullSecrets,
+			nodeSelector: options.pod?.nodeSelector,
+			additionalNodeSelectors: options.docker
+				? [{ ...options.pod?.nodeSelector, ...options.docker.nodeSelector }]
+				: undefined,
+			tolerations: options.pod?.tolerations,
+		});
+	}
+	const controllers = [volumePool, imagePreload].filter((value) => value !== undefined);
+	const preparation = controllers.length ? createKubernetesPreparation(controllers) : undefined;
+	return { runner, volume, exporter, preparation };
 }

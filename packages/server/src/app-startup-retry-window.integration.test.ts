@@ -1,6 +1,7 @@
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
+import { createTestAppContext } from "@leitwerk-dev/test-support/integration";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { type AppContext, createAppContext } from "./app.js";
+import type { AppContext } from "./app.js";
 import { getDefaultConfig } from "./config/index.js";
 import { fakeWorkerRunnerRuntime } from "./test-helpers/worker-runner-runtime.js";
 
@@ -38,7 +39,7 @@ describe("startup worker reconnect retry window", () => {
 		const config = getDefaultConfig();
 		config.storage.sqlite_path = ":memory:";
 		const runtime = fakeWorkerRunnerRuntime();
-		ctx = await createAppContext({
+		ctx = await createTestAppContext({
 			config,
 			logger: false,
 			extensionCatalog: buildExtensionCatalogFromModules([]),

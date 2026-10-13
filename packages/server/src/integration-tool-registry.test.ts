@@ -1,3 +1,4 @@
+import type { IntegrationToolExecutionContext } from "@leitwerk-dev/process-sdk";
 import { createInMemoryExternalWriteLog } from "@leitwerk-dev/test-support";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
@@ -20,7 +21,10 @@ function pendingTicketRequest() {
 	}>();
 	const approval = Promise.withResolvers<ToolApprovalDecision>();
 	const review = vi.fn(() => approval.promise);
-	const execute = vi.fn(async () => ({ externalId: "1", url: "https://tracker.test/1" }));
+	const execute = vi.fn(async (_ctx: IntegrationToolExecutionContext) => ({
+		externalId: "1",
+		url: "https://tracker.test/1",
+	}));
 	const resolve = vi.fn(() => destination.promise);
 	registry.register({
 		name: "tracker_create",
@@ -54,12 +58,17 @@ function pendingTicketRequest() {
 		status: "running",
 	};
 	const update = vi.fn();
+	const reportProgress = vi.fn();
 	const service = createIntegrationToolRequestService({
 		registry,
+		reportProgress,
 		repos: {
 			processes: { getById: () => process, update },
 			turnRecords: { getById: () => turn },
-			turnStarts: { getById: () => ({ state: { kind: "accepted", turnRecordId: turn.id } }) },
+			turnStarts: {
+				getById: (id: string) =>
+					id === "start-1" ? { state: { kind: "accepted", turnRecordId: turn.id } } : null,
+			},
 			projects: { listByInstance: () => [] },
 		} as never,
 		processActionRegistry: {
@@ -92,10 +101,47 @@ function pendingTicketRequest() {
 		execute,
 		resolve,
 		update,
+		reportProgress,
 	};
 }
 
 describe("ticket request lifetime", () => {
+	it.each([
+		"cancelled",
+		"stale",
+		"finished",
+	] as const)("reports current activity but ignores updates after the attempt becomes %s", async (reason) => {
+		const fixture = pendingTicketRequest();
+		const entered = Promise.withResolvers<IntegrationToolExecutionContext>();
+		const finish = Promise.withResolvers<void>();
+		const report = { title: "Ticket publication", summary: "Creating ticket 1 of 2", steps: [] };
+		fixture.execute.mockImplementation(async (ctx) => {
+			ctx.reportProgress(report);
+			entered.resolve(ctx);
+			await finish.promise;
+			ctx.reportProgress({ ...report, summary: "Late activity" });
+			return { externalId: "1", url: "https://tracker.test/1" };
+		});
+		const pending = fixture.service.handle(fixture.process.id, fixture.payload);
+		fixture.destination.resolve({ summary: { id: "repo", displayName: "Repository" }, data: {} });
+		fixture.approval.resolve({ kind: "accepted" });
+		await entered.promise;
+		expect(fixture.reportProgress).toHaveBeenCalledExactlyOnceWith({
+			instanceId: fixture.process.id,
+			turnRecordId: fixture.turn.id,
+			report,
+		});
+		if (reason === "cancelled") fixture.service.cancel(fixture.process.id, fixture.payload);
+		else if (reason === "stale") fixture.process.currentExecution.id = "replacement-start";
+		else fixture.turn.status = "succeeded";
+		// The retained reporter must also stop working after the tool has returned.
+		finish.resolve();
+		await expect(pending).resolves.toMatchObject({ ok: false });
+		const ctx = await entered.promise;
+		ctx.reportProgress(report);
+		expect(fixture.reportProgress).toHaveBeenCalledTimes(1);
+	});
+
 	it("shares destination preparation and approval across reconnect replays", async () => {
 		const fixture = pendingTicketRequest();
 		const first = fixture.service.handle(fixture.process.id, fixture.payload);
@@ -429,6 +475,18 @@ describe("integration tool request service", () => {
 			project,
 			idempotencyKey: "instance-1:turn-record-1:tool-call-1:provider_echo",
 		});
+		execute.mockClear();
+		const invalid = await service.handle("instance-1", {
+			turnRecordId: "turn-record-1",
+			toolCallId: "invalid-project",
+			toolName: "provider_echo",
+			args: { projectKey: "APP", value: 3 },
+		});
+		expect(invalid).toMatchObject({
+			ok: false,
+			error: "Unknown process project 'APP'. Available project keys: repo",
+		});
+		expect(execute).not.toHaveBeenCalled();
 	});
 
 	it("rejects a stale selected-turn call before execution", async () => {

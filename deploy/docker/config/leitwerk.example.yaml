@@ -52,6 +52,11 @@ worker_runtime_profiles:
 
 pi:
   agent_dir: /app/.leitwerk/pi
+  default_model_profile: example_model
+  model_profiles:
+    - id: example_model
+      provider: openai
+      model_id: YOUR_MODEL_ID
 
 notifications:
   all: { enabled: false, type: teams_webhook, url: "" }
@@ -63,6 +68,8 @@ sandbox:
   profile: ""
 
 extension_loading:
-  sources: []
+  sources:
+    - /app/extensions/skills
+    - /app/extensions/models
 
 extensions: {}

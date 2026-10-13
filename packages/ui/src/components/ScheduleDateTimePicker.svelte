@@ -5,6 +5,8 @@ import {
 } from "./launcher-schedule.js";
 
 interface Props {
+	invalid?: boolean;
+	describedBy?: string;
 	dateId: string;
 	hourId: string;
 	minuteId: string;
@@ -19,6 +21,8 @@ interface Props {
 }
 
 let {
+	invalid = false,
+	describedBy = undefined,
 	dateId,
 	hourId,
 	minuteId,
@@ -43,9 +47,9 @@ const markerAttrs = $derived(
 );
 </script>
 
-<div class="schedule-date-time-picker" data-section={dataSection} data-time-format="24-hour">
+<div class="schedule-date-time-picker" class:invalid data-section={dataSection} data-time-format="24-hour">
 	<input
-		id={dateId}
+		id={dateId} aria-invalid={invalid} aria-describedby={describedBy}
 		{...markerAttrs}
 		type="date"
 		value={dateValue}
@@ -53,7 +57,7 @@ const markerAttrs = $derived(
 	/>
 	<div class="schedule-time-picker">
 		<select
-			id={hourId}
+			id={hourId} aria-invalid={invalid} aria-describedby={describedBy}
 			value={hourValue}
 			aria-label="Hour (24-hour)"
 			onchange={(event) => onHourChange((event.currentTarget as HTMLSelectElement).value)}
@@ -65,7 +69,7 @@ const markerAttrs = $derived(
 		</select>
 		<span class="schedule-time-separator" aria-hidden="true">:</span>
 		<select
-			id={minuteId}
+			id={minuteId} aria-invalid={invalid} aria-describedby={describedBy}
 			value={minuteValue}
 			aria-label="Minute"
 			onchange={(event) => onMinuteChange((event.currentTarget as HTMLSelectElement).value)}
@@ -79,6 +83,7 @@ const markerAttrs = $derived(
 </div>
 
 <style>
+	.schedule-date-time-picker.invalid { border-color: var(--chronicle-danger); }
 	.schedule-date-time-picker {
 		display: grid;
 		grid-template-columns: minmax(0, 1fr) auto;

@@ -14,6 +14,21 @@ afterEach(() => {
 });
 
 describe("ChronicleTurnProgress", () => {
+	it("renders a recorded text-only report and related links without an empty checklist", () => {
+		const report: TurnProgressReport = {
+			title: "Ticket publication",
+			summary: "Published the approved tickets",
+			steps: [],
+			links: [{ id: "ticket", label: "TASK-101", url: "https://tracker.test/TASK-101" }],
+		};
+		mounted = mount(ChronicleTurnProgress, { target: document.body, props: { report } });
+		expect(document.querySelector('[data-section="turn-progress-summary"]')?.textContent).toBe(
+			report.summary,
+		);
+		expect(document.querySelector("a")?.textContent).toContain("TASK-101");
+		expect(document.querySelector('[data-section="turn-progress"]')).toBeNull();
+	});
+
 	it("uses shared external links while preserving change types", () => {
 		const report: TurnProgressReport = {
 			title: "Publish changes",

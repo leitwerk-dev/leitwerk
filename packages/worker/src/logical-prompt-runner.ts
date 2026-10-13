@@ -176,7 +176,13 @@ export async function executeLogicalPromptPlan<TOutcome extends string>(input: {
 			tools: input.toolSession.tools,
 			activeTools: input.toolSession.activeTools,
 			shouldBlockToolCall: (toolName: string) => input.toolSession.shouldBlockToolCall(toolName),
-			shouldStopAfterTurn: () => Boolean(input.toolSession.getCompletionState().abortReason),
+			shouldStopAfterTurn: (toolResults: readonly unknown[]) => {
+				let rejected = false;
+				for (const message of toolResults) {
+					rejected = input.toolSession.recordToolResult(message) || rejected;
+				}
+				return rejected || Boolean(input.toolSession.getCompletionState().abortReason);
+			},
 			suspendPromptGuards: () => guardSuspension.suspend(),
 			terminalAcknowledgement: {
 				...input.toolSession.terminalAcknowledgement,
@@ -246,6 +252,9 @@ export async function executeLogicalPromptPlan<TOutcome extends string>(input: {
 				input.toolSession.terminalAcknowledgement.markFailed(
 					"Terminal acknowledgement did not complete and was ignored",
 				);
+			}
+			for (const entryId of attempt.result.createdEntryIds) {
+				input.toolSession.recordToolResult(input.piHandle.getEntry(entryId)?.message);
 			}
 			const completionState = input.toolSession.getCompletionState();
 			if (completionState.abortReason) throw new Error(completionState.abortReason);

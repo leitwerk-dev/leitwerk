@@ -2,6 +2,7 @@ import type { ExtensionProcessDefinition } from "@leitwerk-dev/process-sdk";
 import { parseDurationMs } from "@leitwerk-dev/watcher-utils";
 import { preflightHostDocker } from "@leitwerk-dev/worker-runners/local";
 import type { LeitwerkConfig } from "./config/config-types.js";
+import { resolveKubernetesDockerIsolation } from "./config/kubernetes-docker-isolation.js";
 
 export interface ProcessRuntimeAvailabilityDeps {
 	config: LeitwerkConfig;
@@ -11,8 +12,9 @@ export interface ProcessRuntimeAvailabilityDeps {
 
 export interface ResolvedKubernetesDockerConfig {
 	runtimeClassName: string;
+	nodeSelector?: Record<string, string>;
 	hostUsers?: boolean;
-	gvisor?: boolean;
+	isolation?: "gvisor" | "virtual-machine";
 	processStorageClassName: string;
 	network?: import("./config/config-types.js").KubernetesDockerConfig["network"];
 }
@@ -22,16 +24,19 @@ export function resolveKubernetesDockerConfig(
 	config: LeitwerkConfig,
 ): ResolvedKubernetesDockerConfig | undefined {
 	const docker = config.kubernetes?.docker;
+	const { isolation, errors } = resolveKubernetesDockerIsolation(docker);
 	if (
 		!docker?.runtime_class_name?.trim() ||
-		(docker.gvisor ? docker.host_users !== undefined : typeof docker.host_users !== "boolean") ||
+		errors.length > 0 ||
+		(isolation === undefined && typeof docker.host_users !== "boolean") ||
 		!docker.process_storage_class_name?.trim()
 	) {
 		return undefined;
 	}
 	return {
 		runtimeClassName: docker.runtime_class_name,
-		...(docker.gvisor ? { gvisor: true } : { hostUsers: docker.host_users }),
+		...(docker.node_selector ? { nodeSelector: { ...docker.node_selector } } : {}),
+		...(isolation ? { isolation } : { hostUsers: docker.host_users }),
 		processStorageClassName: docker.process_storage_class_name,
 		...(docker.network ? { network: docker.network } : {}),
 	};
@@ -49,7 +54,7 @@ export async function assertProcessRuntimeAvailable(
 		case "kubernetes":
 			if (!resolveKubernetesDockerConfig(deps.config)) {
 				throw new Error(
-					"This process requires Docker; configure kubernetes.docker.runtime_class_name, host_users, and process_storage_class_name",
+					"This process requires Docker; configure kubernetes.docker.runtime_class_name, process_storage_class_name, and either isolation or host_users",
 				);
 			}
 			return;

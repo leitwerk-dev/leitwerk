@@ -4,6 +4,7 @@ import type {
 	ProcessActionModelPreview,
 	ProcessActionSummary,
 	ProcessModelConfigurationView,
+	ProcessSelectedTurnSummary,
 } from "@leitwerk-dev/protocol/http-contracts";
 import { mount, unmount } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -94,6 +95,7 @@ function mountSubject(
 		modelConfiguration?: ProcessModelConfigurationView;
 		modelPreview?: ProcessActionModelPreview | null;
 		modelPreviewLoading?: boolean;
+		selectedTurn?: ProcessSelectedTurnSummary;
 	} = {},
 ) {
 	const values: Record<string, Record<string, string | number | boolean>> = {
@@ -107,7 +109,9 @@ function mountSubject(
 	const onRunAction = vi.fn();
 	const onExpandActionForm = vi.fn();
 	const actionBindings: ActionSectionController = {
-		actionSectionActions: [createAction(input.actionOverrides)],
+		actionSectionActions: input.selectedTurn?.readiness
+			? []
+			: [createAction(input.actionOverrides)],
 		openActionModelPreview:
 			input.modelPreview === undefined ? createModelPreview() : input.modelPreview,
 		openActionModelPreviewLoading: input.modelPreviewLoading ?? false,
@@ -149,7 +153,7 @@ function mountSubject(
 			actionSectionController: actionBindings,
 			externalTriggers: [],
 			externalTriggerSignals: [],
-			selectedTurn: null,
+			selectedTurn: input.selectedTurn ?? null,
 			modelConfiguration: input.modelConfiguration ?? createModelConfiguration(),
 		},
 		context: new Map(),
@@ -185,6 +189,24 @@ afterEach(async () => {
 });
 
 describe("ChronicleActionSection", () => {
+	it("shows startup remediation and the automatic check time without a retry action", async () => {
+		const message =
+			"Startup blocked: APP-123 has no repository mapping for Client. Configure it in Settings. Startup will resume automatically.";
+		const { target, onRunAction } = mountSubject({
+			selectedTurn: {
+				turnId: "generate_plan",
+				kind: "llm",
+				description: "Plan",
+				commentary: null,
+				externalTriggers: [],
+				readiness: { message, nextCheckAt: "2099-01-01T00:00:00.000Z" },
+			},
+		});
+		await vi.waitFor(() => expect(target.textContent).toContain(message));
+		expect(target.textContent).toContain("Next check:");
+		expect(target.querySelector("[data-action-id]")).toBeNull();
+		expect(onRunAction).not.toHaveBeenCalled();
+	});
 	it("expands the exact inline action through the canonical transition", async () => {
 		const { target, onExpandActionForm } = mountSubject();
 

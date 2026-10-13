@@ -185,6 +185,21 @@ model is prompted. Retry runs preparation again. Continue and replacement worker
 reuse the checkpoint when one reached the server; otherwise preparation may run
 again. Keep preparation deterministic and external writes idempotent.
 
+`.askQuestions()` enables operator questions. An optional predicate, such as
+`.askQuestions(ctx => !ctx.prepared.skipQuestions)`, runs after preparation and
+before the model is prompted. A false result omits `ask_questions` and its guidance.
+Use captured params, state, and preparation data to preserve the policy on recovery.
+
+Preparation exposes the immutable `ctx.scopedSettings` snapshot captured for the
+turn's execution purpose. Declare consumed setting keys in the owning extension;
+each new operator retry resolves current overrides before preparation starts.
+
+Preparation and automatic turns can call `ctx.reportDiagnostic(...)` with a
+level, code, message, and optional non-secret details. Reports append to
+`worker.trace` and carry the active turn id and turn-record id. Use them for
+operational timings and diagnostics; `ctx.reportProgress(...)` supplies the
+operator-facing progress report.
+
 Use a separate turn for an independently reviewable artifact, decision, wait, or
 business operation. See [acceptance and recovery](server-worker-lifecycle.md#5-start-acceptance-recovery-invariants)
 for the runtime contract.
@@ -260,6 +275,34 @@ Its value must pass `resultCodec`; a failure or a `SafeOutcomePlanningError` rej
 the outcome without recording a result. Each item's result markdown comes from the
 outcome's reserved `markdown` argument.
 
+Use `.validateOutcome((ctx, submission) => errors)` for correction within the active
+LLM turn, including mapped items. The callback receives `outcome`, `params`, the
+preparation checkpoint, and authorized integration-tool access. Return an empty
+array to accept or actionable error strings to keep the turn open. Exceptions also
+become correction feedback. Rejected submissions do not select an outcome or
+publish its markdown. This worker-side hook does not replace authoritative checks
+in server effects or mapped `yield`; it adds no turn or retry budget.
+
+Outcome builders also provide `.union(name, variants, options)` and
+`.strictSchema()`; see [outcome tool schemas](agent-tools.md#4-terminal-outcome-tools).
+Nested declarations use native JSON Schema `anyOf`. Required array presence and
+cardinality are separate: `required: true` permits `[]`; set `minItems` to require
+items. The existing `requiredArray` and `requiredStringArray` helpers default to
+`minItems: 1`; override with `minItems: 0` when empty arrays are valid.
+
+Use `.resolveParameters(ctx => specs)` for contextual outcome parameters. Returned
+specs override declared parameters by name, retaining other declarations such as
+published Markdown. The synchronous callback receives immutable copies of decoded
+`params` and `state`, plus the frozen item context for mapped outcomes. It has no
+worker preparation or integration-tool access. The server resolves and persists
+parameters, Markdown metadata, and strict enforcement at turn-start preparation.
+Replacement workers and correction calls reuse that contract; explicit Retry and
+Continue resolve a fresh one. Starts from older versions without a contract snapshot
+use the current definition and report incompatible submissions as validation errors.
+
+Leaf-outcome capture receives `mappedResult` for an accepted mapped item, even before
+collection updates process state. Render that result for the item's history entry.
+
 After the last item, `collect` receives the results in item order and returns the
 new state. Then the collection route applies: `.to(turnId)`, `.complete()`,
 `.lifecycleStatus(status)`, or `.routeByState(branches, choose)`, whose chooser sees
@@ -322,6 +365,33 @@ A process's `.launcher(...)` declares a UI card, input schema, and
 errors. The launch configuration identifies the process, validated params, optional
 projects, and initial turn. See the [complete example](first-process.md).
 
+An optional `ui.resolvePreviewConfig(input, context)` handles form validation,
+defaults and model preview without preparing execution resources. It returns the
+same result shape and codec-valid params, preserving the settings context, model
+defaults and any repository identity needed to resolve scoped settings. Projects
+may be omitted when a saved repository scope is supplied as `settingsContext.repository`;
+it affects previews only, while submitted repository bindings remain authoritative.
+Without this callback, previews
+use `resolveLaunchConfig` as before. Preview results are never submitted or saved;
+immediate and scheduled submissions always call `resolveLaunchConfig` again for
+the complete configuration and current external checks.
+
+A `select` field with `multiple: true` uses checkbox selections. Defaults and
+submitted values are newline-separated stable option IDs; IDs must not contain
+newlines. Selected IDs remain visible when refreshed options omit them or fail to
+load. The launcher validates the complete selection, including required values.
+
+Set `searchable: true` for a filterable checkbox list with a selection count.
+`presetsFrom` names another multiple-select field whose options carry
+`selectionValues`. The union of its selected presets seeds the target selection;
+individual additions and exclusions survive preset changes. Explicit input,
+including an empty string, takes precedence when restoring a draft. Reopening a
+draft reconstructs its overrides against the available presets. An absent target
+field expands the draft's presets instead of inheriting unrelated starter values.
+`resetOn` lists launcher field IDs whose changes clear a dependent field and its
+selection overrides. Resets cascade. Submitted values still use newline-separated
+IDs; preset metadata does not replace server validation.
+
 Launcher schemas also support trusted operator channels. A channel must use server
 launch admission; it must not invoke the raw process executor.
 
@@ -362,8 +432,23 @@ before persisting any worker start (including retry and continuation), allocatin
 a lease, or accepting a turn attempt:
 
 - `false` keeps the selected turn waiting without a worker.
+- `return process.waiting(message)` keeps waiting at the normal interval with safe
+  operator guidance, without failure backoff.
 - `true` admits one execution. Checks stop after admission.
 - `return process.complete()` completes the process without a worker.
+- `return process.abort(message)` aborts a cancelled source without a worker.
+
+For a process created before its repositories are known, return
+`process.bindInitialProjects({ params, projects, metadata })`. The server validates
+and atomically commits the complete, nonempty repository set and encoded parameters,
+then rechecks readiness before preparing a worker. This is allowed only on the
+initial selection, before any project, worker start or turn attempt exists.
+Metadata may add extension bindings but cannot replace retained launch or lifecycle
+metadata. An optional `settingsContext` binds the newly resolved source scope.
+Repository settings identities and commit policy use the normal launch
+normalization. Existing bindings cannot be replaced through readiness. No worker
+start is recorded by the binding operation; subsequent preparation reads the committed
+projects. Stop and stale-check fencing apply to binding as to every readiness result.
 
 Remote operations in the predicate must be read-only. Use
 `process.setState(nextState)` only to stage local observations; the server validates
@@ -425,14 +510,32 @@ the selected-turn UI. Provider-specific event matching stays in the source resol
 ### Turn progress
 
 Automatic handlers and LLM preparation replace their progress snapshot with
-`ctx.reportProgress(...)`. Reports have ordered stable step IDs, labels, and
+`ctx.reportProgress(...)`. Server integration tools expose the same method on
+their execution context, bound to the active running turn attempt. Reports have
+ordered stable step IDs, labels, and
 `incomplete`, `in_progress`, `completed`, or `failed` states. Optional HTTPS links
 identify related pull requests, merge requests, commits, or pipelines.
 
+Use `summary` for the current operator-facing activity. A text-only report uses
+an empty `steps` array and a nonempty summary:
+
+```ts
+ctx.reportProgress({
+  title: "Ticket publication",
+  summary: "Creating ticket 3 of 8: Frontend — Add deployment checks",
+  steps: [],
+});
+```
+
+The automatic turn's live card shows the summary as its activity line. During LLM
+preparation it does the same until preparation completes or model activity starts.
+Reports remain available after reload. Canceled integration calls and stale or
+finished attempts cannot update the current activity.
+
 Reports are execution visibility, not turns, products, or proof that an operation
 occurred. The server rejects malformed reports, unsafe links, stale turn IDs, and
-updates to non-running turns. A thrown handler error marks its current in-progress
-step failed before recording the turn failure.
+updates to non-running turns. A thrown worker handler error marks its reported
+in-progress step failed before recording the turn failure.
 
 Result publication can include `resultSummary` through `markdown_result`,
 `WorkerCompleteInput`, or an outcome's `resultSummaryParameter`. Omitting it remains

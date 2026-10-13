@@ -17,10 +17,19 @@ phase before prompt evaluation. Preparation can call only the turn's authorized 
 and can emit the same durable progress reports as an automatic turn. Its bounded, non-secret JSON
 result is emitted as `turn.prepared` and passed to the prompt as `ctx.prepared`.
 
+Preparation can append non-secret operational diagnostics through
+`ctx.reportDiagnostic(...)`. These are recorded as `worker.trace` with the active
+turn and turn-record ids, including diagnostics emitted before preparation fails.
+
 A replacement worker reuses a checkpoint stored for the same running turn record. Continue reuses
 the failed attempt's checkpoint; Retry creates a new attempt and runs preparation again. If no
 checkpoint reached the server before a worker failure, deterministic preparation may run again.
 Preparation failure records the owning LLM turn as failed without prompting Pi.
+
+An optional `.askQuestions(ctx => boolean)` predicate runs after preparation,
+using captured params, state, and `ctx.prepared`. When false, the worker omits
+`ask_questions` and its prompt guidance for that turn. Recovery reuses the captured
+inputs; Retry can capture a new question policy through preparation.
 
 ## Mapped turns
 
@@ -29,6 +38,16 @@ execute sequentially, each requiring start acceptance. An item result commits at
 with the next item's start or, for the last item, with the collected state and route.
 An outcome is accepted only for the current accepted turn record and the run's current
 item. Workers receive only the active item, not the full run.
+
+An optional outcome-validation callback runs before the worker accepts an outcome
+tool submission. Errors return to the model while its turn remains open, without
+publishing result markdown or persisting an accepted result. Correction uses the
+same item, turn record and execution limits. Server outcome checks remain
+authoritative.
+
+A rejected outcome ends the current Pi model/tool loop before another model call.
+The worker then applies bounded recovery with the validation feedback. This also
+applies when Pi rejects tool arguments before the outcome callback executes.
 
 The framework's `abort_turn` tool ends the active turn through `worker.turn_failed`
 with the supplied reason and error class `llm_error`. It bypasses outcome recovery
@@ -155,7 +174,7 @@ An expanded live trace reads all recorded activity for the selected `turnRecordI
 - [UI chronicle](ui.md) owns rendering and interaction.
 
 An extension-defined `executionPurpose` binds scoped defaults to an ordinary LLM
-turn. The prepared start captures only its declared non-secret settings. Instruction
-blocks are labelled by repository and added to the worker system instructions.
-`ctx.scopedSettings` exposes the same immutable values to process code. See
+turn. The prepared start captures only its declared non-secret settings.
+`ctx.scopedSettings` exposes those immutable values to process code. Settings do
+not add instructions to the worker system prompt. See
 [Scoped settings](scoped-settings.md).

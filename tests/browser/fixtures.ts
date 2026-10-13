@@ -4,7 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import type { ExtensionCatalog } from "@leitwerk-dev/extension-runtime";
 import type { AppContext, LeitwerkConfig } from "@leitwerk-dev/server";
-import { createAppContext, getDefaultConfig } from "@leitwerk-dev/server";
+import { getDefaultConfig } from "@leitwerk-dev/server";
+import { createTestAppContext } from "@leitwerk-dev/test-support/integration";
 import {
 	createInProcessWorkerSpawn,
 	type StubToolCallScriptResolver,
@@ -74,7 +75,7 @@ export const test = base.extend<Record<string, never>, BrowserWorkerFixtures>({
 					config,
 					tempRoot,
 				);
-				ctx = await createAppContext({
+				ctx = await createTestAppContext({
 					logger: false,
 					config,
 					extensionCatalog,

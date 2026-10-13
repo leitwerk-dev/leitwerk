@@ -31,7 +31,7 @@ async function fixture() {
 	);
 	writeFileSync(
 		path.join(root, "leitwerk.yaml"),
-		`server:\n  host: 127.0.0.1\n  port: ${backendPort}\n  base_url: http://127.0.0.1:${uiPort}\nstorage:\n  sqlite_path: .leitwerk/test.sqlite\n  process_workspaces_dir: .leitwerk/workspaces\n  tree_files_dir: .leitwerk/trees\nworkers:\n  runner: local\npi:\n  agent_dir: .leitwerk/pi\n`,
+		`server:\n  host: 127.0.0.1\n  port: ${backendPort}\n  base_url: http://127.0.0.1:${uiPort}\nstorage:\n  sqlite_path: .leitwerk/test.sqlite\n  process_workspaces_dir: .leitwerk/workspaces\n  tree_files_dir: .leitwerk/trees\nworkers:\n  runner: local\npi:\n  agent_dir: .leitwerk/pi\n  default_model_profile: probe\n  model_profiles:\n    - {id: probe, provider: probe, model_id: probe}\n`,
 	);
 	const env: NodeJS.ProcessEnv = {
 		...process.env,
@@ -85,7 +85,7 @@ it("runs the installed CLI outside the core checkout, forwards the UI API and re
 		`import fs from 'node:fs'; if (fs.existsSync('block-build')) { console.error('BUILD_BLOCKED'); process.exit(1); } fs.mkdirSync('dist', {recursive:true}); fs.copyFileSync('src/index.js','dist/index.js');`,
 	);
 	const source = (version: number) =>
-		`console.log('PROBE_${version}:'+process.pid); export default { manifest: { id: 'probe', version: '1.0.0' } };`;
+		`import { fixtureModelProviders } from '@leitwerk-dev/test-support'; console.log('PROBE_${version}:'+process.pid); export default { manifest: { id: 'probe', version: '1.0.0' }, modelProviders: fixtureModelProviders({id: 'probe', modelId: 'probe'}) };`;
 	writeFileSync(path.join(root, "extension/src/index.js"), source(1));
 	const { child, output, waitFor } = start();
 	const ready = async () => {

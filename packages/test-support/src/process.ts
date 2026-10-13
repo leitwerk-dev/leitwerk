@@ -383,6 +383,8 @@ export async function createExtensionTestHarness(options: ExtensionTestHarnessOp
 		name: string,
 		args: Record<string, unknown>,
 		fixture: ExtensionToolFixture = {},
+		/** @internal */
+		reportProgress: (report: TurnProgressReport) => void = () => {},
 	) {
 		assertOpen();
 		const tool = tools.get(name);
@@ -415,6 +417,7 @@ export async function createExtensionTestHarness(options: ExtensionTestHarnessOp
 					process,
 					projects,
 					turn,
+					reportProgress,
 					project:
 						projects.find((project) => project.key === args.projectKey) ??
 						(projects.length === 1 ? (projects[0] ?? null) : null),
@@ -647,6 +650,9 @@ export async function createExtensionTestHarness(options: ExtensionTestHarnessOp
 					const prompts: string[] = [];
 					const tools: { name: string; arguments: Record<string, unknown> }[] = [];
 					const progress: TurnProgressReport[] = [];
+					const reportProgress = (report: TurnProgressReport) => {
+						progress.push(structuredClone(report));
+					};
 					const completed: ExtensionTurnResponse[] = [];
 					const requestedTools = new Set<string>();
 					const parked: (string | undefined)[] = [];
@@ -664,18 +670,21 @@ export async function createExtensionTestHarness(options: ExtensionTestHarnessOp
 							if (!allowed?.includes(name))
 								throw new Error(`Integration tool '${name}' is not declared for '${id}'`);
 							tools.push({ name, arguments: structuredClone(args) });
-							return callTool(name, args, {
-								...defaults,
-								...options.fixture,
-								processId: definition.id,
-								params: base.params,
-								state: base.state,
-								position: { selectedTurnId: id, lifecycleStatus: "active" },
-							});
+							return callTool(
+								name,
+								args,
+								{
+									...defaults,
+									...options.fixture,
+									processId: definition.id,
+									params: base.params,
+									state: base.state,
+									position: { selectedTurnId: id, lifecycleStatus: "active" },
+								},
+								reportProgress,
+							);
 						},
-						reportProgress: (report: TurnProgressReport) => {
-							progress.push(structuredClone(report));
-						},
+						reportProgress,
 					};
 					await handler({
 						ctx,
@@ -686,7 +695,6 @@ export async function createExtensionTestHarness(options: ExtensionTestHarnessOp
 								...(def.resolveIntegrationTools?.(base.params, base.state) ??
 									def.integrationTools ??
 									[]),
-								...(def.askQuestions ? ["ask_questions"] : []),
 							])
 								requestedTools.add(name);
 							const prepared = await def.prepare?.({
@@ -694,6 +702,8 @@ export async function createExtensionTestHarness(options: ExtensionTestHarnessOp
 								callIntegrationTool: ctx.callIntegrationTool,
 								reportProgress: ctx.reportProgress,
 							});
+							if (def.askQuestions && (def.resolveAskQuestions?.({ ...ctx, prepared }) ?? true))
+								requestedTools.add("ask_questions");
 							prompts.push(await def.prompt({ ...ctx, prepared }));
 							const response = responses.shift();
 							if (!response)

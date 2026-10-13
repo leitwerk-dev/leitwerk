@@ -99,23 +99,25 @@ export function registerJiraWorkflowTools(api: ServerExtensionAPI, integration: 
 	});
 	api.tool<Record<string, unknown>>({
 		name: "jira_transition_source_issue",
-		description: "Reconcile the Jira source ticket's work or review status",
+		description: "Reconcile the Jira source ticket's work, review or verification status",
 		parameters: projectParameters(
-			{ targetStatus: { type: "string", enum: ["In Progress", "In Review"] } },
+			{ targetStatus: { type: "string", enum: ["In Progress", "In Review", "In Verification"] } },
 			["targetStatus"],
 		),
 		async execute(ctx, args) {
 			const { client, id } = resolveJiraSourceClient(ctx, integration);
 			const targetStatus = stringArg(args, "targetStatus");
-			if (!["In Progress", "In Review"].includes(targetStatus))
+			if (!["In Progress", "In Review", "In Verification"].includes(targetStatus))
 				throw new Error("Unsupported Jira workflow target status");
 			const target = statusName(targetStatus);
 			const reconcile = async (phase: string) => {
 				const { status } = (await client.getIssue(id, ctx.signal)).fields;
+				const current = statusName(status.name);
 				return phase === "already_recorded" ||
-					statusName(status.name) === target ||
+					current === target ||
 					status.statusCategory.key === "done" ||
-					(target === "in progress" && statusName(status.name) === "in review")
+					current === "in verification" ||
+					(target === "in progress" && current === "in review")
 					? { issueId: id, status: status.name ?? status.statusCategory.key }
 					: null;
 			};

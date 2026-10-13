@@ -202,6 +202,8 @@ export interface DevelopmentToolsStartConfig {
 
 /** @internal */
 export interface IntegrationToolDeclaration {
+	/** Omit from model tools while retaining runtime authorization; defaults to true. @internal */
+	modelVisible?: boolean;
 	/** @internal */
 	name: string;
 	/** @internal */

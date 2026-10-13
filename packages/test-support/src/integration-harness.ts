@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ExtensionCatalog } from "@leitwerk-dev/extension-runtime";
+import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import type { ProvidedCapability } from "@leitwerk-dev/process-sdk";
 import {
 	type AppContext,
@@ -14,6 +15,18 @@ import {
 	createInProcessWorkerSpawn,
 	type InProcessWorkerSpawnOptions,
 } from "./in-process-worker.js";
+import { withDefaultModelFixture } from "./model-provider-fixtures.js";
+
+/** Server fixture with an explicit synthetic model when the test supplies no model catalog. @internal */
+export async function createTestAppContext(options: AppOptions = {}): Promise<AppContext> {
+	const config = options.config ?? getDefaultConfig();
+	const catalog = await (options.extensionCatalog ?? buildExtensionCatalogFromModules([]));
+	return createAppContext({
+		...options,
+		config,
+		extensionCatalog: withDefaultModelFixture(config, catalog),
+	});
+}
 
 /** @public */
 export interface IntegrationHarness<
@@ -117,7 +130,10 @@ export async function createIntegrationHarness<
 	}
 	opts.configOverride?.(config);
 
-	const extensionCatalog = await Promise.resolve(opts.extensionCatalog);
+	const extensionCatalog = withDefaultModelFixture(
+		config,
+		await Promise.resolve(opts.extensionCatalog),
+	);
 
 	const appOpts: AppOptions = {
 		logger: false,

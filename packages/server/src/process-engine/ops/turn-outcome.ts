@@ -9,6 +9,7 @@ import {
 	isAutomaticTurnDefinition,
 	isLlmTurnDefinition,
 	parseStructuralProcessState,
+	type ResolvedOutcomeContract,
 } from "@leitwerk-dev/process-sdk";
 import { validateTurnOutcomeCorrelation } from "../../domain-logic/turn-record-guards.js";
 import { captureLeafOutcomeSnapshot } from "../../leaf-outcome-snapshot-capture.js";
@@ -95,11 +96,20 @@ function resolveOutcomePublication(input: {
 	turnId: string;
 	outcome: string;
 	turnPublishedProduct: string | null;
+	outcomeContract?: ResolvedOutcomeContract;
 }): {
 	productName: string | null;
 	markdownParameterName: string | null;
 	resultSummaryParameter?: string;
 } {
+	if (input.outcomeContract) {
+		const outcome = input.outcomeContract.outcomes[input.outcome];
+		return {
+			productName: outcome?.publishedProduct ?? input.outcomeContract.publishedProduct,
+			markdownParameterName: outcome?.turnResultMarkdownParameter ?? null,
+			resultSummaryParameter: outcome?.resultSummaryParameter,
+		};
+	}
 	const definition = input.processGraphs.get(input.processId)?.turns.get(input.turnId)?.definition;
 	if (!definition || (!isLlmTurnDefinition(definition) && !isAutomaticTurnDefinition(definition))) {
 		return { productName: input.turnPublishedProduct, markdownParameterName: null };
@@ -158,6 +168,16 @@ export const TurnOutcome = defineOperation<"turn_outcome", TurnOutcomeInput, voi
 		input.onRecorded?.();
 	},
 	async decide(ctx, input) {
+		const currentStart =
+			ctx.process.currentExecution?.kind === "worker_start"
+				? ctx.deps.turnStarts.getById(ctx.process.currentExecution.id)
+				: null;
+		const outcomeContract =
+			currentStart?.state.kind === "accepted" && currentStart.state.start?.kind === "llm"
+				? (currentStart.state.start.outcomeContract as unknown as
+						| ResolvedOutcomeContract
+						| undefined)
+				: undefined;
 		const initialPayload = input.payload;
 		const turnGraph = getProcessTurnGraph(
 			ctx.deps.processGraphs,
@@ -171,13 +191,10 @@ export const TurnOutcome = defineOperation<"turn_outcome", TurnOutcomeInput, voi
 			turnId: initialPayload.turnId,
 			outcome: initialPayload.outcome,
 			turnPublishedProduct: turnGraph?.publishedProduct ?? null,
+			outcomeContract,
 		});
 		const payload = resolveEffectiveOutcomePayload({ payload: initialPayload, publication });
 		const publishedProduct = publication.productName;
-		const currentStart =
-			ctx.process.currentExecution?.kind === "worker_start"
-				? ctx.deps.turnStarts.getById(ctx.process.currentExecution.id)
-				: null;
 		const expected =
 			currentStart?.state.kind === "accepted" ? currentStart.state.turnRecordId : null;
 		const correlationError = validateTurnOutcomeCorrelation(ctx.process, payload, expected);
@@ -196,7 +213,10 @@ export const TurnOutcome = defineOperation<"turn_outcome", TurnOutcomeInput, voi
 		}
 		const requiredMarkdownError = validateRequiredTurnResultMarkdown({
 			payload,
-			required: turnGraph?.turnResultMarkdownRequired === true,
+			required: outcomeContract
+				? outcomeContract.turnResultMarkdown?.mode !== "none" &&
+					outcomeContract.turnResultMarkdown?.required === true
+				: turnGraph?.turnResultMarkdownRequired === true,
 		});
 		if (requiredMarkdownError) {
 			return reject(requiredMarkdownError.code, requiredMarkdownError.message);
@@ -274,70 +294,43 @@ export const TurnOutcome = defineOperation<"turn_outcome", TurnOutcomeInput, voi
 			});
 		}
 		const existing = ctx.deps.turnRecords.getById(payload.turnRecordId);
-		const completedTurnRecord: ProcessTurnRecord = existing
-			? {
-					...existing,
-					turnType: payload.turnType ?? existing.turnType,
-					status: "succeeded" as const,
-					resultPiEntryId: payload.resultPiEntryId ?? null,
-					modelProfileId: existing.modelProfileId,
-					turnResultMarkdown: payload.turnResultMarkdown ?? null,
-					endedAt: recordedAt,
-					errorSummary: null,
-					errorClass: null,
-				}
-			: {
-					id: payload.turnRecordId,
-					instanceId: input.instanceId,
-					turnId: payload.turnId,
-					turnType: payload.turnType,
-					status: "succeeded",
-					attemptNumber: 1,
-					parentTurnRecordId: null,
-					pathType: payload.pathType ?? "primary",
-					forkPiEntryId: payload.forkPiEntryId ?? null,
-					resultPiEntryId: payload.resultPiEntryId ?? null,
-					modelProfileId: null,
-					turnResultMarkdown: payload.turnResultMarkdown ?? null,
-					errorSummary: null,
-					errorClass: null,
-					startedAt: recordedAt,
-					endedAt: recordedAt,
-				};
+		const completion = {
+			turnType: payload.turnType,
+			status: "succeeded" as const,
+			resultPiEntryId: payload.resultPiEntryId ?? null,
+			turnResultMarkdown: payload.turnResultMarkdown ?? null,
+			endedAt: recordedAt,
+		};
+		const completedTurnRecord: ProcessTurnRecord = {
+			...(existing ?? {
+				id: payload.turnRecordId,
+				instanceId: input.instanceId,
+				turnId: payload.turnId,
+				attemptNumber: 1,
+				parentTurnRecordId: null,
+				pathType: payload.pathType ?? "primary",
+				forkPiEntryId: payload.forkPiEntryId ?? null,
+				modelProfileId: null,
+				startedAt: recordedAt,
+			}),
+			...completion,
+			turnType: existing ? (payload.turnType ?? existing.turnType) : payload.turnType,
+			errorSummary: null,
+			errorClass: null,
+		};
 		if (existing) {
 			baseWrites.turnRecordWrites.push({
 				kind: "update",
 				id: payload.turnRecordId,
-				input: {
-					turnType: payload.turnType,
-					status: "succeeded",
-					resultPiEntryId: payload.resultPiEntryId ?? null,
-					turnResultMarkdown: payload.turnResultMarkdown ?? null,
-					endedAt: recordedAt,
-				},
+				input: completion,
 			});
 		} else {
+			const { modelProfileId, ...recordInput } = completedTurnRecord;
 			baseWrites.turnRecordWrites.push({
 				kind: "create",
 				input: {
-					id: completedTurnRecord.id,
-					instanceId: completedTurnRecord.instanceId,
-					turnId: completedTurnRecord.turnId,
-					turnType: completedTurnRecord.turnType,
-					status: completedTurnRecord.status,
-					attemptNumber: completedTurnRecord.attemptNumber,
-					parentTurnRecordId: completedTurnRecord.parentTurnRecordId,
-					pathType: completedTurnRecord.pathType,
-					forkPiEntryId: completedTurnRecord.forkPiEntryId,
-					resultPiEntryId: completedTurnRecord.resultPiEntryId,
-					...(completedTurnRecord.modelProfileId !== null
-						? { modelProfileId: completedTurnRecord.modelProfileId }
-						: {}),
-					turnResultMarkdown: completedTurnRecord.turnResultMarkdown,
-					errorSummary: completedTurnRecord.errorSummary,
-					errorClass: completedTurnRecord.errorClass,
-					startedAt: completedTurnRecord.startedAt,
-					endedAt: completedTurnRecord.endedAt,
+					...recordInput,
+					...(modelProfileId !== null ? { modelProfileId } : {}),
 				},
 			});
 		}
@@ -357,6 +350,7 @@ export const TurnOutcome = defineOperation<"turn_outcome", TurnOutcomeInput, voi
 			processActionRegistry,
 			mappedRuns: ctx.deps.mappedRuns,
 			iteration: currentStart?.iteration ?? null,
+			outcomeContract: outcomeContract ? { ...outcomeContract } : undefined,
 		});
 		if (isWriteBuildFailure(outcomeWrites)) {
 			return reject(outcomeWrites.code, outcomeWrites.message);
@@ -456,7 +450,14 @@ export const TurnOutcome = defineOperation<"turn_outcome", TurnOutcomeInput, voi
 				...mergedWrites.processPatch,
 				stateJson: mergedWrites.processPatch.stateJson ?? ctx.process.stateJson,
 			};
+			const mappedWrite = mergedWrites.mappedRunWrites.find(
+				(write) =>
+					write.kind === "complete_item" && write.input.turnRecordId === completedTurnRecord.id,
+			);
 			const snapshotInput = await captureLeafOutcomeSnapshot({
+				...(mappedWrite?.kind === "complete_item"
+					? { mappedResult: JSON.parse(mappedWrite.input.resultJson) as unknown }
+					: {}),
 				process: capturedProcess,
 				projects,
 				processActionRegistry,

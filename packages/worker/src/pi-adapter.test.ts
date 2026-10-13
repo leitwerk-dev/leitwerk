@@ -1551,7 +1551,7 @@ describe("SdkPiTreeHandle", () => {
 		expect(getActiveToolNames()).toEqual(["read", "bash"]);
 	});
 
-	it("registers array item schemas for temporary tools", async () => {
+	it("registers nested object and array item schemas for temporary tools", async () => {
 		let harness!: ReturnType<typeof createFakeSdkHandle>;
 		let registeredParameters: Record<string, unknown> | undefined;
 		harness = createFakeSdkHandle({
@@ -1573,6 +1573,20 @@ describe("SdkPiTreeHandle", () => {
 			tools: [
 				outcomeTool("plan_saved", {
 					parameters: {
+						assessment: {
+							type: "object",
+							required: true,
+							requiredProperties: ["decision", "findings"],
+							additionalProperties: false,
+							properties: {
+								decision: { type: "string", enum: ["create", "blocked"] },
+								findings: {
+									type: "object",
+									required: ["tests"],
+									properties: { tests: { type: "string", minLength: 1 } },
+								},
+							},
+						},
 						acceptanceCriteria: {
 							type: "array",
 							description: "Acceptance criteria",
@@ -1631,9 +1645,23 @@ describe("SdkPiTreeHandle", () => {
 					},
 				},
 			},
-			required: ["acceptanceCriteria", "candidates"],
+			required: ["assessment", "acceptanceCriteria", "candidates"],
 			additionalProperties: false,
 		});
+		expect(registeredParameters).toMatchObject({
+			properties: {
+				assessment: {
+					type: "object",
+					required: ["decision", "findings"],
+					additionalProperties: false,
+					properties: {
+						decision: { enum: ["create", "blocked"] },
+						findings: { required: ["tests"], properties: { tests: { minLength: 1 } } },
+					},
+				},
+			},
+		});
+		expect(JSON.stringify(registeredParameters)).not.toContain("requiredProperties");
 		expect(JSON.stringify(registeredParameters)).not.toContain("requiredErrorCode");
 	});
 

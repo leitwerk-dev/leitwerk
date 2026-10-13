@@ -35,6 +35,7 @@ async function createPoemCatalog() {
 }
 
 function configurePoemModel(config: LeitwerkConfig) {
+	config.pi.default_model_profile = "claude_fast";
 	config.pi.model_profiles = [
 		{
 			id: "claude_fast",

@@ -1,6 +1,6 @@
 <script lang="ts">
 import type { ProcessQuestionRequest } from "@leitwerk-dev/domain";
-import { formatDefinition } from "../../lib/format.js";
+import { formatDefinition, formatRelativeTime } from "../../lib/format.js";
 import type { ChronicleLiveTailItem } from "../lib/chronicle-projection.js";
 import { formatChronicleIterationProgress } from "../lib/chronicle-view-model.js";
 import { formatChronicleCost } from "../lib/formatting.js";
@@ -40,6 +40,29 @@ const hasReasoning = $derived(
 				liveTail.reasoningSection.preview.trim() ||
 				liveTail.reasoningSection.toolCallCount ||
 				liveTail.reasoningSection.traceItemCount),
+	),
+);
+const isThinking = $derived(
+	!openQuestionRequest &&
+		liveTail.state === "thinking" &&
+		Boolean(liveTail.reasoningSection?.preview.trim() || liveTail.reasoningSection?.text.trim()),
+);
+const prepared = $derived(
+	liveTail.turnType === "llm" &&
+		Boolean(
+			liveTail.progress &&
+				(liveTail.progress.steps.length
+					? liveTail.progress.steps.every((step) => step.status === "completed")
+					: liveTail.progress.summary &&
+						!liveTail.activitySummary &&
+						(hasReasoning || liveTail.assistantTextPreview || liveTail.toolCall || liveTail.usage)),
+		),
+);
+const hasProgressDetails = $derived(
+	Boolean(
+		liveTail.progress?.steps.length ||
+			liveTail.progress?.links?.length ||
+			(liveTail.progress?.summary && !liveTail.activitySummary),
 	),
 );
 
@@ -88,15 +111,15 @@ const screenReaderStatus = $derived.by(() => {
 			timestamp={liveTail.facts.startedAt}
 			duration={openQuestionRequest ? "Paused" : "Running"}
 		/>
-		{#if !openQuestionRequest}<p class="live-copy" role="status">{liveTail.stateLabel}{#if liveTail.toolCall} · {formatDefinition(liveTail.toolCall.toolName)}{/if}</p>{/if}
+		{#if !openQuestionRequest && !isThinking}<p class="live-copy" role="status">{liveTail.stateLabel}{#if liveTail.toolCall} · {formatDefinition(liveTail.toolCall.toolName)}{/if}{#if liveTail.activitySummary && liveTail.progressRecordedAt} <time class="activity-time" datetime={liveTail.progressRecordedAt} title={new Date(liveTail.progressRecordedAt).toLocaleString()}>Updated {formatRelativeTime(liveTail.progressRecordedAt)}</time>{/if}</p>{/if}
 		{#if liveTail.assistantTextPreview}
 			<div class="live-result"><p>{liveTail.assistantTextPreview}</p></div>
-		{:else if !liveTail.reasoningSection && liveTail.state !== "tool_running"}
+		{:else if !liveTail.activitySummary && !liveTail.reasoningSection && liveTail.state !== "tool_running"}
 			<p class="live-copy">{liveTail.copy}</p>
 		{/if}
 
-		{#if liveTail.progress}
-			<ChronicleTurnProgress report={liveTail.progress} recordedAt={liveTail.progressRecordedAt} attemptStatus="in_progress" />
+		{#if liveTail.progress && !prepared && hasProgressDetails}
+			<ChronicleTurnProgress report={liveTail.progress} showSummary={!liveTail.activitySummary} recordedAt={liveTail.progressRecordedAt} attemptStatus="in_progress" />
 		{/if}
 
 		{#if liveTail.reasoningSection || questionRequests.length > 0}
@@ -107,6 +130,7 @@ const screenReaderStatus = $derived.by(() => {
 				traceItemCount={liveTail.reasoningSection?.traceItemCount ?? 0}
 				{questionRequests}
 				isLive={true}
+				{isThinking}
 			/>
 		{/if}
 
@@ -156,9 +180,14 @@ const screenReaderStatus = $derived.by(() => {
 			</div>
 		{/if}
 		{#if liveTail.turnType === "llm" || hasReasoning}
-			<div class="live-footer">
-				{#if hasReasoning}<ChronicleTurnDetailsButton kind="reasoning" title={liveTail.title} onClick={() => onOpenReasoningDetails(liveTail.turnRecordId, "reasoning")} />{/if}
-				{#if liveTail.turnType === "llm"}<ChronicleTurnDetailsButton title={liveTail.title} onClick={() => onOpenReasoningDetails(liveTail.turnRecordId)} />{/if}
+			<div class="live-footer" class:has-reasoning={hasReasoning}>
+				<div class="support-progress">
+					{#if prepared && liveTail.progress}<ChronicleTurnProgress report={liveTail.progress} recordedAt={liveTail.progressRecordedAt} attemptStatus="in_progress" compact />{/if}
+				</div>
+				<div class="turn-info-actions">
+					{#if hasReasoning}<ChronicleTurnDetailsButton kind="reasoning" title={liveTail.title} onClick={() => onOpenReasoningDetails(liveTail.turnRecordId, "reasoning")} />{/if}
+					{#if liveTail.turnType === "llm"}<ChronicleTurnDetailsButton title={liveTail.title} onClick={() => onOpenReasoningDetails(liveTail.turnRecordId)} />{/if}
+				</div>
 			</div>
 		{/if}
 	</div>
@@ -168,8 +197,11 @@ const screenReaderStatus = $derived.by(() => {
 	.live-tail { padding: 14px; border: 1px solid color-mix(in srgb, var(--chronicle-accent) 35%, var(--chronicle-border)); border-radius: 10px; background: var(--chronicle-card-surface); scroll-margin-top: var(--space-sm); }
 	.live-tail.is-focused { border-color: var(--chronicle-accent); }
 	.live-tail-body { display: flex; flex-direction: column; gap: 10px; }
-	.live-footer { display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
-	.live-copy { margin: 0; color: var(--chronicle-text-muted); font-size: var(--type-body-sm); line-height: 1.5; }
+	.live-footer { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 12px; min-width: 0; }
+	.support-progress { min-width: 0; }
+	.turn-info-actions { display: flex; align-items: center; gap: 14px; }
+	.live-copy { margin: 0; color: var(--chronicle-text-muted); font-size: var(--type-body-sm); line-height: 1.5; overflow-wrap: anywhere; }
+	.activity-time { margin-left: 8px; font-size: var(--type-caption); white-space: nowrap; }
 
 	.live-result { padding: 10px 12px; border-radius: 6px; background: color-mix(in srgb, var(--chronicle-accent) 6%, var(--chronicle-card-surface)); }
 	.live-result p { max-width: 72ch; margin: 0; color: var(--chronicle-text); font-size: var(--type-body); line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -193,25 +225,13 @@ const screenReaderStatus = $derived.by(() => {
 
 	.stop-trigger {
 		align-self: flex-start;
-		min-height: 34px;
-		padding: 0 14px;
-		border-radius: 999px;
 		border: 1px solid var(--chronicle-danger-border);
 		background: var(--chronicle-card-surface);
 		color: var(--chronicle-danger-text);
-		font: inherit;
-		font-size: 13px;
-		font-weight: 600;
-		cursor: pointer;
 	}
 
 	.stop-trigger:hover:not(:disabled) {
 		background: var(--chronicle-danger-surface);
-	}
-
-	.stop-trigger:disabled {
-		opacity: 0.5;
-		cursor: default;
 	}
 
 	.stop-confirm {
@@ -238,6 +258,7 @@ const screenReaderStatus = $derived.by(() => {
 		gap: 8px;
 	}
 
+	.stop-trigger,
 	.stop-cancel,
 	.stop-confirm-btn {
 		min-height: 34px;
@@ -269,10 +290,17 @@ const screenReaderStatus = $derived.by(() => {
 		opacity: 0.9;
 	}
 
+	.stop-trigger:disabled,
 	.stop-cancel:disabled,
 	.stop-confirm-btn:disabled {
 		opacity: 0.5;
 		cursor: default;
 	}
-
+	@media (max-width: 540px) {
+		.live-tail { padding: 10px; }
+		.live-footer.has-reasoning { grid-template-columns: minmax(0, 1fr); gap: 6px; }
+		.has-reasoning .turn-info-actions { grid-row: 1; justify-content: flex-end; }
+		.has-reasoning .support-progress { grid-row: 2; }
+		.has-reasoning .support-progress:empty { display: none; }
+	}
 </style>

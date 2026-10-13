@@ -18,6 +18,7 @@ interface Props {
 	marker?: FieldMarker;
 	textareaRows?: number;
 	options?: readonly FormFieldOptionDefinition[];
+	optionDetails?: Readonly<Record<string, string>>;
 	selectedOptionDescription?: string | null;
 	selectedOptionDescriptionId?: string;
 	recentValues?: readonly string[];
@@ -38,6 +39,7 @@ let {
 	marker = "launcher",
 	textareaRows = 4,
 	options = [],
+	optionDetails = undefined,
 	selectedOptionDescription = null,
 	selectedOptionDescriptionId = undefined,
 	recentValues = [],
@@ -51,22 +53,36 @@ const markerAttrs = $derived(
 	marker === "action" ? { "data-action-form-field": true } : { "data-launcher-form-field": true },
 );
 const invalid = $derived(errors.length > 0);
+const controlAttrs = $derived({
+	id,
+	...markerAttrs,
+	required: field.required ? true : undefined,
+	"aria-describedby": describedBy,
+	"aria-invalid": invalid,
+	"aria-required": field.required ? true : undefined,
+});
 const stringValue = $derived(String(value ?? ""));
 const booleanValue = $derived(value === true);
+let search = $state("");
+const selectedValues = $derived(stringValue.split("\n").filter(Boolean));
+const visibleOptions = $derived(
+	field.searchable && search.trim()
+		? options.filter((option) =>
+				`${option.label} ${option.value}`.toLowerCase().includes(search.trim().toLowerCase()),
+			)
+		: options,
+);
 </script>
 
-<div class="form-field-group" class:is-split={layout === "split" && field.kind !== "boolean"}>
+<div class="form-field-group" class:invalid onfocusout={(event) => {
+	if (!event.currentTarget.contains(event.relatedTarget as Node | null) && field.kind !== "text" && field.kind !== "number" && field.kind !== "textarea") onTextBlur?.();
+}} class:multi-select={field.kind === "select" && field.multiple} class:is-split={layout === "split" && field.kind !== "boolean"}>
 	{#if field.kind === "boolean"}
 		<div class="checkbox-row">
 			<input
-				id={id}
-				{...markerAttrs}
+				{...controlAttrs}
 				type="checkbox"
-				required={field.required ? true : undefined}
 				checked={booleanValue}
-				aria-describedby={describedBy}
-				aria-invalid={invalid}
-				aria-required={field.required ? true : undefined}
 				onchange={(event) => onValueChange(field, (event.currentTarget as HTMLInputElement).checked)}
 			/>
 			<label for={id} class="checkbox-label">
@@ -75,6 +91,20 @@ const booleanValue = $derived(value === true);
 					<span class="required-marker" title="This field is required" aria-hidden="true">*</span>
 				{/if}
 			</label>
+		</div>
+	{:else if field.kind === "select" && field.multiple}
+		<div class="multi-select-label">
+			<div class="field-label" id={`${id}-label`}>
+				{field.label}
+				{#if field.required}
+					<span class="required-marker" title="This field is required" aria-hidden="true">*</span>
+				{:else}
+					<span class="optional-marker">Optional</span>
+				{/if}
+			</div>
+			{#if field.description}
+				<p class="field-description" id={descriptionId}>{field.description}</p>
+			{/if}
 		</div>
 	{:else}
 		<label class="field-label" for={id}>
@@ -85,33 +115,47 @@ const booleanValue = $derived(value === true);
 		</label>
 	{/if}
 
-	{#if field.description}
+	{#if field.description && !(field.kind === "select" && field.multiple)}
 		<p class="field-description" id={descriptionId}>{field.description}</p>
 	{/if}
 
 	{#if field.kind === "textarea"}
 		<textarea
-			id={id}
-			{...markerAttrs}
+			{...controlAttrs}
 			rows={textareaRows}
-			required={field.required ? true : undefined}
 			value={stringValue}
 			placeholder={field.placeholder ?? undefined}
-			aria-describedby={describedBy}
-			aria-invalid={invalid}
-			aria-required={field.required ? true : undefined}
 			oninput={(event) => onValueChange(field, (event.currentTarget as HTMLTextAreaElement).value)}
 			onblur={onTextBlur}
 		></textarea>
+	{:else if field.kind === "select" && field.multiple}
+		<div class="multi-select-control" id={id} role="group" tabindex="-1" data-invalid={invalid} aria-labelledby={`${id}-label`} aria-describedby={describedBy}>
+			{#if field.searchable}
+				<p class="selection-count" aria-live="polite">{selectedValues.length} selected</p>
+				<div class="selection-search">
+					<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4.5 4.5"/></svg>
+					<input type="search" aria-label={`Search ${field.label.toLowerCase()}`} placeholder={field.placeholder ?? "Search options…"} bind:value={search} />
+				</div>
+			{/if}
+			<div class="selection-options" class:searchable={field.searchable}>
+				{#each visibleOptions as option (option.value)}
+					<label class="checkbox-row selection-option">
+						<input type="checkbox" {...markerAttrs} aria-invalid={invalid} aria-describedby={describedBy} checked={selectedValues.includes(option.value)} onchange={(event) => {
+							onValueChange(field, (event.currentTarget.checked ? [...new Set([...selectedValues, option.value])] : selectedValues.filter((value) => value !== option.value)).join("\n"));
+						}} />
+						<span class="selection-name">{option.label}</span>
+						{#if optionDetails?.[option.value]}<span class="selection-detail">{optionDetails[option.value]}</span>{/if}
+					</label>
+				{:else}
+					<p class="selection-empty">{search.trim() ? "No matching options. Try another search." : "No options available."}</p>
+				{/each}
+			</div>
+			{#if field.presetsFrom}<p class="selection-hint">Your manual changes are kept when you change groups.</p>{/if}
+		</div>
 	{:else if field.kind === "select"}
 		<select
-			id={id}
-			{...markerAttrs}
+			{...controlAttrs}
 			value={stringValue}
-			required={field.required ? true : undefined}
-			aria-describedby={describedBy}
-			aria-invalid={invalid}
-			aria-required={field.required ? true : undefined}
 			onchange={(event) => onValueChange(field, (event.currentTarget as HTMLSelectElement).value)}
 		>
 			<option value="">Choose an option</option>
@@ -128,15 +172,10 @@ const booleanValue = $derived(value === true);
 		<!-- boolean input rendered above -->
 	{:else}
 		<input
-			id={id}
-			{...markerAttrs}
+			{...controlAttrs}
 			type={field.kind === "number" ? "number" : "text"}
-			required={field.required ? true : undefined}
 			value={stringValue}
 			placeholder={field.placeholder ?? undefined}
-			aria-describedby={describedBy}
-			aria-invalid={invalid}
-			aria-required={field.required ? true : undefined}
 			oninput={(event) => onValueChange(field, (event.currentTarget as HTMLInputElement).value)}
 			onblur={onTextBlur}
 		/>
@@ -160,7 +199,7 @@ const booleanValue = $derived(value === true);
 	{/if}
 
 	{#if errors.length > 0}
-		<ul class="field-error-list" id={errorId} role="alert">
+		<ul class="field-error-list" id={errorId} aria-live="polite">
 			{#each errors as message (message)}
 				<li>{message}</li>
 			{/each}
@@ -169,6 +208,12 @@ const booleanValue = $derived(value === true);
 </div>
 
 <style>
+	.form-field-group.invalid .multi-select-control,
+	.form-field-group.invalid > .checkbox-row {
+		outline: 1px solid var(--chronicle-danger);
+		outline-offset: 3px;
+	}
+
 	.form-field-group {
 		display: grid;
 		gap: var(--space-xs);
@@ -202,6 +247,117 @@ const booleanValue = $derived(value === true);
 	.form-field-group.is-split .field-error-list {
 		grid-column: 2;
 	}
+
+	.multi-select {
+		padding: var(--space-lg) 0;
+		border-top: 1px solid var(--chronicle-border);
+	}
+
+	.form-field-group.is-split .multi-select-control {
+		grid-column: 2;
+		grid-row: 1;
+	}
+	.multi-select-label {
+		display: grid;
+		gap: var(--space-xs);
+	}
+
+
+	.multi-select-control {
+		min-width: 0;
+	}
+
+	.selection-count {
+		margin: 0 0 12px;
+		text-align: right;
+		color: var(--chronicle-link);
+		font-size: 0.875rem;
+		font-weight: 620;
+	}
+
+	.selection-search {
+		position: relative;
+		margin-bottom: 12px;
+	}
+
+	.selection-search svg {
+		position: absolute;
+		left: 14px;
+		top: 14px;
+		width: 18px;
+		height: 18px;
+		color: var(--chronicle-text-muted);
+	}
+
+	.form-field-group .selection-search input {
+		padding-left: 42px;
+	}
+
+	.selection-options {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 8px 24px;
+	}
+
+	.selection-option {
+		min-height: 44px;
+		align-items: center;
+		cursor: pointer;
+	}
+
+	.selection-name {
+		overflow-wrap: anywhere;
+	}
+
+	.selection-options.searchable {
+		display: block;
+		max-height: 400px;
+		overflow-y: auto;
+		border: 1px solid var(--chronicle-border);
+		border-radius: 14px;
+	}
+
+	.searchable .selection-option {
+		padding: 12px 14px;
+		font-size: 0.875rem;
+	}
+
+	.searchable .selection-option + .selection-option {
+		border-top: 1px solid var(--chronicle-border);
+	}
+
+	.searchable .selection-option:hover {
+		background: var(--chronicle-panel-muted);
+	}
+
+	.selection-detail {
+		margin-left: auto;
+		max-width: 40%;
+		flex-shrink: 0;
+		text-align: right;
+		font-size: 0.75rem;
+		color: var(--chronicle-text-muted);
+	}
+
+	.selection-hint, .selection-empty {
+		margin: 12px 0 0;
+		color: var(--chronicle-text-muted);
+		font-size: 0.8125rem;
+		line-height: 1.55;
+	}
+
+	.selection-empty {
+		margin: 0;
+		padding: 14px;
+	}
+
+	.optional-marker {
+		margin-left: 6px;
+		color: var(--chronicle-text-muted);
+		font-size: 0.75rem;
+		font-weight: 400;
+	}
+
 
 	.field-label,
 	.checkbox-label {
@@ -349,6 +505,7 @@ const booleanValue = $derived(value === true);
 		.form-field-group.is-split textarea,
 		.form-field-group.is-split select,
 		.form-field-group.is-split .field-option-description,
+		.form-field-group.is-split .multi-select-control,
 		.form-field-group.is-split .field-recents,
 		.form-field-group.is-split .field-error-list {
 			grid-column: 1;

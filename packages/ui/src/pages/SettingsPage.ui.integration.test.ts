@@ -1,10 +1,16 @@
 import { ADMIN_ACTOR } from "@leitwerk-dev/domain";
 import type { SettingsPreview } from "@leitwerk-dev/protocol/http-contracts";
-import { mount, tick, unmount } from "svelte";
+import { tick } from "svelte";
 import type { Writable } from "svelte/store";
 import { afterEach, expect, it, vi } from "vitest";
-import { changeSettings, fetchSettingsPreview, fetchSettingsScopes } from "../lib/settings.js";
+import {
+	changeSettings,
+	fetchSettingsOverview,
+	fetchSettingsPreview,
+	fetchSettingsScopes,
+} from "../lib/settings.js";
 import { wsStore } from "../lib/ws.svelte.js";
+import { mountTest, unmountTests } from "../test-support/mount.js";
 import SettingsPage from "./SettingsPage.svelte";
 
 vi.mock("../lib/settings.js", async (original) => ({
@@ -12,14 +18,14 @@ vi.mock("../lib/settings.js", async (original) => ({
 	changeSettings: vi.fn(),
 	fetchSettingsPreview: vi.fn(),
 	fetchSettingsScopes: vi.fn(),
+	fetchSettingsOverview: vi.fn(),
 }));
 vi.mock("../lib/ws.svelte.js", async () => {
 	const { writable } = await import("svelte/store");
 	return { wsStore: writable({ reconnectCount: 0 }) };
 });
 const connection = wsStore as Writable<{ reconnectCount: number }>;
-const key = "coding.repository_instructions";
-const apps: ReturnType<typeof mount>[] = [];
+const key = "reports.title";
 function preview(id: string, revision = 0, value = `${id} saved`): SettingsPreview {
 	const stamp = {
 		createdAt: "2026-09-01T12:00:00Z",
@@ -44,8 +50,8 @@ function preview(id: string, revision = 0, value = `${id} saved`): SettingsPrevi
 				owner: "coding",
 				schemaVersion: 1,
 				scopes: ["instance", "repository"],
-				merge: "instructions",
-				form: { label: "Repository instructions", group: "Instructions", control: "textarea" },
+				merge: "replace",
+				form: { label: "Report title", group: "Reports", control: "textarea" },
 				choices: [],
 				effective: {
 					key,
@@ -81,13 +87,16 @@ async function edit(label: string, value: string) {
 	button(label).click();
 	await tick();
 	const input = document.querySelector("textarea");
-	if (!input) throw new Error("Missing instructions editor");
+	if (!input) throw new Error("Missing report title editor");
 	input.value = value;
 	input.dispatchEvent(new Event("input", { bubbles: true }));
 	await tick();
 	return input;
 }
 async function render() {
+	vi.mocked(fetchSettingsOverview).mockResolvedValue({
+		items: [{ subjectId: "repo-b", customized: ["Report title"], errors: [] }],
+	});
 	if (!vi.mocked(changeSettings).getMockImplementation())
 		vi.mocked(changeSettings).mockImplementation(async (change) => preview(change.subjectId));
 	vi.mocked(fetchSettingsScopes).mockResolvedValue({
@@ -101,14 +110,11 @@ async function render() {
 	vi.mocked(fetchSettingsPreview).mockImplementation(async (id) =>
 		preview(id, id === "repo-b" ? 1 : 0),
 	);
-	const target = document.createElement("div");
-	document.body.append(target);
-	apps.push(mount(SettingsPage, { target }));
+	mountTest(SettingsPage, {});
 	await vi.waitFor(() => expect(document.querySelector(".setting-field")).not.toBeNull());
 }
 afterEach(async () => {
-	for (const app of apps.splice(0)) await unmount(app);
-	document.body.innerHTML = "";
+	await unmountTests();
 	vi.resetAllMocks();
 	connection.set({ reconnectCount: 0 });
 });
@@ -124,18 +130,19 @@ it("keeps a repository draft bound to its scope when an earlier Instance save fi
 	button("Save override").click();
 	await tick();
 	button("Repositories").click();
+	await vi.waitFor(() => expect(document.querySelector("table")).not.toBeNull());
+	button("repo-b").click();
 	await vi.waitFor(() =>
 		expect(document.querySelector(".effective")?.textContent).toContain("repo-b saved"),
 	);
-	const scope = document.querySelector<HTMLSelectElement>("#settings-scope");
-	if (!scope) throw new Error("Missing scope selector");
+
 	const editor = await edit("Edit override", "Repository draft");
 	vi.mocked(fetchSettingsPreview).mockReturnValue(new Promise(() => {}));
 	pending.resolve(preview("instance", 1, "Instance update"));
-	await vi.waitFor(() => expect(fetchSettingsPreview).toHaveBeenCalledTimes(3));
+	await vi.waitFor(() => expect(fetchSettingsPreview).toHaveBeenCalledWith("repo-b"));
 	expect(document.querySelector("textarea")).toBe(editor);
 	expect(editor.value).toBe("Repository draft");
-	expect(scope.value).toBe("repo-b");
+	expect(document.querySelector("#settings-editor-heading")?.textContent).toBe("repo-b");
 	button("Save override").click();
 	await tick();
 	expect(
@@ -188,5 +195,5 @@ it("reloads scopes and effective values after reconnect without replacing an ope
 	);
 	button("Repositories").click();
 	await tick();
-	expect(document.querySelector('option[value="new-repository"]')).not.toBeNull();
+	expect(document.querySelector("table")?.textContent).toContain("new-repository");
 });

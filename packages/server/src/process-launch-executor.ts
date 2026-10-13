@@ -16,6 +16,7 @@ import {
 import type { EngineFailure, ProcessEngine, ProcessEngineLogger } from "./process-engine/types.js";
 import type { ProcessTitleGenerator } from "./process-title-generator.js";
 import { buildProjectUpdatedEffect } from "./project-mutation-service.js";
+import { type LaunchSkillDefaults, resolveLaunchSkills } from "./skills/launch-skills.js";
 import type { WorkerSupervisor } from "./supervisor/worker-supervisor.js";
 import type { Broadcaster } from "./ws/broadcast.js";
 
@@ -57,6 +58,7 @@ export interface ProcessLaunchExecutorDeps
 	repositoryCredentials?: import("./repository-credentials/service.js").RepositoryCredentialService;
 	/** Runner requirement check executed before the durable launch transaction. */
 	assertRuntimeAvailable?: (processId: string) => Promise<void>;
+	skillDefaults?: LaunchSkillDefaults;
 }
 
 /** @internal */
@@ -191,6 +193,7 @@ export function commitProcessLaunch(
 	relation?: ProcessLaunchRelationInput,
 	actor?: Actor,
 ): ProcessLaunchCommit {
+	if (launchPlan.preview) throw new Error("Launcher previews cannot be committed");
 	return deps.transaction((repos) => {
 		if (launchRunId) {
 			repos.launchRuns.saveReplay(launchRunId, {
@@ -394,9 +397,9 @@ async function createProcessFromLaunchPlanWithDisposition(
 		};
 	}
 	let resourceSelections = opts?.resourceSelections;
-	if (!resourceSelections && launchPlan.skillIds) {
+	if (resourceSelections === undefined) {
 		try {
-			resourceSelections = deps.skills.resolveActive(launchPlan.skillIds);
+			resourceSelections = resolveLaunchSkills(deps, launchPlan.processId, launchPlan.skillIds);
 		} catch (error) {
 			return {
 				ok: false,

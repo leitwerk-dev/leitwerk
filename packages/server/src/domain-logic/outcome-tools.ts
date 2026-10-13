@@ -7,11 +7,10 @@ import {
 import {
 	isAutomaticTurnDefinition,
 	isLlmTurnDefinition,
-	type OutcomeToolArrayItemSpec,
 	type OutcomeToolParameterSpec,
 	type TurnDefinition,
+	validateOutcomeParameters,
 } from "@leitwerk-dev/process-sdk";
-import * as v from "valibot";
 import { isTurnAvailableForProcessGraph, type ProcessGraphRegistry } from "../process-graph.js";
 
 interface OutcomeToolValidationContract {
@@ -34,148 +33,6 @@ export interface OutcomeValidationFailure {
 
 function validationFailure(code: string, message: string): OutcomeValidationFailure {
 	return { ok: false, code, message };
-}
-
-function toSnakeCase(value: string): string {
-	return value
-		.replace(/([a-z0-9])([A-Z])/g, "$1_$2")
-		.replace(/[^a-zA-Z0-9]+/g, "_")
-		.replace(/^_+|_+$/g, "")
-		.toLowerCase();
-}
-
-function invalidParameterCode(key: string, spec: OutcomeToolParameterSpec): string {
-	return spec.invalidErrorCode ?? `invalid_${toSnakeCase(key)}`;
-}
-
-function requiredParameterError(
-	turnId: string,
-	outcome: string,
-	key: string,
-	spec: OutcomeToolParameterSpec,
-): OutcomeValidationFailure {
-	return validationFailure(
-		spec.requiredErrorCode ?? `${toSnakeCase(key)}_required`,
-		`${turnId}.${outcome} requires a non-empty ${key}`,
-	);
-}
-
-function minItemsParameterError(
-	turnId: string,
-	outcome: string,
-	key: string,
-	spec: OutcomeToolParameterSpec,
-): OutcomeValidationFailure {
-	return validationFailure(
-		spec.minItemsErrorCode ?? spec.requiredErrorCode ?? `${toSnakeCase(key)}_required`,
-		`${turnId}.${outcome} requires at least ${spec.minItems ?? 0} item(s) for ${key}`,
-	);
-}
-
-function invalidParameterError(
-	turnId: string,
-	outcome: string,
-	key: string,
-	spec: OutcomeToolParameterSpec,
-	expected: string,
-): OutcomeValidationFailure {
-	return validationFailure(
-		invalidParameterCode(key, spec),
-		`${turnId}.${outcome} expects ${key} to be ${expected}`,
-	);
-}
-
-function minimumParameterError(
-	turnId: string,
-	outcome: string,
-	key: string,
-	spec: OutcomeToolParameterSpec,
-): OutcomeValidationFailure {
-	return validationFailure(
-		spec.minimumErrorCode ?? invalidParameterCode(key, spec),
-		`${turnId}.${outcome} expects ${key} to be >= ${spec.minimum ?? 0}`,
-	);
-}
-
-type OutcomeParameterSchema = v.BaseSchema<unknown, unknown, v.BaseIssue<unknown>>;
-
-const scalarParameters = {
-	string: { schema: v.string(), label: "a string", plural: "strings" },
-	number: {
-		schema: v.pipe(v.number(), v.finite()),
-		label: "a finite number",
-		plural: "finite numbers",
-	},
-	boolean: { schema: v.boolean(), label: "a boolean", plural: "booleans" },
-	object: {
-		schema: v.custom<Record<string, unknown>>(isJsonObject, "Expected an object"),
-		label: "an object",
-		plural: "objects",
-	},
-};
-
-function matchesNestedOutcomeSpec(spec: OutcomeToolArrayItemSpec, value: unknown): boolean {
-	switch (spec.type) {
-		case "string":
-			return typeof value === "string";
-		case "number":
-			return typeof value === "number" && Number.isFinite(value);
-		case "boolean":
-			return typeof value === "boolean";
-		case "array": {
-			const itemSpec = spec.items;
-			return (
-				Array.isArray(value) &&
-				(spec.minItems === undefined || value.length >= spec.minItems) &&
-				(!itemSpec || value.every((item) => matchesNestedOutcomeSpec(itemSpec, item)))
-			);
-		}
-		case "object": {
-			if (!isJsonObject(value)) return false;
-			const properties = spec.properties ?? {};
-			if ((spec.required ?? []).some((key) => !Object.hasOwn(value, key))) return false;
-			if (
-				spec.additionalProperties === false &&
-				Object.keys(value).some((key) => !Object.hasOwn(properties, key))
-			)
-				return false;
-			return Object.entries(properties).every(
-				([key, property]) =>
-					!Object.hasOwn(value, key) || matchesNestedOutcomeSpec(property, value[key]),
-			);
-		}
-		default:
-			return false;
-	}
-}
-
-function compileOutcomeParameterSchema(spec: OutcomeToolParameterSpec): OutcomeParameterSchema {
-	if (spec.type !== "array") return scalarParameters[spec.type].schema;
-	const itemSpec = spec.items ?? { type: "string" };
-	return v.custom(
-		(value) =>
-			Array.isArray(value) && value.every((item) => matchesNestedOutcomeSpec(itemSpec, item)),
-		"Expected an array matching its declared item schema",
-	);
-}
-
-function effectiveArrayItemCount(
-	spec: OutcomeToolParameterSpec,
-	value: readonly unknown[],
-): number {
-	return (spec.items?.type ?? "string") === "string"
-		? normalizeStringArray(value).length
-		: value.length;
-}
-
-function expectedParameterLabel(spec: OutcomeToolParameterSpec): string {
-	if (spec.type !== "array") return scalarParameters[spec.type].label;
-	if (spec.items?.type === "object")
-		return spec.items.properties
-			? "an array of objects matching the declared schema"
-			: "an array of objects";
-	if (spec.items?.type === "array") return "an array of arrays matching the declared schema";
-	return `an array of ${scalarParameters[spec.items?.type ?? "string"].plural}`;
 }
 
 function jsonValuesEqual(left: unknown, right: unknown): boolean {
@@ -298,11 +155,7 @@ function validateTurnEndResultParams(
 	params: Record<string, unknown>,
 	expectedParams: Record<string, unknown>,
 ): OutcomeValidationFailure | null {
-	const parsed = v.safeParse(
-		v.custom((value) => jsonValuesEqual(value, expectedParams)),
-		params,
-	);
-	if (parsed.success) {
+	if (jsonValuesEqual(params, expectedParams)) {
 		return null;
 	}
 	return validationFailure(
@@ -318,50 +171,8 @@ function validateDeclaredOutcomeParameters(
 	parameterSpecs: Record<string, OutcomeToolParameterSpec>,
 	knownProjectKeys?: ReadonlySet<string>,
 ): OutcomeValidationFailure | null {
-	const unknownKeys = Object.keys(params).filter((key) => !Object.hasOwn(parameterSpecs, key));
-	if (unknownKeys.length > 0) {
-		return validationFailure(
-			"unknown_parameter",
-			`${turnId}.${outcome} received unknown parameter(s): ${unknownKeys.join(", ")}`,
-		);
-	}
-
-	for (const [key, spec] of Object.entries(parameterSpecs)) {
-		const value = params[key];
-		if (value === undefined) {
-			if (spec.required) {
-				return requiredParameterError(turnId, outcome, key, spec);
-			}
-			continue;
-		}
-
-		if (!v.safeParse(compileOutcomeParameterSchema(spec), value).success) {
-			return invalidParameterError(turnId, outcome, key, spec, expectedParameterLabel(spec));
-		}
-		if (spec.type === "string" && trimString(value as string) === "" && spec.required) {
-			return requiredParameterError(turnId, outcome, key, spec);
-		}
-		if (spec.type === "number" && spec.minimum !== undefined && (value as number) < spec.minimum) {
-			return minimumParameterError(turnId, outcome, key, spec);
-		}
-		if (
-			spec.enum &&
-			spec.enum.length > 0 &&
-			typeof value === "string" &&
-			!spec.enum.includes(value)
-		) {
-			return invalidParameterError(turnId, outcome, key, spec, `one of: ${spec.enum.join(", ")}`);
-		}
-		if (spec.type === "array") {
-			const effectiveItemCount = effectiveArrayItemCount(spec, value as readonly unknown[]);
-			if (spec.required && effectiveItemCount === 0) {
-				return requiredParameterError(turnId, outcome, key, spec);
-			}
-			if (spec.minItems !== undefined && effectiveItemCount < spec.minItems) {
-				return minItemsParameterError(turnId, outcome, key, spec);
-			}
-		}
-	}
+	const [issue] = validateOutcomeParameters(parameterSpecs, params);
+	if (issue) return validationFailure(issue.code, `${turnId}.${outcome}: ${issue.message}`);
 	const projectError = validateChangedProjects(params.changedProjects, knownProjectKeys);
 	if (projectError) {
 		return projectError;

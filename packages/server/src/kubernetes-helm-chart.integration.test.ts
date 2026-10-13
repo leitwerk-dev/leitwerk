@@ -1,8 +1,12 @@
 import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
-import { parse, parseAllDocuments } from "yaml";
-import { validateConfig } from "./config/config-loader.js";
+import { describe, expect, it, onTestFinished } from "vitest";
+import { parse, parseAllDocuments, stringify } from "yaml";
+import { loadConfigFromFile, validateConfig } from "./config/config-loader.js";
+import { resolveKubernetesDockerConfig } from "./process-runtime-availability.js";
 
 const repoRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const chartRoot = `${repoRoot}/deploy/kubernetes/helm/leitwerk`;
@@ -29,10 +33,11 @@ function defaultRender() {
 }
 
 function renderChart(values: JsonObject = {}, extraArgs: string[] = []): JsonObject[] {
-	const valueArgs = Object.entries(values).flatMap(([key, value]) => [
-		"--set-json",
-		`${key}=${JSON.stringify(value)}`,
-	]);
+	const valueArgs = Object.entries({
+		"server.config.piDefaultModelProfile": "test",
+		"server.config.piModelProfiles": [{ id: "test", provider: "test", model_id: "test" }],
+		...values,
+	}).flatMap(([key, value]) => ["--set-json", `${key}=${JSON.stringify(value)}`]);
 	const rendered = execFileSync(
 		"helm",
 		[
@@ -79,7 +84,15 @@ function renderedLeitwerkConfig(documents: JsonObject[]): Record<string, unknown
 const describeIfHelm = helmAvailable() ? describe : describe.skip;
 
 describeIfHelm("Kubernetes Helm chart rendering", () => {
-	it("templates a default Kubernetes-mode config accepted by the server validator", () => {
+	it("requires an explicit model default in chart-generated configuration", () => {
+		const config = renderedLeitwerkConfig(
+			renderChart({ "server.config.piDefaultModelProfile": "" }),
+		);
+		expect(validateConfig(config)).toContainEqual(
+			expect.stringContaining("pi.default_model_profile"),
+		);
+	});
+	it("templates a Kubernetes-mode config with an explicit model default accepted by the server validator", () => {
 		const documents = defaultRender();
 		const config = renderedLeitwerkConfig(documents);
 
@@ -117,6 +130,81 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 				},
 			},
 		});
+	});
+
+	it.each([
+		{ values: { "kubernetes.docker.isolation": "gvisor" }, isolation: "gvisor" },
+		{ values: { "kubernetes.docker.isolation": "virtual-machine" }, isolation: "virtual-machine" },
+		{ values: { "kubernetes.docker.gvisor": true }, isolation: "gvisor" },
+	])("loads rendered $isolation sandbox wiring with omitted host_users", ({
+		values,
+		isolation,
+	}) => {
+		const config = renderedLeitwerkConfig(
+			renderChart({
+				"kubernetes.docker.enabled": true,
+				"kubernetes.docker.runtimeClassName": "qualified-sandbox",
+				"kubernetes.docker.processStorageClassName": "docker-process",
+				...values,
+			}),
+		);
+		expect((config.kubernetes as JsonObject).docker).not.toHaveProperty("host_users");
+		const directory = mkdtempSync(join(tmpdir(), "leitwerk-chart-isolation-"));
+		onTestFinished(() => rmSync(directory, { recursive: true, force: true }));
+		const filename = join(directory, "leitwerk.yaml");
+		writeFileSync(filename, stringify(config));
+		const loaded = loadConfigFromFile(filename);
+		expect(loaded.ok).toBe(true);
+		if (!loaded.ok) throw new Error(loaded.error);
+		expect(resolveKubernetesDockerConfig(loaded.config)).toEqual({
+			runtimeClassName: "qualified-sandbox",
+			isolation,
+			processStorageClassName: "docker-process",
+		});
+	});
+
+	it("renders a Docker fallback profile and selector separately from ordinary workers", () => {
+		const config = renderedLeitwerkConfig(
+			renderChart({
+				"kubernetes.docker.enabled": true,
+				"kubernetes.docker.runtimeClassName": "qualified-vm",
+				"kubernetes.docker.isolation": "virtual-machine",
+				"kubernetes.docker.processStorageClassName": "retained-storage",
+				"kubernetes.docker.workerRuntimeProfile": "docker_vm",
+				"kubernetes.docker.nodeSelector": { hostname: "vm-worker" },
+				"kubernetes.pod.nodeSelector": { hostname: "ordinary-worker", os: "linux" },
+				"workerRuntimeProfiles.docker_vm": {
+					image: "registry.example/worker:vm",
+					resources: {
+						requests: { cpu: "4", memory: "16Gi" },
+						limits: { cpu: "4", memory: "16Gi" },
+					},
+				},
+			}),
+		);
+		expect(validateConfig(config)).toEqual([]);
+		expect(config).toMatchObject({
+			kubernetes: {
+				docker: { worker_runtime_profile: "docker_vm", node_selector: { hostname: "vm-worker" } },
+				pod: { node_selector: { hostname: "ordinary-worker", os: "linux" } },
+			},
+			worker_runtime_profiles: { docker_vm: { resources: { limits: { memory: "16Gi" } } } },
+		});
+	});
+
+	it("rejects conflicting isolation selections from rendered chart values", () => {
+		const config = renderedLeitwerkConfig(
+			renderChart({
+				"kubernetes.docker.enabled": true,
+				"kubernetes.docker.runtimeClassName": "qualified-sandbox",
+				"kubernetes.docker.processStorageClassName": "docker-process",
+				"kubernetes.docker.isolation": "virtual-machine",
+				"kubernetes.docker.gvisor": true,
+			}),
+		);
+		expect(validateConfig(config)).toContain(
+			"kubernetes.docker.gvisor conflicts with kubernetes.docker.isolation",
+		);
 	});
 
 	it("templates internal TLS config and Kubernetes worker CA wiring when enabled", () => {
@@ -170,11 +258,14 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 	});
 
 	it.each([
-		false,
-		true,
-	])("restricts process resources and scopes preparation exceptions (pre-provisioning: %s)", (preProvision) => {
+		[false, false],
+		[true, false],
+		[false, true],
+		[true, true],
+	])("restricts process resources and scopes preparation exceptions (pool: %s, images: %s)", (preProvision, imagePreload) => {
 		const documents = renderChart({
 			"kubernetes.processVolume.preProvision.enabled": preProvision,
+			"kubernetes.imagePreload.enabled": imagePreload,
 			"kubernetes.processVolume.storageClassName": "csi-storage",
 			"kubernetes.workerServiceAccount": "custom-worker",
 		});
@@ -235,15 +326,15 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 			"'leitwerk.dev/server-epoch'",
 			"'leitwerk.dev/export-id'",
 		];
-		expect(exceptions).toHaveLength(preProvision ? exceptionSubjects.length : 0);
-		if (preProvision)
+		expect(exceptions).toHaveLength(preProvision || imagePreload ? exceptionSubjects.length : 0);
+		if (preProvision || imagePreload)
 			for (const subject of exceptionSubjects)
 				expect(
 					exceptions.filter((rule) => rule.expression.includes(subject)),
 					subject,
 				).toHaveLength(1);
 
-		if (preProvision) {
+		if (preProvision || imagePreload) {
 			expect(JSON.stringify(spec.variables)).toContain(
 				"variables.resource.metadata.namespace == 'leitwerk-k8s-test'",
 			);
@@ -523,9 +614,16 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 		expect(JSON.stringify(policy)).toContain(".dockerconfigjson");
 	});
 
-	it.each([false, true])("wires volume pre-provisioning config and permissions: %s", (enabled) => {
+	it.each([
+		[false, false],
+		[true, false],
+		[false, true],
+		[true, true],
+	])("wires preparation config and permissions (pool: %s, images: %s)", (enabled, imagePreload) => {
 		const documents = renderChart({
 			"kubernetes.processVolume.preProvision.enabled": enabled,
+			"kubernetes.imagePreload.enabled": imagePreload,
+			"workerRuntimeProfiles.generic.image": `registry.example/worker@sha256:${"a".repeat(64)}`,
 			"kubernetes.processVolume.preProvision.count": 3,
 			"kubernetes.processVolume.storageClassName": "csi-storage",
 		});
@@ -533,12 +631,34 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 		expect(((config.kubernetes as JsonObject).process_volume as JsonObject).pre_provision).toEqual(
 			enabled ? { count: 3 } : undefined,
 		);
+		expect((config.kubernetes as JsonObject).image_preload).toEqual(
+			imagePreload ? { enabled: true } : undefined,
+		);
+		expect(validateConfig(config)).toEqual([]);
 		const role = findDocumentsByKind(documents, "ClusterRole")[0];
 		const rules = role.rules as Array<{ resources: string[]; verbs: string[] }>;
 		expect(rules.some((rule) => rule.resources.includes("persistentvolumes"))).toBe(enabled);
 		expect(rules.some((rule) => rule.resources.includes("storageclasses"))).toBe(enabled);
+		expect(rules.filter((rule) => rule.resources.includes("nodes"))).toEqual(
+			imagePreload ? [{ apiGroups: [""], resources: ["nodes"], verbs: ["get", "list"] }] : [],
+		);
+		if (enabled) {
+			expect(rules.find((rule) => rule.resources.includes("persistentvolumes"))?.verbs).toEqual([
+				"get",
+				"list",
+				"patch",
+			]);
+			expect(rules.find((rule) => rule.resources.includes("storageclasses"))?.verbs).toEqual([
+				"get",
+				"list",
+				"create",
+				"delete",
+			]);
+		}
 		expect(findDocumentsByKind(documents, "DaemonSet")).toEqual([]);
 		const policy = findDocumentsByKind(documents, "ValidatingAdmissionPolicy")[0];
-		expect(JSON.stringify(policy).includes("isPreparation")).toBe(enabled);
+		expect(JSON.stringify(policy).includes("isPreparation")).toBe(enabled || imagePreload);
+		expect(JSON.stringify(policy).includes("isImagePreparation")).toBe(imagePreload);
+		expect(JSON.stringify(policy).includes("volume-preparation")).toBe(enabled);
 	});
 });

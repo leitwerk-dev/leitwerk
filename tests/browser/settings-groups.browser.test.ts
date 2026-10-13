@@ -10,18 +10,18 @@ const componentSettings: LeitwerkExtensionModule = {
 	scopedSettings: {
 		settings: [
 			{
-				key: "component-settings.instructions",
+				key: "component-settings.report_title",
 				schemaVersion: 1,
-				scopes: ["jira.component"],
+				scopes: ["instance", "repository", "jira.component"],
 				merge: "replace",
 				defaultValue: "",
 				schema: {
 					parse(value) {
-						if (typeof value !== "string") throw new Error("Expected instructions");
+						if (typeof value !== "string") throw new Error("Expected report title");
 						return value;
 					},
 				},
-				form: { label: "Component instructions", control: "textarea", group: "Instructions" },
+				form: { label: "Component report title", control: "textarea", group: "Reports" },
 			},
 		],
 	},
@@ -63,7 +63,11 @@ test("scope tabs separate similar labels and retain selection, drafts and inacti
 		identity: "component-1",
 		label,
 	});
-	settings.discover({ scopeType: "jira.component", identity: "component-2", label: "ATLAS / API" });
+	const apiComponent = settings.discover({
+		scopeType: "jira.component",
+		identity: "component-2",
+		label: "ATLAS / API",
+	});
 	const inactive = leitwerk.ctx.deps.transaction((tx) =>
 		tx.scopedSettings.putSubject({
 			scopeType: "removed.component",
@@ -75,8 +79,8 @@ test("scope tabs separate similar labels and retain selection, drafts and inacti
 	leitwerk.ctx.deps.transaction((tx) =>
 		tx.scopedSettings.write({
 			subjectId: inactive.id,
-			key: "removed.instructions",
-			value: "Retained instructions",
+			key: "removed.report_title",
+			value: "Retained report title",
 			mode: "replace",
 			reset: false,
 			schemaVersion: 1,
@@ -89,7 +93,9 @@ test("scope tabs separate similar labels and retain selection, drafts and inacti
 	const components = page.getByRole("tab", { name: "Jira components", exact: true });
 	const repositories = page.getByRole("tab", { name: "Repositories", exact: true });
 	const instance = page.getByRole("tab", { name: "Instance", exact: true });
-	const select = page.getByLabel("Apply settings to");
+	const row = (name: string) => page.getByRole("button", { name, exact: true });
+	const selectedHeading = page.locator("#settings-editor-heading");
+	const table = page.getByRole("table");
 	await expect(page.getByRole("tab")).toHaveText([
 		"Instance",
 		"Repositories",
@@ -98,9 +104,23 @@ test("scope tabs separate similar labels and retain selection, drafts and inacti
 	]);
 	await expect(components).toHaveAttribute("aria-selected", "true");
 	await expect(page.getByRole("tabpanel", { name: "Jira components" })).toBeVisible();
-	await expect(select).toHaveValue(component.id);
-	await expect(select.locator("option")).toHaveText(["ATLAS / API", label]);
-	await expect(select.locator(`option[value="${repository.id}"]`)).toHaveCount(0);
+	await expect(selectedHeading).toHaveText("Customer experience");
+	await expect(table.getByRole("row")).toHaveCount(3);
+	await expect(table.getByRole("button", { name: label, exact: true })).toHaveCount(0);
+	await row("API").click();
+	await expect(page).toHaveURL(`/settings?scope=${apiComponent.id}`);
+	await page.reload();
+	await expect(components).toHaveAttribute("aria-selected", "true");
+	await expect(selectedHeading).toHaveText("API");
+	await page.goBack();
+	await expect(selectedHeading).toHaveText("Customer experience");
+	await page.goForward();
+	await expect(selectedHeading).toHaveText("API");
+	await row("Customer experience").click();
+	await expect(page).toHaveURL(`/settings?scope=${component.id}`);
+	const historyLength = await page.evaluate(() => history.length);
+	await components.click();
+	expect(await page.evaluate(() => history.length)).toBe(historyLength);
 
 	// Arrow keys explore tabs; Enter activates without loading every intermediate group.
 	await components.focus();
@@ -109,13 +129,21 @@ test("scope tabs separate similar labels and retain selection, drafts and inacti
 	await expect(components).toHaveAttribute("aria-selected", "true");
 	await page.keyboard.press("ArrowRight");
 	await expect(repositories).toBeFocused();
+	await expect(page).toHaveURL(`/settings?scope=${component.id}`);
 	await page.keyboard.press("Enter");
+	await expect(page).toHaveURL(`/settings?scope=${repository.id}&view=overview`);
 	await expect(repositories).toHaveAttribute("aria-selected", "true");
-	await expect(select).toHaveValue(repository.id);
-	await expect(select.locator("option")).toHaveText([label]);
-	const field = page.getByRole("region", { name: "Repository instructions", exact: true });
+	await page.goBack();
+	await expect(components).toHaveAttribute("aria-selected", "true");
+	await expect(selectedHeading).toHaveText("Customer experience");
+	await page.goForward();
+	await expect(repositories).toHaveAttribute("aria-selected", "true");
+	await row(label).click();
+	await expect(selectedHeading).toHaveText(label);
+	await expect(table.getByRole("row")).toHaveCount(2);
+	const field = page.getByRole("region", { name: "Component report title", exact: true });
 	await field.getByRole("button", { name: "Override", exact: true }).click();
-	const input = field.getByLabel("Repository instructions override", { exact: true });
+	const input = field.getByLabel("Component report title override", { exact: true });
 	await input.fill("Keep this unsaved draft across source refresh");
 	settings.discover({
 		scopeType: "repository",
@@ -124,28 +152,39 @@ test("scope tabs separate similar labels and retain selection, drafts and inacti
 	});
 	settings.discover({ scopeType: "repository", identity: "repository-2", label: "ATLAS / API" });
 	await page.getByRole("button", { name: "Refresh sources" }).click();
-	await expect(select.locator("option")).toHaveText(["ATLAS / API", "ATLAS / Renamed"]);
-	await expect(select).toHaveValue(repository.id);
+	await expect(row("ATLAS / API")).toBeVisible();
+	await expect(row("ATLAS / Renamed")).toBeVisible();
+	await expect(selectedHeading).toHaveText(/Customer experience|Renamed/);
 	await expect(input).toHaveValue("Keep this unsaved draft across source refresh");
+	await expect(page).toHaveURL(`/settings?scope=${repository.id}`);
 	await expect(repositories).toHaveAttribute("aria-selected", "true");
 	await field.getByRole("button", { name: "Cancel", exact: true }).click();
 	await components.click();
-	await expect(select).toHaveValue(component.id);
+	await row("Customer experience").click();
+	await expect(selectedHeading).toHaveText("Customer experience");
 	await repositories.click();
-	await expect(select).toHaveValue(repository.id);
+	await row("ATLAS / Renamed").click();
+	await expect(selectedHeading).toHaveText("ATLAS / Renamed");
 
 	await page.getByRole("tab", { name: "removed.component (inactive)", exact: true }).click();
-	await expect(select).toHaveValue(inactive.id);
-	await expect(page.getByText("Retained instructions", { exact: true })).toBeVisible();
-	await expect(select.locator("option")).toHaveText(["Retained component (inactive)"]);
+	await row("Retained component").click();
+	await expect(selectedHeading).toHaveText("Retained component");
+	await expect(page).toHaveURL(`/settings?scope=${inactive.id}`);
+	await expect(page.getByText("Retained report title", { exact: true })).toBeVisible();
+	await expect(table).toContainText("Inactive scope");
 	await page.goto(`/settings?scope=${inactive.id}`);
 	await expect(page.getByRole("tab", { name: "removed.component (inactive)" })).toHaveAttribute(
 		"aria-selected",
 		"true",
 	);
-	await expect(select).toHaveValue(inactive.id);
+	await row("Retained component").click();
+	await expect(selectedHeading).toHaveText("Retained component");
 	await page.setViewportSize({ width: 390, height: 844 });
 	await expectNoPageOverflow(page);
+	await expect(page.getByRole("complementary", { name: "Settings editor" })).toBeVisible();
+	await page.getByRole("button", { name: "Close", exact: true }).click();
+	await expect(row("Retained component")).toBeFocused();
+	await expect(table).toBeVisible();
 	await components.focus();
 	await page.keyboard.press("End");
 	await expect(page.getByRole("tab", { name: "removed.component (inactive)" })).toBeFocused();
@@ -154,7 +193,7 @@ test("scope tabs separate similar labels and retain selection, drafts and inacti
 	await page.keyboard.press("ArrowLeft");
 	await expect(page.getByRole("tab", { name: "removed.component (inactive)" })).toBeFocused();
 	await components.click();
-	await expect(select.locator("option")).toHaveText(["ATLAS / API", label]);
+	await expect(table.getByRole("row")).toHaveCount(3);
 	await expectNoPageOverflow(page);
 
 	// Discovery-only scopes stay out of navigation, while existing direct links still resolve.
@@ -163,6 +202,8 @@ test("scope tabs separate similar labels and retain selection, drafts and inacti
 	await expect(
 		page.getByText("No installed extension declares settings for this scope."),
 	).toBeVisible();
+	await page.getByRole("button", { name: "Close", exact: true }).click();
 	await instance.click();
+	await expect(page).toHaveURL("/settings?scope=instance");
 	await expect(page.getByRole("tab", { name: "Jira projects", exact: true })).toHaveCount(0);
 });

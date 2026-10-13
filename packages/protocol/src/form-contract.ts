@@ -9,6 +9,8 @@ export interface FormFieldOptionDefinition {
 	label: string;
 	/** @internal */
 	description?: string;
+	/** Values selected by this option when used as a launcher preset. @public */
+	selectionValues?: readonly string[];
 }
 
 /** @internal */
@@ -39,6 +41,14 @@ export interface FormFieldDefinition<TKind extends FormFieldKind = FormFieldKind
 	description?: string;
 	/** @internal */
 	options?: readonly FormFieldOptionDefinition[];
+	/** Select several values, serialized as newline-separated stable option IDs. @public */
+	multiple?: boolean;
+	/** Show a local search and selection count for a multiple select. @public */
+	searchable?: boolean;
+	/** Multiple-select field whose selected options supply selectionValues presets. @public */
+	presetsFrom?: string;
+	/** Clear this field when any of these launcher fields changes. @public */
+	resetOn?: readonly string[];
 	/** @internal */
 	rememberRecentValues?: boolean;
 	/** Publish this field as transition-scoped product/input data. @internal */

@@ -191,7 +191,7 @@ for (const width of [1280, 390])
 		await expect(page).toHaveURL(new RegExp(`turnRecordId=${source.id}`));
 		await page.goForward();
 		await expect(page).toHaveURL(new RegExp(`turnRecordId=${ancestor.id}`));
-		await inspector.getByRole("button", { name: "Back", exact: true }).click();
+		await page.goBack();
 		await expect(page).toHaveURL(new RegExp(`turnRecordId=${source.id}`));
 		await inspector.getByRole("link", { name: "Configuration", exact: true }).click();
 		await expect(inspector).toContainText("Recorded system prompt [REDACTED]");
@@ -208,7 +208,7 @@ for (const width of [1280, 390])
 			),
 		).toEqual([true, false]);
 		await inspector.getByRole("link", { name: "Context", exact: true }).click();
-		await inspector.getByRole("button", { name: "Back", exact: true }).click();
+		await page.goBack();
 		await expect(prompts).toHaveCount(2);
 		await expect
 			.poll(() =>
@@ -241,7 +241,7 @@ for (const width of [1280, 390])
 		const returnTop = await chronicle.evaluate((element) => element.scrollTop);
 		await page.keyboard.press("i");
 		await expect(inspector).toBeVisible();
-		await inspector.getByRole("button", { name: "Show in chronicle", exact: true }).click();
+		await inspector.getByRole("button", { name: "Return to process", exact: true }).click();
 		await expect
 			.poll(async () =>
 				Math.abs((await chronicle.evaluate((element) => element.scrollTop)) - returnTop),
@@ -311,7 +311,7 @@ for (const width of [1280, 390]) {
 		expect(mapTop).toBeGreaterThan(0);
 		await inspector.getByRole("link", { name: "Workflow", exact: true }).click();
 		await expect(map).toHaveCount(0);
-		await inspector.getByRole("button", { name: "Back", exact: true }).click();
+		await page.goBack();
 		await expect(map).toBeVisible();
 		await expect.poll(() => map.evaluate((element) => element.scrollTop)).toBe(mapTop);
 		await expect(
@@ -342,7 +342,7 @@ test("keeps the shell usable for invalid, absent and failed evidence, and ignore
 	} = await investigation(leitwerk.ctx);
 	const base = `/processes/${process.id}`;
 	await page.goto(`${base}?inspect=execution`);
-	await expect(page.getByRole("button", { name: "Show in chronicle" })).toBeEnabled();
+	await expect(page.getByRole("button", { name: "Return to process" })).toBeEnabled();
 	await page.goto(`${base}?inspect=execution&turnRecordId=missing&section=trace`);
 	await expect(page.locator('[data-section="inspection-load-error"]')).toBeVisible();
 	const { promise, resolve } = Promise.withResolvers<void>();

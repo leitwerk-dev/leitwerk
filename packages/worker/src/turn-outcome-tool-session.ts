@@ -1,9 +1,18 @@
-import type { FailedTurnRecoveryContext } from "@leitwerk-dev/domain";
+import {
+	asUnknownRecord,
+	type FailedTurnRecoveryContext,
+	isUnknownRecord,
+} from "@leitwerk-dev/domain";
 import type {
 	LlmTurnDefinition,
 	OutcomeToolSpec,
 	PiCustomTool,
 	PiTerminalAcknowledgementControl,
+} from "@leitwerk-dev/process-sdk";
+import {
+	compileOutcomeParameters,
+	outcomeCallParameters,
+	validateOutcomeParameters,
 } from "@leitwerk-dev/process-sdk";
 import { resolveTurnActiveToolNames } from "@leitwerk-dev/process-sdk/pi-config";
 import {
@@ -43,6 +52,7 @@ export type ToolCompletionSnapshot<TOutcome extends string> = {
 	selectedOutcome: TurnOutcomeSelection<TOutcome> | null;
 	markdownState: TurnResultMarkdownState;
 	abortReason?: string;
+	rejectedOutcome?: MissingTurnToolCallRecovery["rejectedOutcome"];
 };
 
 export interface TurnOutcomeToolSession<TOutcome extends string> {
@@ -52,6 +62,7 @@ export interface TurnOutcomeToolSession<TOutcome extends string> {
 	addPromptSuffix(promptText: string): string;
 	reset(baseState?: ToolCompletionSnapshot<TOutcome>): void;
 	getCompletionState(): ToolCompletionSnapshot<TOutcome>;
+	recordToolResult(message: unknown): boolean;
 	readonly terminalAcknowledgement: Pick<
 		PiTerminalAcknowledgementControl,
 		"state" | "markSucceeded" | "markFailed"
@@ -89,12 +100,15 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 	turnId: string;
 	turnRecordId?: string;
 	turnDef: LlmTurnDefinition<TOutcome, unknown, unknown>;
+	questionsEnabled?: boolean;
+	validateOutcome?: (outcome: TurnOutcomeSelection<TOutcome>) => Promise<readonly string[]>;
 	resultImageTool?: PiCustomTool | null;
 	requestQuestions?: (request: WorkerQuestionRequest) => Promise<string[]>;
 	integrationTools?: readonly PiCustomTool[];
 }): TurnOutcomeToolSession<TOutcome> {
 	let selectedOutcome: TurnOutcomeSelection<TOutcome> | null = null;
 	let abortReason: string | undefined;
+	let rejectedOutcome: MissingTurnToolCallRecovery["rejectedOutcome"];
 	let terminalAcknowledgement: TerminalAcknowledgementState = { kind: "open" };
 	const turnResultMarkdownStateRef = { current: createTurnResultMarkdownState() };
 	const outcomeToolEntries = Object.entries(input.turnDef.outcomes ?? {}) as [
@@ -126,33 +140,44 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 			spec.turnResultMarkdownParameter ?? outcomeToolMarkdownParameterName;
 		const injectsGlobalMarkdownParameter =
 			Boolean(outcomeToolMarkdownParameterName) && !spec.turnResultMarkdownParameter;
+		const parameters = outcomeCallParameters(spec, outcomeToolMarkdownParameterName);
 		return {
 			name: outcome,
 			description: spec.description,
-			parameters: {
-				...Object.fromEntries(Object.entries(spec.parameters)),
-				...(injectsGlobalMarkdownParameter && outcomeToolMarkdownParameterName
-					? {
-							resultSummary: {
-								type: "string",
-								description: "Concise result summary for this attempt.",
-							},
-							[outcomeToolMarkdownParameterName]: {
-								type: "string",
-								description:
-									"Operator-facing markdown result for this turn. Pass raw markdown only and do not wrap the entire markdown in triple backticks.",
-								required: true,
-								requiredErrorCode: `${outcomeToolMarkdownParameterName}_required`,
-							},
-						}
-					: {}),
-			},
+			strictSchema: spec.strictSchema,
+			parameters: compileOutcomeParameters(parameters, spec.strictSchema) as Record<
+				string,
+				unknown
+			>,
 			executionMode: "sequential" as const,
 			execute: async (args: Record<string, unknown>) => {
 				if (abortReason) return { ok: false, status: "aborted", reason: abortReason };
 				const result = { status: "ok", outcome };
 				const acceptsOutcome = selectedOutcome === null;
 				if (acceptsOutcome) {
+					const structuralErrors = validateOutcomeParameters(parameters, args).map(
+						(issue) => issue.message,
+					);
+					if (structuralErrors.length) {
+						rejectedOutcome = { outcome, errors: structuralErrors };
+						return { ok: false, status: "invalid", errors: structuralErrors };
+					}
+					if (input.validateOutcome) {
+						let errors: readonly string[];
+						try {
+							errors = await input.validateOutcome({ outcome: outcome as TOutcome, params: args });
+						} catch (error) {
+							errors = [
+								error instanceof Error
+									? error.message
+									: "Outcome validation failed. Correct the submission and try again.",
+							];
+						}
+						if (errors.length) {
+							rejectedOutcome = { outcome, errors: [...errors] };
+							return { ok: false, status: "invalid", errors };
+						}
+					}
 					let outcomeParams = args;
 					if (spec.resultSummaryParameter && typeof args[spec.resultSummaryParameter] === "string")
 						turnResultMarkdownStateRef.current.resultSummary = String(
@@ -169,6 +194,7 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 									: undefined,
 						);
 						if (!published.response.ok) {
+							rejectedOutcome = { outcome, errors: [published.response.message] };
 							return published.response;
 						}
 						turnResultMarkdownStateRef.current = published.state;
@@ -179,6 +205,7 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 						}
 					}
 					selectedOutcome = { outcome: outcome as TOutcome, params: outcomeParams };
+					rejectedOutcome = undefined;
 				}
 				maybeCaptureTurnResultMarkdownFromToolCall({
 					behavior: input.turnDef.turnResultMarkdown,
@@ -195,7 +222,10 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 		};
 	});
 	const questionTool =
-		input.turnDef.askQuestions && input.turnRecordId && input.requestQuestions
+		input.turnDef.askQuestions &&
+		input.questionsEnabled !== false &&
+		input.turnRecordId &&
+		input.requestQuestions
 			? createAskQuestionsTool({
 					turnRecordId: input.turnRecordId,
 					request: input.requestQuestions,
@@ -212,7 +242,12 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 			name: "abort_turn",
 			description:
 				"Stop this turn as an error when the requested work cannot be completed. Explain the blocker in reason. Preserves the workspace for recovery and does not advance the process.",
-			parameters: { reason: { type: "string", minLength: 1, required: true } },
+			parameters: {
+				type: "object",
+				properties: { reason: { type: "string", minLength: 1 } },
+				required: ["reason"],
+				additionalProperties: false,
+			},
 			executionMode: "sequential" as const,
 			execute: async (args: Record<string, unknown>) => {
 				if (selectedOutcome)
@@ -220,11 +255,12 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 				const reason = typeof args.reason === "string" ? args.reason.trim() : "";
 				if (!reason) return { ok: false, message: "A non-empty abort reason is required." };
 				abortReason ??= reason;
+				rejectedOutcome = undefined;
 				return { status: "aborted", reason: abortReason };
 			},
 		},
 		...(questionTool ? [questionTool] : []),
-		...(input.integrationTools ?? []),
+		...(input.integrationTools ?? []).filter((tool) => tool.modelVisible !== false),
 	];
 	const activeTools = resolveTurnActiveToolNames({
 		turnId: input.turnId,
@@ -273,6 +309,9 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 		reset(baseState) {
 			selectedOutcome = cloneSelectedOutcome(baseState?.selectedOutcome ?? null);
 			abortReason = baseState?.abortReason;
+			rejectedOutcome = baseState?.rejectedOutcome
+				? structuredClone(baseState.rejectedOutcome)
+				: undefined;
 			terminalAcknowledgement =
 				selectedOutcome === null ? { kind: "open" } : { kind: "acknowledgement_succeeded" };
 			turnResultMarkdownStateRef.current = cloneTurnResultMarkdownState(
@@ -284,7 +323,38 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 				selectedOutcome: cloneSelectedOutcome(selectedOutcome),
 				markdownState: cloneTurnResultMarkdownState(turnResultMarkdownStateRef.current),
 				...(abortReason ? { abortReason } : {}),
+				...(rejectedOutcome ? { rejectedOutcome: structuredClone(rejectedOutcome) } : {}),
 			};
+		},
+		recordToolResult(value) {
+			if (abortReason) return true;
+			// Pi can reject JSON-schema arguments before the tool's execute callback runs.
+			const message = asUnknownRecord(value);
+			if (selectedOutcome || !message) return false;
+			if (
+				message.role !== "toolResult" ||
+				typeof message.toolName !== "string" ||
+				!outcomeToolNames.includes(message.toolName)
+			)
+				return false;
+			const details = isUnknownRecord(message.details) ? message.details : {};
+			if (message.isError !== true && details.ok !== false) return false;
+			const errors = Array.isArray(details.errors)
+				? details.errors.filter((error): error is string => typeof error === "string")
+				: Array.isArray(message.content)
+					? message.content.flatMap((block) =>
+							isUnknownRecord(block) && block.type === "text" && typeof block.text === "string"
+								? [block.text]
+								: [],
+						)
+					: [];
+			rejectedOutcome = {
+				outcome: message.toolName,
+				errors: errors.length
+					? errors
+					: ["Tool rejected the submission; correct its arguments using the tool schema."],
+			};
+			return true;
 		},
 		shouldBlockToolCall(toolName) {
 			if (abortReason) return `Tool '${toolName}' was skipped because this turn was aborted.`;
@@ -319,6 +389,7 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 				outcomeToolNames,
 				turnResultMarkdownBehavior: input.turnDef.turnResultMarkdown,
 				turnResultMarkdownState: completionState.markdownState,
+				rejectedOutcome: completionState.rejectedOutcome,
 			});
 		},
 		buildRecoveryContext(recovery) {
@@ -326,7 +397,7 @@ export function createTurnOutcomeToolSession<TOutcome extends string>(input: {
 				strategy: "continue",
 				suggestedContinuePrompt: buildMissingTurnToolCallRecoveryPrompt(recovery),
 				failureCode: recovery.failureCode,
-				...(recovery.missingToolNames.length > 0
+				...(!recovery.rejectedOutcome && recovery.missingToolNames.length > 0
 					? { missingToolNames: recovery.missingToolNames }
 					: {}),
 			};

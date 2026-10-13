@@ -498,6 +498,7 @@ export interface PolicyProcess {
 	readonly turnPathTypes: Readonly<Record<string, string>>;
 }
 export interface PolicySnapshot {
+	readonly defaultProfileId: string;
 	readonly profiles: readonly PolicyProfile[];
 	readonly profilesById: ReadonlyMap<string, PolicyProfile>;
 	readonly processesById: ReadonlyMap<string, PolicyProcess>;

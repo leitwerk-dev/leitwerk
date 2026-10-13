@@ -382,9 +382,10 @@ describe("chronicle selectable items", () => {
 		expect(moveChronicleAnchorByOffset(items, null, -1)).toBe("chronicle-turn-trn_one");
 	});
 
-	it("keeps failed turns visible when adding a recovery rail item", () => {
+	it("merges recovery into its failed turn and resolves both anchors to one waypoint", () => {
 		const projection = createProjection();
-		projection.turnRailItems[1].status = "failed";
+		projection.terminalRailItem = null;
+		projection.turnRailItems[1].shape = "square";
 		const items = buildChronicleSelectableItems({
 			projection,
 			pendingRailItem: {
@@ -392,14 +393,67 @@ describe("chronicle selectable items", () => {
 				title: "Implement needs recovery",
 				tone: "error_recovery",
 				relatedTurnRecordId: "trn_two",
+				detail: "Worker disconnected",
 			},
 		});
 
-		expect(items.some((item) => item.anchorId === "chronicle-turn-trn_two")).toBe(true);
-		expect(items.at(-1)?.anchorId).toBe(CHRONICLE_ACTION_SECTION_ANCHOR_ID);
-		expect(
-			resolveChronicleRailAnchorIdFromActiveAnchor(projection, items, "chronicle-turn-trn_two"),
-		).toBe("chronicle-turn-trn_two");
+		expect(items.filter((item) => item.kind === "action")).toHaveLength(0);
+		expect(items.at(-1)).toMatchObject({
+			kind: "turn",
+			anchorId: "chronicle-turn-trn_two",
+			detail: "Worker disconnected",
+		});
+		for (const anchor of ["chronicle-turn-trn_two", CHRONICLE_ACTION_SECTION_ANCHOR_ID]) {
+			expect(resolveChronicleRailAnchorIdFromActiveAnchor(projection, items, anchor)).toBe(
+				"chronicle-turn-trn_two",
+			);
+			expect(resolveChronicleTurnRecordIdForAnchor(items, anchor)).toBe("trn_two");
+			expect(moveChronicleAnchorByOffset(items, anchor, -1)).toBe("chronicle-turn-trn_one");
+		}
+	});
+
+	it.each([
+		undefined,
+		"trn_not_loaded",
+	])("keeps standalone recovery when its exact turn record is unavailable: %s", (relatedTurnRecordId) => {
+		const projection = createProjection();
+		projection.turnRailItems[1].shape = "square";
+		const items = buildChronicleSelectableItems({
+			projection,
+			pendingRailItem: {
+				label: "Process issue",
+				title: "Worker disconnected",
+				tone: "error_recovery",
+				relatedTurnRecordId,
+			},
+		});
+		expect(items.at(-1)).toMatchObject({
+			kind: "action",
+			anchorId: CHRONICLE_ACTION_SECTION_ANCHOR_ID,
+		});
+		expect(items.filter((item) => item.kind === "turn")).toHaveLength(2);
+	});
+
+	it("attaches recovery only to the current attempt of a repeated failed turn", () => {
+		const projection = createProjection();
+		for (const item of projection.turnRailItems) {
+			item.turnId = "turn_one";
+			item.shape = "square";
+		}
+		const items = buildChronicleSelectableItems({
+			projection,
+			pendingRailItem: {
+				label: "Current turn",
+				title: "Turn One",
+				tone: "error_recovery",
+				relatedTurnRecordId: "trn_two",
+				detail: "Second attempt failed",
+			},
+		});
+		const turns = items.filter((item) => item.kind === "turn");
+		expect(turns).toHaveLength(2);
+		expect(turns[0].recoveryAnchorId).toBeUndefined();
+		expect(turns[1].recoveryAnchorId).toBe(CHRONICLE_ACTION_SECTION_ANCHOR_ID);
 	});
 
 	it("maps historical retry anchors to the selected historical attempt", () => {
@@ -772,16 +826,13 @@ describe("chronicle selectable items", () => {
 			{ turnRecordId: "trn_implement_2", markerText: "3" },
 			{ turnRecordId: "trn_implement_3", markerText: "4" },
 		]);
-		expect(items.at(-2)).toMatchObject({
+		expect(items.at(-1)).toMatchObject({
 			kind: "turn",
 			turnRecordId: "trn_implement_3",
 			title: "Implement",
 			markerText: "4",
+			recoveryAnchorId: CHRONICLE_ACTION_SECTION_ANCHOR_ID,
 		});
-		expect(items.at(-1)).toMatchObject({
-			kind: "action",
-			title: "Implement change",
-			turnRecordId: "trn_implement_3",
-		});
+		expect(items.some((item) => item.kind === "action")).toBe(false);
 	});
 });

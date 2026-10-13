@@ -701,6 +701,20 @@ export function formatProcessErrorPresentation(
 		};
 	}
 	const withoutPrefix = raw.replace(/^Turn\s+'[^']*'\s+.*?failed:\s*/i, "").trim() || raw;
+	if (
+		(!errorClass || errorClass === "llm_error") &&
+		withoutPrefix.startsWith("Turn aborted by LLM:")
+	) {
+		const reason = withoutPrefix.slice("Turn aborted by LLM:".length).trim();
+		return {
+			summary: reason
+				? `The agent stopped this turn — ${lowerFirst(reason)}`
+				: "The agent stopped this turn",
+			guidance:
+				"Review the reported reason and resolve any blocker before continuing or retrying the turn.",
+			technicalDetail: raw,
+		};
+	}
 	const detail = extractProviderMessage(withoutPrefix) ?? withoutPrefix;
 	const summary =
 		category && detail.toLowerCase() !== category.toLowerCase()

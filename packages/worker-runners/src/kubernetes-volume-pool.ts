@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { setTimeout as delay } from "node:timers/promises";
+import { buildPreparationPodSpec, createPreparationController } from "./kubernetes-preparation.js";
 import type { PoolObject, VolumePoolApi } from "./kubernetes-volume-pool-api.js";
 
 export const POOL_LABEL = "leitwerk.dev/volume-pool";
@@ -54,8 +54,6 @@ export function createKubernetesVolumePool(options: VolumePoolOptions) {
 		[POOL_LABEL]: poolId,
 		"leitwerk.dev/component": "volume-preparation",
 	};
-	let controller: AbortController | undefined;
-	let running: Promise<void> | undefined;
 
 	function preparationPod(claim: PoolObject): PoolObject {
 		return {
@@ -75,30 +73,7 @@ export function createKubernetesVolumePool(options: VolumePoolOptions) {
 				],
 			},
 			spec: {
-				restartPolicy: "Never",
-				serviceAccountName: "default",
-				automountServiceAccountToken: false,
-				nodeSelector: options.nodeSelector ?? {},
-				tolerations: options.tolerations ?? [],
-				imagePullSecrets: (options.imagePullSecrets ?? []).map((name) => ({ name })),
-				containers: [
-					{
-						name: "prepare",
-						image: options.image,
-						imagePullPolicy: options.imagePullPolicy ?? "IfNotPresent",
-						command: ["node", "-e", "process.exit(0)"],
-						resources: {
-							requests: { cpu: "1m", memory: "32Mi" },
-							limits: { cpu: "100m", memory: "64Mi" },
-						},
-						securityContext: {
-							allowPrivilegeEscalation: false,
-							readOnlyRootFilesystem: true,
-							capabilities: { drop: ["ALL"] },
-						},
-						volumeMounts: [{ name: "volume", mountPath: "/volume" }],
-					},
-				],
+				...buildPreparationPodSpec(options, [{ name: "volume", mountPath: "/volume" }]),
 				volumes: [{ name: "volume", persistentVolumeClaim: { claimName: claim.metadata.name } }],
 			},
 		};
@@ -343,33 +318,6 @@ export function createKubernetesVolumePool(options: VolumePoolOptions) {
 		poolId,
 		/** @internal */
 		reconcile,
-		/** @internal */
-		start() {
-			if (controller) return;
-			controller = new AbortController();
-			const { signal } = controller;
-			running = (async () => {
-				while (!signal.aborted) {
-					let interval = 2_000;
-					try {
-						await reconcile(signal);
-					} catch {
-						interval = 30_000;
-						if (!signal.aborted) options.onError?.();
-					}
-					try {
-						await delay(interval, undefined, { signal });
-					} catch {
-						break;
-					}
-				}
-			})();
-		},
-		/** @internal */
-		async stop() {
-			controller?.abort();
-			await running;
-			controller = undefined;
-		},
+		...createPreparationController(reconcile, 2_000, () => options.onError?.(), 30_000),
 	};
 }

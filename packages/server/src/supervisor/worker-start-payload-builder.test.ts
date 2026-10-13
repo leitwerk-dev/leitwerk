@@ -12,6 +12,7 @@ import {
 describe("buildWorkerConfigSnapshot", () => {
 	it("sends only worker-used config sections", () => {
 		const config = getDefaultConfig();
+		config.default_skills = ["shared-guidance"];
 		config.auth = {
 			enabled: true,
 			session: { cookie_name: "orch", ttl: "1h" },
@@ -32,6 +33,7 @@ describe("buildWorkerConfigSnapshot", () => {
 		};
 		config.process_configs = {
 			with_pi: {
+				default_skills: ["review-guidance"],
 				default_model_profile: "generic",
 				worker_runtime_profile: "generic",
 				storage_size: "128Mi",
@@ -144,6 +146,7 @@ describe("worker.start Pi resource-bundle delivery", () => {
 	function setup() {
 		const deps = createTestDeps();
 		const config = getDefaultConfig();
+		config.pi.default_model_profile = "openai";
 		config.pi.model_profiles = [
 			{ id: "openai", provider: "openai", model_id: "gpt-test", thinking_level: "off" },
 		];
@@ -176,6 +179,12 @@ describe("worker.start Pi resource-bundle delivery", () => {
 					providerOptions: {},
 					providerWorkerConfig: null,
 					piResourceSnapshotDigest: bundle.digest,
+					outcomeContract: {
+						version: 1,
+						outcomes: { done: { description: "Done", parameters: {}, strictSchema: true } },
+						turnResultMarkdown: null,
+						publishedProduct: null,
+					},
 					workerRuntimeProfileId: "local",
 					piSettings: {},
 				},
@@ -295,6 +304,14 @@ describe("worker.start Pi resource-bundle delivery", () => {
 		const message = builder.buildStartMessage(process.id, "wkr_replacement");
 		expect(message?.type).toBe("worker.start");
 		expect(message?.payload.turnStart.state.kind).toBe("accepted");
+		expect(message?.payload.turnStart.state).toMatchObject({
+			start: {
+				outcomeContract:
+					originalStart.state.start.kind === "llm"
+						? originalStart.state.start.outcomeContract
+						: undefined,
+			},
+		});
 		expect(message?.payload.acceptedPreparedStart).toEqual({
 			pathType: "primary",
 			contextMode: "full",

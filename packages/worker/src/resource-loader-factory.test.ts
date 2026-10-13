@@ -77,4 +77,31 @@ describe("buildLeitwerkResourceLoaderOptions", () => {
 		});
 		expect(alreadyPresent?.agentsFiles).toEqual([{ path: agentsPath, content: "already loaded" }]);
 	});
+
+	it("discovers managed skills on each session without process skill selection", async () => {
+		const { DefaultResourceLoader, SettingsManager } = await import(
+			"@earendil-works/pi-coding-agent"
+		);
+		const workspaceRoot = await createTempWorkspace();
+		const agentDir = await createTempWorkspace();
+		const skillDir = path.join(agentDir, "skills", "writing");
+		await mkdir(skillDir, { recursive: true });
+		await writeFile(
+			path.join(skillDir, "SKILL.md"),
+			"---\nname: writing\ndescription: Write technical documentation.\n---\n\nDocument contracts.\n",
+		);
+
+		for (let session = 0; session < 2; session++) {
+			const options = await buildLeitwerkResourceLoaderOptions(workspaceRoot, agentDir);
+			const loader = new DefaultResourceLoader({
+				cwd: workspaceRoot,
+				agentDir,
+				settingsManager: SettingsManager.inMemory(),
+				...options,
+			});
+			await loader.reload();
+			expect(loader.getSkills().skills.map(({ name }) => name)).toEqual(["writing"]);
+			expect(loader.getSkills().diagnostics).toEqual([]);
+		}
+	});
 });

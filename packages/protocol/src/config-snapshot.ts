@@ -172,6 +172,8 @@ export interface PiConfigSnapshot {
 	agent_dir: string;
 	/** @public */
 	model_profiles: ModelProfileSnapshot[];
+	/** Required global default; references an entry in model_profiles. @public */
+	default_model_profile: string;
 	/** Global default system prompt template for all processes. Rendered with Mustache against runtime context. When omitted, the worker uses its built-in default. @internal */
 	system_prompt_template?: string;
 	/** Server-side pre-start process title generation settings. @public */
@@ -196,6 +198,8 @@ export interface ProcessTurnConfigSnapshot {
 
 /** @public */
 export interface ProcessConfigSnapshot {
+	/** Server-only installed skill IDs for new launches. Replaces global defaults; [] opts out. @public */
+	default_skills?: string[];
 	/** @public */
 	default_model_profile?: string;
 	/**

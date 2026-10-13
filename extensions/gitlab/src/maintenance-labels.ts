@@ -1,5 +1,10 @@
 import type { ExternalWrites } from "@leitwerk-dev/external-writes";
-import type { GitLabClientLike, GitLabLabelEvent, GitLabMergeRequest } from "./client.js";
+import {
+	type GitLabClientLike,
+	GitLabError,
+	type GitLabLabelEvent,
+	type GitLabMergeRequest,
+} from "./client.js";
 
 /** @public */
 export const GITLAB_ACTIVE_LABEL = "leitwerk-active";
@@ -20,6 +25,27 @@ export async function readGitLabLabels(
 	const events = await client.listMergeRequestLabelEvents(projectId, iid, signal);
 	const mr = await client.getMergeRequest(projectId, iid, signal);
 	return { mr, events: events.sort((a, b) => a.id - b.id) };
+}
+/** A missing label endpoint alone does not establish deletion; project access must still work. @internal */
+export async function readMaintainedGitLabLabels(
+	client: GitLabClientLike,
+	projectId: number,
+	iid: number,
+	signal?: AbortSignal,
+): Promise<GitLabLabelState | null> {
+	try {
+		return await readGitLabLabels(client, projectId, iid, signal);
+	} catch (error) {
+		if (!(error instanceof GitLabError) || error.status !== 404) throw error;
+		try {
+			await client.getMergeRequest(projectId, iid, signal);
+		} catch (mrError) {
+			if (!(mrError instanceof GitLabError) || mrError.status !== 404) throw mrError;
+			await client.getProject(projectId, signal);
+			return null;
+		}
+		throw error;
+	}
 }
 /** @public */
 export function gitLabActivationStatus(

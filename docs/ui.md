@@ -5,6 +5,14 @@ establish durable state; WebSocket frames update live activity or invalidate tho
 snapshots. This page defines interaction and rendering behavior for contributors.
 For everyday use, see [Operate a process](operator-guide.md).
 
+## Skills
+
+The Skills page includes extension-provided skills in the Installed view with a
+**Bundled** status. Their details show the owning extension and instructions.
+Bundled skills are automatically available to every AI step; installation,
+removal, and launch selection apply only to operator-managed skills. Bundled
+invocations are not counted in the repository-skill usage totals.
+
 ## Chronicle and Turn Rail {#1-chronicle-turn-rail-layout}
 
 Process detail has three regions:
@@ -124,11 +132,16 @@ reference. Non-model executions omit model configuration and explain its absence
 
 Inspector URLs select process, step or execution scope and section. Optional entry
 and item targets address evidence without transcript text. Explicit navigation pushes
-browser history; streaming and scrolling do not. Back retraces an investigation.
-**Show in chronicle** reveals the selected execution, including folded history, or
-restores the original reading location and focus. Direct and unavailable links retain
-navigation. History stores reading and disclosure positions; selection never follows
-scrolling or process progress. Keyboard shortcuts are inactive in text fields.
+browser history; streaming and scrolling do not. Browser Back and Forward retrace
+an investigation. **Return to process** and Escape close inspection and restore the
+original reading location and focus, regardless of the selected execution. The sole
+process-name breadcrumb also returns; in deeper trails it opens the process overview.
+Direct links without a saved position return to the normal process view and focus
+its heading. **Show in chronicle** appears inside resolved execution evidence and
+always reveals that execution, including folded history. Direct and unavailable
+links retain the return control. History stores reading and disclosure positions;
+selection never follows scrolling or process progress. Keyboard shortcuts are
+inactive in text fields.
 
 Live Trace starts with Follow live off. New activity is announced without moving the
 reader; **Follow live** opts into scrolling and scrolling upward switches it off.
@@ -142,6 +155,10 @@ Recovery controls belong to the failed turn card. Keep the error prominent and
 technical details and retry-model settings collapsed by default. Retry explains
 that it starts another attempt. Continue is offered only when retained progress
 supports it.
+
+The rail shows one entry for that failed attempt, including its error summary.
+Recovery links select the same turn entry and reopen its card. A standalone error
+without a recorded turn retains its own navigation entry.
 
 Readiness checks appear as a waiting status, including temporary failures and the
 next check time, even before the first execution. A failed condition offers
@@ -161,8 +178,11 @@ them back to current work.
 
 The inline reasoning preview reserves four wrapped lines and displays the newest
 nonblank lines with preceding paragraph context. Short content reserves the same
-height. It has a static live indicator and **Show reasoning**, no nested scrollbar
-or animation. Full reasoning preserves whitespace.
+height. **Reasoning** appears once above the preview, with a static blue indicator
+only while reasoning is active. Pausing for a question or running a tool removes
+that indicator and retains the corresponding turn status. **Show reasoning** opens
+the full trace; the preview has no nested scrollbar or animation. Full reasoning
+preserves whitespace.
 
 The initial snapshot contains compact active-turn state, not `TurnTraceSnapshot`.
 Do not prefetch detail history on load, hover, idle, or while the inspector is closed.
@@ -178,14 +198,24 @@ recorded activity. See [WebSocket ordering](websocket.md#reconnect-re-synchroniz
 ## Progress and startup {#6-turn-progress}
 
 Startup, launch, automatic-turn, and LLM-preparation progress use the same ordered
-checklist presentation. Each panel has its own heading. Text and symbols identify
+checklist presentation when steps are supplied. Authors can also supply a summary
+with no steps. Automatic turns show the summary in their live activity line;
+LLM preparation shows it until preparation completes or model activity starts.
+The line appears once, wraps long text, and creates no empty checklist. Its update
+time identifies the accepted progress revision, separately from the turn's start time. Executing
+automatic turns without a summary show **Running…**. Open questions retain their
+paused presentation.
+
+Each checklist panel has its own heading. Text and symbols identify
 pending, active, completed, failed, skipped, and superseded states. Narrow layouts
 wrap labels rather than clipping them. Related links appear under **Created changes**.
 
 Successful startup collapses to its outcome and completed-check count. Successful
-preparation becomes **Workspace prepared**, with its ordered checks available on
-disclosure. Failed or unfinished checks remain expanded; created-change links stay
-visible. Expanding checks does not displace adjacent result actions.
+LLM preparation becomes a neutral **Workspace prepared** disclosure in the live or
+completed card's footer, without a success icon. Its ordered checks retain their
+individual statuses; preparation completion does not imply turn completion. Failed
+or unfinished checks remain expanded in the live card's body; created-change links
+stay visible. Expanding checks does not displace adjacent result actions.
 
 Progress is a reported snapshot. A step still active when an attempt ends displays
 **Interrupted** after failure/supersession or **Final status not recorded** after
@@ -195,6 +225,27 @@ events show their recorded time, not a transaction duration; missing attribution
 remains unspecified.
 
 ### Launch checklist {#7-launch-checklist}
+
+Launch forms can offer optional selection presets above a searchable checkbox
+list. The count includes selections hidden by search. Operators can remove preset
+members or add other options; their explicit choices survive preset changes.
+Dependent scope changes clear selections. Option refresh failures preserve the
+draft, and unavailable selected options retain their last known labels so they
+can be removed. Server validation reports an empty or unavailable selection beside
+its field. Relaunch restores the saved final selection.
+
+Launch forms validate their initial values and revalidate after edits. Text and
+number inputs wait for a 300 ms typing pause; blur and selections validate
+immediately. Launch remains disabled while validation is pending, unavailable,
+or reports errors. A note beside the button identifies the fields needing
+attention; validation failures offer Retry without discarding the draft.
+
+Untouched fields stay quiet. Edited or blurred invalid fields show a red border
+and an associated inline message. Background validation never moves focus.
+Errors without a matching control remain visible at form level. The server
+validates again during launch; preparation and worker startup can still fail.
+Launchers may validate forms and preview model settings from saved configuration,
+deferring repository discovery and access checks until submission.
 
 Immediate launch replaces the submit area with a durable checklist and retains the
 draft in memory. Navigate when the run gains an `instanceId`; process detail then
@@ -305,9 +356,13 @@ refreshes process details. Active execution labels continue to show recorded mod
 ## Settings
 
 Open Settings from navigation to edit shared Instance and Repository defaults
-declared by extensions. Fields show effective values and sources, with Override and Use
-inherited value controls. Instruction overrides can append or replace inherited
-blocks and show a combined preview. Drafts survive validation errors and conflicts.
+declared by extensions. Collection tabs show searchable tables with counts and
+filters: Mapped/Unmapped for repository mappings, Customized/Using defaults for
+other scopes. Selecting a row opens a side-panel editor; narrow screens show the
+editor at full width. Instance keeps its grouped form. Search, filters, and
+selection persist in shared URLs. Fields show effective values and sources, with Override and Use
+inherited value controls. Overrides replace inherited values. Drafts survive
+validation errors and conflicts.
 A conflict displays the current value before the operator adopts its revision.
 Process inspection separates future scoped defaults from captured start history
 and links to repository settings. See [Scoped settings](scoped-settings.md).

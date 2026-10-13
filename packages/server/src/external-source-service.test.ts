@@ -41,6 +41,7 @@ function source(overrides: Partial<ExternalActionSource> = {}): ExternalActionSo
 
 function createLlmTestConfig() {
 	const config = getDefaultConfig();
+	config.pi.default_model_profile = "fixture-profile";
 	config.pi.model_profiles = [
 		{ id: "fixture-profile", provider: "fixture-provider", model_id: "fixture-model" },
 	];

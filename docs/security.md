@@ -48,14 +48,30 @@ controls the host engine socket; do not treat that server as an unprivileged wor
 
 Private Docker under the Docker runner requires either privileged mode, with broad
 host-kernel authority, or an installed `sysbox-runc` runtime. Kubernetes uses the
-operator-configured RuntimeClass and `hostUsers`. It does not add privileged mode,
+operator-configured RuntimeClass and isolation policy. It does not add privileged mode,
 host paths, host namespaces, a host runtime socket, or a TCP Docker listener.
 
-Explicit gVisor mode omits `hostUsers`, adds SYS_ADMIN and NET_ADMIN inside the
-sandbox, and uses the verified Docker wrapper. Select a verified runsc node. Only
-Docker-requiring process namespaces receive the Pod Security `privileged` admission
-label; their worker remains non-privileged. Other Kubernetes modes add no capabilities.
-The Helm chart generates the admission policy.
+Explicit `gvisor` and `virtual-machine` isolation omit `hostUsers`. gVisor adds
+exactly SYS_ADMIN and NET_ADMIN to Docker workers inside the sandbox. VM isolation
+adds exactly SYS_ADMIN, NET_ADMIN and SYS_PTRACE; Docker needs ptrace permission to
+access network namespace handles from nonroot nested containers. The worker remains
+non-privileged. gVisor selects the runsc networking wrapper; virtual-machine mode
+uses ordinary Linux Docker networking and disables automatic service account token
+mounting. Only Docker-requiring process namespaces using these sandbox modes receive
+the Pod Security `privileged` admission label.
+Ordinary workers and export helpers receive no additional capabilities.
+
+VM Docker startup requires a namespace-root cgroup2 mount with finite CPU and memory
+limits. It makes only the cgroup mount and network sysctl subtree writable, preserving
+the resource ceilings, other read-only proc paths, and guest superblock flags. Docker
+controls its nested cgroup layout; the worker budget covers the nested workloads.
+
+The isolation setting asserts operator trust in the installed handler and nodes;
+it does not prove their isolation. Qualify the actual runtime and retained-storage
+behavior before enabling it. A host-kernel runtime must not be declared a VM to
+obtain sandbox capabilities. Without sandbox isolation, the explicit `hostUsers`
+policy remains and no capabilities are added. The Helm chart's ownership admission
+policy does not qualify a runtime implementation.
 
 ### Repository code and browser content
 

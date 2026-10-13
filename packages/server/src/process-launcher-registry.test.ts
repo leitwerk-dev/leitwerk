@@ -403,6 +403,12 @@ describe("buildProcessLauncherRegistry", () => {
 		const resolved = await registry.resolveUiLauncher("local_repo_ui", {
 			repoPath: "/tmp/project",
 		});
+		const preview = await registry.resolveUiLauncherPreview("local_repo_ui", {
+			repoPath: "/tmp/project",
+		});
+		if (!resolved.ok || !preview.ok) throw new Error("Expected launcher resolution");
+		expect(preview.launcher.launchPlan).toEqual({ ...resolved.launcher.launchPlan, preview: true });
+		expect(resolved.launcher.launchPlan.preview).toBeUndefined();
 		expect(resolved.ok).toBe(true);
 		if (!resolved.ok) {
 			throw new Error("expected a resolved launcher");

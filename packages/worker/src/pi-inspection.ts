@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import type { ExecutionInspectionCapture, InspectionMessage } from "@leitwerk-dev/domain";
+import { strictOutcomeToolNames, supportsStrictOutcomeSchemas } from "./strict-outcome-schema.js";
 
 function messageKey(message: { role?: unknown; content?: unknown; toolCallId?: unknown }) {
 	const content =
@@ -102,6 +103,14 @@ export function installPiInspection(
 						name,
 						description,
 						parameters,
+						...(strictOutcomeToolNames(session).has(name)
+							? {
+									strictSchema: true,
+									schemaEnforcement: supportsStrictOutcomeSchemas(model.api)
+										? ("provider" as const)
+										: ("server" as const),
+								}
+							: {}),
 					})),
 				},
 				messages,

@@ -35,6 +35,66 @@ const availability = (first = "available" as const, second = "available" as cons
 	);
 
 describe("server process model policy evaluate", () => {
+	it("uses the explicit global default independently of catalog order", () => {
+		for (const profiles of [
+			[{ id: "first" }, { id: "second" }],
+			[{ id: "second" }, { id: "first" }],
+		]) {
+			const { policy } = createTestModelPolicy({ profiles, defaultProfileId: "second" });
+			expect(policy.evaluate(resolve(createTestProcessInstance()))).toMatchObject({
+				ok: true,
+				selection: {
+					modelProfileId: "second",
+					provenance: { kind: "inherited", source: "catalog_default" },
+				},
+			});
+		}
+	});
+
+	it.each([
+		"unavailable",
+		"stale",
+	] as const)("blocks a %s global default without choosing another profile", (status) => {
+		const { policy } = createTestModelPolicy({ defaultProfileId: "second" });
+		expect(
+			policy.evaluate(
+				resolve(createTestProcessInstance(), {
+					availability: createModelAvailabilitySnapshot([
+						{ profileId: "first", availability: "available" },
+						{ profileId: "second", availability: status },
+					]),
+				}),
+			),
+		).toMatchObject({
+			ok: false,
+			code: status === "stale" ? "model_stale" : "model_unavailable",
+			selection: { modelProfileId: "second" },
+		});
+	});
+
+	it("blocks a disallowed global default instead of selecting the first allowed profile", () => {
+		const { policy } = createTestModelPolicy({
+			defaultProfileId: "second",
+			allowedProfileIds: ["first"],
+		});
+		expect(policy.evaluate(resolve(createTestProcessInstance()))).toMatchObject({
+			ok: false,
+			code: "model_profile_not_allowed",
+			selection: { modelProfileId: "second" },
+		});
+	});
+
+	it("allows higher-priority defaults to override a disallowed global default", () => {
+		const { policy } = createTestModelPolicy({
+			defaultProfileId: "second",
+			processDefaultProfileId: "first",
+			allowedProfileIds: ["first"],
+		});
+		expect(policy.evaluate(resolve(createTestProcessInstance()))).toMatchObject({
+			ok: true,
+			selection: { modelProfileId: "first", provenance: { source: "process_config_default" } },
+		});
+	});
 	it("exposes only domain-subject operations", () => {
 		const policy = createTestModelPolicy().policy;
 		expect(Object.keys(policy).sort()).toEqual([

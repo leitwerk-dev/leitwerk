@@ -1,17 +1,16 @@
 import { LocalGitLabAdapter } from "@leitwerk-dev/gitlab/testing";
 import type { JiraIssue } from "@leitwerk-dev/jira";
 import { LocalJiraSplitAdapter as LocalJiraAdapter } from "@leitwerk-dev/jira/testing";
-import { LocalGit } from "@leitwerk-dev/test-support/local-git";
+import { LocalGit, type LocalGitSeedCache } from "@leitwerk-dev/test-support/local-git";
 
 /** @internal */
-export function createSplitSources(root: string, sourceType = "Epic") {
+export function createSplitSources(root: string, sourceType = "Epic", seeds?: LocalGitSeedCache) {
 	const git = new LocalGit(root);
 	const gitlab = new LocalGitLabAdapter(root);
-	for (const name of ["one", "two"])
-		gitlab.addProject(
-			`team/${name}`,
-			git.seed({ owner: "team", name, files: { "README.md": "Old standard" } }).bare,
-		);
+	for (const name of ["one", "two"]) {
+		const seed = { owner: "team", name, files: { "README.md": "Old standard" } };
+		gitlab.addProject(`team/${name}`, seeds ? seeds.copy(git, seed) : git.seed(seed).bare);
+	}
 	const jira = new LocalJiraAdapter();
 	const epic: JiraIssue = {
 		id: "10",

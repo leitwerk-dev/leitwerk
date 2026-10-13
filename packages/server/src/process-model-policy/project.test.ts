@@ -10,6 +10,35 @@ import {
 } from "../test-helpers/process-model-fixtures.js";
 
 describe("server process model policy projection", () => {
+	it("projects the configured global default for launchers and existing processes", () => {
+		const { policy } = createTestModelPolicy({ defaultProfileId: "second" });
+		const process = createTestProcessInstance({
+			selectedTurnModelProfileId: "first",
+			selectedTurnModelSource: "catalog_default",
+			selectedTurnModelKind: "inherited",
+		});
+		const availability = createModelAvailabilitySnapshot();
+		const projection = policy.project({ kind: "process_configuration", process, availability });
+		expect(projection.defaultModel).toMatchObject({
+			effectiveModelProfileId: "second",
+			source: "catalog_default",
+		});
+		expect(projection.turns).toContainEqual(
+			expect.objectContaining({ effectiveModelProfileId: "second" }),
+		);
+		expect(projection.effectiveSelectedTurn).toMatchObject({ modelProfileId: "first" });
+		expect(
+			policy.project({
+				kind: "launcher_preview",
+				processId: "policy",
+				modelConfig: {},
+				availability,
+			}).defaultModel,
+		).toMatchObject({
+			profile: { id: "second" },
+			source: "catalog_default",
+		});
+	});
 	it("returns the precise semantic result for each request kind", () => {
 		const { policy } = createTestModelPolicy();
 

@@ -125,6 +125,7 @@ test.use({
 			config.storage.tree_files_dir = path.join(root, "trees");
 			config.storage.process_workspaces_dir = path.join(root, "workspaces");
 			config.pi.agent_dir = path.join(root, "pi-agent");
+			config.pi.default_model_profile = fixtureModelProfile.id;
 			config.pi.model_profiles = [{ ...fixtureModelProfile }];
 			config.workers.runner = "local";
 		},
@@ -144,7 +145,7 @@ test.describe("failed-turn continue recovery", () => {
 		const { process, failedTurnRecordId } = await seedRepeatContinueProcess();
 		const recoverySection = page.locator('[data-section="current-turn-recovery"]');
 		const recoveryRailItem = page.locator(
-			'[data-section="action-required-indicator"][data-rail-tone="error_recovery"]',
+			`[data-rail-kind="turn"][data-turn-record-id="${failedTurnRecordId}"]`,
 		);
 		const continueButton = page.locator(
 			`[data-action="continue-failed-turn"][data-turn-record-id="${failedTurnRecordId}"]`,
@@ -164,11 +165,19 @@ test.describe("failed-turn continue recovery", () => {
 		expect(fitsHeader).toBe(true);
 		await failureToggle.click();
 		await expect(page.getByRole("button", { name: "Expand failed turn" })).toBeVisible();
-		await page.getByRole("button", { name: "Expand failed turn" }).click();
+		await page.locator('[data-action="open-mobile-quick-nav"]').click();
+		const quickNav = page.locator('[data-section="mobile-process-quick-nav"]');
+		const mobileFailure = quickNav.locator('[data-rail-kind="turn"][data-state="failed"]');
+		await expect(mobileFailure).toHaveCount(1);
+		await expect(quickNav.locator('[data-rail-tone="error_recovery"]')).toHaveCount(0);
+		await mobileFailure.click();
+		await expect(failureToggle).toBeVisible();
 		await page.setViewportSize({ width: 1440, height: 900 });
 
 		await expect(recoverySection).toBeVisible();
 		await expect(recoveryRailItem).toBeVisible();
+		await expect(recoveryRailItem).toHaveCount(1);
+		await expect(page.locator('[data-rail-tone="error_recovery"]')).toHaveCount(0);
 		await expect(recoveryRailItem).toContainText("Run Prompt");
 		await expect(continueButton).toBeVisible();
 		await expect(unavailableNote).toHaveCount(0);

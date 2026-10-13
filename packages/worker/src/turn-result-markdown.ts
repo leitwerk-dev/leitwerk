@@ -26,6 +26,7 @@ export interface MissingTurnToolCallRecovery {
 	missingMarkdownResult: boolean;
 	requiresOutcomeToolMarkdown: boolean;
 	outcomeToolMarkdownParameterName?: string;
+	rejectedOutcome?: { outcome: string; errors: readonly string[] };
 }
 
 function isWrappedInSingleOuterFence(value: string): boolean {
@@ -243,6 +244,7 @@ export function resolveMissingTurnToolCallRecovery(input: {
 	outcomeToolNames: readonly string[];
 	turnResultMarkdownBehavior: TurnResultMarkdownBehavior | undefined;
 	turnResultMarkdownState: TurnResultMarkdownState;
+	rejectedOutcome?: MissingTurnToolCallRecovery["rejectedOutcome"];
 }): MissingTurnToolCallRecovery | null {
 	const missingOutcomeToolNames =
 		input.selectedOutcome === null
@@ -262,16 +264,21 @@ export function resolveMissingTurnToolCallRecovery(input: {
 	}
 	return {
 		failureCode:
-			missingMarkdownResult && missingOutcomeToolNames.length > 0
-				? "missing_required_tool_calls"
-				: missingMarkdownResult
-					? "missing_markdown_result"
-					: "missing_outcome_tool",
+			input.rejectedOutcome && missingOutcomeToolNames.length > 0
+				? "outcome_rejected"
+				: missingMarkdownResult && missingOutcomeToolNames.length > 0
+					? "missing_required_tool_calls"
+					: missingMarkdownResult
+						? "missing_markdown_result"
+						: "missing_outcome_tool",
 		missingToolNames: [
 			...(missingMarkdownResult ? [MARKDOWN_RESULT_TOOL_NAME] : []),
 			...missingOutcomeToolNames,
 		],
 		missingOutcomeToolNames,
+		...(input.rejectedOutcome && missingOutcomeToolNames.length > 0
+			? { rejectedOutcome: input.rejectedOutcome }
+			: {}),
 		missingMarkdownResult,
 		requiresOutcomeToolMarkdown: Boolean(outcomeToolMarkdownParameterName),
 		...(outcomeToolMarkdownParameterName ? { outcomeToolMarkdownParameterName } : {}),
@@ -282,9 +289,17 @@ export function buildMissingTurnToolCallRecoveryPrompt(
 	recovery: MissingTurnToolCallRecovery,
 ): string {
 	const lines = [
-		"Your previous reply did not finish this turn because it missed required tool calls.",
+		recovery.rejectedOutcome
+			? `Your ${recovery.rejectedOutcome.outcome} submission was rejected. The turn is still open.`
+			: "Your previous reply did not finish this turn because it missed required tool calls.",
 		"Continue from your previous work without starting over.",
 	];
+	if (recovery.rejectedOutcome)
+		lines.push(
+			"Correct the rejected submission using these validation errors:",
+			...recovery.rejectedOutcome.errors.map((error) => `- ${error}`),
+			"Preserve your findings and correct the reported fields before submitting again.",
+		);
 	if (recovery.missingMarkdownResult && recovery.missingOutcomeToolNames.length > 0) {
 		lines.push(
 			"Call markdown_result now with the operator-facing markdown for this turn, then call the required outcome tool to finish.",
@@ -311,6 +326,8 @@ export function buildMissingTurnToolCallRecoveryPrompt(
 }
 
 export function describeMissingTurnToolCallRecovery(recovery: MissingTurnToolCallRecovery): string {
+	if (recovery.rejectedOutcome)
+		return `rejected '${recovery.rejectedOutcome.outcome}' submission: ${recovery.rejectedOutcome.errors.join("; ")}`;
 	if (recovery.missingMarkdownResult && recovery.missingOutcomeToolNames.length > 0) {
 		return `missing required tool calls (${MARKDOWN_RESULT_TOOL_NAME} and one outcome tool: ${recovery.missingOutcomeToolNames.join(", ")})`;
 	}

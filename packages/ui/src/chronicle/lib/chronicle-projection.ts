@@ -201,6 +201,7 @@ export interface ChronicleLiveTailItem {
 	pathLabel: string | null;
 	state: "tool_running" | "thinking" | "streaming" | "waiting";
 	stateLabel: string;
+	activitySummary?: string;
 	copy: string;
 	assistantTextPreview: string;
 	reasoningSection: ChronicleThinkingSection | null;
@@ -769,6 +770,25 @@ function buildLiveTail(input: {
 		text: reasoningPreviewTail(thinkingText),
 		truncated: thinkingText.length > THINKING_PREVIEW_MAX_LENGTH,
 	};
+	const progressSummary = turnRecord.progress?.summary?.trim();
+	const preparationCompleted = Boolean(
+		turnRecord.progress?.steps.length &&
+			turnRecord.progress.steps.every((step) => step.status === "completed"),
+	);
+	const hasModelActivity = Boolean(
+		hasThinkingText ||
+			assistantText ||
+			liveToolCalls.length ||
+			reasoningSection?.traceItemCount ||
+			reasoningSection?.toolCallCount ||
+			activeTurn?.usage,
+	);
+	const activitySummary =
+		progressSummary &&
+		(turnRecord.turnType === "automatic" ||
+			(turnRecord.turnType === "llm" && !preparationCompleted && !hasModelActivity))
+			? progressSummary
+			: undefined;
 	const copy =
 		state === "tool_running"
 			? `Running ${formatDefinition(runningToolCall?.toolName ?? "tool")}…`
@@ -778,13 +798,16 @@ function buildLiveTail(input: {
 					? truncateText(assistantText, 320)
 					: getChronicleTurnPreview(turnRecord, 220) || "Waiting for more activity…";
 	const stateLabel =
-		state === "tool_running"
+		activitySummary ??
+		(state === "tool_running"
 			? "Running action"
 			: state === "thinking"
 				? "Reasoning"
 				: state === "streaming"
 					? "Writing response"
-					: "Waiting for activity";
+					: turnRecord.turnType === "automatic"
+						? "Running…"
+						: "Waiting for activity");
 
 	return {
 		kind: "live_tail",
@@ -801,6 +824,7 @@ function buildLiveTail(input: {
 		pathLabel: activeTurn ? formatPiTreePathLabel(activeTurn) : formatPiTreePathLabel(turnRecord),
 		state,
 		stateLabel,
+		activitySummary,
 		copy,
 		assistantTextPreview: reasoningPreviewTail(assistantText),
 		reasoningSection:

@@ -8,6 +8,7 @@ allowed profiles. Selection never changes a model call already in flight.
 
 ```yaml
 pi:
+  default_model_profile: example_model
   model_profiles:
     - id: example_model
       provider: openai
@@ -100,7 +101,11 @@ LLM turns resolve profiles in this order:
 4. Scoped execution-purpose default (Instance → primary Repository).
 5. YAML `turn_configs.<turnId>.model_profile`.
 6. YAML process `default_model_profile`.
-7. First allowed profile in `pi.model_profiles`.
+7. Required global `pi.default_model_profile`.
+
+`pi.default_model_profile` must name a configured profile. Missing, blank, or unknown
+values fail configuration loading. Catalog order never selects a default. Existing
+installations must add this setting before upgrading.
 
 Invalid or unavailable selections block execution; they do not silently select a
 replacement. Clearing an explicit choice restores current inheritance. Displaying
@@ -145,7 +150,7 @@ remain in effect for their execution and retries. Saving does not restart worker
 retry failed work, change the plan revision, or alter the default recorded at creation.
 
 Clearing a step override restores the explicit process default, then the scoped
-purpose default, YAML turn default, YAML process default, and catalog fallback.
+purpose default, YAML turn default, YAML process default, and configured global default.
 Explicit process choices take precedence over YAML turn defaults. Scheduled actions that
 inherit instance settings refresh their displayed model and availability block;
 their payloads and run times do not change. Explicit scheduled model choices remain.

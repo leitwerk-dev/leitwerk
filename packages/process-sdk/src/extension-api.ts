@@ -245,6 +245,16 @@ export interface UiLauncherDefinition<TParams = unknown> {
 		input: Record<string, unknown>,
 		launchConfig: ProcessLaunchConfig<TParams>,
 	): readonly LaunchPreparationCheck<TParams>[];
+	/**
+	 * Resolve form validation and model settings without preparing execution resources.
+	 * May omit projects that do not affect model/settings resolution. Params must pass
+	 * the process codec. Never used for submission; falls back to resolveLaunchConfig.
+	 * @public
+	 */
+	resolvePreviewConfig?(
+		input: Record<string, unknown>,
+		ctx: LauncherContext,
+	): UiLauncherConfigResolution<TParams> | Promise<UiLauncherConfigResolution<TParams>>;
 	/** @public */
 	resolveLaunchConfig(
 		input: Record<string, unknown>,
@@ -338,6 +348,8 @@ export interface ProcessLaunchPlanProcessInput extends ProcessCustomizableFields
 
 /** @internal */
 export interface ProcessLaunchPlan {
+	/** A form/model preview; execution resources may be omitted and this plan must not be committed. @internal */
+	preview?: true;
 	/** @internal */
 	launcherId: string;
 	/** @internal */
@@ -418,6 +430,12 @@ export interface ProcessLauncherService {
 		input: Record<string, unknown>,
 		ctx?: LauncherContext,
 	): Promise<UiLauncherResolutionResult>;
+	/** Resolve only for form validation/defaults/model preview; never commit this result. @internal */
+	resolveUiLauncherPreview(
+		launcherId: string,
+		input: Record<string, unknown>,
+		ctx?: LauncherContext,
+	): Promise<UiLauncherResolutionResult>;
 }
 
 /** Resolve a UI launcher summary by id, returning `null` when it is unknown. @internal */
@@ -490,6 +508,8 @@ export interface LeafOutcomeCaptureContext<TParams = unknown, TState = unknown>
 	};
 	/** @internal */
 	readonly turnRecord: ProcessTurnRecord | null;
+	/** Accepted result of this mapped item, when available. @internal */
+	readonly mappedResult?: unknown;
 	/** @internal */
 	readTreeEntry(entryId: string): PiTreeEntry | null;
 	/** @internal */
@@ -719,6 +739,18 @@ export interface ServerProcessContext<TParams = unknown, TState = unknown>
 	applyLifecycleEffects?(effects: ProcessLifecycleEffects): void;
 }
 
+/** @internal */
+export interface TurnDiagnosticReport {
+	/** @internal */
+	level: "debug" | "info" | "warn" | "error";
+	/** @internal */
+	code: string;
+	/** @internal */
+	message: string;
+	/** Non-secret diagnostic metadata. @internal */
+	details?: Record<string, unknown>;
+}
+
 /** @public */
 export interface WorkerProcessContext<TParams = unknown, TState = unknown>
 	extends ProcessSnapshotContext<TParams, TState> {
@@ -738,6 +770,8 @@ export interface WorkerProcessContext<TParams = unknown, TState = unknown>
 	callIntegrationTool?(name: string, args: Record<string, unknown>): Promise<unknown>;
 	/** Replace the durable operator-facing progress report for this turn attempt. @internal */
 	reportProgress?(report: TurnProgressReport): void;
+	/** Append a non-secret worker diagnostic correlated with this turn attempt. @internal */
+	reportDiagnostic?(report: TurnDiagnosticReport): void;
 }
 
 /** @public */
@@ -1077,6 +1111,8 @@ export interface TicketCreationReceipt {
 
 /** @public */
 export interface IntegrationToolExecutionContext {
+	/** Replace the current running attempt's operator-facing progress. Late updates are ignored. @public */
+	reportProgress(report: TurnProgressReport): void;
 	/** Process-bound coordination; storage remains server-owned. */
 	/** @public */
 	readonly externalWrites: ExternalWrites;
@@ -1098,6 +1134,8 @@ export interface IntegrationToolExecutionContext {
 
 /** @public */
 export interface IntegrationToolDefinition<TArgs = Record<string, unknown>> {
+	/** Omit from model tools while retaining runtime authorization; defaults to true. @public */
+	modelVisible?: boolean;
 	/** @public */
 	readonly name: string;
 	/** @public */

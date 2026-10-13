@@ -1,5 +1,6 @@
 import type { ProcessLaunchPlan } from "@leitwerk-dev/process-sdk";
 import { describe, expect, it } from "vitest";
+import { getDefaultConfig } from "./config/config-loader.js";
 import { planConsumeFutureExecution } from "./future-execution/transition-planner.js";
 import { initialLaunchSteps } from "./launch-pipeline.js";
 import {
@@ -8,6 +9,7 @@ import {
 	createProcessFromLaunchPlan,
 } from "./process-launch-executor.js";
 import { createOwnedTestDeps as createTestDeps } from "./test-helpers/owned-test-deps.js";
+import { installTestSkill } from "./test-helpers/skill-fixtures.js";
 
 function withStartFailure(deps: ReturnType<typeof createTestDeps>) {
 	return {
@@ -49,6 +51,75 @@ function createLaunchPlan(): ProcessLaunchPlan {
 }
 
 describe("process launch durable boundary", () => {
+	it.each([
+		{ processDefaults: undefined, selected: undefined, expected: ["shared"] },
+		{ processDefaults: undefined, selected: ["shared", "extra"], expected: ["shared", "extra"] },
+		{ processDefaults: ["review"], selected: ["extra"], expected: ["review", "extra"] },
+		{ processDefaults: [], selected: ["extra"], expected: ["extra"] },
+	])("pins effective defaults for prepared and watcher plans: %j", async ({
+		processDefaults,
+		selected,
+		expected,
+	}) => {
+		const deps = createTestDeps();
+		for (const id of ["shared", "review", "extra"]) installTestSkill(deps, id);
+		const config = getDefaultConfig();
+		config.default_skills = ["shared", "shared"];
+		config.process_configs = {
+			demo_process: { default_skills: processDefaults, turn_configs: {} },
+		};
+		const result = await createProcessFromLaunchPlan(
+			{ ...deps, skillDefaults: config },
+			{ ...createLaunchPlan(), skillIds: selected },
+		);
+		if (!result.ok) throw new Error(JSON.stringify(result));
+		expect(deps.processSkills.listSelections(result.process.id)).toEqual(
+			deps.skills.resolveActive(expected),
+		);
+		expect(deps.processSkills.listResourceLayers(result.process.id)).toHaveLength(expected.length);
+	});
+
+	it("rejects unavailable defaults before creating a process", async () => {
+		const deps = createTestDeps();
+		installTestSkill(deps, "removed");
+		deps.skills.remove("removed");
+		const result = await createProcessFromLaunchPlan(
+			{ ...deps, skillDefaults: { default_skills: ["removed"] } },
+			createLaunchPlan(),
+		);
+		expect(result).toMatchObject({
+			ok: false,
+			stage: "pre_commit",
+			status: 400,
+			body: { error: "Unknown or unavailable skill 'removed'" },
+		});
+		expect(deps.processes.listAll()).toHaveLength(0);
+	});
+
+	it("honors pinned selections, including an empty list, after skills are removed", async () => {
+		const deps = createTestDeps();
+		const pinned = installTestSkill(deps, "shared");
+		deps.skills.remove("shared");
+		for (const resourceSelections of [pinned, []]) {
+			const result = await createProcessFromLaunchPlan(
+				{ ...deps, skillDefaults: { default_skills: ["missing"] } },
+				{ ...createLaunchPlan(), skillIds: ["also-missing"] },
+				{ resourceSelections },
+			);
+			if (!result.ok) throw new Error(JSON.stringify(result));
+			expect(deps.processSkills.listSelections(result.process.id)).toEqual(resourceSelections);
+		}
+	});
+
+	it("rejects preview plans before creating durable work", async () => {
+		const deps = createTestDeps();
+		const plan = { ...createLaunchPlan(), preview: true as const };
+		expect(() => commitProcessLaunch(deps, plan)).toThrow("Launcher previews cannot be committed");
+		const result = await createProcessFromLaunchPlan(deps, plan);
+		expect(result).toMatchObject({ ok: false, stage: "pre_commit" });
+		expect(deps.processes.listAll()).toHaveLength(0);
+	});
+
 	it("rejects unavailable process runtime requirements before creation", async () => {
 		const deps = createTestDeps();
 		const result = await createProcessFromLaunchPlan(

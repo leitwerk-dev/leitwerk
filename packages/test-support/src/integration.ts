@@ -22,6 +22,7 @@ export {
 export {
 	createIntegrationHarness,
 	createPersistentIntegrationFixture,
+	createTestAppContext,
 	type IntegrationHarness,
 } from "./integration-harness.js";
 export { waitForValue } from "./polling.js";

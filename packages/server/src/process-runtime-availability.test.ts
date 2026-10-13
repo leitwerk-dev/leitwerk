@@ -1,7 +1,10 @@
 import type { ExtensionProcessDefinition } from "@leitwerk-dev/process-sdk";
 import { describe, expect, it, vi } from "vitest";
 import { getDefaultConfig } from "./config/config-loader.js";
-import { assertProcessRuntimeAvailable } from "./process-runtime-availability.js";
+import {
+	assertProcessRuntimeAvailable,
+	resolveKubernetesDockerConfig,
+} from "./process-runtime-availability.js";
 
 function processes(docker: boolean) {
 	return new Map([
@@ -80,38 +83,75 @@ describe("process runtime availability", () => {
 		).rejects.toThrow(/kubernetes\.docker/);
 	});
 
-	it("requires omitted hostUsers for explicit gVisor Docker mode", async () => {
+	it.each([
+		{ selection: { gvisor: true }, isolation: "gvisor" },
+		{ selection: { isolation: "gvisor" as const }, isolation: "gvisor" },
+		{ selection: { isolation: "virtual-machine" as const }, isolation: "virtual-machine" },
+	])("normalizes $selection and requires omitted hostUsers", async ({ selection, isolation }) => {
 		const config = getDefaultConfig();
 		config.workers.runner = "kubernetes";
 		if (!config.kubernetes) throw new Error("Missing default Kubernetes config");
 		config.kubernetes.docker = {
-			runtime_class_name: "gvisor",
-			gvisor: true,
+			runtime_class_name: "qualified-sandbox",
+			...selection,
 			process_storage_class_name: "longhorn",
 		};
+		expect(resolveKubernetesDockerConfig(config)).toEqual({
+			runtimeClassName: "qualified-sandbox",
+			isolation,
+			processStorageClassName: "longhorn",
+		});
 		await expect(
 			assertProcessRuntimeAvailable({ config, processes: processes(true) }, "process"),
 		).resolves.toBeUndefined();
-		config.kubernetes.docker.host_users = false;
-		await expect(
-			assertProcessRuntimeAvailable({ config, processes: processes(true) }, "process"),
-		).rejects.toThrow(/kubernetes.docker/);
+		for (const hostUsers of [false, true]) {
+			config.kubernetes.docker.host_users = hostUsers;
+			expect(resolveKubernetesDockerConfig(config)).toBeUndefined();
+			await expect(
+				assertProcessRuntimeAvailable({ config, processes: processes(true) }, "process"),
+			).rejects.toThrow(/kubernetes.docker/);
+		}
 	});
 
-	it("accepts complete Kubernetes Docker wiring without cluster preflight", async () => {
+	it.each([
+		false,
+		true,
+	])("preserves explicit host_users=%s without cluster preflight", async (hostUsers) => {
 		const config = getDefaultConfig();
 		config.workers.runner = "kubernetes";
 		expect(config.kubernetes).toBeDefined();
 		if (config.kubernetes) {
 			config.kubernetes.docker = {
 				runtime_class_name: "leitwerk-sysbox",
-				host_users: false,
+				host_users: hostUsers,
+				gvisor: false,
 				process_storage_class_name: "leitwerk-docker-process",
 			};
 		}
+		expect(resolveKubernetesDockerConfig(config)).toEqual({
+			runtimeClassName: "leitwerk-sysbox",
+			hostUsers,
+			processStorageClassName: "leitwerk-docker-process",
+		});
 
 		await expect(
 			assertProcessRuntimeAvailable({ config, processes: processes(true) }, "process"),
 		).resolves.toBeUndefined();
+	});
+
+	it("rejects conflicting sandbox selection at the process availability boundary", async () => {
+		const config = getDefaultConfig();
+		config.workers.runner = "kubernetes";
+		if (!config.kubernetes) throw new Error("Missing default Kubernetes config");
+		config.kubernetes.docker = {
+			runtime_class_name: "qualified-sandbox",
+			process_storage_class_name: "longhorn",
+			isolation: "virtual-machine",
+			gvisor: true,
+		};
+		expect(resolveKubernetesDockerConfig(config)).toBeUndefined();
+		await expect(
+			assertProcessRuntimeAvailable({ config, processes: processes(true) }, "process"),
+		).rejects.toThrow(/kubernetes.docker/);
 	});
 });

@@ -129,7 +129,7 @@ class CapturingPiTreeHandleFactory extends StubPiTreeHandleFactory {
 }
 
 describe("bootstrapWorkerRuntime", () => {
-	it("passes a code-defined Pi session working directory to the Pi handle factory", async () => {
+	it("uses code-defined Pi settings and ignores instruction blocks in historical scoped snapshots", async () => {
 		const root = tempDir();
 		const workspaceRoot = path.join(root, "workspace");
 		const treeFile = path.join(root, "trees", "primary.jsonl");
@@ -179,7 +179,10 @@ describe("bootstrapWorkerRuntime", () => {
 			runtime: { developmentTools: true },
 			params: { workingDirectory: sessionTarget },
 			state: {},
-			piConfig: { sessionCwdTemplate: "{{{workingDirectory}}}" },
+			piConfig: {
+				sessionCwdTemplate: "{{{workingDirectory}}}",
+				systemPromptTemplate: "Authored process instructions",
+			},
 		};
 		const piFactory = new CapturingPiTreeHandleFactory();
 		process.env.PI_CODING_AGENT_DIR = path.join(root, "ambient-agent-dir");
@@ -191,8 +194,26 @@ describe("bootstrapWorkerRuntime", () => {
 			thinkingLevel: "low",
 		};
 		const bundle = managedBundle(model);
+		const historicalSettings = {
+			version: 1 as const,
+			purpose: "coding.planning",
+			context: {},
+			values: [],
+			explanations: [],
+			instructions: [
+				{
+					label: "Repository",
+					setting: {
+						key: "coding.repository_instructions",
+						value: "Retired hidden instruction",
+						sources: [],
+					},
+				},
+			],
+		};
 		const configSnapshot = createTestConfigSnapshot();
 		configSnapshot.pi.agent_dir = path.join(root, "agent-root");
+		configSnapshot.pi.default_model_profile = model.profileId;
 		configSnapshot.pi.model_profiles = [
 			{
 				id: model.profileId,
@@ -223,6 +244,7 @@ describe("bootstrapWorkerRuntime", () => {
 						start: {
 							kind: "llm",
 							model,
+							scopedSettings: historicalSettings,
 							providerOptions: {},
 							providerWorkerConfig: null,
 							piResourceSnapshotDigest: bundle.digest,
@@ -294,6 +316,7 @@ describe("bootstrapWorkerRuntime", () => {
 			workspaceRoot,
 			sessionCwd: sessionTarget,
 			agentDir: path.dirname(authPath),
+			piConfig: { systemPrompt: "Authored process instructions" },
 		});
 		expect(process.env.PI_CODING_AGENT_DIR).toBe(path.join(root, "ambient-agent-dir"));
 	});
@@ -373,6 +396,7 @@ describe("bootstrapWorkerRuntime", () => {
 		const bundle = managedBundle(model);
 		const configSnapshot = createTestConfigSnapshot();
 		configSnapshot.pi.agent_dir = path.join(root, "agent-root");
+		configSnapshot.pi.default_model_profile = model.profileId;
 		configSnapshot.pi.model_profiles = [
 			{
 				id: model.profileId,

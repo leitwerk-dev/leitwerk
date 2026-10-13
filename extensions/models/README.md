@@ -41,6 +41,7 @@ extensions:
             max_tokens: 32768
 
 pi:
+  default_model_profile: gateway-gemma
   model_profiles:
     - id: gateway-gemma
       provider: internal-gateway

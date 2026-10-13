@@ -7,6 +7,7 @@ import {
 	type ProcessProject,
 	type ProcessTurnStartSelection,
 	type ProcessTurnTerminalLifecycleStatus,
+	type ScopedSettingsSnapshot,
 	type TurnId,
 	type TurnProgressReport,
 	trimString,
@@ -18,7 +19,10 @@ import type {
 	HumanTurnDefinition,
 	HumanTurnOperatorAttention,
 	LlmModelPurpose,
+	LlmOutcomeSubmission,
 	LlmTurnDefinition,
+	LlmTurnPreparationContext,
+	OutcomeParameterContext,
 	ProcessEffectPlan,
 	ProcessHumanTurnActionSpec,
 	ProcessHumanTurnExternalActionSpec,
@@ -44,6 +48,7 @@ import type {
 	ProcessWatcherAPI,
 	ProcessWatcherDefinition,
 	ServerProcessAPI,
+	TurnDiagnosticReport,
 	UiProcessAPI,
 	WorkerCompleteInput,
 } from "./extension-api.js";
@@ -57,7 +62,12 @@ import type {
 	MappedTurnServerContext,
 } from "./mapped-turn.js";
 import type { TurnWaitPredicate } from "./turn-wait.js";
-import type { OutcomeToolParameterSpec, PiBuiltInToolName, ProcessPiConfig } from "./types.js";
+import type {
+	OutcomeToolArrayItemSpec,
+	OutcomeToolParameterSpec,
+	PiBuiltInToolName,
+	ProcessPiConfig,
+} from "./types.js";
 
 /** @public */
 type MaybePromise<T> = T | Promise<T>;
@@ -211,6 +221,8 @@ export type FlowPromptContext<
 
 /** @public */
 export interface FlowAutomaticRunContext<TParams = unknown, TState = unknown> {
+	/** Immutable non-secret settings captured for this turn. @public */
+	readonly scopedSettings?: ScopedSettingsSnapshot;
 	/** @public */
 	process: ProcessInstance;
 	/** @public */
@@ -227,6 +239,15 @@ export interface FlowAutomaticRunContext<TParams = unknown, TState = unknown> {
 	callIntegrationTool(name: string, args: Record<string, unknown>): Promise<unknown>;
 	/** @public */
 	reportProgress(report: TurnProgressReport): void;
+	/** Append a non-secret worker diagnostic for this turn attempt. @internal */
+	reportDiagnostic(report: TurnDiagnosticReport): void;
+}
+
+/** Worker context for correcting a submission before accepting it. @public */
+export interface FlowOutcomeValidationContext<TParams = unknown, TState = unknown>
+	extends FlowAutomaticRunContext<TParams, TState> {
+	/** Preparation captured before prompting. @public */
+	prepared?: unknown;
 }
 
 /** @public */
@@ -459,6 +480,7 @@ export function createFlowAutomaticRunContext<TParams, TState>(
 ): FlowAutomaticRunContext<TParams, TState> {
 	return {
 		...createFlowContextBase(ctx),
+		scopedSettings: ctx.scopedSettings,
 		callIntegrationTool(name, args) {
 			if (!ctx.callIntegrationTool) {
 				throw new Error(`Automatic integration tool '${name}' is unavailable`);
@@ -467,6 +489,9 @@ export function createFlowAutomaticRunContext<TParams, TState>(
 		},
 		reportProgress(report) {
 			ctx.reportProgress?.(report);
+		},
+		reportDiagnostic(report) {
+			ctx.reportDiagnostic?.(report);
 		},
 	};
 }
@@ -606,13 +631,38 @@ function isStringArray(value: unknown): value is readonly string[] {
 }
 
 /** @public */
-class OutcomeParametersBuilder {
+class OutcomeParametersBuilder<TParams = unknown, TState = unknown> {
 	/** @internal */
 	protected outcomeDescription: string | null = null;
 	/** @internal */
 	protected parameters: Record<string, OutcomeToolParameterSpec> = {};
 	/** @internal */
 	protected summaryParameter: string | null = null;
+	private enforceSchema = false;
+	/** @internal */
+	protected parameterResolver?: (
+		ctx: OutcomeParameterContext<TParams, TState>,
+	) => Record<string, OutcomeToolParameterSpec>;
+
+	/** Enforce a closed schema with no optional properties at supported providers. @public */
+	strictSchema(): this {
+		this.enforceSchema = true;
+		return this;
+	}
+
+	/** Declare alternatives for one argument. @public */
+	union(
+		name: string,
+		variants: readonly OutcomeToolArrayItemSpec[],
+		options: string | ParameterOptions = {},
+	): this {
+		const resolved = typeof options === "string" ? { description: options } : options;
+		return this.parameter(name, {
+			...resolved,
+			anyOf: variants,
+			description: resolved.description ?? "",
+		});
+	}
 
 	/** Optional concise result publication, separate from the full Markdown. @public */
 	resultSummary(name = "resultSummary"): this {
@@ -631,6 +681,8 @@ class OutcomeParametersBuilder {
 		return {
 			description: this.outcomeDescription,
 			parameters: this.parameters,
+			...(this.enforceSchema ? { strictSchema: true } : {}),
+			...(this.parameterResolver ? { resolveParameters: this.parameterResolver } : {}),
 			...(this.summaryParameter ? { resultSummaryParameter: this.summaryParameter } : {}),
 		};
 	}
@@ -717,7 +769,7 @@ class OutcomeParametersBuilder {
 
 	/** @public */
 	requiredStringArray(name: string, options: string | ArrayParameterOptions = {}): this {
-		return this.typedParameter(name, "array", this.withRequired(name, options));
+		return this.typedParameter(name, "array", { minItems: 1, ...this.withRequired(name, options) });
 	}
 
 	/** @internal */
@@ -746,12 +798,15 @@ class OutcomeParametersBuilder {
 
 	/** @public */
 	requiredArray(name: string, options: string | ArrayParameterOptions = {}): this {
-		return this.typedParameter(name, "array", this.withRequired(name, options));
+		return this.typedParameter(name, "array", { minItems: 1, ...this.withRequired(name, options) });
 	}
 }
 
 /** @public */
-class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends OutcomeParametersBuilder {
+class ParameterizedOutcomeBuilder<TParams, TState, TContext> extends OutcomeParametersBuilder<
+	TParams,
+	TState
+> {
 	private readonly route = new RouteAndEffectBuilder<TParams, TState, TContext>();
 	private publishedMarkdownParameter: string | null = null;
 
@@ -847,6 +902,14 @@ export class OutcomeToolBuilder<
 	TState,
 	FlowLlmOutcomeEffectContext<TParams, TState>
 > {
+	/** Pure synchronous resolution at turn-start preparation. @public */
+	resolveParameters(
+		fn: (ctx: OutcomeParameterContext<TParams, TState>) => Record<string, OutcomeToolParameterSpec>,
+	): this {
+		this.parameterResolver = fn;
+		return this;
+	}
+
 	private stateRouting:
 		| {
 				branches: Record<string, TurnId>;
@@ -1299,9 +1362,44 @@ abstract class LlmConfigurationBuilder<
 		return this.refineContext<TConsumedProducts, TNextPrepared>();
 	}
 
-	/** Enable durable operator questions for this LLM turn. @public */
-	askQuestions(): this {
+	/** Return correction errors before accepting an outcome. @public */
+	validateOutcome(
+		fn: (
+			ctx: FlowOutcomeValidationContext<TParams, TState> & LlmItemContext<TFamily>,
+			outcome: LlmOutcomeSubmission,
+		) => MaybePromise<readonly string[]>,
+	): this {
+		this.configuration.validateOutcome = (ctx, outcome) =>
+			fn(
+				{
+					...createFlowAutomaticRunContext(ctx),
+					...this.itemContext(ctx),
+					prepared: ctx.prepared,
+				},
+				outcome,
+			);
+		return this;
+	}
+
+	/** Enable durable questions, optionally constrained by captured input. @public */
+	askQuestions(
+		when?: (
+			ctx: FlowPromptContext<TParams, TState, TConsumedProducts, TPrepared> &
+				LlmItemContext<TFamily>,
+		) => boolean,
+	): this {
 		this.configuration.askQuestions = true;
+		this.configuration.resolveAskQuestions = when
+			? (ctx) =>
+					when({
+						...createFlowPromptContext<TParams, TState, TConsumedProducts, TPrepared>(
+							ctx,
+							[...this.consumedProductNames] as TConsumedProducts[],
+							[...this.optionalConsumedProductNames],
+						),
+						...this.itemContext(ctx),
+					})
+			: undefined;
 		return this;
 	}
 
@@ -1681,7 +1779,17 @@ export class MappedOutcomeBuilder<
 	TState = unknown,
 	TItem = unknown,
 	TResult = unknown,
-> extends OutcomeParametersBuilder {
+> extends OutcomeParametersBuilder<TParams, TState> {
+	/** Resolve parameters from captured state and the frozen mapped item. @public */
+	resolveParameters(
+		fn: (
+			ctx: OutcomeParameterContext<TParams, TState> & MappedTurnItemContext<TItem>,
+		) => Record<string, OutcomeToolParameterSpec>,
+	): this {
+		this.parameterResolver = (ctx) =>
+			fn(ctx as OutcomeParameterContext<TParams, TState> & MappedTurnItemContext<TItem>);
+		return this;
+	}
 	private yieldResult: MappedItemYield<TParams, TState, TItem, TResult> | null = null;
 
 	/** Map this outcome to the item's typed result. @public */

@@ -1,4 +1,4 @@
-import coding, { repositoryInstructions } from "@leitwerk-dev/coding";
+import coding from "@leitwerk-dev/coding";
 import { ADMIN_ACTOR } from "@leitwerk-dev/domain";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import { gitSshIntegration } from "@leitwerk-dev/git-ssh";
@@ -33,6 +33,7 @@ async function fixture() {
 		config.extensions.gitlab = {
 			profiles: { test: { base_url: "https://gitlab.test", token: "fixture" } },
 		};
+		config.pi.default_model_profile = "implementation";
 		config.pi.model_profiles = ["title", "implementation"].map((id) => ({
 			id,
 			provider: "fixture",
@@ -82,8 +83,8 @@ it("promotes saved GitLab SSH settings during discovery and carries both verifie
 	if (!locator) throw new Error("Missing SSH repository scope");
 	settings.write({
 		subjectId: locator.id,
-		key: repositoryInstructions.key,
-		value: "Required repository guidance",
+		key: "coding.planning_model",
+		value: "implementation",
 		mode: "replace",
 		reset: false,
 		expectedRevision: 0,
@@ -97,9 +98,11 @@ it("promotes saved GitLab SSH settings during discovery and carries both verifie
 		);
 	if (!canonical) throw new Error("Missing canonical GitLab scope");
 	expect(canonical.id).toBe(locator.id);
-	expect(settings.resolve(repositoryInstructions, { repository: canonical.id }).value).toBe(
-		"Required repository guidance",
-	);
+	expect(
+		(await settings.preview(canonical.id)).fields.find(
+			(field) => field.key === "coding.planning_model",
+		)?.effective?.value,
+	).toBe("implementation");
 	const launch = await change.launcher.launcher.ui?.resolveLaunchConfig(
 		{
 			gitlabProfile: "test",

@@ -12,9 +12,9 @@ import {
 import {
 	createSettingsFixture,
 	createSettingsProcess,
-	instructions,
 	model,
-	repositoryInstructions,
+	reportLabel,
+	repositoryLabel,
 	settingsExtension,
 } from "./test-helpers/scoped-settings-fixtures.js";
 
@@ -80,7 +80,7 @@ describe("scoped settings", () => {
 		const change = {
 			subjectId: project.id,
 			key: "discovery.retained",
-			value: "Retained instructions",
+			value: "Retained report label",
 			mode: "replace" as const,
 			reset: false,
 			schemaVersion: 1,
@@ -106,9 +106,9 @@ describe("scoped settings", () => {
 			: null;
 		const subjects = locatorSubjects(settings);
 		const change = {
-			key: repositoryInstructions.key,
+			key: repositoryLabel.key,
 			value: "Repository guidance",
-			mode: "append" as const,
+			mode: "replace" as const,
 		};
 		for (const subject of subjects) write(settings, { ...change, subjectId: subject.id });
 		write(settings, {
@@ -131,8 +131,8 @@ describe("scoped settings", () => {
 		for (const original of subjects) {
 			expect(repos.scopedSettings.getSubject(original.id)?.id).toBe(merged.id);
 			expect(settings.resolve(model, { repository: original.id }).value).toBe("second");
-			expect(settings.resolve(repositoryInstructions, { repository: original.id }).value).toBe(
-				"Code instructions\n\nRepository guidance",
+			expect(settings.resolve(repositoryLabel, { repository: original.id }).value).toBe(
+				"Repository guidance",
 			);
 			expect(() =>
 				write(settings, { ...change, subjectId: original.id, expectedRevision: 1 }),
@@ -140,10 +140,10 @@ describe("scoped settings", () => {
 			const preview = await settings.preview(original.id);
 			expect(preview.subject.id).toBe(merged.id);
 			expect(
-				preview.fields.find((field) => field.key === repositoryInstructions.key)?.override?.actor,
+				preview.fields.find((field) => field.key === repositoryLabel.key)?.override?.actor,
 			).toEqual(ADMIN_ACTOR);
 		}
-		const row = repos.scopedSettings.getOverride(merged.id, repositoryInstructions.key);
+		const row = repos.scopedSettings.getOverride(merged.id, repositoryLabel.key);
 		if (!row) throw new Error("Missing merged override");
 		const preview = await settings.previewDraft({
 			...change,
@@ -153,7 +153,7 @@ describe("scoped settings", () => {
 			actor: ADMIN_ACTOR,
 		});
 		expect(
-			preview.fields.find((field) => field.key === repositoryInstructions.key)?.effective?.value,
+			preview.fields.find((field) => field.key === repositoryLabel.key)?.effective?.value,
 		).toContain("Updated guidance");
 		write(settings, {
 			...change,
@@ -161,9 +161,9 @@ describe("scoped settings", () => {
 			value: "Updated guidance",
 			expectedRevision: row.revision,
 		});
-		expect(
-			settings.resolve(repositoryInstructions, { repository: subjects[0].id }).value,
-		).toContain("Updated guidance");
+		expect(settings.resolve(repositoryLabel, { repository: subjects[0].id }).value).toContain(
+			"Updated guidance",
+		);
 		const beforeRediscovery = repos.scopedSettings.listOverrides();
 		settings.discover({
 			scopeType: "repository",
@@ -183,9 +183,9 @@ describe("scoped settings", () => {
 		for (const [index, subject] of subjects.entries())
 			repos.scopedSettings.write({
 				subjectId: subject.id,
-				key: repositoryInstructions.key,
+				key: repositoryLabel.key,
 				value: conflict === "value" ? String(index) : "same",
-				mode: conflict === "mode" && index === 1 ? "replace" : "append",
+				mode: conflict === "mode" && index === 1 ? "append" : "replace",
 				reset: false,
 				schemaVersion: conflict === "schema" ? index + 1 : 1,
 				expectedRevision: 0,
@@ -221,14 +221,17 @@ describe("scoped settings", () => {
 		expect(() => restarted.capture(process, "run")).toThrow("conflicting overrides");
 		write(settings, {
 			subjectId: subjects[1].id,
-			key: repositoryInstructions.key,
+			key: repositoryLabel.key,
 			value: null,
 			reset: true,
 			expectedRevision: 1,
 		});
 		expect(() => settings.discover(input)).not.toThrow();
-		expect(restarted.capture(process, "run")?.instructions[0].setting.value).toBe(
-			`Code instructions\n\n${conflict === "value" ? "0" : "same"}`,
+		expect(restarted.capture(process, "run")?.values).toContainEqual(
+			expect.objectContaining({
+				key: repositoryLabel.key,
+				value: conflict === "value" ? "0" : "same",
+			}),
 		);
 	});
 	it("resolves named compound scopes in declaration order, supports empty replacement and reset revisions", async () => {
@@ -257,40 +260,36 @@ describe("scoped settings", () => {
 		])
 			write(settings, {
 				subjectId,
-				key: instructions.key,
+				key: reportLabel.key,
 				value,
-				mode: "append",
+				mode: "replace",
 			});
 		const context = { ...compound.context, [compound.scopeType]: compound.id };
-		expect(settings.resolve(instructions, context).value).toBe(
-			"Code instructions\n\nInstance\n\nBug\n\nProject\n\nExtra",
-		);
+		expect(settings.resolve(reportLabel, context).value).toBe("Extra");
 		write(settings, {
 			subjectId: compound.id,
-			key: instructions.key,
+			key: reportLabel.key,
 			value: "",
 			expectedRevision: 1,
 		});
-		expect(settings.resolve(instructions, context)).toMatchObject({
+		expect(settings.resolve(reportLabel, context)).toMatchObject({
 			value: "",
 			sources: [{ subjectId: compound.id, revision: 2 }],
 		});
 		write(settings, {
 			subjectId: compound.id,
-			key: instructions.key,
+			key: reportLabel.key,
 			value: null,
 			reset: true,
 			expectedRevision: 2,
 		});
-		expect(settings.resolve(instructions, context).value).toBe(
-			"Code instructions\n\nInstance\n\nBug\n\nProject",
-		);
+		expect(settings.resolve(reportLabel, context).value).toBe("Project");
 		expect(() =>
 			write(settings, {
 				subjectId: compound.id,
-				key: instructions.key,
+				key: reportLabel.key,
 				value: "Lost edit",
-				mode: "append",
+				mode: "replace",
 				expectedRevision: 0,
 			}),
 		).toThrow("changed since");
@@ -329,35 +328,35 @@ describe("scoped settings", () => {
 	});
 	it("retains inactive overrides across extension removal and rejects incompatible reinstalled values", async () => {
 		const fixture = await createSettingsFixture();
-		write(fixture.settings, { subjectId: "instance", key: instructions.key, value: "Retained" });
+		write(fixture.settings, { subjectId: "instance", key: reportLabel.key, value: "Retained" });
 		const removed = await createSettingsFixture(fixture.repos, []);
 		expect((await removed.settings.preview("instance")).inactive).toHaveLength(1);
 		const reinstalled = await createSettingsFixture(fixture.repos);
-		expect(reinstalled.settings.resolve(instructions, {}).value).toBe("Retained");
+		expect(reinstalled.settings.resolve(reportLabel, {}).value).toBe("Retained");
 		const changed = await createSettingsFixture(fixture.repos, [
 			{
 				...settingsExtension,
 				scopedSettings: {
 					...settingsExtension.scopedSettings!,
-					settings: [{ ...instructions, schemaVersion: 2 }, repositoryInstructions, model],
+					settings: [{ ...reportLabel, schemaVersion: 2 }, repositoryLabel, model],
 				},
 			},
 		]);
 		expect(
 			(await changed.settings.preview("instance")).fields.find(
-				(field) => field.key === instructions.key,
+				(field) => field.key === reportLabel.key,
 			)?.error,
 		).toContain("incompatible schema");
-		expect(() => changed.settings.resolve(instructions, {})).toThrow("Correct");
+		expect(() => changed.settings.resolve(reportLabel, {})).toThrow("Correct");
 	});
-	it("uses primary repository defaults, labels each repository's instructions, and keeps captured starts unchanged", async () => {
+	it("uses primary repository settings and keeps captured starts unchanged", async () => {
 		const { settings, repos, policy } = await createSettingsFixture();
 		const process = createSettingsProcess(repos, ["public", "private"]);
 		const subjects = settings.forProcess(process).subjects;
 		for (const { project, subject } of subjects)
 			write(settings, {
 				subjectId: subject.id,
-				key: repositoryInstructions.key,
+				key: repositoryLabel.key,
 				value: `Rules for ${project.key}`,
 			});
 		write(settings, { subjectId: "instance", key: model.key, value: "first" });
@@ -369,12 +368,10 @@ describe("scoped settings", () => {
 		})!;
 		expect(settings.modelDefault(process.processId, "run", bound)).toBe("second");
 		const captured = settings.capture(bound, "run")!;
-		expect(
-			captured.instructions.map((block) => [block.label.split(" — ")[0], block.setting.value]),
-		).toEqual([
-			["public", "Rules for public"],
-			["private", "Rules for private"],
-		]);
+		expect(captured.values).toContainEqual(
+			expect.objectContaining({ key: repositoryLabel.key, value: "Rules for private" }),
+		);
+		expect(captured).not.toHaveProperty("reportLabel");
 		const template = createTestTurnStart({ instanceId: process.id });
 		if (template.state.kind !== "starting" || template.state.start.kind !== "llm")
 			throw new Error("Expected LLM start fixture");
@@ -386,11 +383,13 @@ describe("scoped settings", () => {
 		const fingerprint = policy.fingerprint({ process: bound, currentStart: start });
 		write(settings, {
 			subjectId: subjects[1].subject.id,
-			key: repositoryInstructions.key,
+			key: repositoryLabel.key,
 			value: "Changed",
 			expectedRevision: 1,
 		});
-		expect(settings.capture(bound, "run")?.instructions[1].setting.value).toBe("Changed");
+		expect(settings.capture(bound, "run")?.values).toContainEqual(
+			expect.objectContaining({ key: repositoryLabel.key, value: "Changed" }),
+		);
 		expect(repos.turnStarts.getById(start.id)).toEqual(start);
 		expect(policy.fingerprint({ process: bound, currentStart: start })).toBe(fingerprint);
 	});
@@ -468,7 +467,7 @@ describe("scoped settings", () => {
 			selection: { modelProfileId: "second" },
 		});
 	});
-	it("shows an unavailable inherited model with its correction instructions", async () => {
+	it("shows an unavailable inherited model with its correction reportLabel", async () => {
 		const fixture = await createSettingsFixture();
 		write(fixture.settings, { subjectId: "instance", key: model.key, value: "second" });
 		const settings = createScopedSettingsService({
@@ -490,7 +489,7 @@ describe("scoped settings", () => {
 	});
 	it("retains effective selections and draft values when dynamic choices are unavailable", async () => {
 		const definition = {
-			...instructions,
+			...reportLabel,
 			choices() {
 				throw new Error("Repository discovery unavailable");
 			},
@@ -500,7 +499,7 @@ describe("scoped settings", () => {
 				...settingsExtension,
 				scopedSettings: {
 					...settingsExtension.scopedSettings,
-					settings: [definition, repositoryInstructions, model],
+					settings: [definition, repositoryLabel, model],
 				},
 			},
 		]);
@@ -534,13 +533,13 @@ describe("scoped settings", () => {
 	it("loads, previews and saves values without waiting for dynamic choices", async () => {
 		const pending = Promise.withResolvers<readonly { value: string; label: string }[]>();
 		const choices = vi.fn(() => pending.promise);
-		const definition = { ...instructions, choices };
+		const definition = { ...reportLabel, choices };
 		const { settings } = await createSettingsFixture(undefined, [
 			{
 				...settingsExtension,
 				scopedSettings: {
 					...settingsExtension.scopedSettings,
-					settings: [definition, repositoryInstructions, model],
+					settings: [definition, repositoryLabel, model],
 				},
 			},
 		]);
@@ -574,11 +573,16 @@ describe("scoped settings", () => {
 	it("labels saved selections without remote reads and only searches after the declared minimum", async () => {
 		const choices = vi.fn(async () => [{ value: "match", label: "Matching repository" }]);
 		const definition = {
-			...instructions,
+			...reportLabel,
 			key: "settings-test.repositories",
 			merge: "replace" as const,
 			defaultValue: [] as string[],
-			form: { ...instructions.form, control: "multiselect" as const, search: { minimumLength: 2 } },
+			form: {
+				...reportLabel.form,
+				overview: "repository-mapping" as const,
+				control: "multiselect" as const,
+				search: { minimumLength: 2 },
+			},
 			schema: {
 				parse(value: unknown) {
 					if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string"))
@@ -594,7 +598,7 @@ describe("scoped settings", () => {
 				...settingsExtension,
 				scopedSettings: {
 					...settingsExtension.scopedSettings,
-					settings: [definition, instructions, repositoryInstructions, model],
+					settings: [definition, reportLabel, repositoryLabel, model],
 				},
 			},
 		]);
@@ -602,6 +606,31 @@ describe("scoped settings", () => {
 		expect((await settings.preview("instance")).fields[0].choices).toEqual([
 			{ value: "saved", label: "Known saved" },
 		]);
+		expect((await settings.overview("instance")).items).toEqual([
+			{
+				subjectId: "instance",
+				customized: ["Report label"],
+				mapping: [{ value: "saved", label: "Known saved" }],
+				errors: [],
+			},
+		]);
+		settings.write({
+			subjectId: "instance",
+			key: definition.key,
+			value: null,
+			reset: true,
+			expectedRevision: 1,
+			actor: ADMIN_ACTOR,
+		});
+		expect((await settings.overview("instance")).items).toEqual([
+			{ subjectId: "instance", customized: [], mapping: [], errors: [] },
+		]);
+		write(settings, {
+			subjectId: "instance",
+			key: definition.key,
+			value: ["saved"],
+			expectedRevision: 2,
+		});
 		expect(await settings.choices("instance", definition.key)).toEqual([]);
 		expect(await settings.choices("instance", definition.key, " r ")).toEqual([]);
 		expect(choices).not.toHaveBeenCalled();
@@ -626,7 +655,7 @@ describe("scoped settings", () => {
 		);
 		write(settings, {
 			subjectId: components[1].id,
-			key: instructions.key,
+			key: reportLabel.key,
 			value: "Retained outside scope",
 		});
 		settings.registerDiscovery("settings-test.project-issue-type", async () => [], {
@@ -641,9 +670,110 @@ describe("scoped settings", () => {
 		).toEqual([components[0].id]);
 		expect(
 			(await settings.preview(components[1].id)).fields.find(
-				(field) => field.key === instructions.key,
+				(field) => field.key === reportLabel.key,
 			)?.effective?.value,
 		).toBe("Retained outside scope");
 		expect(repos.scopedSettings.getSubject(components[1].id)).not.toBeNull();
 	});
+});
+
+it("retains named selections through seeding, conflicts, provider failure and service restart", async () => {
+	const choices = vi.fn(async () => {
+		throw new Error("Provider unavailable");
+	});
+	let resolver: import("@leitwerk-dev/process-sdk").ScopedSettingsResolver;
+	const definition: import("@leitwerk-dev/process-sdk").SettingDefinition<
+		import("@leitwerk-dev/process-sdk").NamedSelection[]
+	> = {
+		key: "groups.components",
+		scopes: ["groups.project"],
+		schemaVersion: 1,
+		merge: "replace",
+		defaultValue: [],
+		form: {
+			label: "Component groups",
+			group: "Investigation",
+			control: "named-selection-list",
+			search: { minimumLength: 2 },
+		},
+		schema: {
+			parse: (value) => {
+				if (!Array.isArray(value)) throw new Error("Expected groups");
+				return value;
+			},
+		},
+		choices,
+		choiceLabel: (value) =>
+			resolver.findSubject("groups.component", value)?.label ?? `${value} (unavailable)`,
+	};
+	const modules = [
+		settingsExtension,
+		{
+			manifest: { id: "groups", version: "1" },
+			scopedSettings: {
+				scopes: [
+					{ id: "groups.project", label: "Projects" },
+					{ id: "groups.component", label: "Components" },
+				],
+				settings: [definition],
+			},
+		},
+	];
+	const fixture = await createSettingsFixture(undefined, modules);
+	resolver = fixture.settings;
+	const project = resolver.discover({
+		scopeType: "groups.project",
+		identity: "project-1",
+		label: "Project",
+	});
+	resolver.discover({
+		scopeType: "groups.component",
+		identity: "component-1",
+		label: "Monitor init",
+	});
+	const initial = [{ id: "services", name: "Services", values: ["component-1", "missing"] }];
+	expect(resolver.seedOverride(project.id, definition, initial)).toBe(true);
+	expect(resolver.seedOverride(project.id, definition, [])).toBe(false);
+	const preview = await fixture.settings.preview(project.id);
+	expect(preview.fields[0].choices).toEqual([
+		{ value: "component-1", label: "Monitor init" },
+		{ value: "missing", label: "missing (unavailable)" },
+	]);
+	expect(choices).not.toHaveBeenCalled();
+	await fixture.settings.choices(project.id, definition.key, "m");
+	expect(choices).not.toHaveBeenCalled();
+	await expect(fixture.settings.choices(project.id, definition.key, "mo")).rejects.toThrow(
+		"Provider unavailable",
+	);
+	expect(choices).toHaveBeenLastCalledWith(
+		expect.objectContaining({ "groups.project": project.id }),
+		{ search: "mo", values: ["component-1", "missing"] },
+	);
+	const restarted = await createSettingsFixture(fixture.repos, modules);
+	resolver = restarted.settings;
+	expect((await restarted.settings.preview(project.id)).fields[0].choices).toEqual(
+		preview.fields[0].choices,
+	);
+	expect(() =>
+		restarted.settings.write({
+			subjectId: project.id,
+			key: definition.key,
+			value: [],
+			mode: "replace",
+			reset: false,
+			expectedRevision: 0,
+			actor: ADMIN_ACTOR,
+		}),
+	).toThrow("changed since");
+	restarted.settings.write({
+		subjectId: project.id,
+		key: definition.key,
+		value: null,
+		mode: "replace",
+		reset: true,
+		expectedRevision: 1,
+		actor: ADMIN_ACTOR,
+	});
+	expect(resolver.seedOverride(project.id, definition, initial)).toBe(false);
+	expect(resolver.resolve(definition, { "groups.project": project.id }).value).toEqual([]);
 });

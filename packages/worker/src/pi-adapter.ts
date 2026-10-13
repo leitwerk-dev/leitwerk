@@ -25,7 +25,12 @@ import type {
 	PiTurnExecutionResult,
 	PiUsageData,
 } from "@leitwerk-dev/process-sdk";
-import { hasErrorCode, isEnoent } from "@leitwerk-dev/process-sdk";
+import {
+	compileOutcomeParameters,
+	hasErrorCode,
+	isEnoent,
+	type OutcomeToolParameterSpec,
+} from "@leitwerk-dev/process-sdk";
 import { resolvePiAgentDir } from "@leitwerk-dev/process-sdk/pi-config";
 import type { ConfigSnapshot } from "@leitwerk-dev/protocol";
 import { parseDurationMs } from "@leitwerk-dev/watcher-utils";
@@ -41,6 +46,7 @@ import {
 import { installPiInspection } from "./pi-inspection.js";
 import { createRepositoryBashTool } from "./repository-bash-tool.js";
 import { buildLeitwerkResourceLoaderOptions } from "./resource-loader-factory.js";
+import { installStrictOutcomeSchemas } from "./strict-outcome-schema.js";
 
 const LEITWERK_TOOL_BOOTSTRAP_NAME = "__leitwerk_runtime_bootstrap__";
 
@@ -234,6 +240,7 @@ interface PiAgentLoopConfig {
 }
 
 interface PiCompletedTurnContext {
+	toolResults?: unknown[];
 	message?: {
 		content?: unknown;
 		stopReason?: unknown;
@@ -268,33 +275,10 @@ function toToolSchema(parameters: Record<string, unknown>): Record<string, unkno
 		return parameters;
 	}
 
-	const properties: Record<string, unknown> = {};
-	const required: string[] = [];
-	for (const [key, spec] of Object.entries(parameters)) {
-		if (isObjectLike(spec)) {
-			const {
-				required: isRequired,
-				requiredErrorCode: _requiredErrorCode,
-				invalidErrorCode: _invalidErrorCode,
-				minItemsErrorCode: _minItemsErrorCode,
-				minimumErrorCode: _minimumErrorCode,
-				...jsonSchemaSpec
-			} = spec;
-			properties[key] = { ...jsonSchemaSpec };
-			if (isRequired === true) {
-				required.push(key);
-			}
-		} else {
-			properties[key] = { type: "string" };
-		}
-	}
-
-	return {
-		type: "object",
-		properties,
-		required,
-		additionalProperties: false,
-	};
+	return compileOutcomeParameters(parameters as Record<string, OutcomeToolParameterSpec>) as Record<
+		string,
+		unknown
+	>;
 }
 
 const LEITWERK_TOOL_BOOTSTRAP: ToolDefinition = {
@@ -1443,7 +1427,9 @@ export class SdkPiTreeHandle implements PiTreeHandle {
 					return {
 						...baseConfig,
 						finishTurn: async (...args: unknown[]) => {
-							if (options.shouldStopAfterTurn?.()) return { action: "end" };
+							const context = isObjectLike(args[0]) ? (args[0] as PiCompletedTurnContext) : null;
+							if (options.shouldStopAfterTurn?.(context?.toolResults ?? []))
+								return { action: "end" };
 							return (
 								terminalAcknowledgement?.onTurnCompleted(args) ??
 								(await previousFinishTurn?.(...args))
@@ -1454,6 +1440,11 @@ export class SdkPiTreeHandle implements PiTreeHandle {
 			}
 		}
 
+		const restoreStrictSchemas = installStrictOutcomeSchemas(
+			this.session,
+			customTools,
+			(diagnostic) => this.emitSubscribedDiagnostic(diagnostic),
+		);
 		try {
 			if (terminalAcknowledgement) {
 				await terminalAcknowledgement.run(run);
@@ -1461,6 +1452,7 @@ export class SdkPiTreeHandle implements PiTreeHandle {
 				await run();
 			}
 		} finally {
+			restoreStrictSchemas();
 			terminalAcknowledgement?.dispose();
 			mutableSession._customTools = previousCustomTools;
 			mutableAgent.beforeToolCall = previousBeforeToolCall;

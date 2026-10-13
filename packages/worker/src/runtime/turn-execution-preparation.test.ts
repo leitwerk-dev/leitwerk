@@ -150,13 +150,19 @@ describe("LLM turn preparation execution", () => {
 	});
 
 	it("fails the LLM turn before prompting when preparation fails", async () => {
-		const { result } = await run({
+		const { result, emissions } = await run({
 			kind: "llm",
 			description: "Analyze",
 			availableTools: [],
 			branchType: "primary",
 			context: "fresh",
-			prepare: async () => {
+			prepare: async (ctx) => {
+				ctx.reportDiagnostic?.({
+					level: "warn",
+					code: "example.preparation",
+					message: "Download failed",
+					details: { durationMs: 10 },
+				});
 				throw new Error("snapshot unavailable");
 			},
 			prompt: () => "Analyze",
@@ -164,6 +170,18 @@ describe("LLM turn preparation execution", () => {
 		});
 
 		expect(executeLlmTurn).not.toHaveBeenCalled();
+		expect(emissions).toContainEqual({
+			kind: "trace",
+			payload: {
+				level: "warn",
+				code: "example.preparation",
+				message: "Download failed",
+				details: { durationMs: 10 },
+				turnRecordId: "turn_1",
+				turnId: "analyze",
+				timestamp: expect.any(String),
+			},
+		});
 		expect(result).toMatchObject({
 			kind: "failed",
 			failure: {

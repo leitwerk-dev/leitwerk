@@ -9,6 +9,7 @@ import {
 	type WorkerToServerMessage,
 } from "@leitwerk-dev/worker-protocol";
 import { createConnectionDiagnosticRecorder } from "./connection-diagnostics.js";
+import { transportErrorCode } from "./transport-error.js";
 
 /** @internal */
 export interface WorkerIpc {
@@ -75,29 +76,6 @@ function webSocketDataToText(data: WebSocketMessageEventLike["data"]): string {
 		return Buffer.from(data).toString("utf8");
 	}
 	return data.toString("utf8");
-}
-
-// Only known transport codes are safe to retain: native error messages may contain URLs.
-const connectionErrorCodes = new Set([
-	"ECONNREFUSED",
-	"ECONNRESET",
-	"ENOTFOUND",
-	"EAI_AGAIN",
-	"ETIMEDOUT",
-	"ENETUNREACH",
-	"EHOSTUNREACH",
-	"CERT_HAS_EXPIRED",
-	"DEPTH_ZERO_SELF_SIGNED_CERT",
-]);
-function connectionErrorCode(value: unknown): string {
-	for (let depth = 0; depth < 4 && value && typeof value === "object"; depth += 1) {
-		const error = value as { code?: unknown; error?: unknown; cause?: unknown };
-		if (typeof error.code === "string" && connectionErrorCodes.has(error.code)) {
-			return error.code;
-		}
-		value = error.error ?? error.cause;
-	}
-	return "websocket_error";
 }
 
 export function createWebSocketWorkerIpc(input: {
@@ -228,7 +206,9 @@ export function createWebSocketWorkerIpc(input: {
 				socket.addEventListener("message", (event) => deliverText(webSocketDataToText(event.data)));
 				socket.addEventListener("error", (event) => {
 					if (stopping) return;
-					input.onDiagnostic?.(diagnostic(`error=${connectionErrorCode(event)}`));
+					input.onDiagnostic?.(
+						diagnostic(`error=${transportErrorCode(event) ?? "websocket_error"}`),
+					);
 					if (!reconnectEnabled) {
 						emitError(event instanceof Error ? event : new Error("Worker WebSocket error"));
 					}

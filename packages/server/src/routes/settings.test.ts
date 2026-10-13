@@ -13,7 +13,7 @@ import {
 	createSettingsFixture,
 	createSettingsProcess,
 	model,
-	repositoryInstructions,
+	repositoryLabel,
 } from "../test-helpers/scoped-settings-fixtures.js";
 import { createBroadcaster } from "../ws/broadcast.js";
 import { registerSettingsRoutes } from "./settings.js";
@@ -55,12 +55,12 @@ async function setup() {
 }
 
 describe("settings HTTP contract", () => {
-	it("uses identical preview/save validation, defaults instructions to append, and checks revisions on reset", async () => {
+	it("uses identical preview/save validation, replaces inherited values, and checks revisions on reset", async () => {
 		const { app, repos } = await setup();
 		const payload = {
 			subjectId: "instance",
-			key: repositoryInstructions.key,
-			value: "Installation rules",
+			key: repositoryLabel.key,
+			value: "Installation report",
 			expectedRevision: 0,
 		};
 		const preview = await app.inject({ method: "POST", url: "/api/settings/preview", payload });
@@ -71,9 +71,9 @@ describe("settings HTTP contract", () => {
 		const field = (response: typeof saved) =>
 			response.json().fields.find((f: { key: string }) => f.key === payload.key);
 		expect(field(saved).effective.value).toEqual(field(preview).effective.value);
-		expect(field(saved).effective.value).toBe("Code instructions\n\nInstallation rules");
+		expect(field(saved).effective.value).toBe("Installation report");
 		expect(field(saved).override).toMatchObject({
-			mode: "append",
+			mode: "replace",
 			revision: 1,
 			actor: ADMIN_ACTOR,
 		});
@@ -86,12 +86,18 @@ describe("settings HTTP contract", () => {
 			payload: { ...payload, value: undefined, reset: true, expectedRevision: 1 },
 		});
 		expect(reset.statusCode).toBe(200);
-		expect(field(reset).effective.value).toBe("Code instructions");
+		expect(field(reset).effective.value).toBe("Default report");
 		expect(field(reset).override).toMatchObject({ reset: true, revision: 2 });
 		expect(
 			(await app.inject({ method: "PUT", url: "/api/settings/overrides", payload })).statusCode,
 		).toBe(409);
 		for (const method of ["POST", "PUT"] as const) {
+			const appended = await app.inject({
+				method,
+				url: `/api/settings/${method === "POST" ? "preview" : "overrides"}`,
+				payload: { ...payload, mode: "append", expectedRevision: 2 },
+			});
+			expect(appended.statusCode).toBe(400);
 			const invalid = await app.inject({
 				method,
 				url: `/api/settings/${method === "POST" ? "preview" : "overrides"}`,

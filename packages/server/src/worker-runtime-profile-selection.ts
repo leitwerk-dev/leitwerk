@@ -151,6 +151,8 @@ export function buildRuntimeProfileSelectionInput(args: {
 	processId: string;
 	/** @internal */
 	componentKeys: string[];
+	/** The registered process definition requires Docker. @internal */
+	docker?: boolean;
 }): RuntimeProfileSelectionInput {
 	const { config, processId, componentKeys } = args;
 	const componentProfiles: ComponentRuntimeProfileSelection[] = componentKeys.map((component) => ({
@@ -161,7 +163,12 @@ export function buildRuntimeProfileSelectionInput(args: {
 		processId,
 		processOverride: config.process_configs?.[processId]?.worker_runtime_profile,
 		componentProfiles,
-		defaultProfile: defaultWorkerRuntimeProfile(config) ?? undefined,
+		defaultProfile:
+			(config.workers.runner === "kubernetes" && args.docker
+				? config.kubernetes?.docker?.worker_runtime_profile
+				: undefined) ??
+			defaultWorkerRuntimeProfile(config) ??
+			undefined,
 		profiles: config.worker_runtime_profiles ?? {},
 	};
 }

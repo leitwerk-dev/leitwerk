@@ -1,10 +1,17 @@
-import { RetryableWaitError, type TurnWaitContext } from "@leitwerk-dev/process-sdk";
+import { assertRepoLocator } from "@leitwerk-dev/domain";
+import {
+	type InitialProcessBinding,
+	RetryableWaitError,
+	type TurnWaitContext,
+} from "@leitwerk-dev/process-sdk";
+import type { CommitMessageConfig } from "./config/config-types.js";
 import type { RepositoryBundle } from "./db/repositories.js";
 import type { ProcessActionRegistry } from "./process-action-registry.js";
 import { ArmTurnWait, ResolveTurnWait } from "./process-engine/ops/turn-wait.js";
 import { pendingTurnWait, turnWaitPredicate } from "./process-engine/turn-wait-state.js";
 import type { ProcessEngine } from "./process-engine/types.js";
 import type { ProcessGraphRegistry } from "./process-graph.js";
+import { normalizeProjectInputs } from "./process-launch-plan.js";
 
 interface TurnWaitServiceDeps {
 	processes: RepositoryBundle["processes"];
@@ -16,6 +23,7 @@ interface TurnWaitServiceDeps {
 	now?: () => number;
 	pollIntervalMs?: number;
 	timeoutMs?: number;
+	commitMessages?: CommitMessageConfig;
 }
 
 /** Runs read-only predicates outside lifecycle locks. The engine fences every result. */
@@ -72,7 +80,8 @@ export function createTurnWaitService(deps: TurnWaitServiceDeps) {
 		controllers.add(controller);
 		let state: unknown;
 		let nextStateJson: string | undefined;
-		let result: "ready" | "waiting" | "complete" | "retry" | "error";
+		let result: "ready" | "waiting" | "complete" | "abort" | "bind" | "retry" | "error";
+		let initialBinding: InitialProcessBinding | undefined;
 		let message: string | undefined;
 		let timeout: ReturnType<typeof setTimeout> | undefined;
 		let onAbort: (() => void) | undefined;
@@ -89,6 +98,9 @@ export function createTurnWaitService(deps: TurnWaitServiceDeps) {
 					if (!controller.signal.aborted) state = value;
 				},
 				complete: () => ({ kind: "complete" }),
+				waiting: (message) => ({ kind: "waiting", message }),
+				abort: (message) => ({ kind: "abort", message }),
+				bindInitialProjects: (binding) => ({ kind: "bind", binding }),
 			};
 			const timedOut = new Promise<never>((_, reject) => {
 				onAbort = () => reject(new RetryableWaitError("Waiting condition interrupted"));
@@ -104,7 +116,44 @@ export function createTurnWaitService(deps: TurnWaitServiceDeps) {
 			]);
 			if (typeof value === "boolean") result = value ? "ready" : "waiting";
 			else if (value && value.kind === "complete") result = "complete";
-			else throw new Error("waitFor must return a boolean or process.complete()");
+			else if (value && (value.kind === "waiting" || value.kind === "abort")) {
+				if (typeof value.message !== "string" || !value.message.trim())
+					throw new Error("Readiness guidance must be nonempty text");
+				result = value.kind;
+				message = value.message.slice(0, 2000);
+			} else if (value?.kind === "bind") {
+				if (!wait.initialSelection || projects.length || !value.binding.projects.length)
+					throw new Error(
+						"Initial repository binding requires an unstarted process without projects",
+					);
+				const codec = deps.processGraphs.get(process.processId)?.paramsCodec;
+				if (!codec) throw new Error("Process params codec is unavailable");
+				const keys = new Set<string>();
+				for (const project of value.binding.projects) {
+					if (
+						!/^[a-zA-Z0-9_-]+$/.test(project.key) ||
+						keys.has(project.key) ||
+						!project.baseBranch?.trim()
+					)
+						throw new Error("Invalid initial repository binding");
+					assertRepoLocator(project.repoLocator);
+					keys.add(project.key);
+				}
+				// Extension metadata cannot overwrite lifecycle or launch metadata.
+				if (
+					Object.keys(value.binding.metadata ?? {}).some(
+						(key) => key === "turnWait" || Object.hasOwn(process.metadata ?? {}, key),
+					)
+				)
+					throw new Error("Initial repository binding cannot replace retained metadata");
+				initialBinding = structuredClone({
+					params: codec.serialize(codec.parse(value.binding.params)),
+					projects: normalizeProjectInputs(value.binding, deps.commitMessages),
+					metadata: value.binding.metadata,
+					settingsContext: value.binding.settingsContext,
+				});
+				result = "bind";
+			} else throw new Error("Invalid turn readiness decision");
 			if (state !== undefined) {
 				const codec = deps.processGraphs.get(process.processId)?.stateCodec;
 				if (!codec) throw new Error("Process state codec is unavailable");
@@ -127,6 +176,7 @@ export function createTurnWaitService(deps: TurnWaitServiceDeps) {
 			stateJson: process.stateJson,
 			projectsJson: JSON.stringify(projects),
 			nextStateJson,
+			initialBinding,
 			result,
 			message,
 			now: now(),

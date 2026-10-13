@@ -325,6 +325,7 @@ beforeAll(async () => {
 		extensionCatalog,
 		configOverride(config) {
 			config.workers.shutdown_grace_period = "100ms";
+			config.pi.default_model_profile = "claude_fast";
 			config.pi.model_profiles = [
 				{
 					id: "claude_fast",

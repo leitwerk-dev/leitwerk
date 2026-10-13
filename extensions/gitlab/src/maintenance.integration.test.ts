@@ -6,9 +6,10 @@ import { type Codec, defineProcess, emptyParamsCodec, humanTurn } from "@leitwer
 import { createPollingTestExtension } from "@leitwerk-dev/test-support";
 import { createIntegrationHarness, waitForValue } from "@leitwerk-dev/test-support/integration";
 import { LocalGit } from "@leitwerk-dev/test-support/local-git";
-import { expect, it } from "vitest";
-import { GitLabClient, type GitLabFeedback } from "./client.js";
+import { expect, it, onTestFinished } from "vitest";
+import { GitLabClient, GitLabError, type GitLabFeedback } from "./client.js";
 import {
+	GITLAB_MAINTAINED_KIND,
 	type GitLabMaintenanceEvent,
 	gitlabMaintenanceSource,
 	registerGitLabMaintainedProcess,
@@ -35,6 +36,8 @@ async function fixture(onFinished: (fn: () => Promise<void>) => void) {
 		},
 	);
 	let labelReadFailure = false;
+	const readFailures: { labels?: GitLabError; mr?: GitLabError; project?: GitLabError } = {};
+	let reads = 0;
 	let clock = Date.parse("2026-10-06T10:00:00Z");
 	const source = gitlabMaintenanceSource<Record<string, never>, State>();
 	const process = defineProcess<Record<string, never>, State>({
@@ -87,11 +90,23 @@ async function fixture(onFinished: (fn: () => Promise<void>) => void) {
 					client: () => ({
 						...adapter.client(),
 						listMergeRequestLabelEvents: async (...args) => {
+							reads++;
+							if (readFailures.labels) throw readFailures.labels;
 							if (labelReadFailure) {
 								labelReadFailure = false;
 								throw new Error("GitLab label read unavailable");
 							}
 							return adapter.client().listMergeRequestLabelEvents(...args);
+						},
+						getMergeRequest: async (...args) => {
+							reads++;
+							if (readFailures.mr) throw readFailures.mr;
+							return adapter.client().getMergeRequest(...args);
+						},
+						getProject: async (...args) => {
+							reads++;
+							if (readFailures.project) throw readFailures.project;
+							return adapter.client().getProject(...args);
 						},
 						listMergeRequestFeedback: feedbackReader.listMergeRequestFeedback.bind(feedbackReader),
 					}),
@@ -179,6 +194,8 @@ async function fixture(onFinished: (fn: () => Promise<void>) => void) {
 		notes,
 		instance,
 		provider,
+		readFailures,
+		reads: () => reads,
 		advance(ms: number) {
 			clock += ms;
 		},
@@ -269,6 +286,68 @@ it("closed unmerged MRs abort without adding done", async ({ onTestFinished }) =
 	expect(f.harness.ctx.deps.processes.getById(f.instance.id)?.lifecycleStatus).toBe("aborted");
 	expect(f.mr.labels).not.toContain("leitwerk-done");
 	expect(f.mr.labels).not.toContain("leitwerk-active");
+});
+
+it.each([
+	false,
+	true,
+])("aborts a deleted MR durably without remote writes (already adopted: %s)", async (adopted) => {
+	const f = await fixture(onTestFinished);
+	if (adopted) await f.provider.poll();
+	const turns = f.harness.ctx.deps.turnRecords.listByInstance(f.instance.id);
+	f.adapter.state.mrs = [];
+	f.adapter.save();
+	const remote = structuredClone(f.adapter.state);
+	f.advance(30_000);
+	expect((await f.provider.poll()).errors).toEqual([]);
+	expect(f.harness.ctx.deps.processes.getById(f.instance.id)).toMatchObject({
+		lifecycleStatus: "aborted",
+		selectedTurnId: null,
+		currentExecution: null,
+		metadata: {
+			gitlabMaintenance: { repo: { status: "deleted", pendingFeedback: [] } },
+			gitlabMaintenanceCompleted: true,
+		},
+	});
+	expect(f.harness.ctx.deps.externalSourceService.listArmed(GITLAB_MAINTAINED_KIND)).toHaveLength(
+		0,
+	);
+	const reads = f.reads();
+	await f.restart();
+	f.advance(30_000);
+	expect((await f.provider.poll()).errors).toEqual([]);
+	expect(f.reads()).toBe(reads);
+	expect(f.adapter.state).toEqual(remote);
+	expect(f.harness.ctx.deps.processes.getById(f.instance.id)?.lifecycleStatus).toBe("aborted");
+	expect(f.harness.ctx.deps.turnRecords.listByInstance(f.instance.id)).toEqual(turns);
+});
+
+it.each([
+	{ label: "label endpoint missing while MR exists", labels: 404 },
+	{ label: "MR missing with inaccessible project", mr: 404, project: 404 },
+	{ label: "MR missing with forbidden project", mr: 404, project: 403 },
+	{ label: "MR missing while project read is unavailable", mr: 404, project: 503 },
+	{ label: "temporary MR failure", mr: 503 },
+	{ label: "unauthorized MR access", mr: 401 },
+])("keeps maintenance active for $label", async (failure) => {
+	const f = await fixture(onTestFinished);
+	await f.provider.poll();
+	for (const field of ["labels", "mr", "project"] as const) {
+		const status = (failure as Partial<Record<typeof field, number>>)[field];
+		if (status) f.readFailures[field] = new GitLabError(status, status >= 500);
+	}
+	f.advance(30_000);
+	expect((await f.provider.poll()).errors).toHaveLength(1);
+	expect(f.harness.ctx.deps.processes.getById(f.instance.id)).toMatchObject({
+		lifecycleStatus: "waiting",
+		metadata: {
+			gitlabMaintenance: { repo: { status: "active", refreshError: expect.any(String) } },
+		},
+	});
+	for (const field of ["labels", "mr", "project"] as const) delete f.readFailures[field];
+	f.advance(30_000);
+	expect((await f.provider.poll()).errors).toEqual([]);
+	expect(f.harness.ctx.deps.processes.getById(f.instance.id)?.lifecycleStatus).toBe("waiting");
 });
 
 it("adopts existing live bindings without changing cursors, selected turns or history", async ({

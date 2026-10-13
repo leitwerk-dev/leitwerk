@@ -81,6 +81,11 @@ rules:
     resources: ["storageclasses"]
     verbs: ["get", "list", "create", "delete"]
   {{- end }}
+  {{- if .Values.kubernetes.imagePreload.enabled }}
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+  {{- end }}
   - apiGroups: [""]
     resources: ["namespaces"]
     verbs: ["create", "get", "list", "watch", "delete", "patch", "update"]

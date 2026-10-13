@@ -89,7 +89,10 @@ export async function buildLauncherModelConfigPreviewForLauncher(
 	let modelConfig = input.modelConfig;
 	let resolved: Awaited<ReturnType<ProcessLauncherService["resolveUiLauncher"]>> | null = null;
 	try {
-		resolved = await input.launcherService.resolveUiLauncher(input.launcherId, input.launcherInput);
+		resolved = await input.launcherService.resolveUiLauncherPreview(
+			input.launcherId,
+			input.launcherInput,
+		);
 	} catch (error) {
 		if (!input.ignoreResolveErrors) throw error;
 	}

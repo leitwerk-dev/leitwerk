@@ -18,17 +18,18 @@ function state(f: RemoteRepoChangeFixture, id: string) {
 }
 
 async function publish(f: RemoteRepoChangeFixture) {
-	for (const [key, value] of [
-		["coding.repository_instructions", "Preserve repository compatibility during repairs"],
-		["coding.implementation_model", "remote-change-fixture-model"],
-	]) {
-		const saved = await f.harness.request({
-			method: "PUT",
-			url: "/api/settings/overrides",
-			payload: { subjectId: "instance", key, value, mode: "replace", expectedRevision: 0 },
-		});
-		expect(saved.statusCode).toBe(200);
-	}
+	const saved = await f.harness.request({
+		method: "PUT",
+		url: "/api/settings/overrides",
+		payload: {
+			subjectId: "instance",
+			key: "coding.implementation_model",
+			value: "remote-change-fixture-model",
+			mode: "replace",
+			expectedRevision: 0,
+		},
+	});
+	expect(saved.statusCode).toBe(200);
 	const id = await f.launchTicketlessChange("Update the service image", {
 		docker: false,
 		sshCredentialRef: "untrusted",
@@ -49,13 +50,6 @@ async function expectRepairSettings(f: RemoteRepoChangeFixture, id: string, turn
 						expect.objectContaining({
 							key: "coding.implementation_model",
 							value: "remote-change-fixture-model",
-						}),
-					]),
-					instructions: expect.arrayContaining([
-						expect.objectContaining({
-							setting: expect.objectContaining({
-								value: "Preserve repository compatibility during repairs",
-							}),
 						}),
 					]),
 				}),

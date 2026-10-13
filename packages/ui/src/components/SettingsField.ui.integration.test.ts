@@ -1,15 +1,21 @@
-import type { SettingFieldView } from "@leitwerk-dev/protocol/http-contracts";
-import { mount, tick, unmount } from "svelte";
+import type { SettingFieldView, SettingsPreview } from "@leitwerk-dev/protocol/http-contracts";
+import { tick } from "svelte";
 import { afterEach, expect, it, vi } from "vitest";
-import { fetchSettingsChoices } from "../lib/settings.js";
+import {
+	changeSettings,
+	fetchSettingsChoices,
+	fetchSettingsPreview,
+	SettingsRequestError,
+} from "../lib/settings.js";
+import { mountTest, unmountTests } from "../test-support/mount.js";
 import SettingsField from "./SettingsField.svelte";
 
 vi.mock("../lib/settings.js", async (original) => ({
 	...(await original<typeof import("../lib/settings.js")>()),
 	fetchSettingsChoices: vi.fn(),
 	changeSettings: vi.fn(),
+	fetchSettingsPreview: vi.fn(),
 }));
-const apps: ReturnType<typeof mount>[] = [];
 const field: SettingFieldView = {
 	key: "test.repositories",
 	owner: "test",
@@ -24,15 +30,12 @@ const field: SettingFieldView = {
 	override: null,
 	error: null,
 };
-async function render(configured = field, editing = true) {
-	const target = document.createElement("div");
-	document.body.append(target);
-	apps.push(
-		mount(SettingsField, {
-			target,
-			props: { field: configured, subjectId: "component", onSaved() {} },
-		}),
-	);
+async function render(
+	configured = field,
+	editing = true,
+	onSaved: (preview: SettingsPreview) => void = () => {},
+) {
+	mountTest(SettingsField, { field: configured, subjectId: "component", onSaved });
 	await tick();
 	if (!editing) return;
 	const edit = document.querySelector<HTMLButtonElement>("button");
@@ -41,8 +44,7 @@ async function render(configured = field, editing = true) {
 	await tick();
 }
 afterEach(async () => {
-	for (const app of apps.splice(0)) await unmount(app);
-	document.body.innerHTML = "";
+	await unmountTests();
 	vi.resetAllMocks();
 	vi.useRealTimers();
 });
@@ -167,4 +169,90 @@ it("reports option failures inline and retries without closing the editor", asyn
 	await vi.waitFor(() => expect(document.body.textContent).toContain("Repository"));
 	await vi.waitFor(() => expect(document.querySelector('[role="alert"]')).toBeNull());
 	expect(document.querySelector('input[type="search"]')).not.toBeNull();
+});
+
+it("edits one named list, preserves draft names and unavailable members through conflicts and search failures", async () => {
+	const groups: SettingFieldView = {
+		...field,
+		form: {
+			label: "Component groups",
+			group: "Investigation",
+			control: "named-selection-list",
+			search: { minimumLength: 2 },
+		},
+		effective: {
+			key: field.key,
+			value: [{ id: "services", name: "Services", values: ["retained", "missing"] }],
+			sources: [],
+		},
+		choices: [{ value: "retained", label: "Monitor init" }],
+		override: {
+			subjectId: "component",
+			key: field.key,
+			value: [{ id: "services", name: "Services", values: ["retained", "missing"] }],
+			mode: "replace",
+			revision: 1,
+			schemaVersion: 1,
+			reset: false,
+		} as SettingFieldView["override"],
+	};
+	const latest = { ...groups, override: { ...groups.override!, revision: 2 } };
+	const response = {
+		subject: { id: "component" },
+		fields: [latest],
+		inactive: [],
+	} as unknown as import("@leitwerk-dev/protocol/http-contracts").SettingsPreview;
+	vi.mocked(changeSettings).mockImplementation(async (_change, preview) => {
+		if (preview) return response;
+		throw new SettingsRequestError("Setting changed; your draft is preserved", 409);
+	});
+	vi.mocked(fetchSettingsPreview).mockResolvedValue(response);
+	vi.mocked(fetchSettingsChoices).mockRejectedValue(new Error("Provider unavailable"));
+	await render(groups, true, (preview) => {
+		groups.override = preview.fields[0].override;
+	});
+	expect(document.body.textContent).toContain("Monitor init");
+	expect(document.body.textContent).toContain("missing (unavailable)");
+	const name = document.querySelector<HTMLInputElement>(
+		'.named-selections input:not([type="checkbox"])',
+	)!;
+	name.value = "Operator group";
+	name.dispatchEvent(new Event("input", { bubbles: true }));
+	await tick();
+	const search = document.querySelector<HTMLInputElement>('input[type="search"]')!;
+	search.value = "monitor";
+	search.dispatchEvent(new Event("input", { bubbles: true }));
+	await vi.waitFor(() => expect(document.body.textContent).toContain("Provider unavailable"));
+	await vi.waitFor(() => expect(document.body.textContent).toContain("Group preview"));
+	vi.mocked(fetchSettingsChoices).mockResolvedValue({ choices: [] });
+	[...document.querySelectorAll<HTMLButtonElement>("button")]
+		.find((button) => button.textContent === "Retry search")!
+		.click();
+	await vi.waitFor(() =>
+		expect(document.body.textContent).toContain("No additional matches. Try a different search."),
+	);
+	document.querySelector<HTMLButtonElement>('button[type="submit"]')!.click();
+	await vi.waitFor(() =>
+		expect(document.body.textContent).toContain("Keep draft and use latest revision"),
+	);
+	expect(name.value).toBe("Operator group");
+	expect(
+		[
+			...document.querySelectorAll<HTMLInputElement>('.named-selections input[type="checkbox"]'),
+		].filter((input) => input.checked),
+	).toHaveLength(2);
+	[...document.querySelectorAll<HTMLButtonElement>("button")]
+		.find((button) => button.textContent === "Keep draft and use latest revision")!
+		.click();
+	await tick();
+	vi.mocked(changeSettings).mockResolvedValue(response);
+	document.querySelector<HTMLButtonElement>('button[type="submit"]')!.click();
+	await vi.waitFor(() =>
+		expect(changeSettings).toHaveBeenLastCalledWith(
+			expect.objectContaining({
+				expectedRevision: 2,
+				value: [{ id: "services", name: "Operator group", values: ["retained", "missing"] }],
+			}),
+		),
+	);
 });

@@ -68,6 +68,7 @@ beforeAll(async () => {
 			websocketFixtureProviderExtension,
 		]),
 		configOverride(config) {
+			config.pi.default_model_profile = "deep-reasoning";
 			config.pi.model_profiles = [
 				{
 					id: "deep-reasoning",

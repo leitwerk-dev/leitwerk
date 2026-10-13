@@ -17,6 +17,7 @@ import { resolveDockerRegistryCredentials } from "../docker-registry-credentials
 import { isValidStorageSize } from "../process-storage-size.js";
 import { SAFE_SKILL_ID_PATTERN } from "../skills/skill-id.js";
 import type { LeitwerkConfig } from "./config-types.js";
+import { resolveKubernetesDockerIsolation } from "./kubernetes-docker-isolation.js";
 import { isHttpsOrLoopbackHttpUrl, isValidHttpUrl, parseHttpUrl } from "./url-policy.js";
 
 const DEFAULT_SEARCH_PATHS = ["./leitwerk.yaml", "~/.leitwerk/leitwerk.yaml"];
@@ -135,12 +136,19 @@ export function loadConfigFromFile(filePath: string): ConfigLoadResult | ConfigL
 export function loadConfig(explicitPath?: string): ConfigLoadResult | ConfigLoadError {
 	const filePath = resolveConfigPath(explicitPath);
 	if (!filePath) {
-		return { ok: true, config: getDefaultConfig(), filePath: "<defaults>" };
+		return {
+			ok: false,
+			error:
+				"Configuration file required: configure pi.default_model_profile and pi.model_profiles",
+		};
 	}
 	return loadConfigFromFile(filePath);
 }
 
 const stringArraySchema = v.array(v.string());
+const skillIdsSchema = v.array(
+	v.pipe(v.string(), v.regex(SAFE_SKILL_ID_PATTERN, "Invalid skill ID")),
+);
 const modelTurnConfigSchema = v.looseObject({
 	model_profile: v.optional(v.string()),
 });
@@ -287,6 +295,10 @@ const configSchema = v.looseObject({
 	),
 	pi: v.looseObject({
 		agent_dir: v.string(),
+		default_model_profile: v.pipe(
+			v.string(),
+			v.check((value) => value.trim() !== "", "Must be a non-empty model profile ID"),
+		),
 		model_profiles: v.array(
 			v.looseObject({
 				id: v.string(),
@@ -320,6 +332,7 @@ const configSchema = v.looseObject({
 		v.record(
 			v.string(),
 			v.looseObject({
+				default_skills: v.optional(skillIdsSchema),
 				default_model_profile: v.optional(v.string()),
 				allowed_model_profiles: v.optional(v.pipe(stringArraySchema, v.nonEmpty())),
 				worker_runtime_profile: v.optional(v.string()),
@@ -350,6 +363,7 @@ const configSchema = v.looseObject({
 		sources: stringArraySchema,
 	}),
 	auth: v.optional(authConfigSchema),
+	default_skills: v.optional(skillIdsSchema),
 	docker_registries: v.optional(
 		v.strictObject({
 			profiles: v.record(v.string(), v.strictObject(dockerRegistryCredentialSchema.entries)),
@@ -381,6 +395,7 @@ const configSchema = v.looseObject({
 			api_server_url: v.optional(v.string()),
 			default_worker_runtime_profile: v.optional(v.string()),
 			worker_service_account: v.optional(v.string()),
+			image_preload: v.optional(v.strictObject({ enabled: v.boolean() })),
 			process_volume: v.looseObject({
 				storage_class_name: v.optional(v.string()),
 				pre_provision: v.optional(
@@ -392,8 +407,11 @@ const configSchema = v.looseObject({
 			}),
 			docker: v.optional(
 				v.strictObject({
+					worker_runtime_profile: v.optional(v.pipe(v.string(), v.trim(), v.nonEmpty())),
+					node_selector: v.optional(v.record(v.string(), v.string())),
 					runtime_class_name: v.optional(v.string()),
 					host_users: v.optional(v.boolean()),
+					isolation: v.optional(v.picklist(["gvisor", "virtual-machine"])),
 					gvisor: v.optional(v.boolean()),
 					process_storage_class_name: v.optional(v.string()),
 					network: v.optional(dockerNetworkSchema),
@@ -495,6 +513,11 @@ function collectModelProfileReferenceErrors(config: LeitwerkConfig): string[] {
 			.filter((profileId) => typeof profileId === "string" && profileId.trim() !== ""),
 	);
 	const titleModelProfile = config.pi.process_title_generation.model_profile;
+	if (!configuredModelProfileIds.has(config.pi.default_model_profile)) {
+		errors.push(
+			`Unknown model profile '${config.pi.default_model_profile}' at pi.default_model_profile`,
+		);
+	}
 	if (typeof titleModelProfile === "string") {
 		if (titleModelProfile.trim() === "") {
 			errors.push(
@@ -559,6 +582,10 @@ function collectWorkerRuntimeProfileErrors(config: LeitwerkConfig): string[] {
 		checkReference(
 			config.kubernetes?.default_worker_runtime_profile,
 			"kubernetes.default_worker_runtime_profile",
+		);
+		checkReference(
+			config.kubernetes?.docker?.worker_runtime_profile,
+			"kubernetes.docker.worker_runtime_profile",
 		);
 	}
 	for (const [key, component] of Object.entries(config.components)) {
@@ -737,6 +764,14 @@ function collectKubernetesRunnerConfigErrors(config: LeitwerkConfig): string[] {
 		errors.push(
 			"worker_runtime_profiles must include at least one profile when workers.runner is 'kubernetes'",
 		);
+	if (k.image_preload?.enabled) {
+		for (const [id, profile] of Object.entries(config.worker_runtime_profiles ?? {})) {
+			if (!/^[a-zA-Z0-9][a-zA-Z0-9._:/-]*@sha256:[0-9a-f]{64}$/.test(profile.image))
+				errors.push(
+					`worker_runtime_profiles.${id}.image must be digest-qualified when kubernetes.image_preload.enabled is true`,
+				);
+		}
+	}
 	const defaultProfile = k.default_worker_runtime_profile ?? config.workers.default_runtime_profile;
 	if (!defaultProfile?.trim())
 		errors.push(
@@ -935,6 +970,7 @@ function validateResolvedConfig(config: Record<string, unknown>): string[] {
 		...collectLocalRunnerConfigErrors(resolvedConfig),
 		...collectDockerRunnerConfigErrors(resolvedConfig),
 		...collectKubernetesRunnerConfigErrors(resolvedConfig),
+		...resolveKubernetesDockerIsolation(resolvedConfig.kubernetes?.docker).errors,
 		...collectInternalTlsConfigErrors(resolvedConfig),
 		...collectAuthConfigErrors(resolvedConfig),
 	];
@@ -974,7 +1010,7 @@ export function sanitizeConfigForLogging(value: unknown, path: readonly string[]
 	return sanitized;
 }
 
-/** @public */
+/** Configuration template; set model_profiles and default_model_profile before startup. @public */
 export function getDefaultConfig(): LeitwerkConfig {
 	return {
 		skill_repositories: [],
@@ -1028,6 +1064,7 @@ export function getDefaultConfig(): LeitwerkConfig {
 		pi: {
 			agent_dir: "~/.pi/leitwerk",
 			model_profiles: [],
+			default_model_profile: "",
 			process_title_generation: {
 				model_profile: null,
 				retry: {
@@ -1048,6 +1085,7 @@ export function getDefaultConfig(): LeitwerkConfig {
 			},
 		},
 		process_configs: {},
+		default_skills: [],
 		notifications: {
 			all: { enabled: false, type: "teams_webhook", url: "" },
 			debug: { enabled: false, type: "teams_webhook", url: "" },

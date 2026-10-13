@@ -210,6 +210,7 @@ function createDefaultServerSetupDeps(): CoreServerSetupDeps {
 			resolveUiOptions: async () => ({}),
 			resolveUiRelaunchInput: async (_launcherId, previousInput) => ({ ...previousInput }),
 			resolveUiLauncher: async () => ({ ok: false as const, errors: [] }),
+			resolveUiLauncherPreview: async () => ({ ok: false as const, errors: [] }),
 		},
 		launcherRecentValues: {
 			list: () => ({}),

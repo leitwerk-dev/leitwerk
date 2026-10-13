@@ -2,12 +2,12 @@
 
 import type { ProcessInstance } from "@leitwerk-dev/domain";
 import type {
+	FutureLaunchSummary,
 	LauncherModelConfigDefaults,
 	LauncherModelConfigPreview,
 	ScheduleConfigInput,
 	UiLauncherSummary,
 } from "@leitwerk-dev/protocol/http-contracts";
-import { mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	fetchLauncherDefaults,
@@ -17,10 +17,10 @@ import {
 	launchLauncher,
 	previewCronExpression,
 	updateScheduledLaunch,
+	validateLauncher,
 } from "../lib/api.js";
+import { mountTest, unmountTests } from "../test-support/mount.js";
 import GenericLauncher from "./GenericLauncher.svelte";
-
-const mountedApps: Array<ReturnType<typeof mount>> = [];
 
 const serverDefaultProfile = {
 	id: "claude_fast",
@@ -76,6 +76,12 @@ function createLauncher(
 	};
 }
 
+function createRecentValuesLauncher() {
+	const launcher = createLauncher();
+	launcher.launchConfigSchema.fields[0].rememberRecentValues = true;
+	return launcher;
+}
+
 function createPreview(
 	overrides: Partial<LauncherModelConfigPreview> & {
 		draftPlanEffective?: LauncherModelConfigPreview["turns"][number]["effective"];
@@ -114,9 +120,11 @@ vi.mock("../lib/api.js", () => ({
 	launchLauncher: vi.fn(),
 	previewCronExpression: vi.fn(),
 	updateScheduledLaunch: vi.fn(),
+	validateLauncher: vi.fn(),
 }));
 
 function resetDefaultMocks() {
+	vi.mocked(validateLauncher).mockResolvedValue([]);
 	vi.mocked(fetchLauncherDefaults).mockResolvedValue({
 		title: null,
 		defaults: {
@@ -142,22 +150,21 @@ function resetDefaultMocks() {
 
 resetDefaultMocks();
 
-function createDeferred<T>() {
-	let resolve!: (value: T) => void;
-	let reject!: (error?: unknown) => void;
-	const promise = new Promise<T>((res, rej) => {
-		resolve = res;
-		reject = rej;
-	});
-	return { promise, resolve, reject };
-}
-
 async function flush() {
 	await Promise.resolve();
 	await Promise.resolve();
 	await Promise.resolve();
 	await Promise.resolve();
 	await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+async function waitForValidation(target: HTMLElement) {
+	await flush();
+	await vi.waitFor(() => {
+		expect(target.querySelector(".validation-status")?.textContent).not.toContain(
+			"Checking values",
+		);
+	});
 }
 
 async function waitForSelector(
@@ -176,31 +183,50 @@ async function waitForSelector(
 	throw new Error(`Timed out waiting for selector: ${selector}`);
 }
 
+async function selectScheduleMode(target: HTMLElement, mode: ScheduleConfigInput["mode"]) {
+	const radios = target.querySelectorAll<HTMLInputElement>(
+		'input[name="test-launcher-form-schedule-mode"]',
+	);
+	radios[["now", "once", "cron"].indexOf(mode)]?.click();
+	await flush();
+}
+
+async function getScheduleControls(target: HTMLElement) {
+	const field = (id: string) => waitForSelector(target, `#test-launcher-form-schedule-${id}`);
+	return {
+		dateInput: (await field("date")) as HTMLInputElement,
+		hourSelect: (await field("hour")) as HTMLSelectElement,
+		minuteSelect: (await field("minute")) as HTMLSelectElement,
+	};
+}
+
+function setControlValue(control: HTMLInputElement | HTMLSelectElement, value: string) {
+	control.value = value;
+	control.dispatchEvent(
+		new Event(control instanceof HTMLSelectElement ? "change" : "input", { bubbles: true }),
+	);
+}
+
 function mountSubject(
 	options: {
 		launcher?: UiLauncherSummary;
 		initialTitle?: string | null;
+		initialValues?: Record<string, unknown> | null;
 		initialSkillIds?: readonly string[] | null;
 		initialModelConfig?: LauncherModelConfigDefaults | null;
 		initialSchedule?: ScheduleConfigInput | null;
+		editingFutureLaunch?: FutureLaunchSummary;
 	} = {},
 ) {
-	const target = document.createElement("div");
-	document.body.appendChild(target);
 	const onLaunched = vi.fn();
-	const app = mount(GenericLauncher, {
-		target,
-		props: {
+	return {
+		...mountTest(GenericLauncher, {
+			...options,
 			launcher: options.launcher ?? createLauncher(),
-			initialTitle: options.initialTitle,
-			initialSkillIds: options.initialSkillIds ?? null,
-			initialModelConfig: options.initialModelConfig ?? null,
-			initialSchedule: options.initialSchedule ?? null,
 			onLaunched,
-		},
-	});
-	mountedApps.push(app);
-	return { app, onLaunched, target };
+		}),
+		onLaunched,
+	};
 }
 
 async function getModelSummary(target: HTMLElement): Promise<HTMLElement> {
@@ -243,8 +269,7 @@ async function ensureAdvancedEditorOpen(target: HTMLElement) {
 }
 
 afterEach(async () => {
-	for (const app of mountedApps.splice(0)) await unmount(app);
-	document.body.innerHTML = "";
+	await unmountTests();
 	window.localStorage.clear();
 	vi.restoreAllMocks();
 	vi.clearAllMocks();
@@ -307,6 +332,7 @@ describe("GenericLauncher", () => {
 		const { target, onLaunched } = mountSubject({ initialTitle: "Retry title" });
 		await flush();
 
+		await waitForValidation(target);
 		(target.querySelector('button[type="submit"]') as HTMLButtonElement | null)?.click();
 		await flush();
 
@@ -330,6 +356,7 @@ describe("GenericLauncher", () => {
 		await flush();
 
 		expect((target.querySelector('input[value="review"]') as HTMLInputElement).checked).toBe(true);
+		await waitForValidation(target);
 		(target.querySelector('button[type="submit"]') as HTMLButtonElement | null)?.click();
 		await flush();
 
@@ -340,6 +367,54 @@ describe("GenericLauncher", () => {
 			{},
 			{ mode: "now" },
 			["review"],
+		);
+	});
+
+	it("submits multiple selections and retains unavailable values when options fail to refresh", async () => {
+		vi.mocked(fetchLauncherDefaults).mockResolvedValue({
+			title: null,
+			defaults: { groups: "services\nretained" },
+			modelConfig: {},
+		});
+		vi.mocked(fetchLauncherOptions).mockResolvedValue({
+			groups: [
+				{ value: "services", label: "Services" },
+				{ value: "monitoring", label: "Monitoring" },
+			],
+		});
+		const { target } = mountSubject({
+			launcher: createLauncher({
+				fields: [{ id: "groups", label: "Groups", kind: "select", multiple: true, required: true }],
+			}),
+		});
+		await flush();
+		const checkbox = (label: string) => {
+			const input = [...target.querySelectorAll("#test-launcher-form-groups label")]
+				.find((element) => element.textContent?.trim() === label)
+				?.querySelector("input");
+			if (!(input instanceof HTMLInputElement)) throw new Error(`Missing group ${label}`);
+			return input;
+		};
+		expect(checkbox("Services").checked).toBe(true);
+		expect(checkbox("retained (unavailable)").checked).toBe(true);
+		vi.mocked(fetchLauncherOptions).mockRejectedValue(new Error("Provider unavailable"));
+		checkbox("Monitoring").click();
+		await flush();
+		expect(target.textContent).toContain("We couldn't refresh the latest options");
+		expect(checkbox("Monitoring").checked).toBe(true);
+		expect(checkbox("retained (unavailable)").checked).toBe(true);
+		checkbox("Services").click();
+		await flush();
+		await waitForValidation(target);
+		target.querySelector<HTMLButtonElement>('button[type="submit"]')?.click();
+		await flush();
+		expect(launchLauncher).toHaveBeenCalledWith(
+			"test-launcher",
+			null,
+			{ groups: "retained\nmonitoring" },
+			{},
+			{ mode: "now" },
+			[],
 		);
 	});
 
@@ -710,6 +785,7 @@ describe("GenericLauncher", () => {
 		expect(draftPlanSelect.value).toBe("");
 		expect(target.querySelector('[data-action="reset-model-config"]')).toBeNull();
 
+		await waitForValidation(target);
 		(target.querySelector('button[type="submit"]') as HTMLButtonElement | null)?.click();
 		await flush();
 
@@ -743,6 +819,7 @@ describe("GenericLauncher", () => {
 		draftPlanSelect.dispatchEvent(new Event("change", { bubbles: true }));
 		await flush();
 
+		await waitForValidation(target);
 		(target.querySelector('button[type="submit"]') as HTMLButtonElement | null)?.click();
 		await flush();
 
@@ -767,6 +844,7 @@ describe("GenericLauncher", () => {
 		});
 		await flush();
 
+		await waitForValidation(target);
 		(target.querySelector('button[type="submit"]') as HTMLButtonElement | null)?.click();
 		await flush();
 
@@ -830,6 +908,7 @@ describe("GenericLauncher", () => {
 		const { target } = mountSubject();
 		await flush();
 
+		await waitForValidation(target);
 		(target.querySelector('button[type="submit"]') as HTMLButtonElement | null)?.click();
 		await flush();
 
@@ -851,17 +930,7 @@ describe("GenericLauncher", () => {
 	});
 
 	it("stores and reuses recent values for opted-in text fields after a successful launch", async () => {
-		const launcher = createLauncher({
-			fields: [
-				{
-					id: "repoPath",
-					label: "Repo Path",
-					kind: "text",
-					required: true,
-					rememberRecentValues: true,
-				},
-			],
-		});
+		const launcher = createRecentValuesLauncher();
 		const firstMount = mountSubject({ launcher });
 		await flush();
 
@@ -873,10 +942,10 @@ describe("GenericLauncher", () => {
 		repoInput.dispatchEvent(new Event("input", { bubbles: true }));
 		await flush();
 
+		await waitForValidation(firstMount.target);
 		(firstMount.target.querySelector('button[type="submit"]') as HTMLButtonElement | null)?.click();
 		await flush();
-		await unmount(firstMount.app);
-		mountedApps.splice(mountedApps.indexOf(firstMount.app), 1);
+		await firstMount.dispose();
 
 		const secondMount = mountSubject({ launcher });
 		await flush();
@@ -896,17 +965,7 @@ describe("GenericLauncher", () => {
 	});
 
 	it("surfaces server-provided recent values for opted-in text fields", async () => {
-		const launcher = createLauncher({
-			fields: [
-				{
-					id: "repoPath",
-					label: "Repo Path",
-					kind: "text",
-					required: true,
-					rememberRecentValues: true,
-				},
-			],
-		});
+		const launcher = createRecentValuesLauncher();
 		vi.mocked(fetchLauncherRecentValues).mockResolvedValueOnce({
 			repoPath: ["/tmp/server-recent-repo"],
 		});
@@ -929,17 +988,7 @@ describe("GenericLauncher", () => {
 	});
 
 	it("treats recent-value persistence as best effort and still completes the launch", async () => {
-		const launcher = createLauncher({
-			fields: [
-				{
-					id: "repoPath",
-					label: "Repo Path",
-					kind: "text",
-					required: true,
-					rememberRecentValues: true,
-				},
-			],
-		});
+		const launcher = createRecentValuesLauncher();
 		const setItemSpy = vi
 			.spyOn(Object.getPrototypeOf(window.localStorage), "setItem")
 			.mockImplementationOnce(() => {
@@ -948,6 +997,7 @@ describe("GenericLauncher", () => {
 		const { target, onLaunched } = mountSubject({ launcher });
 		await flush();
 
+		await waitForValidation(target);
 		(target.querySelector('button[type="submit"]') as HTMLButtonElement | null)?.click();
 		await flush();
 
@@ -957,17 +1007,7 @@ describe("GenericLauncher", () => {
 	});
 
 	it("does not remember credential-bearing absolute repo urls", async () => {
-		const launcher = createLauncher({
-			fields: [
-				{
-					id: "repoPath",
-					label: "Repo Path",
-					kind: "text",
-					required: true,
-					rememberRecentValues: true,
-				},
-			],
-		});
+		const launcher = createRecentValuesLauncher();
 		const firstMount = mountSubject({ launcher });
 		await flush();
 
@@ -979,6 +1019,7 @@ describe("GenericLauncher", () => {
 		repoInput.dispatchEvent(new Event("input", { bubbles: true }));
 		await flush();
 
+		await waitForValidation(firstMount.target);
 		(firstMount.target.querySelector('button[type="submit"]') as HTMLButtonElement | null)?.click();
 		await flush();
 		expect(firstMount.onLaunched).toHaveBeenCalledWith("proc_1");
@@ -988,18 +1029,8 @@ describe("GenericLauncher", () => {
 	});
 
 	it("stores the submitted recent value even if the field changes before the launch resolves", async () => {
-		const launcher = createLauncher({
-			fields: [
-				{
-					id: "repoPath",
-					label: "Repo Path",
-					kind: "text",
-					required: true,
-					rememberRecentValues: true,
-				},
-			],
-		});
-		const deferredLaunch = createDeferred<Awaited<ReturnType<typeof launchLauncher>>>();
+		const launcher = createRecentValuesLauncher();
+		const deferredLaunch = Promise.withResolvers<Awaited<ReturnType<typeof launchLauncher>>>();
 		vi.mocked(launchLauncher).mockReturnValueOnce(deferredLaunch.promise);
 		const firstMount = mountSubject({ launcher });
 		await flush();
@@ -1012,6 +1043,7 @@ describe("GenericLauncher", () => {
 		repoInput.dispatchEvent(new Event("input", { bubbles: true }));
 		await flush();
 
+		await waitForValidation(firstMount.target);
 		(firstMount.target.querySelector('button[type="submit"]') as HTMLButtonElement | null)?.click();
 		await flush();
 
@@ -1025,8 +1057,7 @@ describe("GenericLauncher", () => {
 			projects: [],
 		});
 		await flush();
-		await unmount(firstMount.app);
-		mountedApps.splice(mountedApps.indexOf(firstMount.app), 1);
+		await firstMount.dispose();
 
 		const secondMount = mountSubject({ launcher });
 		await flush();
@@ -1047,28 +1078,12 @@ describe("GenericLauncher", () => {
 		const { target } = mountSubject();
 		await flush();
 
-		const scheduleRadios = target.querySelectorAll<HTMLInputElement>(
-			'input[name="test-launcher-form-schedule-mode"]',
-		);
-		scheduleRadios[1]?.click();
-		await flush();
-
-		const oncePicker = (await waitForSelector(
+		await selectScheduleMode(target, "once");
+		const oncePicker = await waitForSelector(
 			target,
 			'[data-section="launcher-schedule-once-picker"]',
-		)) as HTMLElement;
-		const dateInput = (await waitForSelector(
-			target,
-			"#test-launcher-form-schedule-date",
-		)) as HTMLInputElement;
-		const hourSelect = (await waitForSelector(
-			target,
-			"#test-launcher-form-schedule-hour",
-		)) as HTMLSelectElement;
-		const minuteSelect = (await waitForSelector(
-			target,
-			"#test-launcher-form-schedule-minute",
-		)) as HTMLSelectElement;
+		);
+		const { dateInput, hourSelect, minuteSelect } = await getScheduleControls(target);
 
 		expect(oncePicker.dataset.timeFormat).toBe("24-hour");
 		expect(target.querySelector('input[type="time"]')).toBeNull();
@@ -1076,14 +1091,12 @@ describe("GenericLauncher", () => {
 		expect(hourSelect.options[1]?.value).toBe("00");
 		expect(hourSelect.options[24]?.value).toBe("23");
 
-		dateInput.value = "2026-04-24";
-		dateInput.dispatchEvent(new Event("input", { bubbles: true }));
-		hourSelect.value = "18";
-		hourSelect.dispatchEvent(new Event("change", { bubbles: true }));
-		minuteSelect.value = "45";
-		minuteSelect.dispatchEvent(new Event("change", { bubbles: true }));
+		setControlValue(dateInput, "2026-04-24");
+		setControlValue(hourSelect, "18");
+		setControlValue(minuteSelect, "45");
 		await flush();
 
+		await waitForValidation(target);
 		(target.querySelector('button[type="submit"]') as HTMLButtonElement | null)?.click();
 		await flush();
 
@@ -1097,58 +1110,23 @@ describe("GenericLauncher", () => {
 		);
 	});
 
-	it("prefills the combined once picker from the initial schedule", async () => {
-		const { target } = mountSubject({
-			initialSchedule: {
-				mode: "once",
-				runAt: new Date(2026, 3, 24, 18, 45, 0, 0).toISOString(),
-			},
-		});
-		await flush();
-
-		const dateInput = (await waitForSelector(
-			target,
-			"#test-launcher-form-schedule-date",
-		)) as HTMLInputElement;
-		const hourSelect = (await waitForSelector(
-			target,
-			"#test-launcher-form-schedule-hour",
-		)) as HTMLSelectElement;
-		const minuteSelect = (await waitForSelector(
-			target,
-			"#test-launcher-form-schedule-minute",
-		)) as HTMLSelectElement;
-
-		expect(dateInput.value).toBe("2026-04-24");
-		expect(hourSelect.value).toBe("18");
-		expect(minuteSelect.value).toBe("45");
-	});
-
-	it("prefills the combined once picker with the current date and time", async () => {
-		vi.useFakeTimers({ toFake: ["Date"] });
-		vi.setSystemTime(new Date(2026, 3, 24, 18, 45, 0, 0));
-		const { target } = mountSubject();
-		await flush();
-
-		const scheduleRadios = target.querySelectorAll<HTMLInputElement>(
-			'input[name="test-launcher-form-schedule-mode"]',
+	it.each([
+		"initial schedule",
+		"current date and time",
+	])("prefills the combined once picker from the %s", async (source) => {
+		const runAt = new Date(2026, 3, 24, 18, 45, 0, 0);
+		if (source === "current date and time") {
+			vi.useFakeTimers({ toFake: ["Date"] });
+			vi.setSystemTime(runAt);
+		}
+		const { target } = mountSubject(
+			source === "initial schedule"
+				? { initialSchedule: { mode: "once", runAt: runAt.toISOString() } }
+				: {},
 		);
-		scheduleRadios[1]?.click();
 		await flush();
-
-		const dateInput = (await waitForSelector(
-			target,
-			"#test-launcher-form-schedule-date",
-		)) as HTMLInputElement;
-		const hourSelect = (await waitForSelector(
-			target,
-			"#test-launcher-form-schedule-hour",
-		)) as HTMLSelectElement;
-		const minuteSelect = (await waitForSelector(
-			target,
-			"#test-launcher-form-schedule-minute",
-		)) as HTMLSelectElement;
-
+		if (source === "current date and time") await selectScheduleMode(target, "once");
+		const { dateInput, hourSelect, minuteSelect } = await getScheduleControls(target);
 		expect(dateInput.value).toBe("2026-04-24");
 		expect(hourSelect.value).toBe("18");
 		expect(minuteSelect.value).toBe("45");
@@ -1158,11 +1136,7 @@ describe("GenericLauncher", () => {
 		const { target } = mountSubject();
 		await flush();
 
-		const scheduleRadios = target.querySelectorAll<HTMLInputElement>(
-			'input[name="test-launcher-form-schedule-mode"]',
-		);
-		scheduleRadios[2]?.click();
-		await flush();
+		await selectScheduleMode(target, "cron");
 
 		const cronExample = (await waitForSelector(
 			target,
@@ -1179,62 +1153,467 @@ describe("GenericLauncher", () => {
 		expect(vi.mocked(previewCronExpression)).toHaveBeenLastCalledWith("0 13 * * *");
 	});
 
-	it("ignores stale cron previews after leaving cron mode", async () => {
-		const deferredPreview = createDeferred<string>();
+	it.each([
+		"leaving cron mode",
+		"clearing the cron field",
+	])("ignores stale cron previews after %s", async (action) => {
+		const deferredPreview = Promise.withResolvers<string>();
 		vi.mocked(previewCronExpression).mockReturnValueOnce(deferredPreview.promise);
 		const { target } = mountSubject();
 		await flush();
-
-		const scheduleRadios = target.querySelectorAll<HTMLInputElement>(
-			'input[name="test-launcher-form-schedule-mode"]',
-		);
-		scheduleRadios[2]?.click();
-		await flush();
-
+		await selectScheduleMode(target, "cron");
 		const cronInput = (await waitForSelector(
 			target,
 			"#test-launcher-form-schedule-cron",
 		)) as HTMLInputElement;
-		cronInput.value = "0 13 * * *";
-		cronInput.dispatchEvent(new Event("input", { bubbles: true }));
+		setControlValue(cronInput, "0 13 * * *");
 		await flush();
-
-		scheduleRadios[0]?.click();
-		await flush();
-
+		if (action === "leaving cron mode") await selectScheduleMode(target, "now");
+		else {
+			setControlValue(cronInput, "");
+			await flush();
+		}
 		deferredPreview.resolve(new Date(2026, 3, 24, 18, 45).toISOString());
 		await flush();
-
 		expect(target.textContent).not.toContain("Next run:");
 	});
+});
 
-	it("ignores stale cron previews after the cron field is cleared", async () => {
-		const deferredPreview = createDeferred<string>();
-		vi.mocked(previewCronExpression).mockReturnValueOnce(deferredPreview.promise);
+function selectionFixture(initialValues?: Record<string, unknown>) {
+	const choices = {
+		project: [
+			{ value: "one", label: "One" },
+			{ value: "two", label: "Two" },
+		],
+		groups: [
+			{ value: "services", label: "Services", selectionValues: ["a", "b"] },
+			{ value: "monitoring", label: "Monitoring", selectionValues: ["b", "c"] },
+		],
+		components: ["a", "b", "c", "d"].map((value) => ({ value, label: `Component ${value}` })),
+	};
+	vi.mocked(fetchLauncherDefaults).mockResolvedValue({
+		title: null,
+		defaults: { project: "one", groups: "services", components: "a\nb" },
+		modelConfig: {},
+	});
+	vi.mocked(fetchLauncherOptions).mockResolvedValue(choices);
+	const { target } = mountSubject({
+		initialValues,
+		launcher: createLauncher({
+			fields: [
+				{ id: "project", label: "Project", kind: "select" },
+				{ id: "groups", label: "Groups", kind: "select", multiple: true, resetOn: ["project"] },
+				{
+					id: "components",
+					label: "Components",
+					kind: "select",
+					multiple: true,
+					searchable: true,
+					required: true,
+					presetsFrom: "groups",
+					resetOn: ["project"],
+				},
+			],
+		}),
+	});
+	const checkbox = (field: string, label: string) => {
+		const row = [...target.querySelectorAll(`#test-launcher-form-${field} label`)].find(
+			(row) => row.querySelector(".selection-name")?.textContent === label,
+		);
+		const input = row?.querySelector("input");
+		if (!(input instanceof HTMLInputElement)) throw new Error(`Missing option ${label}`);
+		return input;
+	};
+	const selected = () =>
+		[
+			...target.querySelectorAll<HTMLInputElement>(
+				"#test-launcher-form-components input[type=checkbox]:checked",
+			),
+		].map((input) => input.parentElement?.querySelector(".selection-name")?.textContent);
+	return { target, choices, checkbox, selected };
+}
+
+describe("launcher selection presets", () => {
+	it("supports schema-defined presets and cascades scope resets", async () => {
+		vi.mocked(fetchLauncherDefaults).mockResolvedValue({
+			title: null,
+			defaults: { profile: "first", project: "one", groups: "services" },
+			modelConfig: {},
+		});
+		const { target } = mountSubject({
+			launcher: createLauncher({
+				fields: [
+					{
+						id: "profile",
+						label: "Profile",
+						kind: "select",
+						options: ["first", "second"].map((value) => ({ value, label: value })),
+					},
+					{
+						id: "project",
+						label: "Project",
+						kind: "select",
+						options: [{ value: "one", label: "One" }],
+						resetOn: ["profile"],
+					},
+					{
+						id: "groups",
+						label: "Groups",
+						kind: "select",
+						multiple: true,
+						resetOn: ["project"],
+						options: [{ value: "services", label: "Services", selectionValues: ["a"] }],
+					},
+					{
+						id: "components",
+						label: "Components",
+						kind: "select",
+						multiple: true,
+						presetsFrom: "groups",
+						resetOn: ["project"],
+						options: [{ value: "a", label: "Component a" }],
+					},
+				],
+			}),
+		});
+		await flush();
+		const selected = () =>
+			target.querySelectorAll("#test-launcher-form-components input:checked").length;
+		expect(selected()).toBe(1);
+		const profile = target.querySelector<HTMLSelectElement>("#test-launcher-form-profile");
+		if (!profile) throw new Error("Missing profile selector");
+		profile.value = "second";
+		profile.dispatchEvent(new Event("change", { bubbles: true }));
+		await flush();
+		expect(target.querySelector<HTMLSelectElement>("#test-launcher-form-project")?.value).toBe("");
+		expect(target.querySelectorAll("#test-launcher-form-groups input:checked")).toHaveLength(0);
+		expect(selected()).toBe(0);
+	});
+	it("keeps explicit additions and exclusions across overlapping presets and submits only the final selection", async () => {
+		const { target, checkbox, selected } = selectionFixture();
+		await flush();
+		expect(selected()).toEqual(["Component a", "Component b"]);
+		checkbox("components", "Component b").click();
+		await flush();
+		checkbox("groups", "Monitoring").click();
+		await flush();
+		expect(selected()).toEqual(["Component a", "Component c"]);
+		checkbox("components", "Component d").click();
+		await flush();
+		checkbox("groups", "Services").click();
+		await flush();
+		expect(selected()).toEqual(["Component c", "Component d"]);
+		checkbox("components", "Component b").click();
+		await flush();
+		checkbox("groups", "Monitoring").click();
+		await flush();
+		expect(selected()).toEqual(["Component b", "Component d"]);
+		const search = target.querySelector<HTMLInputElement>('input[type="search"]');
+		if (!search) throw new Error("Missing selection search");
+		search.value = "Component a";
+		search.dispatchEvent(new Event("input", { bubbles: true }));
+		await flush();
+		expect(target.querySelector(".selection-count")?.textContent).toBe("2 selected");
+		expect(selected()).toEqual([]);
+		search.value = "";
+		search.dispatchEvent(new Event("input", { bubbles: true }));
+		await flush();
+		expect(selected()).toEqual(["Component b", "Component d"]);
+		await waitForValidation(target);
+		target.querySelector<HTMLButtonElement>('button[type="submit"]')?.click();
+		await flush();
+		const input = vi.mocked(launchLauncher).mock.calls.at(-1)?.[2];
+		if (!input) throw new Error("Missing launch input");
+		expect(input.groups).toBe("");
+		expect(new Set(String(input.components).split("\n"))).toEqual(new Set(["b", "d"]));
+	});
+
+	it.each([
+		"d",
+		"",
+	])("preserves a saved explicit selection of %j instead of restoring defaults", async (components) => {
+		const { target, checkbox, selected } = selectionFixture({
+			project: "one",
+			groups: "monitoring",
+			components,
+		});
+		await flush();
+		expect(selected()).toEqual(components ? ["Component d"] : []);
+		checkbox("groups", "Services").click();
+		await flush();
+		expect(selected()).toEqual(components ? ["Component a", "Component d"] : ["Component a"]);
+		checkbox("components", "Component a").click();
+		await flush();
+		expect(target.querySelector(".selection-count")?.textContent).toBe(
+			components ? "1 selected" : "0 selected",
+		);
+	});
+
+	it("expands legacy draft groups instead of the current default group's components", async () => {
+		const { selected } = selectionFixture({ project: "one", groups: "monitoring" });
+		await flush();
+		expect(selected()).toEqual(["Component b", "Component c"]);
+	});
+
+	it("retains unavailable choices and edits through option failures", async () => {
+		const { choices, checkbox, selected } = selectionFixture();
+		await flush();
+		vi.mocked(fetchLauncherOptions).mockResolvedValue({ ...choices, groups: [], components: [] });
+		checkbox("components", "Component d").click();
+		await flush();
+		expect(selected()).toEqual([
+			"Component a (unavailable)",
+			"Component b (unavailable)",
+			"Component d (unavailable)",
+		]);
+		vi.mocked(fetchLauncherOptions).mockRejectedValue(new Error("Offline"));
+		checkbox("components", "Component b (unavailable)").click();
+		await flush();
+		expect(selected()).toEqual(["Component a (unavailable)", "Component d (unavailable)"]);
+	});
+
+	it("clears selections and overrides when project changes and ignores older option responses", async () => {
+		const { target, choices, checkbox, selected } = selectionFixture();
+		await flush();
+		const older = Promise.withResolvers<typeof choices>();
+		vi.mocked(fetchLauncherOptions).mockReturnValueOnce(older.promise);
+		checkbox("components", "Component b").click();
+		await flush();
+		vi.mocked(fetchLauncherOptions).mockResolvedValue({
+			...choices,
+			groups: [{ value: "new", label: "New", selectionValues: ["b", "d"] }],
+		});
+		const project = target.querySelector<HTMLSelectElement>("#test-launcher-form-project");
+		if (!project) throw new Error("Missing project selector");
+		project.value = "two";
+		project.dispatchEvent(new Event("change", { bubbles: true }));
+		await flush();
+		expect(selected()).toEqual([]);
+		older.resolve(choices);
+		await flush();
+		expect(selected()).toEqual([]);
+		checkbox("groups", "New").click();
+		await flush();
+		expect(selected()).toEqual(["Component b", "Component d"]);
+	});
+});
+
+describe("launcher validation while editing", () => {
+	it("validates schedule edits against their pinned launch context", async () => {
+		mountSubject({
+			editingFutureLaunch: {
+				id: "scheduled-launch",
+				kind: "launch",
+				scheduleKind: "once",
+				processId: "test-process",
+				launcherId: "test-launcher",
+				launcherLabel: "Test launcher",
+				nextRunAt: "2099-01-01T09:00:00.000Z",
+				cronExpression: null,
+				title: "Scheduled launch",
+				subtitle: "Scheduled",
+				launchTitle: null,
+				launcherInput: {},
+				skillIds: [],
+				modelConfig: {},
+			},
+		});
+		await flush();
+		expect(vi.mocked(validateLauncher).mock.lastCall?.[1]).toMatchObject({
+			futureExecutionId: "scheduled-launch",
+		});
+	});
+
+	function required<T>(value: T | null | undefined): T {
+		if (value == null) throw new Error("Missing test element or request");
+		return value;
+	}
+	function button(target: HTMLElement) {
+		return required(target.querySelector<HTMLButtonElement>('button[type="submit"]'));
+	}
+	function input(target: HTMLElement, id = "repoPath") {
+		return required(target.querySelector<HTMLInputElement>(`#test-launcher-form-${id}`));
+	}
+	function edit(field: HTMLInputElement | HTMLTextAreaElement, value: string) {
+		field.value = value;
+		field.dispatchEvent(new Event("input", { bubbles: true }));
+	}
+
+	it("keeps untouched errors quiet, validates typing, preserves unrelated errors and gates submission", async () => {
+		vi.mocked(validateLauncher).mockImplementation(async (_id, request) =>
+			request.launcherInput.repoPath === "/valid"
+				? []
+				: [{ code: "required", fieldId: "repoPath", message: "repoPath is required" }],
+		);
+		const { target } = mountSubject({ initialValues: { repoPath: "" } });
+		await flush();
+		expect(button(target).disabled).toBe(true);
+		expect(input(target).getAttribute("aria-invalid")).toBe("false");
+		expect(target.querySelector(".validation-status")?.textContent).toContain("Repo Path");
+
+		input(target).focus();
+		edit(input(target), "bad");
+		await flush();
+		expect(input(target).getAttribute("aria-invalid")).toBe("false");
+		await waitForValidation(target);
+		expect(input(target).getAttribute("aria-invalid")).toBe("true");
+		expect(target.querySelector("#test-launcher-form-repoPath-errors")?.textContent).toContain(
+			"Required.",
+		);
+		expect(document.activeElement).toBe(input(target));
+		edit(input(target, "process-title"), "A title");
+		await flush();
+		expect(input(target).getAttribute("aria-invalid")).toBe("true");
+		required(target.querySelector("form")).dispatchEvent(
+			new Event("submit", { bubbles: true, cancelable: true }),
+		);
+		expect(launchLauncher).not.toHaveBeenCalled();
+
+		edit(input(target), "/valid");
+		await flush();
+		expect(button(target).disabled).toBe(true);
+		await waitForValidation(target);
+		expect(button(target).disabled).toBe(false);
+		expect(input(target).getAttribute("aria-invalid")).toBe("false");
+		button(target).click();
+		await flush();
+		expect(launchLauncher).toHaveBeenCalledOnce();
+	});
+
+	it("debounces textarea edits without waiting for blur", async () => {
+		const { target } = mountSubject({
+			launcher: createLauncher({ fields: [{ id: "prompt", label: "Prompt", kind: "textarea" }] }),
+		});
+		await flush();
+		vi.mocked(validateLauncher).mockClear();
+		const prompt = required(target.querySelector("textarea"));
+		prompt.focus();
+		edit(prompt, "one");
+		await flush();
+		edit(prompt, "two");
+		await flush();
+		expect(validateLauncher).not.toHaveBeenCalled();
+		await waitForValidation(target);
+		expect(validateLauncher).toHaveBeenCalledOnce();
+		expect(vi.mocked(validateLauncher).mock.lastCall?.[1].launcherInput).toEqual({ prompt: "two" });
+		expect(document.activeElement).toBe(prompt);
+	});
+
+	it("ignores obsolete responses, flushes on blur and aborts validation on unmount", async () => {
+		const older = Promise.withResolvers<Awaited<ReturnType<typeof validateLauncher>>>();
+		const newer = Promise.withResolvers<Awaited<ReturnType<typeof validateLauncher>>>();
+		vi.mocked(validateLauncher)
+			.mockReturnValueOnce(older.promise)
+			.mockReturnValueOnce(newer.promise);
+		const { target, dispose } = mountSubject();
+		await flush();
+		const olderSignal = required(vi.mocked(validateLauncher).mock.calls[0]?.[2]);
+		edit(input(target), "new draft");
+		input(target).dispatchEvent(new FocusEvent("blur"));
+		await flush();
+		expect(olderSignal.aborted).toBe(true);
+		older.resolve([]);
+		await flush();
+		expect(button(target).disabled).toBe(true);
+		newer.resolve([{ code: "custom", fieldId: "repoPath", message: "Unavailable repository" }]);
+		await flush();
+		expect(target.textContent).toContain("Unavailable repository");
+		expect(button(target).disabled).toBe(true);
+
+		const pending = Promise.withResolvers<Awaited<ReturnType<typeof validateLauncher>>>();
+		vi.mocked(validateLauncher).mockReturnValueOnce(pending.promise);
+		edit(input(target), "last draft");
+		input(target).dispatchEvent(new FocusEvent("blur"));
+		await flush();
+		const signal = required(vi.mocked(validateLauncher).mock.lastCall?.[2]);
+		await dispose();
+		expect(signal.aborted).toBe(true);
+		pending.resolve([]);
+	});
+
+	it("keeps values on validation failure and enables launch after Retry succeeds", async () => {
+		vi.mocked(validateLauncher).mockRejectedValueOnce(new Error("Validation is unavailable"));
+		const { target } = mountSubject({ initialValues: { repoPath: "/saved-draft" } });
+		await flush();
+		expect(button(target).disabled).toBe(true);
+		expect(input(target).value).toBe("/saved-draft");
+		expect(target.textContent).toContain("Validation is unavailable");
+		required(
+			Array.from(target.querySelectorAll("button")).find(
+				(b) => b.textContent === "Retry validation",
+			),
+		).click();
+		await flush();
+		expect(button(target).disabled).toBe(false);
+	});
+
+	it("shows unknown field errors at form level instead of hiding launch blockers", async () => {
+		vi.mocked(validateLauncher).mockResolvedValue([
+			{ code: "custom", fieldId: "missing-control", message: "Repository settings need attention" },
+		]);
 		const { target } = mountSubject();
 		await flush();
-
-		const scheduleRadios = target.querySelectorAll<HTMLInputElement>(
-			'input[name="test-launcher-form-schedule-mode"]',
+		expect(target.querySelector(".form-error-banner")?.textContent).toContain(
+			"Repository settings need attention",
 		);
-		scheduleRadios[2]?.click();
-		await flush();
+		expect(button(target).disabled).toBe(true);
+	});
 
-		const cronInput = (await waitForSelector(
-			target,
-			"#test-launcher-form-schedule-cron",
-		)) as HTMLInputElement;
-		cronInput.value = "0 13 * * *";
-		cronInput.dispatchEvent(new Event("input", { bubbles: true }));
+	it("marks checkbox groups invalid and validates the updated selection", async () => {
+		vi.mocked(fetchLauncherOptions).mockResolvedValue({ groups: [{ value: "one", label: "One" }] });
+		vi.mocked(validateLauncher).mockImplementation(async (_id, request) =>
+			request.launcherInput.groups
+				? []
+				: [{ code: "required", fieldId: "groups", message: "groups is required" }],
+		);
+		const { target } = mountSubject({
+			launcher: createLauncher({
+				fields: [{ id: "groups", label: "Groups", kind: "select", multiple: true, required: true }],
+			}),
+		});
 		await flush();
-
-		cronInput.value = "";
-		cronInput.dispatchEvent(new Event("input", { bubbles: true }));
+		const checkbox = required(
+			target.querySelector<HTMLInputElement>('.multi-select-control input[type="checkbox"]'),
+		);
+		checkbox.click();
 		await flush();
-
-		deferredPreview.resolve(new Date(2026, 3, 24, 18, 45).toISOString());
+		expect(button(target).disabled).toBe(false);
+		checkbox.click();
 		await flush();
+		const group = required(target.querySelector(".multi-select-control"));
+		expect(group.getAttribute("data-invalid")).toBe("true");
+		expect(group.getAttribute("aria-describedby")).toContain("groups-errors");
+		expect(button(target).disabled).toBe(true);
+	});
 
-		expect(target.textContent).not.toContain("Next run:");
+	it("places model and schedule errors next to their controls", async () => {
+		vi.mocked(validateLauncher).mockImplementation(async (_id, request) =>
+			request.schedule.mode === "cron"
+				? [{ code: "invalid_schedule", message: "Enter a valid cron expression" }]
+				: request.modelConfig.defaultModelProfileId
+					? [{ code: "invalid_model_config", message: "This model is unavailable" }]
+					: [],
+		);
+		const { target } = mountSubject();
+		await flush();
+		const model = required(target.querySelector<HTMLSelectElement>(".model-config-default-select"));
+		model.value = "local_qwen";
+		model.dispatchEvent(new Event("change", { bubbles: true }));
+		await flush();
+		expect(model.getAttribute("aria-invalid")).toBe("true");
+		expect(target.querySelector("#test-launcher-form-model-config-errors")?.textContent).toContain(
+			"This model is unavailable",
+		);
+		required(
+			target.querySelectorAll<HTMLInputElement>(
+				'input[name="test-launcher-form-schedule-mode"]',
+			)[2],
+		).click();
+		await flush();
+		expect(input(target, "schedule-cron").getAttribute("aria-invalid")).toBe("true");
+		expect(target.querySelector("#test-launcher-form-schedule-cron-errors")?.textContent).toContain(
+			"Enter a valid cron expression",
+		);
+		expect(button(target).disabled).toBe(true);
 	});
 });

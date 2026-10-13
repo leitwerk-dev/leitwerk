@@ -32,6 +32,7 @@ export type {
 	LauncherRecentValuesResponseBody,
 	LaunchersResponseBody,
 	LauncherTurnModelConfigPreview,
+	LauncherValidationResponseBody,
 	LaunchRunResponseBody,
 	ModelProfileOptionSummary,
 	ModelProviderOptionsResponseBody,
@@ -88,9 +89,14 @@ export type {
 export { parseScheduleRequestInput, resolvePromptCacheSwitch } from "./http-contracts.js";
 
 export type {
+	NamedSelection,
 	SettingChoice,
 	SettingFieldView,
 	SettingMetadata,
+	SettingsOverviewResponse,
 	SettingsPreview,
+	SettingsScopeOverview,
 	SettingsScopesResponse,
 } from "./scoped-settings.js";
+
+export { settingSelectionValues } from "./scoped-settings.js";

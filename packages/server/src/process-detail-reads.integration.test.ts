@@ -4,6 +4,10 @@ import path from "node:path";
 import { serializeFutureActionPayload } from "@leitwerk-dev/protocol";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { closeDatabase } from "./db/database.js";
+import {
+	createIntegrationToolRequestService,
+	IntegrationToolRegistry,
+} from "./integration-tool-registry.js";
 import { createModelStatusCache } from "./model-providers/model-status-cache.js";
 import {
 	createModelProviderRegistry,
@@ -24,6 +28,7 @@ import { ProcessPrimaryPathAssembler } from "./routes/process-primary-path-assem
 import { createDefaultTestProcessGraphRegistry } from "./test-helpers/process-fixtures.js";
 import { createStructuralStateJson } from "./test-helpers/structural-process-fixtures.js";
 import { createTestDeps } from "./test-helpers/unit-deps.js";
+import { recordTurnProgress } from "./turn-progress.js";
 
 async function createReadFixture() {
 	const root = await mkdtemp(path.join(tmpdir(), "leitwerk-process-detail-reads-"));
@@ -112,6 +117,68 @@ function createRunningTurn() {
 	if (!leaseId) throw new Error("Expected an accepted worker lease");
 	return { process, turn, leaseId };
 }
+
+it("retains server integration activity in repeated process snapshots and broadcasts updates", async () => {
+	const { deps } = fixture;
+	const { process, turn } = createRunningTurn();
+	const registry = new IntegrationToolRegistry(deps.externalWrites);
+	const entered = Promise.withResolvers<void>();
+	const finish = Promise.withResolvers<void>();
+	const broadcast = vi.spyOn(deps.broadcaster, "broadcast");
+	const report = {
+		title: "Ticket publication",
+		summary: "Creating ticket 1 of 2: Garden",
+		steps: [],
+	};
+	registry.register({
+		name: "publish_tickets",
+		description: "Publish approved tickets",
+		parameters: { type: "object" },
+		async execute(ctx) {
+			ctx.reportProgress(report);
+			entered.resolve();
+			await finish.promise;
+			return {};
+		},
+	});
+	const service = createIntegrationToolRequestService({
+		registry,
+		repos: deps,
+		processActionRegistry: {
+			getTurnDefinition: () => ({ kind: "automatic", integrationTools: ["publish_tickets"] }),
+			resolveContextData: () => ({ params: {}, state: {} }),
+		},
+		reportProgress: (progress) => {
+			recordTurnProgress(deps, progress);
+		},
+	});
+	const pending = service.handle(process.id, {
+		turnRecordId: turn.id,
+		toolCallId: "publish-1",
+		toolName: "publish_tickets",
+		args: {},
+	});
+	try {
+		await entered.promise;
+		for (let reload = 0; reload < 2; reload++) {
+			const snapshot = await new ProcessUiSnapshotAssembler(deps).assemble(process.id);
+			expect(snapshot?.timeline.turns.find((item) => item.id === turn.id)).toMatchObject({
+				progress: report,
+				progressRecordedAt: expect.any(String),
+			});
+		}
+		expect(broadcast).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "process.event",
+				instanceId: process.id,
+				payload: expect.objectContaining({ eventType: "turn_progress" }),
+			}),
+		);
+	} finally {
+		finish.resolve();
+		await pending;
+	}
+});
 
 it("captures diagnostics before a process mutation during session loading", async () => {
 	const { deps, source } = fixture;

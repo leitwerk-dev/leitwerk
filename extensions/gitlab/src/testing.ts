@@ -13,6 +13,7 @@ import type {
 	GitLabPipeline,
 	GitLabProject,
 } from "./client.js";
+import { GitLabError } from "./client.js";
 
 export { GITLAB_MR_KIND } from "./external.js";
 export { createGitLabMaintenance } from "./maintenance.js";
@@ -222,7 +223,7 @@ export class LocalGitLabAdapter {
 	client(): GitLabClientLike {
 		const mr = (id: number, iid: number) => {
 			const m = this.state.mrs.find((m) => m.project_id === id && m.iid === iid);
-			if (!m) throw new Error("Unknown test MR");
+			if (!m) throw new GitLabError(404, false);
 			return m;
 		};
 		const commit = (id: number, ref: string) => ({
@@ -349,7 +350,7 @@ export class LocalGitLabAdapter {
 			getMergeRequest: async (id, iid) => ({
 				...structuredClone(mr(id, iid)),
 				has_conflicts: this.conflicts(mr(id, iid)),
-				sha: commit(mr(id, iid).source_project_id, mr(id, iid).source_branch).id,
+				sha: this.git(mr(id, iid).source_project_id, ["rev-parse", mr(id, iid).source_branch]),
 			}),
 			listMergeRequests: async (id, label) =>
 				structuredClone(
@@ -357,8 +358,10 @@ export class LocalGitLabAdapter {
 						(m) => m.project_id === id && m.state === "opened" && m.labels.includes(label),
 					),
 				),
-			listMergeRequestLabelEvents: async (id, iid) =>
-				structuredClone(this.state.labelEvents?.[`${id}:${iid}`] ?? []),
+			listMergeRequestLabelEvents: async (id, iid) => {
+				mr(id, iid);
+				return structuredClone(this.state.labelEvents?.[`${id}:${iid}`] ?? []);
+			},
 			updateMergeRequestLabels: async (id, iid, patch) => {
 				const request = mr(id, iid);
 				this.state.labelEvents ??= {};

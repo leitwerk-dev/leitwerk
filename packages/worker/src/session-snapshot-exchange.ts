@@ -94,6 +94,8 @@ export function createWorkerSessionSnapshotExchange(input: {
 				},
 				body: content,
 				signal: AbortSignal.timeout(timeoutMs),
+			}).catch((cause: unknown) => {
+				throw new Error("Session snapshot transport failed", { cause });
 			});
 			if (!response.ok) {
 				throw new Error(`Session snapshot upload failed with HTTP ${response.status}`);

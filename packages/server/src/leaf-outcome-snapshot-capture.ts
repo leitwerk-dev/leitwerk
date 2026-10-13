@@ -55,6 +55,7 @@ export interface CaptureLeafOutcomeSnapshotOptions {
 		turnRecordId: string | null;
 	};
 	turnRecord: ProcessTurnRecord | null;
+	mappedResult?: unknown;
 	anchoredAt: string;
 }
 
@@ -88,6 +89,7 @@ export async function captureLeafOutcomeSnapshot(
 				turnRecordId: options.leaf.turnRecordId,
 			},
 			turnRecord: options.turnRecord,
+			mappedResult: options.mappedResult,
 			readTreeEntry,
 			readLeafEntry,
 			readTurnRecord(turnRecordId: string) {

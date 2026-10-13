@@ -455,6 +455,7 @@ export async function createExtensionIntegrationHarness(
 			thinking_level: model.thinkingLevel ?? "off",
 		}));
 		if (options.defaultModel) {
+			config.pi.default_model_profile = options.defaultModel;
 			config.pi.process_title_generation.model_profile = options.defaultModel;
 			config.process_configs = Object.fromEntries(
 				[...catalog.processes.keys()].map((id) => [

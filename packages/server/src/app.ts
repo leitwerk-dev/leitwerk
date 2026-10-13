@@ -118,6 +118,7 @@ import { resolveServerTlsOptions } from "./server-topology.js";
 import { createProjectedSessionSnapshotStore } from "./session-summary-projection.js";
 import { createSessionTransferHelperRelays } from "./session-transfer-helper-relays.js";
 import { createSessionTransferService } from "./session-transfer-service.js";
+import { importBundledSkills } from "./skills/bundled-skills.js";
 import { createSkillCatalogService } from "./skills/catalog-service.js";
 import { importExtensionSkills } from "./skills/extension-importer.js";
 import { createDiagnosticTraceWriter } from "./supervisor/diagnostic-trace-writer.js";
@@ -129,12 +130,22 @@ import {
 	type WorkerWebSocketIpcManager,
 } from "./supervisor/worker-websocket-ipc.js";
 import { createToolApprovalGate } from "./tool-approval-gate.js";
+import { recordTurnProgress } from "./turn-progress.js";
 import { createTurnWaitService } from "./turn-wait-service.js";
 import { defaultWorkerRuntimeProfile } from "./worker-runtime-profile-selection.js";
 import { type Broadcaster, createBroadcaster } from "./ws/broadcast.js";
 
 /** @public */
 export interface AppOptions {
+	/** Clock and cadence seam for readiness integration tests. @internal */
+	turnWait?: {
+		/** @internal */
+		now?: () => number;
+		/** @internal */
+		pollIntervalMs?: number;
+		/** @internal */
+		timeoutMs?: number;
+	};
 	/** @public */
 	config?: LeitwerkConfig;
 	/** @internal */
@@ -249,6 +260,11 @@ async function createConfiguredWorkerRunnerRuntime(input: {
 	provided?: AppOptions["workerRunnerRuntime"];
 	helperRelays: ProcessStateExportHelperRelayProvider;
 	onVolumePoolError: () => void;
+	onImagePreparationEvent: NonNullable<
+		Parameters<
+			typeof import("@leitwerk-dev/worker-runners/kubernetes").createKubernetesWorkerRunner
+		>[0]["imagePreload"]
+	>["onEvent"];
 	localWorkerSpawnImpl?: AppOptions["localWorkerSpawnImpl"];
 	localWorkerDockerPreflightImpl?: AppOptions["localWorkerDockerPreflightImpl"];
 }): Promise<{
@@ -256,7 +272,7 @@ async function createConfiguredWorkerRunnerRuntime(input: {
 	volume?: ProcessVolume;
 	exporter: ProcessStateExporter;
 	webSocketIpc: WorkerWebSocketIpcManager;
-	volumePool?: { start(): void; stop(): Promise<void> };
+	preparation?: { start(): void; stop(): Promise<void> };
 }> {
 	if (input.provided) {
 		return {
@@ -294,6 +310,14 @@ async function createConfiguredWorkerRunnerRuntime(input: {
 			client: kubernetesClient,
 			preProvision: processVolume?.pre_provision
 				? { ...processVolume.pre_provision, onError: input.onVolumePoolError }
+				: undefined,
+			imagePreload: input.config.kubernetes?.image_preload?.enabled
+				? {
+						images: Object.values(input.config.worker_runtime_profiles ?? {}).map(
+							(profile) => profile.image,
+						),
+						onEvent: input.onImagePreparationEvent,
+					}
 				: undefined,
 			processNamespacePrefix:
 				input.config.kubernetes?.process_namespace_prefix ?? "leitwerk-process-",
@@ -437,6 +461,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		const skillCatalog = createSkillCatalogService({
 			repositories: config.skill_repositories ?? [],
 			repos,
+			bundledSkills: await importBundledSkills(extensionCatalog.piContributions),
 		});
 		await skillCatalog.refresh();
 		markStartup("skill_catalog");
@@ -781,6 +806,8 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 					{
 						config,
 						registry: modelProviderRegistry,
+						processActionRegistry,
+						mappedRuns: baseDeps.mappedRuns,
 						modelStatusCache,
 						piContributions: extensionCatalog.piContributions,
 						bundleCache: piResourceBundles,
@@ -824,6 +851,9 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			repos: baseDeps,
 			processActionRegistry,
 			toolApprovalGate,
+			reportProgress: (report) => {
+				recordTurnProgress(baseDeps, report);
+			},
 		});
 		const diagnosticTraceWriter = createDiagnosticTraceWriter(
 			path.join(config.storage.tree_files_dir, "diagnostic-traces"),
@@ -937,12 +967,16 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			helperRelays: sessionTransferHelperRelays,
 			onVolumePoolError: () =>
 				app.log.warn("Volume pre-provisioning failed; retrying in the background"),
+			onImagePreparationEvent: (event) => {
+				if (event.outcome === "succeeded") app.log.info(event, "Worker image prepared");
+				else app.log.warn(event, "Worker image preparation failed; retrying in the background");
+			},
 			localWorkerSpawnImpl: opts.localWorkerSpawnImpl,
 			localWorkerDockerPreflightImpl: opts.localWorkerDockerPreflightImpl,
 		});
-		if (runnerRuntime.volumePool) {
-			startHooks.push(() => runnerRuntime.volumePool?.start());
-			stopHooks.push(() => runnerRuntime.volumePool?.stop());
+		if (runnerRuntime.preparation) {
+			startHooks.push(() => runnerRuntime.preparation?.start());
+			stopHooks.push(() => runnerRuntime.preparation?.stop());
 		}
 		markStartup("worker_runner");
 		supervisor = createWorkerSupervisor({
@@ -1082,6 +1116,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			);
 		const processLaunchDeps = {
 			...baseDeps,
+			skillDefaults: config,
 			broadcaster,
 			commands: processEngine,
 			processTitles,
@@ -1093,6 +1128,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		};
 		const createProcess = createProcessFromLaunchPlan.bind(null, processLaunchDeps);
 		futureExecutionLifecycle = createFutureExecutionLifecycle({
+			skillDefaults: config,
 			futureExecutions: baseDeps.futureExecutions,
 			processes: baseDeps.processes,
 			projects: baseDeps.projects,
@@ -1251,12 +1287,14 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 
 		hostCapabilities.provide(scopedSettingsCapability, scopedSettings);
 		const turnWaitService = createTurnWaitService({
+			commitMessages: config.commit_messages,
 			processes: baseDeps.processes,
 			projects: baseDeps.projects,
 			processGraphs,
 			registry: processActionRegistry,
 			commands: processEngine,
 			require: hostCapabilities.require.bind(hostCapabilities),
+			...opts.turnWait,
 		});
 		polling.create({
 			id: "turn-readiness",

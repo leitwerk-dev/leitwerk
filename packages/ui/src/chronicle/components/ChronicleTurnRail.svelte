@@ -173,6 +173,7 @@ function itemDetail(item: ChronicleSelectableItem): string | null {
 		retry ? `Attempt ${retry.index} of ${retry.total}` : null,
 		label,
 		elapsed,
+		item.detail,
 	]
 		.filter(Boolean)
 		.join(" · ");

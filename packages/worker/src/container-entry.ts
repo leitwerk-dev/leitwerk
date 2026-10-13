@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { dockerNetworkSchema } from "@leitwerk-dev/worker-protocol";
 import { parse } from "valibot";
+import { prepareVirtualMachineDockerMounts } from "./virtual-machine-docker.js";
 
 const PRIVATE_DOCKER_ENV = "LEITWERK_PRIVATE_DOCKER";
 const DEFAULT_PROCESS_VOLUME_MOUNT_PATH = "/state";
@@ -17,6 +18,7 @@ interface EntrypointDeps {
 	now: () => number;
 	delay: (ms: number) => Promise<void>;
 	warn: (message: string) => void;
+	prepareVirtualMachineDocker?: (signal: AbortSignal) => Promise<void>;
 }
 
 function privateDockerEnvironment(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
@@ -133,6 +135,15 @@ export async function runWorkerContainerEntrypoint(
 	process.once("SIGINT", terminate);
 
 	try {
+		const isolation = env.LEITWERK_DOCKER_ISOLATION;
+		if (
+			isolation !== undefined &&
+			(isolation !== "virtual-machine" ||
+				env[PRIVATE_DOCKER_ENV] !== "1" ||
+				env.LEITWERK_DOCKER_GVISOR === "1")
+		) {
+			throw new Error("Invalid trusted private Docker isolation");
+		}
 		if (env[PRIVATE_DOCKER_ENV] !== "1") {
 			worker = deps.spawn(process.execPath, [workerEntryPath()], { stdio: "inherit", env });
 			const exit = await waitForExit(worker);
@@ -142,6 +153,17 @@ export async function runWorkerContainerEntrypoint(
 		const privateEnv = privateDockerEnvironment(env);
 		privateEnv.BUILDX_CONFIG = `${env.LEITWERK_PROCESS_VOLUME_MOUNT_PATH ?? DEFAULT_PROCESS_VOLUME_MOUNT_PATH}/tooling/buildx`;
 		const networkArgs = dockerNetworkArgs(env.LEITWERK_DOCKER_NETWORK);
+		if (isolation === "virtual-machine") {
+			try {
+				await (deps.prepareVirtualMachineDocker ?? prepareVirtualMachineDockerMounts)(
+					shutdown.signal,
+				);
+			} catch (error) {
+				if (shutdown.signal.aborted) return 0;
+				throw error;
+			}
+			if (shutdown.signal.aborted) return 0;
+		}
 
 		const dockerDataRoot = `${env.LEITWERK_PROCESS_VOLUME_MOUNT_PATH ?? DEFAULT_PROCESS_VOLUME_MOUNT_PATH}/tooling/docker`;
 		await deps.mkdir(dockerDataRoot, { recursive: true });

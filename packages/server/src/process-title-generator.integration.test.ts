@@ -189,6 +189,7 @@ describe("process title generator retries", () => {
 		const config = getDefaultConfig();
 		config.pi.agent_dir = agentDir;
 		config.pi.process_title_generation.model_profile = "extension-profile";
+		config.pi.default_model_profile = "extension-profile";
 		config.pi.model_profiles = [
 			{
 				id: "extension-profile",

@@ -242,6 +242,7 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 				config.storage.tree_files_dir = path.join(root, "trees");
 				config.storage.process_workspaces_dir = path.join(root, "workspaces");
 				config.pi.agent_dir = path.join(root, "pi-agent");
+				config.pi.default_model_profile = "fake";
 				config.pi.model_profiles = [
 					{ id: "fake", provider: "change-test-model", model_id: "fake", thinking_level: "off" },
 				];

@@ -114,6 +114,7 @@ export function createModelAvailabilitySnapshot(
 
 export function createTestModelPolicy(
 	input: {
+		defaultProfileId?: string;
 		profiles?: readonly {
 			id: string;
 			model_id?: string;
@@ -132,6 +133,7 @@ export function createTestModelPolicy(
 	processActionRegistry: { getTurnDefinition: () => ReturnType<typeof createTestLlmTurn> };
 } {
 	const config = getDefaultConfig();
+	config.pi.default_model_profile = input.defaultProfileId ?? "first";
 	config.pi.model_profiles = (
 		input.profiles ?? [
 			{ id: "first", model_id: "one" },

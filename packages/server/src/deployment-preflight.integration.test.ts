@@ -5,8 +5,9 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
+import { createTestAppContext } from "@leitwerk-dev/test-support/integration";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
-import { type AppContext, createAppContext } from "./app.js";
+import type { AppContext } from "./app.js";
 import { getDefaultConfig } from "./config/index.js";
 import { closeDatabase, createDatabase } from "./db/database.js";
 import { deploymentPreflightConfig, runDeploymentPreflight } from "./deployment-preflight.js";
@@ -57,7 +58,7 @@ describe("deployment preflight", () => {
 				extensionLoadingStartDir: root,
 				scratchRoot: path.join(root, "scratch"),
 				async createContext(options) {
-					ctx = await createAppContext({
+					ctx = await createTestAppContext({
 						...options,
 						logger: false,
 						extensionCatalog: buildExtensionCatalogFromModules([

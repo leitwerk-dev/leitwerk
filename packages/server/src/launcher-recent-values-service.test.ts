@@ -36,6 +36,8 @@ function launcherService(): ProcessLauncherService {
 		resolveUiDefaults: async () => ({}),
 		resolveUiOptions: async () => ({}),
 		resolveUiLauncher: async () => ({ ok: false, errors: [] }),
+		resolveUiLauncherPreview: async () => ({ ok: false, errors: [] }),
+		resolveUiRelaunchInput: async (_id, input) => input,
 	};
 }
 

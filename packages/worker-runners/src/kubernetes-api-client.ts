@@ -1,3 +1,4 @@
+import type { ImagePreloadApi } from "./kubernetes-image-preload-api.js";
 import {
 	type KubernetesConfigMapManifest,
 	type KubernetesDockerConfigJsonSecretManifest,
@@ -74,6 +75,8 @@ export interface KubernetesPvcSummary {
 }
 /** @internal */
 export interface KubernetesApiClient {
+	/** @internal */
+	imagePreload?: ImagePreloadApi;
 	/** @internal */
 	volumePool?: VolumePoolApi;
 	/** @internal */

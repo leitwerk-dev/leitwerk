@@ -3,17 +3,23 @@ import type {
 	SettingsPreview,
 	SettingsScopesResponse,
 } from "@leitwerk-dev/protocol/http-contracts";
-import { onMount, untrack } from "svelte";
+import { onMount, tick, untrack } from "svelte";
 import SettingsField from "../components/SettingsField.svelte";
+import SettingsOverview from "../components/SettingsOverview.svelte";
+import { locationStore, navigate } from "../lib/router.svelte.js";
 import { fetchSettingsPreview, fetchSettingsScopes, onSettingsChanged } from "../lib/settings.js";
 import { wsStore } from "../lib/ws.svelte.js";
 
 let { subjectId = "instance" }: { subjectId?: string } = $props();
-let selected = $state(subjectId);
+let selected = $state(untrack(() => subjectId));
 let scopes = $state<SettingsScopesResponse | null>(null);
 let preview = $state<SettingsPreview | null>(null);
 let loading = $state(true);
+let panelOpen = $state(untrack(() => subjectId !== "instance"));
+let refreshVersion = $state(0);
 let error = $state("");
+let sourceError = $state("");
+let refreshing = $state(false);
 let loadId = 0;
 let scopesLoadId = 0;
 let selectionGeneration = 0;
@@ -26,11 +32,43 @@ function savedFor(id: string, generation: number) {
 		loading = false;
 	};
 }
-function selectScope() {
+function selectScope(id: string, updateUrl = false) {
+	if (id === selected) return;
+	lastSelected[selectedGroup.id] = selected;
+	selected = id;
 	acceptSaved = savedFor(selected, ++selectionGeneration);
+	if (updateUrl) updatePath(selected);
 	void load(selected);
 }
+$effect(() => {
+	const id = subjectId;
+	untrack(() => selectScope(id));
+});
+$effect(() => {
+	const url = new URL($locationStore, window.location.origin);
+	if (url.pathname === "/settings" && (url.searchParams.get("scope") ?? "instance") === selected)
+		panelOpen = selected !== "instance" && url.searchParams.get("view") !== "overview";
+});
+function updatePath(id = selected, overview = false) {
+	const params = new URL($locationStore, window.location.origin).searchParams;
+	params.set("scope", id);
+	if (overview) params.set("view", "overview");
+	else params.delete("view");
+	navigate(`/settings?${params}`);
+}
+async function openSubject(id: string) {
+	panelOpen = true;
+	if (id === selected) updatePath();
+	else selectScope(id, true);
+	await tick();
+	document.getElementById("settings-editor-heading")?.focus();
+}
+function closeEditor() {
+	panelOpen = false;
+	updatePath(selected, true);
+}
 const lastSelected: Record<string, string> = {};
+const lastView: Record<string, string> = {};
 const groups = $derived([...new Set(preview?.fields.map((field) => field.form.group) ?? [])]);
 const scopeGroups = $derived.by(() => {
 	const subjects = (scopes?.subjects ?? [])
@@ -80,10 +118,16 @@ function selectGroup(id: string) {
 	if (id === selectedGroup.id) return;
 	const group = scopeGroups.find((group) => group.id === id);
 	if (!group) return;
-	lastSelected[selectedGroup.id] = selected;
-	selected =
+	lastView[selectedGroup.id] = new URL($locationStore, window.location.origin).search;
+	const next =
 		group.subjects.find((subject) => subject.id === lastSelected[id])?.id ?? group.subjects[0].id;
-	selectScope();
+	panelOpen = false;
+	selectScope(next);
+	const params = new URLSearchParams(lastView[id] ?? "");
+	params.set("scope", next);
+	if (id === "instance") params.delete("view");
+	else params.set("view", "overview");
+	navigate(`/settings?${params}`);
 }
 
 function navigateGroups(event: KeyboardEvent, index: number) {
@@ -125,12 +169,20 @@ async function load(id = selected, background = false) {
 }
 async function loadScopes(discover = false) {
 	const token = ++scopesLoadId;
+	sourceError = "";
+	if (discover) refreshing = true;
 	try {
 		const result = await fetchSettingsScopes(discover);
-		if (token === scopesLoadId) scopes = result;
+		if (token === scopesLoadId) {
+			scopes = result;
+			refreshVersion++;
+			if (discover) await load(selected, true);
+		}
 	} catch (caught) {
 		if (token === scopesLoadId)
-			error = caught instanceof Error ? caught.message : "Could not refresh settings sources";
+			sourceError = caught instanceof Error ? caught.message : "Could not refresh settings sources";
+	} finally {
+		if (token === scopesLoadId) refreshing = false;
 	}
 }
 onMount(() => {
@@ -155,31 +207,42 @@ onMount(() => {
 });
 </script>
 
-<div class="settings-page">
-	<header><h1>Settings</h1><p>Defaults shared across this installation. Changes apply when a new step is prepared, including operator retries.</p></header>
-	<div class="scope-tabs" role="tablist" aria-label="Settings groups">
-		{#each scopeGroups as group, index (group.id)}
-			<button type="button" role="tab" id={`settings-group-${group.id}`} aria-selected={selectedGroup.id === group.id} aria-controls="settings-group-panel" tabindex={selectedGroup.id === group.id ? 0 : -1} onclick={() => selectGroup(group.id)} onkeydown={(event) => navigateGroups(event, index)}>{group.label}</button>
-		{/each}
-	</div>
-	<div role="tabpanel" id="settings-group-panel" aria-labelledby={`settings-group-${selectedGroup.id}`}>
-	<div class="scope-controls"><div><label for="settings-scope">Apply settings to</label><select id="settings-scope" bind:value={selected} onchange={selectScope}>
-		{#each selectedGroup.subjects as subject (subject.id)}<option value={subject.id}>{subject.scopeType === "instance" ? "Instance" : `${subject.label}${subject.active ? "" : " (inactive)"}`}</option>{/each}
-	</select></div><button type="button" onclick={() => loadScopes(true)}>Refresh sources</button></div>
-	{#if error}<p role="alert" class="error">{error}</p><button type="button" onclick={() => load()}>Try again</button>{/if}
-	{#if loading}<p role="status">Loading settings…</p>
-	{:else if preview}
-		{#key selected}
-			{#each groups as group}<section class="purpose" aria-label={group}><h2>{group}</h2>{#each preview.fields.filter((field) => field.form.group === group) as field (field.key)}<SettingsField {field} subjectId={selected} onSaved={acceptSaved} />{/each}</section>{/each}
-		{/key}
-		{#if !preview.fields.length && !preview.inactive.length}<p>No installed extension declares settings for this scope.</p>{/if}
-		{#if preview.inactive.length}<section class="purpose"><h2>Inactive settings</h2><p>These saved overrides are retained. Install their owning extensions to use or edit them.</p>{#each preview.inactive as override}<div class="inactive"><strong>{override.key}</strong><pre>{typeof override.value === "string" ? override.value : JSON.stringify(override.value, null, 2)}</pre><span>Revision {override.revision}</span></div>{/each}</section>{/if}
-	{/if}
-	</div>
+{#snippet editor()}
+{#if error}<p role="alert" class="error">{error}</p><button type="button" onclick={() => load()}>Try again</button>{/if}
+ {#if loading}<p role="status">Loading settings…</p>
+ {:else if preview}
+  {#key selected}
+   {#each groups as group}<section class="purpose" aria-label={group}><h2>{group}</h2>{#each preview.fields.filter((field) => field.form.group === group) as field (field.key)}<SettingsField {field} subjectId={selected} onSaved={acceptSaved} />{/each}</section>{/each}
+  {/key}
+  {#if !preview.fields.length && !preview.inactive.length}<p>No installed extension declares settings for this scope.</p>{/if}
+  {#if preview.inactive.length}<section class="purpose"><h2>Inactive settings</h2><p>These saved overrides are retained. Install their owning extensions to use or edit them.</p>{#each preview.inactive as override}<div class="inactive"><strong>{override.key}</strong><pre>{typeof override.value === "string" ? override.value : JSON.stringify(override.value, null, 2)}</pre><span>Revision {override.revision}</span></div>{/each}</section>{/if}
+ {/if}
+{/snippet}
+<div class="settings-page" class:collection={selectedGroup.id !== "instance"} class:editor-open={panelOpen}>
+ <header><h1>Settings</h1><p>Defaults shared across this installation. Changes apply when a new step is prepared, including operator retries.</p></header>
+ <div class="scope-tabs" role="tablist" aria-label="Settings groups">
+  {#each scopeGroups as group, index (group.id)}
+   <button type="button" role="tab" id={`settings-group-${group.id}`} aria-selected={selectedGroup.id === group.id} aria-controls="settings-group-panel" tabindex={selectedGroup.id === group.id ? 0 : -1} onclick={() => selectGroup(group.id)} onkeydown={(event) => navigateGroups(event, index)}>{group.label}</button>
+  {/each}
+ </div>
+ <div role="tabpanel" id="settings-group-panel" aria-labelledby={`settings-group-${selectedGroup.id}`}>
+ {#if sourceError}<p class="error" role="alert">{sourceError}</p><button type="button" onclick={() => loadScopes(true)}>Retry sources</button>{/if}
+ {#if selectedGroup.id === "instance"}
+  {@render editor()}
+ {:else}
+  {#key selectedGroup.id}
+   <SettingsOverview overview={scopes?.scopes.find((scope) => scope.id === selectedGroup.id)?.overview} scopeType={selectedGroup.id} label={selectedGroup.label} subjects={(scopes?.subjects ?? []).filter((subject) => selectedGroup.subjects.some((candidate) => candidate.id === subject.id))} {selected} {panelOpen} {refreshVersion} onSelect={openSubject} onClose={closeEditor}>
+    {#snippet refresh()}<button type="button" disabled={refreshing} onclick={() => loadScopes(true)}>{refreshing ? "Refreshing…" : "Refresh sources"}</button>{/snippet}
+    {@render editor()}
+   </SettingsOverview>
+  {/key}
+ {/if}
+ </div>
 </div>
 
 <style>
 .settings-page { width: min(100%, 860px); margin: 0 auto; padding: clamp(1rem, 4vw, 2.5rem); color: var(--chronicle-text); }
+.settings-page.collection { width: min(100%, 1440px); }
 h1 { margin: 0; font-size: var(--type-title-lg); }
 h2 { margin: 0 0 .75rem; font-size: var(--type-title-sm); }
 header p, .purpose > p { color: var(--chronicle-text-muted); max-width: 65ch; line-height: 1.6; }
@@ -187,20 +250,16 @@ header p, .purpose > p { color: var(--chronicle-text-muted); max-width: 65ch; li
 .scope-tabs button { padding: .75rem .5rem; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--chronicle-text-muted); overflow-wrap: anywhere; }
 .scope-tabs button:hover { background: var(--chronicle-panel-muted); color: var(--chronicle-text); }
 .scope-tabs button[aria-selected="true"] { border-bottom-color: var(--chronicle-accent); color: var(--chronicle-accent); font-weight: 600; }
-.scope-controls { display: flex; align-items: flex-end; gap: .75rem; margin: 1.5rem 0 2rem; }
-.scope-controls > div { flex: 1; min-width: 0; }
-label { display: block; margin-bottom: .5rem; font-weight: 600; }
-select, button { min-height: 44px; padding: .65rem .8rem; border: 1px solid var(--chronicle-border-strong); border-radius: var(--radius-sm); background: var(--chronicle-panel-surface); color: var(--chronicle-text); font: inherit; }
-select { width: 100%; }
+button { min-height: 44px; padding: .65rem .8rem; border: 1px solid var(--chronicle-border-strong); border-radius: var(--radius-sm); background: var(--chronicle-panel-surface); color: var(--chronicle-text); font: inherit; }
 button { cursor: pointer; }
 button:hover { background: var(--chronicle-panel-muted); }
-button:focus-visible, select:focus-visible { outline: 2px solid var(--chronicle-accent); outline-offset: 3px; }
+button:focus-visible { outline: 2px solid var(--chronicle-accent); outline-offset: 3px; }
 .purpose { margin: 2rem 0; }
 .error { color: var(--chronicle-danger); }
 .inactive { padding: 1rem 0; border-top: 1px solid var(--chronicle-border); }
 pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 700px) { .editor-open header, .editor-open .scope-tabs { display: none; } }
 @media (max-width: 600px) {
 	.scope-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .25rem .75rem; }
-	.scope-controls { align-items: stretch; flex-direction: column; }
 }
 </style>

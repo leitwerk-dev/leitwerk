@@ -75,7 +75,6 @@ async function bind() {
 
 {#snippet snapshot(value: ScopedSettingsSnapshot)}
 	<dl>{#each value.values as setting}<dt>{setting.key}</dt><dd>{setting.value === null ? "YAML / catalog default" : String(setting.value)} <span>from {source(setting)}</span></dd>{/each}</dl>
-	{#each value.instructions as block}<details><summary>{block.label} · Instructions</summary><p class="source">{source(block.setting)}</p><pre>{block.setting.value || "No instructions"}</pre></details>{/each}
 {/snippet}
 
 <section class="process-settings">
@@ -103,7 +102,7 @@ summary:focus-visible, a:focus-visible, button:focus-visible, select:focus-visib
 pre, dd { white-space: pre-wrap; overflow-wrap: anywhere; }
 dt { font-weight: 600; margin-top: .65rem; overflow-wrap: anywhere; }
 dd { margin: .25rem 0; }
-dd span, .source { color: var(--chronicle-text-muted); }
+dd span { color: var(--chronicle-text-muted); }
 form { display: grid; gap: .65rem; margin: 1rem 0; }
 select, button { min-height: 44px; padding: .6rem; max-width: 100%; border: 1px solid var(--chronicle-border-strong); border-radius: var(--radius-sm); background: var(--chronicle-panel-surface); color: var(--chronicle-text); font: inherit; }
 button { cursor: pointer; }

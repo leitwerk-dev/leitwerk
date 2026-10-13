@@ -371,6 +371,22 @@ const HISTORY_INDEXES = [
 ] as const;
 
 const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
+	{
+		id: "20261008_remove_repository_instruction_overrides",
+		tableNames: [],
+		matches: (sqlite) =>
+			existingTableSql(sqlite, "settings_overrides") !== null &&
+			Boolean(
+				sqlite
+					.prepare("SELECT 1 FROM settings_overrides WHERE key = ? LIMIT 1")
+					.get("coding.repository_instructions"),
+			),
+		apply(sqlite) {
+			sqlite
+				.prepare("DELETE FROM settings_overrides WHERE key = ?")
+				.run("coding.repository_instructions");
+		},
+	},
 	addTablesMigration(
 		"20260930_add_topic_wiki",
 		[schema.wikiTopics, schema.wikiPages, schema.wikiRevisions, schema.topicPublications],

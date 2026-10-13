@@ -41,6 +41,30 @@ function startInput(overrides: Partial<StartWorkerInput> = {}): StartWorkerInput
 }
 
 describe("Kubernetes manifest builders", () => {
+	it("overrides selector keys only for Docker workers and preserves common constraints", () => {
+		const options = {
+			namespace: "process",
+			nodeSelector: { hostname: "ordinary", os: "linux" },
+			docker: {
+				runtimeClassName: "qualified-vm",
+				isolation: "virtual-machine" as const,
+				nodeSelector: { hostname: "vm", qualified: "yes" },
+			},
+		};
+		const original = structuredClone(options);
+		const ordinary = buildKubernetesWorkerPodManifest(startInput(), options);
+		const docker = buildKubernetesWorkerPodManifest(startInput({ docker: true }), options);
+		expect(ordinary.spec.nodeSelector).toEqual({ hostname: "ordinary", os: "linux" });
+		expect(ordinary.spec.runtimeClassName).toBeUndefined();
+		expect(docker.spec.nodeSelector).toEqual({ hostname: "vm", os: "linux", qualified: "yes" });
+		expect(docker.spec.runtimeClassName).toBe("qualified-vm");
+		expect(options).toEqual(original);
+		options.docker.nodeSelector = {} as typeof options.docker.nodeSelector;
+		expect(
+			buildKubernetesWorkerPodManifest(startInput({ docker: true }), options).spec.nodeSelector,
+		).toEqual(ordinary.spec.nodeSelector);
+	});
+
 	it("sanitizes and truncates resource names deterministically", () => {
 		expect(sanitizeKubernetesNameSegment("My_Instance.01")).toBe("my-instance-01");
 		expect(kubernetesWorkerPodName("Process_With_Uppercase", "Worker_With_Uppercase")).toMatch(
@@ -163,6 +187,7 @@ describe("Kubernetes manifest builders", () => {
 		expect(manifest.metadata.annotations).toEqual({ "example.com/trace": "enabled" });
 		expect(manifest.spec.restartPolicy).toBe("Never");
 		expect(manifest.spec.serviceAccountName).toBe("leitwerk-worker");
+		expect(manifest.spec).not.toHaveProperty("automountServiceAccountToken");
 		expect(manifest.spec.imagePullSecrets).toEqual([{ name: "ghcr" }]);
 		expect(manifest.spec.nodeSelector).toEqual({ lane: "workers" });
 		expect(manifest.spec.tolerations).toEqual([{ key: "dedicated", operator: "Exists" }]);
@@ -205,6 +230,7 @@ describe("Kubernetes manifest builders", () => {
 			}),
 			{ namespace: "leitwerk", docker: { runtimeClassName: "sysbox", hostUsers: false } },
 		);
+		expect(manifest.spec).not.toHaveProperty("automountServiceAccountToken");
 		const container = manifest.spec.containers[0];
 		expect(container.volumeMounts).toContainEqual({
 			name: "process-state",
@@ -215,25 +241,101 @@ describe("Kubernetes manifest builders", () => {
 		).toEqual([{ name: "LEITWERK_PROCESS_VOLUME_MOUNT_PATH", value: "/process-storage" }]);
 	});
 
-	it("scopes gVisor guest capabilities and wrapper to Docker workers", () => {
-		const options = { namespace: "leitwerk", docker: { runtimeClassName: "gvisor", gvisor: true } };
-		const pod = buildKubernetesWorkerPodManifest(startInput({ docker: true }), options);
-		expect(pod.spec.runtimeClassName).toBe("gvisor");
+	it.each([
+		"gvisor",
+		"virtual-machine",
+	] as const)("scopes %s guest privileges to Docker workers", (isolation) => {
+		const options = {
+			namespace: "leitwerk",
+			docker: { runtimeClassName: "qualified-sandbox", isolation },
+		};
+		const pod = buildKubernetesWorkerPodManifest(
+			startInput({
+				docker: true,
+				env: {
+					LEITWERK_DOCKER_GVISOR: "1",
+					LEITWERK_DOCKER_ISOLATION: "caller-selected",
+				},
+			}),
+			options,
+		);
+		expect(pod.spec.runtimeClassName).toBe("qualified-sandbox");
 		expect(pod.spec).not.toHaveProperty("hostUsers");
+		if (isolation === "virtual-machine") {
+			expect(pod.spec.automountServiceAccountToken).toBe(false);
+		} else {
+			expect(pod.spec).not.toHaveProperty("automountServiceAccountToken");
+		}
 		expect(pod.spec.containers[0].securityContext).toEqual({
 			privileged: false,
-			capabilities: { add: ["SYS_ADMIN", "NET_ADMIN"] },
+			capabilities: {
+				add:
+					isolation === "virtual-machine"
+						? ["SYS_ADMIN", "NET_ADMIN", "SYS_PTRACE"]
+						: ["SYS_ADMIN", "NET_ADMIN"],
+			},
 		});
+		expect(pod.spec.containers[0].env.filter((e) => e.name === "LEITWERK_DOCKER_GVISOR")).toEqual(
+			isolation === "gvisor" ? [{ name: "LEITWERK_DOCKER_GVISOR", value: "1" }] : [],
+		);
+		expect(
+			pod.spec.containers[0].env.filter((e) => e.name === "LEITWERK_DOCKER_ISOLATION"),
+		).toEqual(
+			isolation === "virtual-machine"
+				? [{ name: "LEITWERK_DOCKER_ISOLATION", value: "virtual-machine" }]
+				: [],
+		);
 		expect(pod.spec.containers[0].env).toContainEqual({
-			name: "LEITWERK_DOCKER_GVISOR",
-			value: "1",
+			name: "DOCKER_HOST",
+			value: "unix:///var/run/docker.sock",
 		});
+		for (const field of ["hostNetwork", "hostPID", "hostIPC"]) {
+			expect(pod.spec).not.toHaveProperty(field);
+		}
+		expect(pod.spec.volumes).toEqual([
+			{ name: "process-state", persistentVolumeClaim: { claimName: "leitwerk-process-proc-1" } },
+		]);
 		const ordinary = buildKubernetesWorkerPodManifest(startInput(), options);
 		expect(ordinary.spec).not.toHaveProperty("runtimeClassName");
+		expect(ordinary.spec).not.toHaveProperty("automountServiceAccountToken");
 		expect(ordinary.spec.containers[0]).not.toHaveProperty("securityContext");
 		expect(ordinary.spec.containers[0].env.some((e) => e.name === "LEITWERK_DOCKER_GVISOR")).toBe(
 			false,
 		);
+		const helper = buildKubernetesExportHelperPodManifest(
+			{
+				instanceId: "PROC_1",
+				exportId: "export-1",
+				image: "ghcr.io/example/worker:1",
+				command: ["helper"],
+				env: {},
+				volume: startInput().volume,
+			},
+			options,
+		);
+		expect(helper.spec).not.toHaveProperty("runtimeClassName");
+		expect(helper.spec.containers[0]).not.toHaveProperty("securityContext");
+	});
+
+	it.each([
+		false,
+		true,
+	])("strips caller-selected VM preparation outside trusted VM Docker starts: docker=%s", (docker) => {
+		const env = { LEITWERK_DOCKER_ISOLATION: "virtual-machine" };
+		for (const isolation of [undefined, "gvisor", "virtual-machine"] as const) {
+			if (docker && isolation === "virtual-machine") continue;
+			const pod = buildKubernetesWorkerPodManifest(startInput({ docker, env }), {
+				namespace: "leitwerk",
+				docker: {
+					runtimeClassName: "qualified-sandbox",
+					...(isolation ? { isolation } : { hostUsers: false }),
+				},
+			});
+			expect(
+				pod.spec.containers[0].env.some((entry) => entry.name === "LEITWERK_DOCKER_ISOLATION"),
+			).toBe(false);
+		}
+		expect(env.LEITWERK_DOCKER_ISOLATION).toBe("virtual-machine");
 	});
 
 	it("omits host aliases from worker Pods when none are configured", () => {
@@ -347,23 +449,122 @@ describe("Kubernetes manifest builders", () => {
 		expect(diagnostics).toContain("FailedCreatePodSandBox");
 	});
 
-	it("adds bounded Kubernetes event diagnostics to failure reasons", () => {
+	it("retains the latest attach failure despite earlier scheduling warnings and shuffled API order", () => {
+		const events = [
+			{
+				type: "Warning",
+				reason: "FailedScheduling",
+				message: "unbound claim",
+				eventTime: "2026-10-11T09:21:00Z",
+			},
+			{
+				type: "Warning",
+				reason: "FailedScheduling",
+				message: "unbound claim",
+				eventTime: "2026-10-11T09:21:02Z",
+			},
+			{
+				type: "Normal",
+				reason: "Scheduled",
+				message: "assigned",
+				eventTime: "2026-10-11T09:21:02Z",
+			},
+			{
+				type: "Warning",
+				reason: "FailedAttachVolume",
+				message: "volume not ready",
+				count: 8,
+				firstTimestamp: "2026-10-11T09:21:03Z",
+				lastTimestamp: "2026-10-11T09:22:10Z",
+			},
+		];
+		const expected =
+			"Kubernetes events: Warning FailedAttachVolume x8: volume not ready | Warning FailedScheduling: unbound claim | Normal Scheduled: assigned";
+		expect(formatKubernetesPodDiagnostics(events)).toBe(expected);
+		expect(formatKubernetesPodDiagnostics([events[2], events[0], events[3], events[1]])).toBe(
+			expected,
+		);
+		expect(mapKubernetesPodExit({ reason: "Deleted", events }).reason).toContain(expected);
+	});
+
+	it("keeps newer container phase context ahead of old warnings", () => {
+		const events = ["A", "B", "C"].map((reason) => ({
+			type: "Warning",
+			reason,
+			eventTime: "2026-10-11T09:21:00Z",
+		}));
 		expect(
-			mapKubernetesPodExit({
-				phase: "Failed",
-				reason: "Unschedulable",
-				events: [
-					{ type: "Warning", reason: "FailedScheduling", count: 4, message: "0/3 nodes fit" },
-					{ type: "Normal", reason: "NotTriggerScaleUp", message: "pod did not trigger scale-up" },
-					{ type: "Warning", reason: "FailedMount", message: "PVC not attached" },
-					{ type: "Warning", reason: "Extra", message: "not included" },
-				],
-			}),
-		).toEqual({
-			exitCode: null,
-			signal: null,
-			reason:
-				"Unschedulable; Kubernetes events: Warning FailedScheduling x4: 0/3 nodes fit | Normal NotTriggerScaleUp: pod did not trigger scale-up | Warning FailedMount: PVC not attached",
-		});
+			formatKubernetesPodDiagnostics([
+				...events,
+				{ type: "Normal", reason: "Pulled", eventTime: "2026-10-11T09:22:00Z" },
+				{ type: "Normal", reason: "Started", eventTime: "2026-10-11T09:22:10Z" },
+			]),
+		).toBe("Kubernetes events: Normal Started | Normal Pulled | Warning A");
+	});
+
+	it("uses modern recurrence counts and timestamps before legacy fields", () => {
+		expect(
+			formatKubernetesPodDiagnostics([
+				{
+					type: "Warning",
+					reason: "Repeated",
+					count: 2,
+					lastTimestamp: "2026-10-11T09:21:00Z",
+					series: { count: 9, lastObservedTime: "2026-10-11T09:23:00Z" },
+				},
+				{ type: "Normal", reason: "LaterThanLegacy", eventTime: "2026-10-11T09:22:00Z" },
+			]),
+		).toBe("Kubernetes events: Warning Repeated x9 | Normal LaterThanLegacy");
+	});
+
+	it("falls back through invalid timestamps and orders undated events deterministically", () => {
+		const events = [
+			{ type: "Normal", reason: "Z", message: "undated" },
+			{ type: "Warning", reason: "B", eventTime: "invalid" },
+			{ type: "Warning", reason: "A" },
+			{
+				type: "Normal",
+				reason: "Dated",
+				lastTimestamp: "invalid",
+				firstTimestamp: "2026-10-11T09:22:00Z",
+			},
+		];
+		const expected = "Kubernetes events: Normal Dated | Warning A | Warning B";
+		expect(formatKubernetesPodDiagnostics(events)).toBe(expected);
+		expect(formatKubernetesPodDiagnostics([...events].reverse())).toBe(expected);
+	});
+
+	it("deduplicates repeated diagnostics without exposing secrets or expanding the bounds", () => {
+		const secret = "sensitive-value-12345";
+		const events = [
+			{
+				type: "Warning",
+				reason: "Repeated",
+				message: `token=${secret}`,
+				count: 2,
+				eventTime: "2026-10-11T09:21:00Z",
+			},
+			{
+				type: "Warning",
+				reason: "Repeated",
+				message: `token=${secret}`,
+				count: 5,
+				eventTime: "2026-10-11T09:22:00Z",
+			},
+			{ type: "Normal", reason: "Context", eventTime: "2026-10-11T09:21:30Z" },
+		];
+		const diagnostics = formatKubernetesPodDiagnostics(events, 2, [secret]);
+		expect(diagnostics).toBe(
+			"Kubernetes events: Warning Repeated x5: token=<redacted> | Normal Context",
+		);
+		expect(diagnostics).not.toContain(secret);
+		expect(
+			formatKubernetesPodDiagnostics(
+				[{ ...events[1], message: `${secret}${"x".repeat(3_000)}` }],
+				3,
+				[secret],
+			)?.length,
+		).toBeLessThanOrEqual(2_048);
+		expect(formatKubernetesPodDiagnostics(events, 0, [secret])).toBeUndefined();
 	});
 });

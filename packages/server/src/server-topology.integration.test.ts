@@ -3,8 +3,8 @@ import { request as httpsRequest } from "node:https";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
+import { createTestAppContext } from "@leitwerk-dev/test-support/integration";
 import { afterEach, describe, expect, it } from "vitest";
-import { createAppContext } from "./app.js";
 import { getDefaultConfig } from "./config/index.js";
 
 const fixturesDir = path.join(
@@ -61,7 +61,7 @@ describe("internal TLS listener", () => {
 			config.docker.server_ca_file = certFile;
 		}
 
-		const ctx = await createAppContext({
+		const ctx = await createTestAppContext({
 			config,
 			logger: false,
 			extensionCatalog: buildExtensionCatalogFromModules([]),
@@ -85,7 +85,7 @@ describe("internal TLS listener", () => {
 		config.storage.sqlite_path = ":memory:";
 		config.workers.runner = "local";
 
-		const ctx = await createAppContext({
+		const ctx = await createTestAppContext({
 			config,
 			logger: false,
 			extensionCatalog: buildExtensionCatalogFromModules([]),

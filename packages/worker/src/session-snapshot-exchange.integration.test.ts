@@ -122,7 +122,8 @@ describe("worker session snapshot exchange", () => {
 				timeoutMs: 50,
 			});
 			await expect(exchange.uploadSnapshot(treeFile, "ready")).rejects.toMatchObject({
-				name: "TimeoutError",
+				message: "Session snapshot transport failed",
+				cause: expect.objectContaining({ name: "TimeoutError" }),
 			});
 		} finally {
 			await server.close();

@@ -58,6 +58,7 @@ test.use({
 			config.pi.agent_dir = path.join(root, "pi");
 			config.workers.runner = "local";
 			config.extension_loading.sources = ["./extensions/showcase-processes"];
+			config.pi.default_model_profile = fixtureModelProfile.id;
 			config.pi.model_profiles = [fixtureModelProfile];
 			config.process_configs = {
 				poem_creator_process: { default_model_profile: fixtureModelProfile.id },
@@ -560,7 +561,7 @@ for (const viewport of [
 		await expand.click();
 		await expect(page.getByText("Loading trace…", { exact: true })).toBeVisible();
 		await expect(
-			page.getByRole("button", { name: "Show in chronicle", exact: true }).last(),
+			page.getByRole("button", { name: "Return to process", exact: true }).last(),
 		).toBeEnabled();
 		await expect.poll(() => captured).toBe(true);
 		emitThinkingDelta(process.id, runningTurnId, "\nBuffered while loading.");
@@ -583,7 +584,7 @@ for (const viewport of [
 		emitThinkingDelta(process.id, runningTurnId, "\nFollowing the new activity.");
 		await expect(overlay).toContainText("Following the new activity.");
 		await expect.poll(async () => bottomGap(await getScrollMetrics(overlay))).toBeLessThan(3);
-		await page.getByRole("button", { name: "Show in chronicle", exact: true }).click();
+		await page.getByRole("button", { name: "Return to process", exact: true }).click();
 		const closedCount = detailRequests;
 		emitThinkingDelta(process.id, runningTurnId, "\nClosed inspector activity.");
 		await expect(preview).toContainText("Closed inspector activity.");

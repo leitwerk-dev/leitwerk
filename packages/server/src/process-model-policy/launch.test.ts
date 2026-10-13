@@ -126,7 +126,10 @@ describe("server process model policy launch preparation", () => {
 	});
 
 	it("reports when the selected LLM turn has no resolvable model", () => {
-		const result = createTestModelPolicy({ profiles: [] }).policy.prepareLaunchPlan(launch());
+		const result = createTestModelPolicy({
+			profiles: [],
+			defaultProfileId: "",
+		}).policy.prepareLaunchPlan(launch());
 		expect(result).toMatchObject({
 			ok: false,
 			errors: [

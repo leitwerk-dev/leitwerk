@@ -69,6 +69,7 @@ export function sandboxConfig(input: SandboxInput): LeitwerkConfig {
 		},
 	];
 	config.pi.process_title_generation.model_profile = null;
+	config.pi.default_model_profile = "sandbox";
 	config.pi.retry.enabled = false;
 	config.extension_loading.sources = [];
 	if (input.mode === "real") {
@@ -81,6 +82,13 @@ export function sandboxConfig(input: SandboxInput): LeitwerkConfig {
 		if (!Array.isArray(model.model_profiles) || !model.model_profiles.length || !model.providers)
 			throw new Error("model.json requires model_profiles and providers");
 		config.pi.model_profiles = model.model_profiles;
+		if (
+			typeof model.default_model_profile !== "string" ||
+			!model.default_model_profile.trim() ||
+			!config.pi.model_profiles.some((profile) => profile.id === model.default_model_profile)
+		)
+			throw new Error("model.json requires default_model_profile referencing a configured profile");
+		config.pi.default_model_profile = model.default_model_profile;
 		config.extensions.models = model.providers;
 	}
 	return config;

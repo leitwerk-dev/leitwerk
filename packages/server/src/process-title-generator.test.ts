@@ -32,6 +32,7 @@ function createGeneratorHarness(
 ) {
 	const deps = createTestDeps();
 	const config = getDefaultConfig();
+	config.pi.default_model_profile = "claude_fast";
 	config.pi.model_profiles = [
 		{ id: "claude_fast", provider: "anthropic", model_id: "claude-test" },
 	];

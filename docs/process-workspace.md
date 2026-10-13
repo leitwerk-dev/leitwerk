@@ -47,6 +47,12 @@ Isolated worker runners (Docker containers or Kubernetes pods) mount persistent 
 Workers upload JSONL snapshots through `PUT /internal/workers/:instanceId/session-snapshot`.
 The server builds browser read models from retained snapshots, not by reading live worker volumes.
 
+On-demand `checkout_repository` calls can pin a captured commit with `revision`.
+The manifest retains this pin. Reusing or recovering a pinned checkout verifies
+and restores its HEAD without discarding local changes; a dirty checkout fails
+preparation. Shared repositories may reuse a clean clone while mapped turns keep
+their independent contexts and results.
+
 ### Process volume capacity
 
 Capacity covers the whole process volume, not each clone. Existing Kubernetes PVCs

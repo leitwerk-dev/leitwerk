@@ -17,6 +17,7 @@ import {
 	repositoryChangeStateCodec,
 } from "./repository-change-state-internal.js";
 import { codingPurposes } from "./settings.js";
+import { prepareRepositoryCommitMessageEvidence } from "./turns/commit-message-evidence.js";
 import {
 	buildRepositoryCommitMessagesPrompt,
 	parseRepositoryCommitMessages,
@@ -186,12 +187,12 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		.outcomeTool("plan_saved", (tool) =>
 			tool
 				.description(
-					"Save the finished plan for review. Its Markdown may include Mermaid diagrams or uploaded images.",
+					"Save a finished, implementable plan after resolving design-critical questions. Required investigation and access must be complete. If blocked, use abort_turn. Use ask_questions for operator decisions when available; otherwise decide within the requested scope and document assumptions.",
 				)
-				.requiredString("summary", "Short summary of the proposed plan")
+				.requiredString("summary", "One concise sentence summarizing the proposed plan")
 				.requiredStringArray(
 					"acceptanceCriteria",
-					"Acceptance criteria for the requested repository change",
+					"Requested outcomes for the repository change, without expanding scope",
 				)
 				.routeByState({ approval: "plan_decision", bypass: "implement" }, ({ ctx }) =>
 					ctx.state.routing?.plan?.skip ? "bypass" : "approval",
@@ -322,9 +323,12 @@ ${ctx.input["simplification-plan"]}`,
 		.llm<TParams, RepositoryChangeState>("generate_commit_message")
 		.description("Write Commit Message")
 		.executionPurpose(codingPurposes.implementation)
+		.tools("read", "grep", "find", "ls")
 		.rootBranchReview()
 		.startFromRoot()
 		.consume("plan")
+		.consume("implementation-summary")
+		.prepare(prepareRepositoryCommitMessageEvidence)
 		.buildPrompt(buildRepositoryCommitMessagesPrompt)
 		.publish("commit-message")
 		.to(config.publication.entryTurnId)

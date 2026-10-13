@@ -10,6 +10,7 @@ import type {
 	KubernetesNamespaceSummary,
 	KubernetesPodSummary,
 } from "./kubernetes-api-client.js";
+import { createImagePreloadApi } from "./kubernetes-image-preload-api.js";
 import {
 	type KubernetesConfigMapManifest,
 	type KubernetesDockerConfigJsonSecretManifest,
@@ -63,6 +64,7 @@ interface KubernetesTerminationState {
 }
 
 interface KubernetesObjectResponse {
+	series?: KubernetesPodEventSummary["series"];
 	spec?: {
 		nodeName?: string;
 		storageClassName?: string;
@@ -302,6 +304,7 @@ export function createKubernetesHttpApiClient(options: {
 					reason: event.reason,
 					message: event.message,
 					count: event.count,
+					series: event.series,
 					lastTimestamp: event.lastTimestamp,
 					firstTimestamp: event.firstTimestamp,
 					eventTime: event.eventTime,
@@ -347,6 +350,7 @@ export function createKubernetesHttpApiClient(options: {
 
 	return {
 		volumePool: createVolumePoolApi(request),
+		imagePreload: createImagePreloadApi(request),
 		async ensureNamespace(manifest: KubernetesProcessNamespaceManifest): Promise<void> {
 			const name = manifest.metadata.name;
 			await upsertResource({

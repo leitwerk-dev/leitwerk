@@ -1,9 +1,10 @@
 import cookie from "@fastify/cookie";
 import { type Actor, ADMIN_ACTOR } from "@leitwerk-dev/domain";
+import { createTestAppContext } from "@leitwerk-dev/test-support/integration";
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { createAllRepos, type RepositoryBundle } from "../db/repositories.js";
-import { type AppContext, createAppContext, getDefaultConfig } from "../index.js";
+import { type AppContext, getDefaultConfig } from "../index.js";
 import { createOwnedInMemoryDatabase as createInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
 import { createAuthService } from "./auth-service.js";
 import { setCookieValues, testAuthConfig } from "./auth-test-helpers.js";
@@ -72,7 +73,7 @@ describe("auth HTTP guard", () => {
 	});
 
 	it("returns the admin actor when auth is disabled", async () => {
-		ctx = await createAppContext({ logger: false, config: getDefaultConfig() });
+		ctx = await createTestAppContext({ logger: false, config: getDefaultConfig() });
 
 		const response = await ctx.app.inject({ method: "GET", url: "/api/auth/me" });
 
@@ -83,7 +84,7 @@ describe("auth HTTP guard", () => {
 	it("keeps API requests unauthenticated when provider wiring is present but not enabled", async () => {
 		const config = testAuthConfig();
 		if (config.auth) delete config.auth.enabled;
-		ctx = await createAppContext({ logger: false, config });
+		ctx = await createTestAppContext({ logger: false, config });
 
 		const me = await ctx.app.inject({ method: "GET", url: "/api/auth/me" });
 		const processes = await ctx.app.inject({ method: "GET", url: "/api/processes" });
@@ -94,7 +95,7 @@ describe("auth HTTP guard", () => {
 	});
 
 	it("rejects API requests without a valid session when auth is enabled", async () => {
-		ctx = await createAppContext({ logger: false, config: testAuthConfig() });
+		ctx = await createTestAppContext({ logger: false, config: testAuthConfig() });
 
 		const me = await ctx.app.inject({ method: "GET", url: "/api/auth/me" });
 		const processes = await ctx.app.inject({ method: "GET", url: "/api/processes" });
@@ -210,7 +211,7 @@ describe("auth HTTP guard", () => {
 
 	it("attaches the session actor to authenticated API requests", async () => {
 		const config = testAuthConfig();
-		ctx = await createAppContext({ logger: false, config });
+		ctx = await createTestAppContext({ logger: false, config });
 		const rawSession = "raw-session-token";
 		const actor: Actor = {
 			id: "identity:alice",
@@ -242,7 +243,7 @@ describe("auth HTTP guard", () => {
 
 	it("persists the authenticated actor on mutating route events", async () => {
 		const config = testAuthConfig();
-		ctx = await createAppContext({ logger: false, config });
+		ctx = await createTestAppContext({ logger: false, config });
 		const repos = createAllRepos(ctx.db);
 		const rawSession = "mutating-route-session";
 		const actor: Actor = {
