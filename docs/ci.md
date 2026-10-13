@@ -32,9 +32,24 @@ unavailable or fewer than ten comparable runs exist.
 
 Stable publication accepts only releases created from a merged Release Please PR on `main`. RC publication accepts only the validated revision of an open release PR. Both use main-only publishing environments and short-lived npm credentials.
 
+Stable images use application source from the verified release tag and Dockerfiles
+from the main revision running publication. Build recipe fixes can therefore resume
+a draft release without changing its tag. CI compiles both image build stages.
+
 ## Retries
 
 Retries reuse matching artifacts and reject conflicts. Release assets must match byte-for-byte; published releases missing assets require a new version. Stable npm verification waits up to ten minutes for registry visibility and reports any missing versions. If an RC's release PR changes, start a new run.
+
+To resume stable publication after merging a build recipe fix, dispatch a new run
+from `main` with the original release tag:
+
+```bash
+gh workflow run publish.yml --repo leitwerk-dev/leitwerk \
+  --ref main -f release_tag=v0.4.0
+```
+
+Replace `v0.4.0` with the draft release's tag. Rerunning an old workflow attempt
+uses its original build recipes.
 
 ## Registering new npm packages
 

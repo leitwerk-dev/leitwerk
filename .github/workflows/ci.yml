@@ -79,10 +79,10 @@ jobs:
       - name: Verify deployment tooling
         run: helm version --short
 
-      - name: Build dependency image contracts
+      - name: Verify image build stages
         run: |
-          docker build --target dependencies -f deploy/images/Dockerfile.server .
-          docker build --target dependencies -f deploy/images/Dockerfile.worker-generic .
+          docker build --target build -f deploy/images/Dockerfile.server .
+          docker build --target build -f deploy/images/Dockerfile.worker-generic .
 
       - name: Run full test gate
         run: npm run test:full

@@ -8,6 +8,7 @@ playwright-report
 *.log
 .git
 .github
+.release-tooling
 docs
 ideas
 tests/browser
