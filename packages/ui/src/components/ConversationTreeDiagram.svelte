@@ -4,6 +4,7 @@ let nextTreeDiagramId = 0;
 
 <script lang="ts">
 import type { ProcessInstanceTreeResponseBody } from "@leitwerk-dev/protocol/http-contracts";
+import { edgePath } from "@leitwerk-dev/workflow-graph";
 import { tick } from "svelte";
 import {
 	INSTANCE_TREE_COLUMN_GAP,
@@ -69,12 +70,6 @@ async function revealSelected() {
 	zoom = 1;
 	await tick();
 	showSelected();
-}
-
-function path(points: readonly { x: number; y: number }[]): string {
-	return points
-		.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`)
-		.join(" ");
 }
 
 function marker(node: NonNullable<typeof layout>["nodes"][number]): string {
@@ -236,7 +231,7 @@ const accessibleDescription = $derived.by(() => {
 					class:decision={!edge.hasContext && !edge.productLabels.length}
 					class:dead-end={edge.endState === "not_applied"}
 					class:completed-end={edge.endState === "completed"}
-					d={path(edge.points)}
+					d={edgePath(edge.points)}
 					marker-end={edge.endState
 						? undefined
 						: `url(#${markerId}-${edge.productLabels.length ? "product" : "context"})`}

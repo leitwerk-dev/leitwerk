@@ -113,16 +113,9 @@ function toTurnView(
 					}),
 				)
 			: {};
-	return {
+	const view: ProcessGraphTurnView = {
 		turnType: definition.kind,
 		description: definition.description,
-		...(definition.kind === "llm"
-			? {
-					...(definition.forEach ? { repetition: "sequential" as const } : {}),
-					tools: declaredFlowTools(definition),
-					hasDynamicTools: definition.resolveIntegrationTools !== undefined,
-				}
-			: {}),
 		transitions: getProcessTurnTransitions(binding).map((transition) => {
 			const outcome =
 				(definition.kind === "llm" || definition.kind === "automatic") && transition.outcome
@@ -146,59 +139,48 @@ function toTurnView(
 		...(definition.kind === "human" && definition.reviewProduct
 			? { reviewProduct: definition.reviewProduct }
 			: {}),
-		...(definition.kind === "llm" && definition.resultSemanticRef
-			? { resultSemanticRef: definition.resultSemanticRef }
-			: {}),
-		...(definition.kind === "llm" && definition.publishedProduct
-			? { publishedProduct: definition.publishedProduct }
-			: {}),
 		...(publishedProducts.length > 0 ? { publishedProducts } : {}),
-		...(definition.kind === "llm" && definition.consumedProducts?.length
-			? { consumedProducts: [...definition.consumedProducts] }
-			: {}),
-		...(definition.kind === "llm" && definition.optionalConsumedProducts?.length
-			? { optionalConsumedProducts: [...definition.optionalConsumedProducts] }
-			: {}),
-		...(definition.kind === "llm" && definition.requiredSemanticMarkdownRefs?.length
-			? { requiredSemanticMarkdownRefs: [...definition.requiredSemanticMarkdownRefs] }
-			: {}),
-		...(definition.kind === "llm" && definition.optionalSemanticMarkdownRefs?.length
-			? { optionalSemanticMarkdownRefs: [...definition.optionalSemanticMarkdownRefs] }
-			: {}),
-		...(definition.kind === "llm" &&
-		definition.turnResultMarkdown &&
-		"required" in definition.turnResultMarkdown &&
-		definition.turnResultMarkdown.required === true
-			? { turnResultMarkdownRequired: true }
-			: {}),
 	};
+	if (definition.kind === "llm") {
+		if (definition.forEach) view.repetition = "sequential";
+		view.tools = declaredFlowTools(definition);
+		view.hasDynamicTools = definition.resolveIntegrationTools !== undefined;
+		if (definition.resultSemanticRef) view.resultSemanticRef = definition.resultSemanticRef;
+		if (definition.publishedProduct) view.publishedProduct = definition.publishedProduct;
+		if (definition.consumedProducts?.length)
+			view.consumedProducts = [...definition.consumedProducts];
+		if (definition.optionalConsumedProducts?.length)
+			view.optionalConsumedProducts = [...definition.optionalConsumedProducts];
+		if (definition.requiredSemanticMarkdownRefs?.length)
+			view.requiredSemanticMarkdownRefs = [...definition.requiredSemanticMarkdownRefs];
+		if (definition.optionalSemanticMarkdownRefs?.length)
+			view.optionalSemanticMarkdownRefs = [...definition.optionalSemanticMarkdownRefs];
+		if (
+			definition.turnResultMarkdown &&
+			"required" in definition.turnResultMarkdown &&
+			definition.turnResultMarkdown.required === true
+		)
+			view.turnResultMarkdownRequired = true;
+	}
+	return view;
 }
 
 function declaredFlowTools(
 	definition: Extract<TurnDefinition, { kind: "llm" }>,
 ): ProcessFlowTool[] {
+	const tool = (
+		name: string,
+		category: ProcessFlowTool["category"],
+		description: string | null = null,
+	): ProcessFlowTool => ({ name, category, description });
 	return [
-		...definition.availableTools.map((name) => ({
-			name,
-			category: "workspace" as const,
-			description: null,
-		})),
-		...(definition.integrationTools ?? []).map((name) => ({
-			name,
-			category: "integration" as const,
-			description: null,
-		})),
+		...definition.availableTools.map((name) => tool(name, "workspace")),
+		...(definition.integrationTools ?? []).map((name) => tool(name, "integration")),
 		...(definition.askQuestions
-			? [
-					{
-						name: "ask_questions",
-						category: "question" as const,
-						description: "Ask the operator structured questions.",
-					},
-				]
+			? [tool("ask_questions", "question", "Ask the operator structured questions.")]
 			: []),
 		...Object.entries(definition.outcomes ?? {}).flatMap(([name, outcome]) =>
-			outcome ? [{ name, category: "outcome" as const, description: outcome.description }] : [],
+			outcome ? [tool(name, "outcome", outcome.description)] : [],
 		),
 	];
 }

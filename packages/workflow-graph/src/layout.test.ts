@@ -1,6 +1,19 @@
 import type { ProcessFlowNode, ProcessFlowView } from "@leitwerk-dev/domain";
 import { describe, expect, it } from "vitest";
-import { layoutWorkflow, shortestSuccessfulPath } from "./index.js";
+import { layoutWorkflow, shortestSuccessfulPath, type WorkflowEdge } from "./index.js";
+
+const edge = (
+	from: string,
+	to: string | null,
+	kind: ProcessFlowView["edges"][number]["kind"] = "branch",
+	label: string | null = `${from} to ${to}`,
+): ProcessFlowView["edges"][number] => ({
+	from,
+	to,
+	kind,
+	label,
+	lifecycleStatus: to === null ? "completed" : null,
+});
 
 function fixture(): ProcessFlowView {
 	const node = (
@@ -16,17 +29,6 @@ function fixture(): ProcessFlowView {
 		anchorTurnId: null,
 		isEntry: turnId === "gather",
 		...(repeated ? { repetition: "sequential" } : {}),
-	});
-	const edge = (
-		from: string,
-		to: string | null,
-		kind: ProcessFlowView["edges"][number]["kind"] = "branch",
-	): ProcessFlowView["edges"][number] => ({
-		from,
-		to,
-		kind,
-		label: `${from} to ${to}`,
-		lifecycleStatus: to === null ? "completed" : null,
 	});
 	return {
 		processId: "release",
@@ -76,14 +78,26 @@ function repositoryFlow(): ProcessFlowView {
 			["apply", "commit"],
 			["commit", "publish"],
 			["publish", null],
-		].map(([from, to]) => ({
-			from: from as string,
-			to,
-			label: null,
-			kind: to === null ? "terminal" : "branch",
-			lifecycleStatus: to === null ? "completed" : null,
-		})),
+		].map(([from, to]) => edge(from as string, to, to === null ? "terminal" : "branch", null)),
 	};
+}
+
+function expectSeparate(first: WorkflowEdge, second: WorkflowEdge) {
+	for (let i = 1; i < first.points.length; i++) {
+		const a = first.points[i - 1],
+			b = first.points[i];
+		for (let j = 1; j < second.points.length; j++) {
+			const c = second.points[j - 1],
+				d = second.points[j];
+			expect(
+				Math.max(a.x, b.x) < Math.min(c.x, d.x) ||
+					Math.max(c.x, d.x) < Math.min(a.x, b.x) ||
+					Math.max(a.y, b.y) < Math.min(c.y, d.y) ||
+					Math.max(c.y, d.y) < Math.min(a.y, b.y),
+				`${first.from} → ${first.to} and ${second.from} → ${second.to} must not overlap or cross`,
+			).toBe(true);
+		}
+	}
 }
 
 describe("workflow layout", () => {
@@ -106,21 +120,7 @@ describe("workflow layout", () => {
 		expect(Math.abs(review.points[0].x - (revision.points.at(-1)?.x ?? 0))).toBeGreaterThanOrEqual(
 			24,
 		);
-		for (let i = 1; i < review.points.length; i++) {
-			const a = review.points[i - 1],
-				b = review.points[i];
-			for (let j = 1; j < revision.points.length; j++) {
-				const c = revision.points[j - 1],
-					d = revision.points[j];
-				expect(
-					Math.max(a.x, b.x) < Math.min(c.x, d.x) ||
-						Math.max(c.x, d.x) < Math.min(a.x, b.x) ||
-						Math.max(a.y, b.y) < Math.min(c.y, d.y) ||
-						Math.max(c.y, d.y) < Math.min(a.y, b.y),
-					"Review and revision must not overlap or cross",
-				).toBe(true);
-			}
-		}
+		expectSeparate(review, revision);
 	});
 	it("rejoins a forward detour from below without marking it as rework", () => {
 		const graph = layoutWorkflow(repositoryFlow());
@@ -194,28 +194,10 @@ describe("workflow layout", () => {
 			{ ...original, turnId: "another-branch", repetition: undefined },
 		);
 		flow.edges.push(
-			{
-				from: "gather",
-				to: "second-map",
-				lifecycleStatus: null,
-				kind: "branch",
-				label: "Research",
-			},
-			{
-				from: "gather",
-				to: "another-branch",
-				lifecycleStatus: null,
-				kind: "branch",
-				label: "Investigate",
-			},
-			{ from: "second-map", to: "publish", lifecycleStatus: null, kind: "branch", label: "Ready" },
-			{
-				from: "publish",
-				to: "publish",
-				lifecycleStatus: null,
-				kind: "loopback",
-				label: "Repeat publication",
-			},
+			edge("gather", "second-map", "branch", "Research"),
+			edge("gather", "another-branch", "branch", "Investigate"),
+			edge("second-map", "publish", "branch", "Ready"),
+			edge("publish", "publish", "loopback", "Repeat publication"),
 		);
 		const graph = layoutWorkflow(flow);
 		expect(graph.nodes.filter((node) => node.repeat)).toHaveLength(2);
@@ -289,21 +271,7 @@ describe("workflow layout", () => {
 		const cancel = graph.edges.find((edge) => edge.to === "end:aborted");
 		if (!revision || !cancel) throw new Error("Missing operator decision routes");
 		expect(revision.points[0].x).toBeLessThan(cancel.points[0].x);
-		for (let i = 1; i < revision.points.length; i++) {
-			const a = revision.points[i - 1],
-				b = revision.points[i];
-			for (let j = 1; j < cancel.points.length; j++) {
-				const c = cancel.points[j - 1],
-					d = cancel.points[j];
-				expect(
-					Math.max(a.x, b.x) < Math.min(c.x, d.x) ||
-						Math.max(c.x, d.x) < Math.min(a.x, b.x) ||
-						Math.max(a.y, b.y) < Math.min(c.y, d.y) ||
-						Math.max(c.y, d.y) < Math.min(a.y, b.y),
-					"Decision routes must not cross or share a segment",
-				).toBe(true);
-			}
-		}
+		expectSeparate(revision, cancel);
 		const approval = graph.edges.find(
 			(edge) => edge.from === "turn:review" && edge.to === "turn:publish",
 		);

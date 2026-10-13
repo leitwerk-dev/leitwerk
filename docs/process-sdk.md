@@ -689,8 +689,9 @@ State-routed LLM outcomes evaluate their effect first, then choose a declared br
 using the returned state. The state update and selected transition persist together;
 policy lookups belong in the effect so routing does not repeat them.
 
-An LLM outcome tool's `routeByState()` branch values may be turn ids or route objects with `to`, `label`,
-and `description`. Keep branch keys stable: the chooser returns the key, while
+An LLM outcome tool's `routeByState()` branch values may be turn ids or public
+`ProcessOutcomeBranchSpec` route objects with `to`, `label`, and `description`.
+Keep branch keys stable: the chooser returns the key, while
 `label` and `description` explain its condition in the Workflow graph. Without a
 label, the graph humanizes the branch trigger. Graph inspection reads these static
 declarations without invoking the chooser. For example:

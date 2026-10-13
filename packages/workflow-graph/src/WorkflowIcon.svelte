@@ -1,6 +1,8 @@
+<!-- @internal -->
 <script>
 let { name = "agent", size = 20 } = $props();
 const paths = {
+	document: "M6 3h8l4 4v14H6zM14 3v5h4M9 12h6M9 16h6",
 	external: "M5 5h14v14H5zM2 12h11m-3-3 3 3-3 3",
 	agent: "M8 4h8v4H8z M4 10h16v10H4z M8 14h.01 M16 14h.01 M9 17h6 M12 2v2 M2 13h2 M20 13h2",
 	map: "m16 3 4 4-4 4M4 11V9a2 2 0 0 1 2-2h14M8 21l-4-4 4-4m12 0v2a2 2 0 0 1-2 2H4",

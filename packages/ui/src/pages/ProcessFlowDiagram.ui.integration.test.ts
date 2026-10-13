@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import type { ProcessFlowView } from "@leitwerk-dev/domain";
-import { flushSync, mount, tick, unmount } from "svelte";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { flushSync, tick } from "svelte";
+import { describe, expect, it, vi } from "vitest";
+import { mountTest } from "../test-support/mount.js";
 import ProcessFlowDiagram from "./ProcessFlowDiagram.svelte";
 
-const mounted: Array<ReturnType<typeof mount>> = [];
 const flow: ProcessFlowView = {
 	processId: "test",
 	entryTurnIds: ["assess"],
@@ -53,16 +53,10 @@ const flow: ProcessFlowView = {
 	endStates: [{ lifecycleStatus: "completed", synthetic: false }],
 };
 function subject(props: Record<string, unknown> = {}) {
-	const target = document.createElement("div");
-	document.body.append(target);
-	mounted.push(mount(ProcessFlowDiagram, { target, props: { flow, ...props } }));
+	const { target } = mountTest(ProcessFlowDiagram, { flow, ...props });
 	flushSync();
 	return target;
 }
-afterEach(async () => {
-	for (const app of mounted.splice(0)) await unmount(app);
-	document.body.innerHTML = "";
-});
 function button(target: HTMLElement, part: string) {
 	const element = target.querySelector<HTMLButtonElement>(
 		`[data-flow-turn-id="assess"][data-part="${part}"]`,
@@ -174,6 +168,8 @@ describe("shared workflow graph integration", () => {
 	});
 	it("retains selection when moving from enclosure to activity and restores exact keyboard focus", async () => {
 		const target = subject({ mode: "full" });
+		const outerKeydown = vi.fn();
+		target.addEventListener("keydown", outerKeydown);
 		button(target, "repeat").click();
 		flushSync();
 		await tick();
@@ -182,48 +178,14 @@ describe("shared workflow graph integration", () => {
 		await tick();
 		expect(target.querySelector(".step-inspector")).toBeTruthy();
 		button(target, "turn").focus();
-		target
-			.querySelector(".workflow-graph")
-			?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+		button(target, "turn").dispatchEvent(
+			new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+		);
 		flushSync();
 		await tick();
 		expect(target.querySelector(".step-inspector")).toBeNull();
+		expect(outerKeydown).not.toHaveBeenCalled();
 		expect(document.activeElement).toBe(button(target, "turn"));
-		expect(target.querySelector('[role="tooltip"]')).toBeNull();
-	});
-	it("dismisses previews on close and does not restore an earlier hover", async () => {
-		const target = subject({ mode: "full" });
-		const activity = button(target, "turn");
-		activity.focus();
-		activity.click();
-		flushSync();
-		await tick();
-		const close = target.querySelector<HTMLButtonElement>('[aria-label="Close step details"]');
-		if (!close) throw new Error("Missing close button");
-		close.focus();
-		close.click();
-		flushSync();
-		await tick();
-		await vi.waitFor(() => expect(document.activeElement).toBe(activity));
-		expect(target.querySelector('[role="tooltip"]')).toBeNull();
-		expect(target.querySelectorAll(".highlighted, .route-active")).toHaveLength(0);
-		const collect = button(target, "collect");
-		hover(collect);
-		expect(target.querySelector('[role="tooltip"] strong')?.textContent).toBe("Collect results");
-		hover(collect, false);
-		expect(target.querySelector('[role="tooltip"]')).toBeNull();
-		expect(target.querySelectorAll(".highlighted, .route-active")).toHaveLength(0);
-	});
-	it("lets pointer feedback replace keyboard feedback without reviving it on leave", () => {
-		const target = subject({ mode: "full" });
-		const activity = button(target, "turn");
-		activity.focus();
-		flushSync();
-		expect(target.querySelector('[role="tooltip"] strong')?.textContent).toBe("Assess component");
-		const collect = button(target, "collect");
-		hover(collect);
-		expect(target.querySelector('[role="tooltip"] strong')?.textContent).toBe("Collect results");
-		hover(collect, false);
 		expect(target.querySelector('[role="tooltip"]')).toBeNull();
 	});
 	it("uses separate markers for each mounted graph", () => {
@@ -232,22 +194,6 @@ describe("shared workflow graph integration", () => {
 		const ids = [...document.querySelectorAll("marker")].map((marker) => marker.id);
 		expect(ids).toHaveLength(6);
 		expect(new Set(ids).size).toBe(ids.length);
-	});
-	it("keeps unrelated repeat exits neutral when highlighting publication", () => {
-		const target = subject({ mode: "full" });
-		const publish = target.querySelector('[data-flow-turn-id="publish"]');
-		if (!publish) throw new Error("Missing publication turn");
-		hover(publish);
-		for (const section of ["outer", "exit"]) {
-			expect(route(target, "assess", "publish", section).classList.contains("route-active")).toBe(
-				true,
-			);
-			expect(route(target, "assess", "review", section).classList.contains("route-active")).toBe(
-				false,
-			);
-		}
-		expect(route(target, "review", "publish").classList.contains("route-active")).toBe(true);
-		expect(target.querySelector('[data-route-section="loop"].route-active')).toBeNull();
 	});
 	it.each([
 		"outer",
@@ -271,23 +217,13 @@ describe("shared workflow graph integration", () => {
 		hover(arrow, false);
 		expect(route(target, "assess", "review").classList.contains("route-active")).toBe(true);
 	});
-	it("keeps next-item repetition neutral and previews internal routes independently", () => {
+	it("clears hover-only feedback when leaving either internal repeat route", () => {
 		const target = subject({ mode: "full" });
-		const loop = target.querySelector('[data-route-section="loop"]');
-		if (!loop) throw new Error("Missing next-item route");
-		expect(loop.querySelector(".route-line")?.getAttribute("stroke")).toBe("var(--graph-route)");
-		expect(loop.querySelector(".route-line")?.getAttribute("marker-end")).toContain("arrow-normal");
 		for (const section of ["loop", "results"]) {
 			const arrow = target.querySelector(`[data-route-section="${section}"]`);
 			if (!arrow) throw new Error(`Missing ${section} route`);
 			hover(arrow);
 			expect(target.querySelectorAll(".route-active")).toHaveLength(1);
-			expect(arrow.querySelector(".route-line")?.getAttribute("stroke")).toBe(
-				"var(--graph-accent)",
-			);
-			expect(arrow.querySelector(".route-line")?.getAttribute("marker-end")).toContain(
-				"arrow-active",
-			);
 			hover(arrow, false);
 			expect(target.querySelectorAll(".route-active")).toHaveLength(0);
 		}

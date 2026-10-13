@@ -4,6 +4,7 @@ import type {
 	ProcessFlowView,
 	ProcessTurnType,
 } from "@leitwerk-dev/domain";
+import { shortestSuccessfulTurnPath } from "@leitwerk-dev/domain";
 
 /** @internal */
 export interface Point {
@@ -70,26 +71,17 @@ export function shortestSuccessfulPath(flow: ProcessFlowView): string[] {
 	const ids = new Set(flow.nodes.map((node) => node.turnId));
 	const entry = flow.entryTurnIds.find((id) => ids.has(id)) ?? flow.nodes[0]?.turnId;
 	if (!entry) return [];
-	const parents = new Map<string, string | null>([[entry, null]]);
-	const queue = [entry];
-	for (const id of queue) {
-		const outgoing = flow.edges.filter((edge) => edge.from === id);
-		if (outgoing.some((edge) => edge.lifecycleStatus === "completed")) {
-			const path: string[] = [];
-			let cursor: string | null = id;
-			while (cursor !== null) {
-				path.push(cursor);
-				cursor = parents.get(cursor) ?? null;
-			}
-			return path.reverse();
-		}
-		for (const edge of outgoing) {
-			if (edge.to === null || !ids.has(edge.to) || parents.has(edge.to)) continue;
-			parents.set(edge.to, id);
-			queue.push(edge.to);
-		}
-	}
-	return [entry];
+	return shortestSuccessfulTurnPath(entry, (id) =>
+		flow.edges
+			.filter((edge) => edge.from === id)
+			.flatMap((edge) =>
+				edge.lifecycleStatus === "completed"
+					? [null]
+					: edge.to !== null && ids.has(edge.to)
+						? [edge.to]
+						: [],
+			),
+	);
 }
 
 /** Labels match the Chronicle's turn-kind vocabulary. @internal */
@@ -207,8 +199,7 @@ export function layoutWorkflow(flow: ProcessFlowView): WorkflowLayout {
 		occupied.add(`${column}:${lane}`);
 	};
 	for (const [column, id] of mainPath.entries()) place(id, column, 0);
-	const queue = [...mainPath];
-	for (const id of queue) {
+	for (const id of placed) {
 		const parent = byId.get(id);
 		if (!parent) continue;
 		for (const edge of edges.filter((edge) => edge.from === id)) {
@@ -219,7 +210,6 @@ export function layoutWorkflow(flow: ProcessFlowView): WorkflowLayout {
 				parent.column + 1,
 				parent.lane || (next.kind === "human" || next.kind === "aborted" ? -1 : 1),
 			);
-			queue.push(next.id);
 		}
 	}
 	// Unreachable declarations and implicit abort remain visible without fabricated edges.
@@ -280,6 +270,8 @@ export function layoutWorkflow(flow: ProcessFlowView): WorkflowLayout {
 			edge.targetSide = to.column < from.column ? "right" : "left";
 		}
 	}
+	const isMain = (edge: WorkflowEdge) =>
+		mainPath.indexOf(edge.from) >= 0 && mainPath[mainPath.indexOf(edge.from) + 1] === edge.to;
 	const port = (edge: WorkflowEdge, source: boolean): Point => {
 		const node = byId.get(source ? edge.from : edge.to) as WorkflowNode;
 		const side = source ? edge.sourceSide : edge.targetSide;
@@ -303,11 +295,7 @@ export function layoutWorkflow(flow: ProcessFlowView): WorkflowLayout {
 					: first.x + first.width / 2 - (second.x + second.width / 2);
 				return distance || Number(a.source) - Number(b.source);
 			});
-		const primary = peers.find(
-			({ edge: other }) =>
-				mainPath.indexOf(other.from) >= 0 &&
-				mainPath[mainPath.indexOf(other.from) + 1] === other.to,
-		);
+		const primary = peers.find(({ edge: other }) => isMain(other));
 		const center = primary ? peers.indexOf(primary) : (peers.length - 1) / 2;
 		const available = horizontal
 			? (node.repeat?.activity.height ?? node.height) / 2 - 16
@@ -334,8 +322,6 @@ export function layoutWorkflow(flow: ProcessFlowView): WorkflowLayout {
 	let loopIndex = 0;
 	const routed: Point[][] = [];
 	// Main-line edges get the unobstructed central ports before side routes.
-	const isMain = (edge: WorkflowEdge) =>
-		mainPath.indexOf(edge.from) >= 0 && mainPath[mainPath.indexOf(edge.from) + 1] === edge.to;
 	for (const edge of [...edges].sort((a, b) => Number(isMain(b)) - Number(isMain(a)))) {
 		const start = port(edge, true),
 			end = port(edge, false);
@@ -389,17 +375,22 @@ function simplify(points: Point[]): Point[] {
 	}
 	return result;
 }
+function strictBoundsOverlap(a: Point, b: Point, c: Point, d: Point): boolean {
+	return (
+		Math.max(a.x, b.x) > Math.min(c.x, d.x) &&
+		Math.min(a.x, b.x) < Math.max(c.x, d.x) &&
+		Math.max(a.y, b.y) > Math.min(c.y, d.y) &&
+		Math.min(a.y, b.y) < Math.max(c.y, d.y)
+	);
+}
 function clearSegment(a: Point, b: Point, nodes: WorkflowNode[]): boolean {
 	return !nodes.some((node) =>
-		a.y === b.y
-			? a.y > node.y - 10 &&
-				a.y < node.y + node.height + 10 &&
-				Math.max(a.x, b.x) > node.x - 10 &&
-				Math.min(a.x, b.x) < node.x + node.width + 10
-			: a.x > node.x - 10 &&
-				a.x < node.x + node.width + 10 &&
-				Math.max(a.y, b.y) > node.y - 10 &&
-				Math.min(a.y, b.y) < node.y + node.height + 10,
+		strictBoundsOverlap(
+			a,
+			b,
+			{ x: node.x - 10, y: node.y - 10 },
+			{ x: node.x + node.width + 10, y: node.y + node.height + 10 },
+		),
 	);
 }
 function route(
@@ -445,20 +436,7 @@ function route(
 			const crossings = previous.reduce(
 				(count, route) =>
 					count +
-					route.slice(1).filter((b, i) => {
-						const a = route[i];
-						return before.y === point.y && a.x === b.x
-							? a.x > Math.min(before.x, point.x) &&
-									a.x < Math.max(before.x, point.x) &&
-									before.y > Math.min(a.y, b.y) &&
-									before.y < Math.max(a.y, b.y)
-							: before.x === point.x &&
-									a.y === b.y &&
-									a.y > Math.min(before.y, point.y) &&
-									a.y < Math.max(before.y, point.y) &&
-									before.x > Math.min(a.x, b.x) &&
-									before.x < Math.max(a.x, b.x);
-					}).length,
+					route.slice(1).filter((b, i) => strictBoundsOverlap(before, point, route[i], b)).length,
 				0,
 			);
 			return sum + Math.abs(before.x - point.x) + Math.abs(before.y - point.y) + crossings * 80;
@@ -547,17 +525,7 @@ function routeLabel(points: Point[]): Point {
 	}
 	return position;
 }
-/** Orthogonal SVG path with no smoothing that can displace aligned ports. @internal */
+/** SVG polyline with no smoothing that can displace aligned ports. @internal */
 export function edgePath(points: readonly Point[]): string {
-	return points
-		.map((point, index) =>
-			!index
-				? `M${point.x} ${point.y}`
-				: point.x === points[index - 1].x
-					? `V${point.y}`
-					: point.y === points[index - 1].y
-						? `H${point.x}`
-						: `L${point.x} ${point.y}`,
-		)
-		.join("");
+	return points.map((point, index) => `${index === 0 ? "M" : "L"}${point.x} ${point.y}`).join("");
 }

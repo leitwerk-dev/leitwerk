@@ -5,51 +5,22 @@ import {
 	type ProcessFlowNode,
 	type ProcessFlowView,
 	type ProcessTurnTerminalLifecycleStatus,
+	shortestSuccessfulTurnPath,
 	type TurnId,
 	trimToNull,
 } from "@leitwerk-dev/domain";
 import type { ProcessGraphView } from "./process-graph.js";
 
-/**
- * The shortest successful route, independent of the authored happy-path hint.
- * Walks `nextTurnId` edges breadth-first from the entry turn to the nearest turn
- * that can reach a `completed` terminal, preferring the shortest forward path and
- * breaking ties by transition declaration order. Returns `[entry]` when no
- * completing path exists.
- */
 function deriveSpine(graph: ProcessGraphView, entry: TurnId): TurnId[] {
-	const predecessor = new Map<TurnId, TurnId | null>([[entry, null]]);
-	const queue: TurnId[] = [entry];
-	let goal: TurnId | null = null;
-	for (const current of queue) {
-		const turn = graph.turns.get(current);
-		if (!turn) {
-			continue;
-		}
-		if (turn.transitions.some((transition) => transition.lifecycleStatus === "completed")) {
-			goal = current;
-			break;
-		}
-		for (const transition of turn.transitions) {
-			const next = transition.nextTurnId;
-			if (next === undefined || predecessor.has(next) || !graph.turns.has(next)) {
-				continue;
-			}
-			predecessor.set(next, current);
-			queue.push(next);
-		}
-	}
-
-	if (goal === null) {
-		return [entry];
-	}
-	const reversed: TurnId[] = [];
-	let cursor: TurnId | null = goal;
-	while (cursor !== null) {
-		reversed.push(cursor);
-		cursor = predecessor.get(cursor) ?? null;
-	}
-	return reversed.reverse();
+	return shortestSuccessfulTurnPath(entry, (id) =>
+		(graph.turns.get(id)?.transitions ?? []).flatMap((transition) =>
+			transition.lifecycleStatus === "completed"
+				? [null]
+				: transition.nextTurnId !== undefined && graph.turns.has(transition.nextTurnId)
+					? [transition.nextTurnId]
+					: [],
+		),
+	);
 }
 
 /**
@@ -59,36 +30,24 @@ function deriveSpine(graph: ProcessGraphView, entry: TurnId): TurnId[] {
  */
 function deriveBranchAnchors(
 	graph: ProcessGraphView,
-	spineIndexByTurn: ReadonlyMap<TurnId, number>,
+	spine: readonly TurnId[],
 ): Map<TurnId, TurnId> {
 	const anchorByTurn = new Map<TurnId, TurnId>();
-	const orderedSpine = [...spineIndexByTurn.entries()]
-		.sort((left, right) => left[1] - right[1])
-		.map(([turnId]) => turnId);
-
-	for (const spineTurnId of orderedSpine) {
-		const stack: TurnId[] = [spineTurnId];
-		const visited = new Set<TurnId>([spineTurnId]);
-		while (stack.length > 0) {
-			const current = stack.pop() as TurnId;
-			const turn = graph.turns.get(current);
-			if (!turn) {
-				continue;
-			}
-			for (const transition of turn.transitions) {
-				const next = transition.nextTurnId;
-				if (next === undefined || !graph.turns.has(next) || visited.has(next)) {
+	const spineIds = new Set(spine);
+	for (const spineTurnId of spine) {
+		const queue = [spineTurnId];
+		for (const current of queue) {
+			for (const { nextTurnId: next } of graph.turns.get(current)?.transitions ?? []) {
+				if (
+					next === undefined ||
+					!graph.turns.has(next) ||
+					spineIds.has(next) ||
+					anchorByTurn.has(next)
+				)
 					continue;
-				}
-				visited.add(next);
-				if (spineIndexByTurn.has(next)) {
-					// Stop at spine nodes; do not traverse through them.
-					continue;
-				}
-				if (!anchorByTurn.has(next)) {
-					anchorByTurn.set(next, spineTurnId);
-				}
-				stack.push(next);
+				// Earlier anchors have already explored their non-spine descendants.
+				anchorByTurn.set(next, spineTurnId);
+				queue.push(next);
 			}
 		}
 	}
@@ -122,12 +81,8 @@ export function buildProcessFlowView(graph: ProcessGraphView): ProcessFlowView {
 
 	const spine = primaryEntry !== undefined ? deriveSpine(graph, primaryEntry) : [];
 
-	const spineIndexByTurn = new Map<TurnId, number>();
-	spine.forEach((turnId, index) => {
-		spineIndexByTurn.set(turnId, index);
-	});
-
-	const anchorByTurn = deriveBranchAnchors(graph, spineIndexByTurn);
+	const spineIndexByTurn = new Map(spine.map((turnId, index) => [turnId, index]));
+	const anchorByTurn = deriveBranchAnchors(graph, spine);
 	const entrySet = new Set(entryTurnIds);
 
 	const nodes: ProcessFlowNode[] = [];
@@ -166,44 +121,36 @@ export function buildProcessFlowView(graph: ProcessGraphView): ProcessFlowView {
 	const terminalStatuses = new Set<ProcessTurnTerminalLifecycleStatus>();
 	for (const [turnId, turn] of graph.turns) {
 		for (const transition of turn.transitions) {
-			const label = transitionLabel(transition, turn.transitionLabels);
-			const condition = transition.condition ? { condition: { ...transition.condition } } : {};
-			if (transition.lifecycleStatus !== undefined) {
-				terminalStatuses.add(transition.lifecycleStatus);
-				edges.push({
-					from: turnId,
-					to: null,
-					lifecycleStatus: transition.lifecycleStatus,
-					kind: "terminal",
-					label,
-					...condition,
-				});
-				continue;
-			}
-			const next = transition.nextTurnId;
-			if (next === undefined) {
-				continue;
-			}
+			const lifecycleStatus = transition.lifecycleStatus ?? null;
+			const next = lifecycleStatus === null ? (transition.nextTurnId ?? null) : null;
+			if (lifecycleStatus === null && next === null) continue;
+			if (lifecycleStatus !== null) terminalStatuses.add(lifecycleStatus);
 			const fromIndex = spineIndexByTurn.get(turnId);
-			const toIndex = spineIndexByTurn.get(next);
-			let kind: ProcessFlowEdge["kind"];
-			if (fromIndex !== undefined && toIndex !== undefined) {
-				kind = toIndex > fromIndex ? "forward" : "loopback";
-			} else {
-				kind = "branch";
-			}
-			edges.push({ from: turnId, to: next, lifecycleStatus: null, kind, label, ...condition });
+			const toIndex = next === null ? undefined : spineIndexByTurn.get(next);
+			edges.push({
+				from: turnId,
+				to: next,
+				lifecycleStatus,
+				kind:
+					lifecycleStatus !== null
+						? "terminal"
+						: fromIndex !== undefined && toIndex !== undefined
+							? toIndex > fromIndex
+								? "forward"
+								: "loopback"
+							: "branch",
+				label: transitionLabel(transition, turn.transitionLabels),
+				...(transition.condition ? { condition: { ...transition.condition } } : {}),
+			});
 		}
 	}
 
-	const endStates: ProcessFlowEndState[] = [];
-	for (const status of terminalStatuses) {
-		endStates.push({ lifecycleStatus: status, synthetic: false });
-	}
-	if (!terminalStatuses.has("aborted")) {
-		endStates.push({ lifecycleStatus: "aborted", synthetic: true });
-	}
-	endStates.sort((left, right) => left.lifecycleStatus.localeCompare(right.lifecycleStatus));
+	const endStates: ProcessFlowEndState[] = [...new Set([...terminalStatuses, "aborted" as const])]
+		.map((lifecycleStatus) => ({
+			lifecycleStatus,
+			synthetic: !terminalStatuses.has(lifecycleStatus),
+		}))
+		.sort((left, right) => left.lifecycleStatus.localeCompare(right.lifecycleStatus));
 
 	return {
 		processId: graph.id,

@@ -8,7 +8,7 @@ import {
 	llmTurn,
 } from "@leitwerk-dev/process-sdk";
 import type { Locator, Page } from "@playwright/test";
-import { expect, expectNoPageOverflow, test } from "./fixtures.js";
+import { type BrowserServer, expect, expectNoPageOverflow, test } from "./fixtures.js";
 
 const definition = defineProcess({
 	id: "workflow_browser",
@@ -79,6 +79,18 @@ test.use({
 	},
 });
 
+async function openWorkflow(page: Page, leitwerk: BrowserServer, width: number) {
+	await page.setViewportSize({ width, height: 1000 });
+	const process = leitwerk.ctx.deps.processes.create({
+		processId: definition.id,
+		title: "Release readiness",
+		lifecycleStatus: "completed",
+		selectedTurnId: null,
+	});
+	await page.goto(`/processes/${process.id}?inspect=process&section=workflow`);
+	return page.getByRole("region", { name: "Workflow definition", exact: true });
+}
+
 async function repeatContinuation(graph: Locator, route: Locator, section: "entry" | "exit") {
 	const id = await route.getAttribute("data-route-id");
 	return graph.locator(`[data-route-id="${id}"][data-route-section="${section}"]`);
@@ -104,15 +116,7 @@ for (const width of [1440, 390]) {
 		page,
 		leitwerk,
 	}) => {
-		await page.setViewportSize({ width, height: 1000 });
-		const process = leitwerk.ctx.deps.processes.create({
-			processId: definition.id,
-			title: "Release readiness",
-			lifecycleStatus: "completed",
-			selectedTurnId: null,
-		});
-		await page.goto(`/processes/${process.id}?inspect=process&section=workflow`);
-		const graph = page.getByRole("region", { name: "Workflow definition", exact: true });
+		const graph = await openWorkflow(page, leitwerk, width);
 		const publish = graph.getByRole("button", { name: "Publish release notes. Automation" });
 		const ready = graph.locator('[data-flow-edge-from="assess"][data-flow-edge-to="publish"]');
 		const review = graph.locator('[data-flow-edge-from="assess"][data-flow-edge-to="review"]');
@@ -125,6 +129,9 @@ for (const width of [1440, 390]) {
 		await publish.hover();
 		await expect(ready).toHaveClass(/route-active/);
 		await expect(readyExit).toHaveClass(/route-active/);
+		await expect(
+			graph.locator('[data-flow-edge-from="review"][data-flow-edge-to="publish"]'),
+		).toHaveClass(/route-active/);
 		await expect(review).not.toHaveClass(/route-active/);
 		await expect(reviewExit).not.toHaveClass(/route-active/);
 		await expect(loop).not.toHaveClass(/route-active/);
@@ -154,6 +161,7 @@ for (const width of [1440, 390]) {
 			await hoverRoute(page, segment, 0.45);
 			await expect(segment).toHaveClass(/route-active/);
 			await expect(graph.locator(".route-active")).toHaveCount(1);
+			await expect(segment.locator(".route-line")).toHaveAttribute("stroke", "var(--graph-accent)");
 			await expect(segment.locator(".route-line")).toHaveAttribute("marker-end", /arrow-active/);
 		}
 		await page.mouse.move(0, 0);
@@ -191,15 +199,7 @@ for (const width of [1440, 390]) {
 		await expectNoPageOverflow(page);
 	});
 	test(`dismisses tooltips after closing details at ${width}px`, async ({ page, leitwerk }) => {
-		await page.setViewportSize({ width, height: 1000 });
-		const process = leitwerk.ctx.deps.processes.create({
-			processId: definition.id,
-			title: "Release readiness",
-			lifecycleStatus: "completed",
-			selectedTurnId: null,
-		});
-		await page.goto(`/processes/${process.id}?inspect=process&section=workflow`);
-		const graph = page.getByRole("region", { name: "Workflow definition", exact: true });
+		const graph = await openWorkflow(page, leitwerk, width);
 		const publish = graph.getByRole("button", { name: "Publish release notes. Automation" });
 		const activity = graph.getByRole("button", {
 			name: "Assess component. LLM activity for one item.",
@@ -239,15 +239,7 @@ for (const width of [1440, 390]) {
 		page,
 		leitwerk,
 	}, testInfo) => {
-		await page.setViewportSize({ width, height: 1000 });
-		const process = leitwerk.ctx.deps.processes.create({
-			processId: definition.id,
-			title: "Release readiness",
-			lifecycleStatus: "completed",
-			selectedTurnId: null,
-		});
-		await page.goto(`/processes/${process.id}?inspect=process&section=workflow`);
-		const graph = page.getByRole("region", { name: "Workflow definition", exact: true });
+		const graph = await openWorkflow(page, leitwerk, width);
 		const repeat = graph.getByRole("button", {
 			name: "Repeat Assess component, one item at a time",
 		});

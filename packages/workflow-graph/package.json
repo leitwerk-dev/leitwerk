@@ -17,6 +17,11 @@
 			"source": "./src/WorkflowGraph.svelte",
 			"svelte": "./dist/WorkflowGraph.svelte",
 			"default": "./dist/WorkflowGraph.svelte"
+		},
+		"./internal/WorkflowIcon.svelte": {
+			"source": "./src/WorkflowIcon.svelte",
+			"svelte": "./dist/WorkflowIcon.svelte",
+			"default": "./dist/WorkflowIcon.svelte"
 		}
 	},
 	"scripts": {
