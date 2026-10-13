@@ -648,7 +648,7 @@ export interface ProcessEngineLike {
 		instanceId: string,
 		startTurnId: TurnId,
 		opts?: {
-			/** @public */
+			/** @internal */
 			restart?: WaitingProcessRestart;
 		},
 	): Promise<ProcessEngineResultLike>;
