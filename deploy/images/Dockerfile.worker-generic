@@ -25,6 +25,10 @@ RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci
 RUN node -e "const {execFileSync}=require('node:child_process'); const arch=process.arch; const pkg=arch==='arm64'?'@rollup/rollup-linux-arm64-gnu':arch==='x64'?'@rollup/rollup-linux-x64-gnu':undefined; if (pkg) { try { require.resolve(pkg); } catch { execFileSync('npm', ['install', '--no-save', pkg], {stdio:'inherit'}); } }"
 
 FROM dependencies AS build
+# Skill packs apply their vendored patches with git during the workspace build.
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends git \
+	&& rm -rf /var/lib/apt/lists/*
 COPY LICENSE ./
 COPY packages ./packages
 COPY extensions ./extensions

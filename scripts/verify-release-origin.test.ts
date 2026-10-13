@@ -199,4 +199,30 @@ describe("stable release origin", () => {
 		expect(workflow.jobs.publish.environment).toBe("npm-publish");
 		expect(workflow.jobs.resolve.permissions.contents).toBe("write");
 	});
+
+	it("builds verified release source with image recipes from the publication revision", () => {
+		const filename = fileURLToPath(new URL("../.github/workflows/publish.yml", import.meta.url));
+		const workflow = parse(readFileSync(filename, "utf8"));
+		const steps = workflow.jobs["build-images"].steps;
+		const [source, tooling] = steps.filter((step: { uses?: string }) =>
+			step.uses?.startsWith("actions/checkout@"),
+		);
+		expect(source.with.ref).toBe(`\${{ needs.resolve.outputs.git_sha }}`);
+		expect(source.with.path).toBeUndefined();
+		expect(tooling.with.ref).toBe(`\${{ github.sha }}`);
+		expect(tooling.with.path).toBe(".release-tooling");
+		const builds = steps.filter((step: { uses?: string }) =>
+			step.uses?.startsWith("docker/build-push-action@"),
+		);
+		expect(builds.map((step: { with: { context: string; file: string } }) => step.with)).toEqual([
+			expect.objectContaining({
+				context: ".",
+				file: ".release-tooling/deploy/images/Dockerfile.server",
+			}),
+			expect.objectContaining({
+				context: ".",
+				file: ".release-tooling/deploy/images/Dockerfile.worker-generic",
+			}),
+		]);
+	});
 });
