@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/skills",
-	"version": "0.3.1",
+	"version": "0.4.0",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
@@ -31,10 +31,10 @@
 		"build": "tsup --silent"
 	},
 	"dependencies": {
-		"@leitwerk-dev/process-sdk": "0.3.1"
+		"@leitwerk-dev/process-sdk": "0.4.0"
 	},
 	"devDependencies": {
-		"@leitwerk-dev/extension-runtime": "0.3.1",
+		"@leitwerk-dev/extension-runtime": "0.4.0",
 		"tsup": "^8.5.1"
 	},
 	"license": "Apache-2.0",

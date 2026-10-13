@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/jira-gitlab-change",
-	"version": "0.3.1",
+	"version": "0.4.0",
 	"type": "module",
 	"leitwerk": {
 		"extension": {
@@ -20,19 +20,19 @@
 		"build": "tsup && tsc -p tsconfig.tsup.json --emitDeclarationOnly"
 	},
 	"dependencies": {
-		"@leitwerk-dev/domain": "0.3.1",
-		"@leitwerk-dev/process-sdk": "0.3.1",
-		"@leitwerk-dev/coding": "0.3.1",
-		"@leitwerk-dev/gitlab": "0.3.1",
-		"@leitwerk-dev/git-ssh": "0.3.1",
-		"@leitwerk-dev/jira": "0.3.1",
-		"@leitwerk-dev/wiki": "0.3.1",
-		"@leitwerk-dev/external-writes": "0.3.1"
+		"@leitwerk-dev/domain": "0.4.0",
+		"@leitwerk-dev/process-sdk": "0.4.0",
+		"@leitwerk-dev/coding": "0.4.0",
+		"@leitwerk-dev/gitlab": "0.4.0",
+		"@leitwerk-dev/git-ssh": "0.4.0",
+		"@leitwerk-dev/jira": "0.4.0",
+		"@leitwerk-dev/wiki": "0.4.0",
+		"@leitwerk-dev/external-writes": "0.4.0"
 	},
 	"devDependencies": {
 		"tsup": "^8.5.1",
 		"@types/node": "^26.2.0",
-		"@leitwerk-dev/test-support": "0.3.1"
+		"@leitwerk-dev/test-support": "0.4.0"
 	},
 	"license": "Apache-2.0",
 	"publishConfig": {
