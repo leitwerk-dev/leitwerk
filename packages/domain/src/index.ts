@@ -107,6 +107,7 @@ export type {
 	ProcessFlowEdge,
 	ProcessFlowEndState,
 	ProcessFlowNode,
+	ProcessFlowTool,
 	ProcessFlowView,
 	ProcessTurnTerminalLifecycleStatus,
 	ProcessTurnTransition,
@@ -120,6 +121,7 @@ export {
 	parseStrictInstanceTurnConfigsJson,
 	serializeInstanceTurnConfigs,
 } from "./process-model-config.js";
+export { shortestSuccessfulTurnPath } from "./process-path.js";
 export {
 	buildProcessRowSlot,
 	type ProcessRowSlot,

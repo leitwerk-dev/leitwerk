@@ -83,7 +83,7 @@ export default defineConfig({
 	},
 	optimizeDeps: {
 		exclude: ["beautiful-mermaid"],
-		include: ["@dagrejs/dagre", "dompurify", "elkjs/lib/elk-api.js", "markdown-it"],
+		include: ["dompurify", "elkjs/lib/elk-api.js", "markdown-it"],
 	},
 	server: {
 		host: process.env.LEITWERK_UI_HOST ?? "localhost",

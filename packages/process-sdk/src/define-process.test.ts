@@ -355,8 +355,18 @@ describe("defineProcess", () => {
 		});
 
 		expect(transitionsFor(process, "draft")).toEqual([
-			{ nextTurnId: "decision", outcome: "ready", trigger: "manual" },
-			{ nextTurnId: "deliver", outcome: "ready", trigger: "automatic" },
+			{
+				nextTurnId: "decision",
+				outcome: "ready",
+				trigger: "manual",
+				condition: { label: "Manual" },
+			},
+			{
+				nextTurnId: "deliver",
+				outcome: "ready",
+				trigger: "automatic",
+				condition: { label: "Automatic" },
+			},
 		]);
 
 		const handler = buildServerProcessForTest(process)?.turnOutcomeHandlers.get("draft")?.[0];

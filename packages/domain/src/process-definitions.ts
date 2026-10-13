@@ -30,7 +30,7 @@ export interface SerializedProcessGraph {
 	turnTransitions: Record<TurnId, ProcessTurnTransition[]>;
 }
 
-/** Whether a flow node sits on the declared happy path (`spine`) or hangs off it (`branch`). @internal */
+/** Whether a flow node sits on the shortest successful path or a side branch. @internal */
 export type ProcessFlowNodeRole = "spine" | "branch";
 
 /**
@@ -42,6 +42,16 @@ export type ProcessFlowNodeRole = "spine" | "branch";
  */
 /** @internal */
 export type ProcessFlowEdgeKind = "forward" | "loopback" | "branch" | "terminal";
+
+/** A statically declared LLM tool, without executable code or runtime credentials. @internal */
+export interface ProcessFlowTool {
+	/** @internal */
+	name: string;
+	/** @internal */
+	category: "workspace" | "integration" | "question" | "outcome";
+	/** Declared description when available; integration registrations are resolved separately. @internal */
+	description: string | null;
+}
 
 /** @internal */
 export interface ProcessFlowNode {
@@ -59,6 +69,16 @@ export interface ProcessFlowNode {
 	anchorTurnId: TurnId | null;
 	/** True when this turn is a launch entry point. @internal */
 	isEntry: boolean;
+	/** One logical turn applied to frozen items, followed by internal collection. @internal */
+	repetition?: "sequential";
+	/** Static declarations only; absent on non-LLM turns and older projections. @internal */
+	tools?: ProcessFlowTool[];
+	/** Additional integration tool names are resolved from process data at turn start. @internal */
+	hasDynamicTools?: boolean;
+	/** Named product declarations, not execution-time values. @internal */
+	inputProducts?: string[];
+	/** Named products this turn can publish. @internal */
+	outputProducts?: string[];
 }
 
 /** @internal */
@@ -73,6 +93,11 @@ export interface ProcessFlowEdge {
 	kind: ProcessFlowEdgeKind;
 	/** Optional human-facing edge label derived from outcome/trigger metadata. @internal */
 	label: string | null;
+	/** Declared branch condition; inspecting the graph never evaluates its chooser. @internal */
+	condition?: {
+		/** @internal */ label: string;
+		/** @internal */ description?: string;
+	};
 }
 
 /** @internal */
@@ -88,8 +113,9 @@ export interface ProcessFlowEndState {
 }
 
 /**
- * Spine-first projection of a process graph for operator-facing flow diagrams.
- * The `spine` is the happy path; everything else hangs off it as branches and loops.
+ * Complete definition projection for operator-facing flow diagrams.
+ * The `spine` is the shortest path from the primary entry to completion.
+ * Operator decisions remain explicit; collection stays inside a mapped turn.
  */
 /** @internal */
 export interface ProcessFlowView {

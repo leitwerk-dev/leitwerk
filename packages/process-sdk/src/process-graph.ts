@@ -1,11 +1,14 @@
 import type {
+	ProcessFlowEdge,
+	ProcessFlowNode,
+	ProcessFlowTool,
 	ProcessSemanticEntryRefKey,
 	ProcessTurnTransition,
 	ProcessTurnType,
 	SerializedProcessGraph,
 	TurnId,
 } from "@leitwerk-dev/domain";
-import { isValidProcessProductName } from "@leitwerk-dev/domain";
+import { humanizeProcessLabel, isValidProcessProductName, trimToNull } from "@leitwerk-dev/domain";
 import type { TurnDefinition } from "./define-process.js";
 import type { ExtensionProcessDefinition, ProcessTurnBinding } from "./extension-api.js";
 import { getProcessTurnTransitions } from "./process-definition-internals.js";
@@ -21,8 +24,14 @@ export interface ProcessGraphTurnView {
 	turnType: ProcessTurnType;
 	/** @internal */
 	description: string;
+	/** Definition-only display metadata; never evaluates turn callbacks. @internal */
+	repetition?: ProcessFlowNode["repetition"];
 	/** @internal */
-	transitions: readonly ProcessTurnTransition[];
+	tools?: ProcessFlowTool[];
+	/** @internal */
+	hasDynamicTools?: boolean;
+	/** @internal */
+	transitions: readonly (ProcessTurnTransition & Pick<ProcessFlowEdge, "condition">)[];
 	/** Display labels for external triggers; durable route identities remain unchanged. @internal */
 	transitionLabels?: Readonly<Record<string, string>>;
 	/** @internal */
@@ -104,40 +113,76 @@ function toTurnView(
 					}),
 				)
 			: {};
-	return {
+	const view: ProcessGraphTurnView = {
 		turnType: definition.kind,
 		description: definition.description,
-		transitions: getProcessTurnTransitions(binding),
+		transitions: getProcessTurnTransitions(binding).map((transition) => {
+			const outcome =
+				(definition.kind === "llm" || definition.kind === "automatic") && transition.outcome
+					? definition.outcomes?.[transition.outcome]
+					: undefined;
+			if (!outcome || !("branches" in outcome) || !transition.trigger) return transition;
+			const branch = Object.entries(outcome.branches).find(
+				([id, spec]) => (spec.trigger ?? id) === transition.trigger,
+			)?.[1];
+			if (!branch) return transition;
+			const description = trimToNull(branch.description);
+			return {
+				...transition,
+				condition: {
+					label: trimToNull(branch.label) ?? humanizeProcessLabel(transition.trigger),
+					...(description ? { description } : {}),
+				},
+			};
+		}),
 		...(Object.keys(transitionLabels).length ? { transitionLabels } : {}),
 		...(definition.kind === "human" && definition.reviewProduct
 			? { reviewProduct: definition.reviewProduct }
 			: {}),
-		...(definition.kind === "llm" && definition.resultSemanticRef
-			? { resultSemanticRef: definition.resultSemanticRef }
-			: {}),
-		...(definition.kind === "llm" && definition.publishedProduct
-			? { publishedProduct: definition.publishedProduct }
-			: {}),
 		...(publishedProducts.length > 0 ? { publishedProducts } : {}),
-		...(definition.kind === "llm" && definition.consumedProducts?.length
-			? { consumedProducts: [...definition.consumedProducts] }
-			: {}),
-		...(definition.kind === "llm" && definition.optionalConsumedProducts?.length
-			? { optionalConsumedProducts: [...definition.optionalConsumedProducts] }
-			: {}),
-		...(definition.kind === "llm" && definition.requiredSemanticMarkdownRefs?.length
-			? { requiredSemanticMarkdownRefs: [...definition.requiredSemanticMarkdownRefs] }
-			: {}),
-		...(definition.kind === "llm" && definition.optionalSemanticMarkdownRefs?.length
-			? { optionalSemanticMarkdownRefs: [...definition.optionalSemanticMarkdownRefs] }
-			: {}),
-		...(definition.kind === "llm" &&
-		definition.turnResultMarkdown &&
-		"required" in definition.turnResultMarkdown &&
-		definition.turnResultMarkdown.required === true
-			? { turnResultMarkdownRequired: true }
-			: {}),
 	};
+	if (definition.kind === "llm") {
+		if (definition.forEach) view.repetition = "sequential";
+		view.tools = declaredFlowTools(definition);
+		view.hasDynamicTools = definition.resolveIntegrationTools !== undefined;
+		if (definition.resultSemanticRef) view.resultSemanticRef = definition.resultSemanticRef;
+		if (definition.publishedProduct) view.publishedProduct = definition.publishedProduct;
+		if (definition.consumedProducts?.length)
+			view.consumedProducts = [...definition.consumedProducts];
+		if (definition.optionalConsumedProducts?.length)
+			view.optionalConsumedProducts = [...definition.optionalConsumedProducts];
+		if (definition.requiredSemanticMarkdownRefs?.length)
+			view.requiredSemanticMarkdownRefs = [...definition.requiredSemanticMarkdownRefs];
+		if (definition.optionalSemanticMarkdownRefs?.length)
+			view.optionalSemanticMarkdownRefs = [...definition.optionalSemanticMarkdownRefs];
+		if (
+			definition.turnResultMarkdown &&
+			"required" in definition.turnResultMarkdown &&
+			definition.turnResultMarkdown.required === true
+		)
+			view.turnResultMarkdownRequired = true;
+	}
+	return view;
+}
+
+function declaredFlowTools(
+	definition: Extract<TurnDefinition, { kind: "llm" }>,
+): ProcessFlowTool[] {
+	const tool = (
+		name: string,
+		category: ProcessFlowTool["category"],
+		description: string | null = null,
+	): ProcessFlowTool => ({ name, category, description });
+	return [
+		...definition.availableTools.map((name) => tool(name, "workspace")),
+		...(definition.integrationTools ?? []).map((name) => tool(name, "integration")),
+		...(definition.askQuestions
+			? [tool("ask_questions", "question", "Ask the operator structured questions.")]
+			: []),
+		...Object.entries(definition.outcomes ?? {}).flatMap(([name, outcome]) =>
+			outcome ? [tool(name, "outcome", outcome.description)] : [],
+		),
+	];
 }
 
 /**
@@ -225,7 +270,9 @@ export function serializeProcessGraph(
 	const definition = getProcessGraph(registry, processId);
 	const turnTransitions: Record<TurnId, ProcessTurnTransition[]> = {};
 	for (const [turnId, turn] of definition.turns) {
-		turnTransitions[turnId] = turn.transitions.map((transition) => ({ ...transition }));
+		turnTransitions[turnId] = turn.transitions.map(
+			({ condition: _condition, ...transition }) => transition,
+		);
 	}
 	return {
 		id: definition.id,

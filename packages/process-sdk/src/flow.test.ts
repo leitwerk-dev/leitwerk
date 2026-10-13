@@ -256,15 +256,27 @@ describe("flow", () => {
 				tool
 					.description("Implementation is ready")
 					.markdown("summary", { publish: true })
-					.routeByState({ manual: "decision", automatic: "deliver" }, ({ ctx }) =>
-						ctx.state.automatic ? "automatic" : "manual",
+					.routeByState(
+						{
+							manual: {
+								to: "decision",
+								label: "Approval required",
+								description: "An operator must approve delivery.",
+							},
+							automatic: "deliver",
+						},
+						({ ctx }) => (ctx.state.automatic ? "automatic" : "manual"),
 					),
 			).definition;
 
 		expect(Object.keys(turn.outcomes ?? {})).toEqual(["ready"]);
 		expect(turn.outcomes?.ready).toMatchObject({
 			branches: {
-				manual: { to: "decision" },
+				manual: {
+					to: "decision",
+					label: "Approval required",
+					description: "An operator must approve delivery.",
+				},
 				automatic: { to: "deliver" },
 			},
 		});

@@ -212,10 +212,14 @@ export type ProcessOutcomeBranchSelector<TParams = unknown, TState = unknown> = 
 	input: ProcessOutcomeExecution<TParams, TState>,
 ) => MaybePromise<string>;
 
-/** @internal */
+/** Branch route and display metadata for state-routed outcomes. @public */
 export interface ProcessOutcomeBranchSpec extends StaticRouteTarget {
 	/** @internal */
 	trigger?: string;
+	/** Display name for the branch condition in the workflow graph. @public */
+	label?: string;
+	/** Explains the condition without evaluating runtime state. @public */
+	description?: string;
 }
 
 /** @internal */

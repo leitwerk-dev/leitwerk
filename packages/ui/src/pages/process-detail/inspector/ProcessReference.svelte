@@ -90,7 +90,7 @@ function selectExecution(turnRecordId: string) {
 	onNavigate({ scope: "execution", turnRecordId, section: "context" });
 }
 </script>
-<div class="process-reference" class:process-overview={target.scope === "process" && target.section === "overview"} class:context-map={target.scope === "process" && target.section === "context-map"}>
+<div class="process-reference" class:workflow-map={target.scope === "process" && target.section === "workflow"} class:process-overview={target.scope === "process" && target.section === "overview"} class:context-map={target.scope === "process" && target.section === "context-map"}>
   {#if target.scope === "step"}
     {#if !node}<p class="notice" role="status">This step is unavailable in the current workflow. Its recorded executions remain in the chronicle.</p>
     {:else}
@@ -142,6 +142,7 @@ function selectExecution(turnRecordId: string) {
 </div>
 <style>
 .process-reference {max-width:960px; margin:0 auto; display:grid; gap:var(--space-lg); min-width:0; overflow-wrap:anywhere;}
+.workflow-map {max-width:none;}
 .process-overview {gap:var(--space-md);} .process-overview section {gap:var(--space-xs); padding-bottom:var(--space-md);}
 section {display:grid; gap:var(--space-md); padding-bottom:var(--space-lg); border-bottom:1px solid var(--chronicle-border); min-width:0;}
 h2,h3,p,dl,dd {margin:0;} h2 {font-size:var(--type-title-sm); font-weight:650;} h3 {font-size:var(--type-body); font-weight:650;} p,dl,li {font-size:var(--type-body-sm); line-height:1.65;}

@@ -113,6 +113,7 @@
 				"@leitwerk-dev/example-processes",
 				"@leitwerk-dev/mattpocock-skills",
 				"@leitwerk-dev/wiki",
+				"@leitwerk-dev/workflow-graph",
 				"@leitwerk-dev/skills"
 			]
 		}
@@ -312,6 +313,11 @@
 		},
 		"packages/wiki": {
 			"component": "@leitwerk-dev/wiki",
+			"skip-github-release": true,
+			"skip-changelog": true
+		},
+		"packages/workflow-graph": {
+			"component": "@leitwerk-dev/workflow-graph",
 			"skip-github-release": true,
 			"skip-changelog": true
 		},

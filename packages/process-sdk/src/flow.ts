@@ -26,6 +26,7 @@ import type {
 	ProcessEffectPlan,
 	ProcessHumanTurnActionSpec,
 	ProcessHumanTurnExternalActionSpec,
+	ProcessOutcomeBranchSpec,
 	ProcessOutcomeEffect,
 	ProcessOutcomeExecution,
 	ProcessRuntimeTurnContext,
@@ -912,7 +913,7 @@ export class OutcomeToolBuilder<
 
 	private stateRouting:
 		| {
-				branches: Record<string, TurnId>;
+				branches: Record<string, TurnId | ProcessOutcomeBranchSpec>;
 				choose: (
 					input: FlowOutcomeEffectInput<
 						TParams,
@@ -925,7 +926,7 @@ export class OutcomeToolBuilder<
 
 	/** @public */
 	routeByState(
-		branches: Record<string, TurnId>,
+		branches: Record<string, TurnId | ProcessOutcomeBranchSpec>,
 		choose: (
 			input: FlowOutcomeEffectInput<TParams, TState, FlowLlmOutcomeEffectContext<TParams, TState>>,
 		) => MaybePromise<string>,
@@ -952,9 +953,9 @@ export class OutcomeToolBuilder<
 			...(stateRouting
 				? {
 						branches: Object.fromEntries(
-							Object.entries(stateRouting.branches).map(([branchId, turnId]) => [
+							Object.entries(stateRouting.branches).map(([branchId, branch]) => [
 								branchId,
-								{ to: turnId },
+								typeof branch === "string" ? { to: branch } : { ...branch },
 							]),
 						),
 						choose: wrapOutcomeCallback((input) => stateRouting.choose(input)),

@@ -4,6 +4,11 @@ A composition connects an extension workspace, runtime configuration, and option
 external test roots. It does not change production configuration or the public
 publish set.
 
+For isolated workflow UI iteration in the core checkout, run
+`npm run dev:workflow-graph`. The preview at <http://127.0.0.1:4320> uses synthetic
+data and the same live renderer as the application. It requires no composition,
+server, or credentials; see the [UI contract](ui.md#process-inspector).
+
 Choose a development mode before arranging the workspace:
 
 | Mode | Use it for | Dependencies |

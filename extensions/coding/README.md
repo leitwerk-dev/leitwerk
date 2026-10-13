@@ -136,6 +136,10 @@ The optional `workflow` supplies server policies; `variant`, `finalizeLabel`, an
 `finalizeForm` are deprecated and no longer select gates.
 Server-side policies decide plan bypass and simplification routing. Decisions are
 persisted with the plan revision or implementation boundary before routing.
+The Workflow graph names these branches **Approval required**, **Skip plan
+approval**, **Simplification enabled**, and **Skip simplification**. Route details
+explain the policy and its launcher or source-label inputs. Applying simplification
+rejoins commit-message generation as ordinary forward work.
 
 Implementation starts at the session root with the accepted plan, not a prior review branch.
 Simplification has a separate application turn consuming findings and plan. Multi-repository

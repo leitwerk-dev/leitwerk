@@ -96,6 +96,13 @@ contract.
 A process declares its graph in code. Configuration supplies runtime defaults;
 it does not define turns, transitions, actions, or completion policy.
 
+The UI flow projection retains all declared turns and routes, including human
+decisions and self-return routes. Its main path is the shortest route from the
+primary entry to `completed`; the declared happy path remains available to runtime
+planning. Mapped turns carry sequential-repeat metadata and count as one turn.
+Tool names, outcome descriptions, and product names come from static declarations.
+Projection never evaluates prompts, mapped items, or dynamic tool resolvers.
+
 | Builder | Execution |
 | --- | --- |
 | `flow.llm` | Optionally prepares deterministic input, then prompts an agent with authorized tools. |
@@ -681,6 +688,24 @@ validation, and launcher contracts.
 State-routed LLM outcomes evaluate their effect first, then choose a declared branch
 using the returned state. The state update and selected transition persist together;
 policy lookups belong in the effect so routing does not repeat them.
+
+An LLM outcome tool's `routeByState()` branch values may be turn ids or public
+`ProcessOutcomeBranchSpec` route objects with `to`, `label`, and `description`.
+Keep branch keys stable: the chooser returns the key, while
+`label` and `description` explain its condition in the Workflow graph. Without a
+label, the graph humanizes the branch trigger. Graph inspection reads these static
+declarations without invoking the chooser. For example:
+
+```ts
+.routeByState({
+  approval: {
+    to: "review",
+    label: "Approval required",
+    description: "An operator must approve the saved plan.",
+  },
+  bypass: { to: "implement", label: "Skip plan approval" },
+}, ({ ctx }) => ctx.state.skipApproval ? "bypass" : "approval")
+```
 
 ### Integration maintenance
 

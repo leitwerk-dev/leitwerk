@@ -1,0 +1,53 @@
+{
+	"name": "@leitwerk-dev/workflow-graph",
+	"version": "0.3.1",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
+		"directory": "packages/workflow-graph"
+	},
+	"type": "module",
+	"exports": {
+		".": {
+			"source": "./src/index.ts",
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		},
+		"./WorkflowGraph.svelte": {
+			"source": "./src/WorkflowGraph.svelte",
+			"svelte": "./dist/WorkflowGraph.svelte",
+			"default": "./dist/WorkflowGraph.svelte"
+		},
+		"./internal/WorkflowIcon.svelte": {
+			"source": "./src/WorkflowIcon.svelte",
+			"svelte": "./dist/WorkflowIcon.svelte",
+			"default": "./dist/WorkflowIcon.svelte"
+		}
+	},
+	"scripts": {
+		"build": "tsup --silent"
+	},
+	"dependencies": {
+		"@leitwerk-dev/domain": "0.3.1"
+	},
+	"peerDependencies": {
+		"svelte": "^5.55.0"
+	},
+	"devDependencies": {
+		"svelte": "^5.55.0",
+		"tsup": "^8.5.1"
+	},
+	"license": "Apache-2.0",
+	"publishConfig": {
+		"access": "public"
+	},
+	"engines": {
+		"node": ">=26 <27"
+	},
+	"files": [
+		"dist/**",
+		"src/**",
+		"!dist/**/*.test.*",
+		"!src/**/*.test.ts"
+	]
+}

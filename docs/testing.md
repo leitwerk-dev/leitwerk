@@ -46,6 +46,11 @@ phase durations and test summaries. It prints the log directory for detailed out
 and replays the failed phase's output on failure. See [CI](ci.md#validation) for test
 runtime warnings.
 
+For workflow graph visual iteration, `npm run dev:workflow-graph` serves synthetic
+definitions through the production graph package at <http://127.0.0.1:4320> without
+a server or credentials. Run `npm run check --prefix tools/workflow-graph-prototype`
+for the preview shell and `npm run test:full` for shared renderer or contract changes.
+
 ## Test boundaries
 
 | Boundary | Use it for |

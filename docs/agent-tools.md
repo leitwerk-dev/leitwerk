@@ -4,6 +4,11 @@ An LLM turn exposes the tools declared for its work and the framework's `abort_t
 tool. Leitwerk distinguishes local workspace operations, server-owned integrations,
 interactive questions, terminal outcomes, and turn failure.
 
+Workflow inspection shows tools from the current turn definition, including outcome
+tools. A dynamic integration-tool resolver is marked separately without executing
+it. These declarations are not a captured execution tool set; use execution
+Configuration for recorded availability.
+
 | Category | Purpose | Ends the turn? |
 | --- | --- | --- |
 | Workspace primitives | Read and change files or run commands in the worker. | No. |
