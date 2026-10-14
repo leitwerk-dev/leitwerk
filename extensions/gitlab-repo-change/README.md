@@ -66,6 +66,20 @@ or abort. CI repair uses failed jobs and bounded traces from the current MR pipe
 see [pipeline selection](../gitlab/README.md#public-interface). Confirmed conflicts
 use the shared rebase implementation and original-head push lease.
 
+Deliver executes only for initial publication and changed adjustments. Preparing
+MRs, CI, target-head and label updates refresh durable observations without worker
+allocation or turn records. A no-change repair acknowledges its feedback and resumes
+observation without another Deliver execution. The workflow retains ten business
+turns; maintenance adds none.
+
+Published MRs receive `leitwerk-active`, retained while CI is green and later
+feedback is awaited. Merge replaces it with `leitwerk-done`. Removing active aborts
+this single-MR process and leaves the MR open. Running work and operator waits are
+monitored; publication, replies, reactions and late worker outcomes are fenced after
+removal. A remove/re-add pair ends the old activation. Restart adopts live bindings
+and receipts while preserving cursors, budgets and history. Label-read failures retry
+without cancellation. Closure and stopping do not add done.
+
 Merge completes delivery. Unmerged closure aborts it. A source issue loses its
 trigger, gains the done label, receives a comment, and closes after merge. Unmerged
 closure removes the trigger and comments while leaving the issue open. Source

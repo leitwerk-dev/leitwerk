@@ -1,4 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import path from "node:path";
 import type { ExecutionInspectionCapture } from "@leitwerk-dev/domain";
 import { describe, expect, it } from "vitest";
@@ -181,4 +183,133 @@ describe("SdkPiTreeHandleFactory Pi provider extensions", () => {
 			}),
 		).rejects.toThrow(expectedError);
 	});
+});
+
+it.each([
+	{ api: "openai-completions", supportsStrictMode: true, ordinaryStrict: false },
+	{ api: "openai-responses", supportsStrictMode: true, ordinaryStrict: false },
+	{ api: "openai-responses", supportsStrictMode: undefined, ordinaryStrict: undefined },
+	{ api: "openai-responses", supportsStrictMode: false, ordinaryStrict: undefined },
+])("sends strict union schemas over $api with supportsStrictMode=$supportsStrictMode without changing ordinary tools", async ({
+	api,
+	supportsStrictMode,
+	ordinaryStrict,
+}) => {
+	const requests: Record<string, unknown>[] = [];
+	const server = createServer(async (request, response) => {
+		let body = "";
+		for await (const chunk of request) body += chunk;
+		requests.push(JSON.parse(body));
+		response.writeHead(200, { "content-type": "text/event-stream" });
+		response.end(
+			api === "openai-responses"
+				? `event: response.completed\ndata: ${JSON.stringify({ type: "response.completed", response: { id: "response-1", status: "completed", output: [] } })}\n\n`
+				: 'data: {"id":"completion-1","object":"chat.completion.chunk","created":1,"model":"extension-model","choices":[{"index":0,"delta":{"role":"assistant","content":"done"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+		);
+	});
+	await new Promise<void>((resolve, reject) => {
+		server.once("error", reject);
+		server.listen(0, "127.0.0.1", resolve);
+	});
+	try {
+		const root = await createTempRoot();
+		const agentDir = path.join(root, "agent");
+		await mkdir(agentDir, { recursive: true });
+		await writeFile(path.join(agentDir, "auth.json"), "{}\n");
+		await writePiExtension(
+			agentDir,
+			providerExtensionSource(
+				`http://127.0.0.1:${(server.address() as AddressInfo).port}/v1`,
+				supportsStrictMode,
+			).replaceAll("openai-completions", api),
+		);
+		const handle = await new SdkPiTreeHandleFactory().createPrimaryTreeHandle({
+			instanceId: "strict-schema-test",
+			treeFile: path.join(root, "tree.jsonl"),
+			workspaceRoot: root,
+			resume: false,
+			configSnapshot: createConfig(agentDir),
+			modelProfileId: "extension-profile",
+		});
+		try {
+			const parameters = {
+				type: "object",
+				properties: {
+					action: {
+						anyOf: [
+							{
+								type: "object",
+								properties: { kind: { type: "string", enum: ["skip"] } },
+								required: ["kind"],
+								additionalProperties: false,
+							},
+							{
+								type: "object",
+								properties: { kind: { type: "string", enum: ["write"] }, text: { type: "string" } },
+								required: ["kind", "text"],
+								additionalProperties: false,
+							},
+						],
+					},
+				},
+				required: ["action"],
+				additionalProperties: false,
+			};
+			const ordinary = {
+				type: "object",
+				properties: { optional: { type: "string" } },
+				required: [],
+				additionalProperties: false,
+			};
+			const observations: ExecutionInspectionCapture[] = [];
+			handle.subscribe((event) => {
+				if (event.type === "inspection")
+					observations.push(event.data.capture as ExecutionInspectionCapture);
+			});
+			await handle.prompt("Inspect the schema", {
+				tools: [
+					{
+						name: "choose",
+						description: "Choose",
+						strictSchema: true,
+						parameters,
+						execute: async () => ({}),
+					},
+					{
+						name: "ordinary",
+						description: "Ordinary",
+						parameters: ordinary,
+						execute: async () => ({}),
+					},
+				],
+			});
+			expect(requests).toHaveLength(1);
+			const declarations = (requests[0].tools as Record<string, unknown>[]).map((value) =>
+				api === "openai-completions" ? (value.function as Record<string, unknown>) : value,
+			);
+			expect(declarations.find((value) => value.name === "choose")).toMatchObject({
+				strict: true,
+				parameters,
+			});
+			const ordinaryDeclaration = declarations.find((value) => value.name === "ordinary");
+			expect(ordinaryDeclaration?.parameters).toEqual(ordinary);
+			expect(ordinaryDeclaration?.strict).toBe(ordinaryStrict);
+			const inspected = observations.find((capture) => capture.fact.kind === "model_input");
+			expect(inspected?.fact).toMatchObject({
+				tools: {
+					value: expect.arrayContaining([
+						expect.objectContaining({
+							name: "choose",
+							strictSchema: true,
+							schemaEnforcement: "provider",
+						}),
+					]),
+				},
+			});
+		} finally {
+			handle.close();
+		}
+	} finally {
+		await new Promise<void>((resolve) => server.close(() => resolve()));
+	}
 });

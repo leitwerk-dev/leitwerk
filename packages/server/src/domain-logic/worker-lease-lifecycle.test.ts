@@ -55,6 +55,14 @@ describe("worker-lease-lifecycle", () => {
 			expect(s).toBe("exited");
 		});
 
+		it("accepts late failure after cleanup until physical exit", () => {
+			expect(applyObservation("cleanup", "failure_reported")).toBe("failed");
+			expect(transitionWorkerLeaseState("exited", "failure_reported")).toMatchObject({
+				kind: "noop",
+				to: "exited",
+			});
+		});
+
 		it("treats duplicate and stale observations as noops", () => {
 			expect(transitionWorkerLeaseState("idle", "bootstrap_completed")).toEqual(
 				expect.objectContaining({ kind: "noop", from: "idle", to: "idle" }),

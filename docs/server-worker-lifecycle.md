@@ -402,3 +402,5 @@ Each newly prepared LLM start captures its required [scoped settings](scoped-set
 and their source revisions. Operator retries capture current values. Recovery of
 a prepared or accepted start retains its snapshot; settings edits never change the
 inputs of an active worker.
+
+An owning runtime exit after cleanup or draining still fails and parks an accepted running turn. Cleanup progress is not a durable terminal outcome. Already-terminal turns and exits from non-owning workers do not fail the current turn.

@@ -321,6 +321,9 @@ extensions:
   #   ticket_creation:
   #     enabled: false
   #     default_labels: [created-by-leitwerk]
+  # jira-gitlab-change:
+  #   verification_on_merge: false
+  #   verification_status: In Verification # or Ready for Verification
   # jira: # Optional Data Center integration; see extensions/jira/README.md.
   #   ticket_creation:
   #     enabled: false
