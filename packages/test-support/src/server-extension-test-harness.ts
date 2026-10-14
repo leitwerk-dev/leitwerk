@@ -192,6 +192,7 @@ function createDefaultServerSetupDeps(): CoreServerSetupDeps {
 			startProcess: async () => ({ ok: true, process: null }),
 			abortProcess: async () => ({ ok: true, process: null }),
 			retryProcess: async () => ({ ok: true, process: null }),
+			retryStartupAutomatically: async () => ({ ok: true, process: null }),
 			continueFailedTurn: async () => ({ ok: true, process: null }),
 			queueInputs: async () => ({ ok: true, process: null }),
 		},

@@ -14,6 +14,7 @@ import type {
 } from "@leitwerk-dev/protocol";
 import { completeLaunchWhenReady, failLaunchRun } from "./launch-pipeline.js";
 import { pendingTurnWait } from "./process-engine/turn-wait-state.js";
+import { automaticStartupRecovery, startupRetryState } from "./startup-retry-policy.js";
 
 export interface StartupEvidenceInput {
 	process: ProcessInstance;
@@ -54,6 +55,7 @@ export function buildStartupRecovery(
 	turnStartsById:
 		| ReadonlyMap<string, TurnStartRecord>
 		| { getById(id: string): TurnStartRecord | null },
+	events: readonly ProcessEvent[] = [],
 ): StartupRecoverySummary | null {
 	if (process.lifecycleStatus !== "error" || process.currentExecution?.kind !== "worker_start")
 		return null;
@@ -68,6 +70,14 @@ export function buildStartupRecovery(
 		return null;
 	const resolvedStart = "start" in start.state ? start.state.start : null;
 	return {
+		automaticRetry: automaticStartupRecovery(
+			start,
+			startupRetryState(
+				start,
+				"getById" in turnStartsById ? [] : [...turnStartsById.values()],
+				events,
+			),
+		),
 		startRecordId: start.id,
 		kind: start.state.kind,
 		action: start.state.kind === "bootstrap_failed" ? "retry_startup" : "choose_model",
@@ -266,7 +276,7 @@ export function buildStartupEvidence(input: StartupEvidenceInput): StartupEviden
 			: {}),
 		currentAttempt,
 		authoritativeAttemptId: authoritative?.startRecordId ?? null,
-		recovery: buildStartupRecovery(input.process, turnStartsById),
+		recovery: buildStartupRecovery(input.process, turnStartsById, input.events),
 	};
 }
 

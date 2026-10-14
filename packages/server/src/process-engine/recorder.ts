@@ -1,4 +1,5 @@
 import type { ProcessInstance } from "@leitwerk-dev/domain";
+import { generateId } from "../db/repo-helpers.js";
 import type { PostCommitEffect } from "../effects/post-commit-effect.js";
 import type { ModelStatusCacheSnapshot } from "../model-providers/model-status-cache.js";
 import {
@@ -298,6 +299,18 @@ export async function record<TOp extends OperationSpec<string, OperationInputBas
 			code: preparation.code,
 			message: preparation.message,
 		};
+	}
+
+	for (const write of decision.writes.turnStartWrites) {
+		if (write.kind !== "create") continue;
+		write.input.id ??= generateId("tsr");
+		const original = baselineWrites.turnStartWrites.find(
+			(entry) => entry.kind === "create" && entry.input.id === write.input.id,
+		);
+		write.input.state.automaticRetry =
+			original?.kind === "create" && original.input.state.automaticRetry
+				? original.input.state.automaticRetry
+				: { episodeStartRecordId: write.input.id, starts: 1, nextRetryAt: null };
 	}
 
 	let commit: RecordCommit;

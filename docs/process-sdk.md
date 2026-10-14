@@ -730,3 +730,12 @@ Background reads commit against their process and project snapshots under server
 coordination. Ordinary observations retain the selected turn and its execution.
 Ownership loss supersedes in-flight work before returning to an existing gated turn
 or ending the process; stale worker outcomes cannot restore the prior state.
+
+### Automatic startup recovery requests
+
+`commands.retryStartupAutomatically(instanceId, startRecordId)` targets only the
+expected unaccepted failed startup. The server returns recovery disposition,
+reason, start count, limit and next retry time in `data`. Repeated requests are
+idempotent until the deadline; stale targets are rejected. Integrations must check
+source eligibility before requesting recovery and must not use `retryProcess` for
+unattended polling. Manual recovery retains `retryProcess`.

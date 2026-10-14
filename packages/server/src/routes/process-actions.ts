@@ -174,7 +174,7 @@ export function registerProcessActionRoutes(
 		const result = await deps.processEngine.retryStartup(
 			req.params.instanceId,
 			req.params.startRecordId,
-			Object.keys(options).length > 0 ? options : undefined,
+			{ ...options, actor: resolveActor(req) },
 		);
 		deps.launchCoordinator.refresh(req.params.instanceId);
 		if (!result.ok) {
