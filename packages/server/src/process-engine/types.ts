@@ -1,5 +1,6 @@
 import type {
 	Actor,
+	AutomaticStartupRecoverySummary,
 	ProcessInput,
 	ProcessInstance,
 	ProcessLifecycleStatus,
@@ -327,6 +328,8 @@ export interface ProcessEngine {
 		startRecordId: string,
 		opts?: {
 			/** @internal */
+			actor?: Actor;
+			/** @internal */
 			nextTurnModelProfileId?: string | null;
 			/** @internal */
 			providerOptions?: Readonly<Record<string, string>>;
@@ -337,6 +340,15 @@ export interface ProcessEngine {
 			startRecordId: string;
 		}>
 	>;
+	/** Automatic recovery never retries accepted turns or resets the startup budget. @internal */
+	retryStartupAutomatically(
+		instanceId: string,
+		startRecordId: string,
+		opts?: {
+			/** @internal */
+			availabilityCause?: "availability_transition" | "startup_reconciliation";
+		},
+	): Promise<EngineResult<AutomaticStartupRecoverySummary>>;
 	/** @internal */
 	continueFailedTurn(
 		instanceId: string,

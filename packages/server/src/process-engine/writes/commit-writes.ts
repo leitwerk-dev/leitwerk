@@ -201,8 +201,14 @@ export function commitWrites(
 		}
 		for (const write of writes.turnStartWrites) {
 			if (write.kind === "create") repos.turnStarts.create(write.input);
-			else if (!repos.turnStarts.compareAndSetState(write)) {
-				throw new Error(`Turn start '${write.id}' changed before acceptance`);
+			else {
+				const retained = repos.turnStarts.getById(write.id)?.state.automaticRetry;
+				const state =
+					retained && !write.state.automaticRetry
+						? { ...write.state, automaticRetry: retained }
+						: write.state;
+				if (!repos.turnStarts.compareAndSetState({ ...write, state }))
+					throw new Error(`Turn start '${write.id}' changed before acceptance`);
 			}
 		}
 		const committedLeafOutcomeSnapshots: ProcessLeafOutcomeSnapshot[] = [];

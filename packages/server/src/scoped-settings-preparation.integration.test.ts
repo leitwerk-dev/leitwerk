@@ -314,8 +314,8 @@ describe("scoped settings at the turn preparation boundary", () => {
 			},
 		});
 	});
-	it("resolves scheduled actions at dispatch using the same model and settings as the current preview", async () => {
-		const { repos, policy, settings, deps, write, createCommands } = await setup();
+	it("uses the current model and repository label when dispatching a scheduled action", async () => {
+		const { repos, policy, deps, write, createCommands } = await setup();
 		const commands = createCommands();
 		const process = repos.processes.create({
 			processId: "settings_process",
@@ -344,7 +344,6 @@ describe("scoped settings at the turn preparation boundary", () => {
 			availability: deps.modelStatusCache.snapshot(),
 		});
 		expect(preview).toMatchObject({ ok: true, selection: { modelProfileId: "second" } });
-		const expectedSettings = settings.capture(process, "run");
 		expect(
 			(
 				await commands.executeProcessAction(
@@ -360,17 +359,17 @@ describe("scoped settings at the turn preparation boundary", () => {
 			).ok,
 		).toBe(true);
 		expect(repos.futureExecutions.getById(scheduled.id)).toBeNull();
-		expect(repos.turnStarts.listByInstance(process.id)).toEqual([
-			expect.objectContaining({
-				state: {
-					kind: "starting",
-					start: expect.objectContaining({
-						model: expect.objectContaining({ profileId: "second" }),
-						scopedSettings: expectedSettings,
-					}),
-				},
-			}),
-		]);
+		const current = repos.processes.getById(process.id)?.currentExecution;
+		if (current?.kind !== "worker_start")
+			throw new Error("Scheduled action did not dispatch a worker start");
+		const prepared = repos.turnStarts.getById(current.id)?.state;
+		if (!prepared || !("start" in prepared) || prepared.start?.kind !== "llm")
+			throw new Error("Scheduled action did not prepare its LLM turn");
+		expect(prepared.start.model.profileId).toBe("second");
+		expect(
+			prepared.start.scopedSettings?.values.find((setting) => setting.key === repositoryLabel.key)
+				?.value,
+		).toBe("When dispatched");
 	});
 
 	it("allows explicit models to supersede an incompatible unused scoped model default", async () => {

@@ -1,4 +1,4 @@
-import type { Actor } from "@leitwerk-dev/domain";
+import type { Actor, TurnStartRecordState } from "@leitwerk-dev/domain";
 import { generateId } from "../../db/repo-helpers.js";
 import { accept, modelOverrideMetadata, reject } from "../decision.js";
 import { defineOperation } from "../operation.js";
@@ -15,6 +15,8 @@ export interface RetryStartupInput {
 	nextTurnModelProfileId?: string | null;
 	providerOptions?: Readonly<Record<string, string>>;
 	actor?: Actor;
+	/** Only the server's automatic recovery operation supplies inherited counters. */
+	automaticRetry?: import("@leitwerk-dev/domain").StartupRetryState;
 }
 
 /** Replaces only the current failed worker start; it never creates a turn attempt. */
@@ -42,7 +44,7 @@ export const RetryStartup = defineOperation<
 			return reject("retry_target_missing", "Startup retry requires a failed current start");
 		}
 		const id = generateId("tsr");
-		const state =
+		const state: TurnStartRecordState =
 			failed.state.kind === "preparation_failed"
 				? {
 						...failed.state,
@@ -63,6 +65,11 @@ export const RetryStartup = defineOperation<
 								? { modelSelectionProvenance: failed.state.start.modelSelectionProvenance }
 								: {}),
 						};
+		state.automaticRetry = input.automaticRetry ?? {
+			episodeStartRecordId: id,
+			starts: 1,
+			nextRetryAt: null,
+		};
 		const writes = createWrites({
 			workerIntent: state.kind === "starting" ? { kind: "restart_worker" } : undefined,
 		});
@@ -92,7 +99,12 @@ export const RetryStartup = defineOperation<
 			eventType: "startup_retry_scheduled",
 			level: "info",
 			message: "Startup retry scheduled",
-			data: { previousStartRecordId: failed.id, startRecordId: id, state: state.kind },
+			data: {
+				previousStartRecordId: failed.id,
+				startRecordId: id,
+				state: state.kind,
+				retrySource: input.automaticRetry ? "automatic" : "manual",
+			},
 		});
 		stampActorOnEvents(writes, input.actor, "startup_retry_scheduled");
 		return accept({

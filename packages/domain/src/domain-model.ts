@@ -581,7 +581,34 @@ export type TurnStartPreparationFailureCode =
 	| "provider_preflight_failed";
 
 /** @internal */
-export type TurnStartRecordState =
+export interface StartupRetryState {
+	/** First start in this recovery episode. @internal */
+	episodeStartRecordId: string;
+	/** Includes the initial start; these are not accepted turn attempts. @internal */
+	starts: number;
+	/** Retained deadline so polling and restarts cannot postpone recovery. @internal */
+	nextRetryAt: string | null;
+}
+
+/** Safe recovery information shared by automation and the process inspector. @public */
+export interface AutomaticStartupRecoverySummary {
+	/** @public */
+	status: "blocked" | "waiting" | "ready" | "waiting_for_model" | "exhausted" | "retried";
+	/** @public */
+	reason: string;
+	/** @public */
+	starts: number;
+	/** @public */
+	maxStarts: number;
+	/** @public */
+	nextRetryAt: string | null;
+}
+
+/** @internal */
+export type TurnStartRecordState = {
+	/** @internal */
+	automaticRetry?: StartupRetryState;
+} & (
 	| {
 			/** @internal */
 			kind: "preparation_failed";
@@ -631,7 +658,8 @@ export type TurnStartRecordState =
 			kind: "superseded";
 			/** @internal */
 			start: ResolvedTurnStart | null;
-	  };
+	  }
+);
 
 /** Durable preparation for a single worker-owned selected turn, not an attempt. @internal */
 export interface TurnStartRecord {

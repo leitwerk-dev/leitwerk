@@ -404,3 +404,21 @@ a prepared or accepted start retains its snapshot; settings edits never change t
 inputs of an active worker.
 
 An owning runtime exit after cleanup or draining still fails and parks an accepted running turn. Cleanup progress is not a durable terminal outcome. Already-terminal turns and exits from non-owning workers do not fail the current turn.
+
+### Automatic startup recovery
+
+Automatic recovery targets the current unaccepted worker start and shares the
+server's per-process coordination with Stop, operator retry and acceptance.
+Configuration errors, missing settings or credentials, OOMs and unknown failures
+require operator attention. Known transient worker startup failures allow three
+starts total, with retries after 30 and 60 seconds. Model preparation waits for
+availability restoration, which consumes the same budget. Accepted failed turns
+require explicit recovery; watcher polling does not restart them automatically.
+
+Retry episode identity, counts and deadlines are retained in start-state JSON.
+Older starts use their durable retry history; missing history does not grant a
+fresh allowance. Server restarts and availability changes never reset the budget.
+An operator retry or a newly selected turn begins a new episode and validates
+current settings. Startup recovery summaries report the disposition, reason, count
+and next retry time. Business integrations retain eligibility checks before
+requesting automatic recovery.
