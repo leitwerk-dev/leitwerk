@@ -47,6 +47,14 @@ const selectedModelUsable = $derived(
 	<ChronicleEntryHeader title={recovery.title} kind="system" failed />
 	<ChronicleFailureMessage summary={recovery.summary} technicalDetail={recovery.technicalDetail} />
 	{#if recovery.guidance}<p class="guidance">{recovery.guidance}</p>{/if}
+	{#if recovery.automaticRetry}
+		<p class="guidance" data-field="startup-retry-policy">
+			{recovery.automaticRetry.reason} Starts: {recovery.automaticRetry.starts}/{recovery.automaticRetry.maxStarts}.
+			{#if recovery.automaticRetry.nextRetryAt}
+				Next automatic retry: <time datetime={recovery.automaticRetry.nextRetryAt}>{new Date(recovery.automaticRetry.nextRetryAt).toLocaleTimeString()}</time>.
+			{/if}
+		</p>
+	{/if}
 	<RecoveryModelControl
 		{instanceId}
 		{modelProfiles}

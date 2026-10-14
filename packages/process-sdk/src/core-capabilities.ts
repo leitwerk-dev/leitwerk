@@ -1,5 +1,6 @@
 import type {
 	Actor,
+	AutomaticStartupRecoverySummary,
 	InputKind,
 	InputSource,
 	LaunchModelConfigInput,
@@ -670,6 +671,16 @@ export interface ProcessEngineLike {
 			actor?: Actor;
 		},
 	): Promise<ProcessEngineResultLike>;
+	/** Recover only the expected unaccepted startup, using the server's durable retry budget. @public */
+	retryStartupAutomatically(
+		instanceId: string,
+		startRecordId: string,
+	): Promise<
+		Omit<ProcessEngineResultLike, "data"> & {
+			/** Recovery disposition when the request succeeds. @public */
+			data?: AutomaticStartupRecoverySummary;
+		}
+	>;
 	/** @internal */
 	continueFailedTurn(
 		instanceId: string,
