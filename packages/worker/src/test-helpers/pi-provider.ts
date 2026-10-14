@@ -26,6 +26,7 @@ export async function writePiExtension(agentDir: string, source: string): Promis
 /** @internal */
 export function providerExtensionSource(
 	baseUrl: string | null = "https://example.invalid/v1",
+	supportsStrictMode?: boolean,
 ): string {
 	return `
 export default function providerExtension(pi) {
@@ -44,6 +45,7 @@ export default function providerExtension(pi) {
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         contextWindow: 8192,
         maxTokens: 1024,
+        ${supportsStrictMode === undefined ? "" : `compat: { supportsStrictMode: ${supportsStrictMode} },`}
       },
     ],
   });

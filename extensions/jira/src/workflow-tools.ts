@@ -101,13 +101,22 @@ export function registerJiraWorkflowTools(api: ServerExtensionAPI, integration: 
 		name: "jira_transition_source_issue",
 		description: "Reconcile the Jira source ticket's work, review or verification status",
 		parameters: projectParameters(
-			{ targetStatus: { type: "string", enum: ["In Progress", "In Review", "In Verification"] } },
+			{
+				targetStatus: {
+					type: "string",
+					enum: ["In Progress", "In Review", "Ready for Verification", "In Verification"],
+				},
+			},
 			["targetStatus"],
 		),
 		async execute(ctx, args) {
 			const { client, id } = resolveJiraSourceClient(ctx, integration);
 			const targetStatus = stringArg(args, "targetStatus");
-			if (!["In Progress", "In Review", "In Verification"].includes(targetStatus))
+			if (
+				!["In Progress", "In Review", "Ready for Verification", "In Verification"].includes(
+					targetStatus,
+				)
+			)
 				throw new Error("Unsupported Jira workflow target status");
 			const target = statusName(targetStatus);
 			const reconcile = async (phase: string) => {
@@ -117,6 +126,7 @@ export function registerJiraWorkflowTools(api: ServerExtensionAPI, integration: 
 					current === target ||
 					status.statusCategory.key === "done" ||
 					current === "in verification" ||
+					(current === "ready for verification" && target !== "in verification") ||
 					(target === "in progress" && current === "in review")
 					? { issueId: id, status: status.name ?? status.statusCategory.key }
 					: null;

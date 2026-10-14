@@ -41,6 +41,11 @@ const workflowTransitions: JiraTransition[] = [
 		name: "Verify change",
 		to: { id: "5", name: "In Verification", statusCategory: { key: "indeterminate" } },
 	},
+	{
+		id: "50",
+		name: "Prepare verification",
+		to: { id: "6", name: "Ready for Verification", statusCategory: { key: "indeterminate" } },
+	},
 ];
 
 /** @internal */
