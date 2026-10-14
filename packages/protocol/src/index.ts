@@ -9,6 +9,7 @@ export type {
 	ConfigSnapshot,
 	ModelProfileSnapshot,
 } from "./config-snapshot.js";
+export type { DashboardConfigurationIssue, DashboardResponseBody } from "./dashboard-contracts.js";
 export type * from "./execution-inspection.js";
 export type {
 	BrowserUiExtensionDescriptor,

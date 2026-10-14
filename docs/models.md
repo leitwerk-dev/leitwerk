@@ -4,6 +4,27 @@ A model profile gives a provider/model pair a stable name. Operators select that
 name at launch or for future work; processes can supply defaults and restrict
 allowed profiles. Selection never changes a model call already in flight.
 
+## Dashboard costs and readiness
+
+The dashboard reports estimated USD costs from durable LLM turn summaries across
+retained processes. Each turn contributes once, including failed attempts and
+alternate branches. Grouping uses the provider/model captured at turn start;
+editing or removing a profile does not change historical attribution. Older
+records without a captured identity appear under **Unknown model**. Costs do not
+include deleted process history or internal calls without recorded turn usage.
+
+Only turns with recorded cost contribute to totals and per-model rows. A recorded
+zero is valid; absent cost is unavailable. Partial coverage reports the number of
+priced turns. These estimates are not a provider billing statement.
+
+Configuration issues report unknown or disallowed model references, unavailable
+profiles or credentials, stale availability, and invalid saved model settings.
+Sources identify YAML defaults, watcher overrides, scoped settings, current
+process selections, and scheduled work. Correctable settings and processes link
+to their existing pages. The dashboard reads cached availability and does not
+probe providers, change model choices, or run recovery. Fatal startup validation
+still applies; a server that cannot start cannot serve its dashboard.
+
 ## Model profiles
 
 ```yaml

@@ -252,6 +252,30 @@ export function createProcessInstanceRepo(db: LeitwerkDb) {
 				.map(rowToProcessInstance);
 		},
 
+		/** Model references for current work without loading prompts or process state. @internal */
+		listModelConfigurations() {
+			return db
+				.select({
+					/** @internal */
+					id: s.processInstances.id,
+					/** @internal */
+					processId: s.processInstances.processId,
+					/** @internal */
+					title: s.processInstances.title,
+					/** @internal */
+					defaultModelProfileId: s.processInstances.defaultModelProfileId,
+					/** @internal */
+					turnConfigsJson: s.processInstances.turnConfigsJson,
+					/** @internal */
+					selectedTurnId: s.processInstances.selectedTurnId,
+					/** @internal */
+					selectedTurnModelProfileId: s.processInstances.selectedTurnModelProfileId,
+				})
+				.from(s.processInstances)
+				.where(notInArray(s.processInstances.lifecycleStatus, ["completed", "aborted"]))
+				.all();
+		},
+
 		/** @internal */
 		listCurrent(limit: number): ProcessInstance[] {
 			return db

@@ -12,8 +12,8 @@ import { formatLocalDateTime24Hour, formatUtcDateTime24Hour } from "../lib/forma
 import { buildFutureLaunchDetailSections } from "../lib/future-launch-detail.js";
 import { loadProcessesList, upsertFutureExecution } from "../lib/processes.svelte";
 import {
+	buildCreateProcessPath,
 	buildFutureLaunchPath,
-	buildHomePath,
 	buildProcessesPath,
 	buildProcessPath,
 	navigate,
@@ -40,7 +40,7 @@ let observedFutureExecutionId = $state<string | null>(null);
 let launchersLoadToken = 0;
 let futureLaunchDetailLoadToken = 0;
 
-const homePath = buildHomePath();
+const homePath = buildCreateProcessPath();
 const processesPath = buildProcessesPath();
 const futureLaunch = $derived(
 	loadedFutureLaunch?.id === futureExecutionId ? loadedFutureLaunch : null,

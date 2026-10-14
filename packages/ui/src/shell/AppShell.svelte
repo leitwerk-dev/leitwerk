@@ -135,6 +135,7 @@ $effect(() => {
 });
 
 const shortcutHelpTitle = $derived.by(() => {
+	if (route.page === "dashboard") return "Dashboard";
 	if (route.page === "settings") return "Settings";
 	if (route.page === "api-tokens") return "API tokens";
 	if (route.page === "home") {
@@ -155,6 +156,7 @@ const shortcutHelpTitle = $derived.by(() => {
 	return "Process detail";
 });
 const shortcutHelpDescription = $derived.by(() => {
+	if (route.page === "dashboard") return "Quick reference for reviewing work and system health.";
 	if (route.page === "home") {
 		return "Quick reference for choosing a process type, opening setup, and returning to the process gallery.";
 	}
@@ -180,7 +182,12 @@ const shortcutHelpItems = $derived.by(() => {
 	if (route.page === "processes") {
 		return [...browseShortcutItems, ...extensionItems];
 	}
-	if (route.page === "watchers" || route.page === "skills" || route.page === "api-tokens") {
+	if (
+		route.page === "dashboard" ||
+		route.page === "watchers" ||
+		route.page === "skills" ||
+		route.page === "api-tokens"
+	) {
 		return [...watcherShortcutItems, ...extensionItems];
 	}
 	if (route.page === "future-launch-detail") {
@@ -290,7 +297,9 @@ $effect(() => {
 		</div>
 	{/if}
 	<main class="content-region">
-		{#if route.page === "home"}
+		{#if route.page === "dashboard"}
+			<RouteLoadBoundary load={import("../pages/DashboardPage.svelte")} props={{}} />
+		{:else if route.page === "home"}
 			<RouteLoadBoundary
 				load={import("../pages/HomePage.svelte")}
 				props={{ launcherId: route.params.launcher ?? null }}

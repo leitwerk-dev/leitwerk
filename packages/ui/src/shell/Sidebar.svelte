@@ -17,6 +17,7 @@ import {
 } from "../lib/processes.svelte";
 import type { Route } from "../lib/router.svelte";
 import {
+	buildCreateProcessPath,
 	buildFutureLaunchPath,
 	buildHomePath,
 	buildProcessesPath,
@@ -45,6 +46,7 @@ let {
 }: Props = $props();
 
 const homePath = buildHomePath();
+const createProcessPath = buildCreateProcessPath();
 const processesPath = buildProcessesPath();
 const watchersPath = buildWatchersPath();
 const skillsPath = buildSkillsPath();
@@ -458,8 +460,9 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 				<span class="rail-control-label">Open</span>
 			</button>
 
+			<a href={homePath} class="rail-icon-control" data-action="view-dashboard" data-pressable="true" class:is-active={currentRoute.page === "dashboard"} aria-current={currentRoute.page === "dashboard" ? "page" : undefined} aria-label="Dashboard" title="Dashboard" onclick={(event) => followLink(event, homePath)}><span class="rail-control-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1"></rect><rect x="14" y="3.5" width="6.5" height="6.5" rx="1"></rect><rect x="3.5" y="14" width="6.5" height="6.5" rx="1"></rect><rect x="14" y="14" width="6.5" height="6.5" rx="1"></rect></svg></span><span class="rail-control-label">Dashboard</span></a>
 			<a
-				href={homePath}
+				href={createProcessPath}
 				class="rail-icon-control"
 				data-action="create-process"
 				data-pressable="true"
@@ -467,7 +470,7 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 				aria-current={currentRoute.page === "home" ? "page" : undefined}
 				aria-label="Start process"
 				title="Start process"
-				onclick={(event) => followLink(event, homePath)}
+				onclick={(event) => followLink(event, createProcessPath)}
 			>
 				<span class="rail-control-icon" aria-hidden="true">
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -686,14 +689,15 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 			</div>
 
 			<nav class="sidebar-primary-nav" aria-label="Primary sidebar">
+				<a href={homePath} class="sidebar-nav-link" data-action="view-dashboard" data-pressable="true" class:is-active={currentRoute.page === "dashboard"} aria-current={currentRoute.page === "dashboard" ? "page" : undefined} aria-label="Dashboard" title="Dashboard" onclick={(event) => followLink(event, homePath)}><span class="sidebar-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1"></rect><rect x="14" y="3.5" width="6.5" height="6.5" rx="1"></rect><rect x="3.5" y="14" width="6.5" height="6.5" rx="1"></rect><rect x="14" y="14" width="6.5" height="6.5" rx="1"></rect></svg></span><span class="sidebar-nav-label">Dashboard</span></a>
 				<a
-					href={homePath}
+					href={createProcessPath}
 					class="sidebar-nav-link"
 					data-action="create-process"
 					data-pressable="true"
 					class:is-active={currentRoute.page === "home"}
 					aria-current={currentRoute.page === "home" ? "page" : undefined}
-					onclick={(event) => followLink(event, homePath)}
+					onclick={(event) => followLink(event, createProcessPath)}
 				>
 					<span class="sidebar-nav-icon" aria-hidden="true">+</span>
 					<span class="sidebar-nav-label">Start a process</span>

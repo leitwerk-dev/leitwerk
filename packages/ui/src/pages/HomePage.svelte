@@ -13,8 +13,8 @@ import { queueProcessLaunchNotice } from "../lib/process-launch-notices.svelte";
 import { upsertFutureExecution } from "../lib/processes.svelte.js";
 import { consumePendingRetryConfig } from "../lib/retry-config.svelte.js";
 import {
+	buildCreateProcessPath,
 	buildFutureLaunchPath,
-	buildHomePath,
 	buildProcessPath,
 	navigate,
 } from "../lib/router.svelte";
@@ -168,7 +168,7 @@ async function loadLaunchers() {
 			retryInitialDraft = pendingRetry;
 			unavailableLauncherId = null;
 			if (!routeLauncherId) {
-				navigate(buildHomePath(pendingRetry.launcherId), { replace: true });
+				navigate(buildCreateProcessPath(pendingRetry.launcherId), { replace: true });
 			}
 		} else {
 			retryLauncherId = null;
@@ -199,12 +199,12 @@ function openLauncher(nextLauncherId: string) {
 	if (launcherId === undefined) {
 		retryLauncherId = nextLauncherId;
 	}
-	navigate(buildHomePath(nextLauncherId));
+	navigate(buildCreateProcessPath(nextLauncherId));
 }
 
 function goBackToGallery() {
 	clearRetryPrefill();
-	navigate(buildHomePath());
+	navigate(buildCreateProcessPath());
 }
 
 function handleLaunched(instanceId: string, launchWarning?: string | null) {

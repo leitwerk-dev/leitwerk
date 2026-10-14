@@ -15,7 +15,7 @@ import {
 } from "../lib/api.js";
 import { futureExecutions } from "../lib/processes.svelte.js";
 import { consumePendingRetryConfig } from "../lib/retry-config.svelte.js";
-import { buildHomePath, navigate } from "../lib/router.svelte";
+import { buildCreateProcessPath, navigate } from "../lib/router.svelte";
 import HomePage from "./HomePage.svelte";
 
 const mountedApps: Array<ReturnType<typeof mount>> = [];
@@ -137,8 +137,8 @@ vi.mock("../lib/router.svelte", () => ({
 	buildFutureLaunchPath: vi.fn(
 		(futureExecutionId: string) => `/future-launches/${futureExecutionId}`,
 	),
-	buildHomePath: vi.fn((launcherId?: string | null) =>
-		launcherId ? `/?launcher=${launcherId}` : "/",
+	buildCreateProcessPath: vi.fn((launcherId?: string | null) =>
+		launcherId ? `/processes/new?launcher=${launcherId}` : "/processes/new",
 	),
 	buildProcessPath: vi.fn((instanceId: string) => `/processes/${instanceId}`),
 	navigate: vi.fn(),
@@ -295,8 +295,8 @@ describe("HomePage", () => {
 		(target.querySelector('[data-launcher-id="launcher-a"]') as HTMLButtonElement | null)?.click();
 		await flush();
 
-		expect(buildHomePath).toHaveBeenCalledWith("launcher-a");
-		expect(navigate).toHaveBeenCalledWith("/?launcher=launcher-a");
+		expect(buildCreateProcessPath).toHaveBeenCalledWith("launcher-a");
+		expect(navigate).toHaveBeenCalledWith("/processes/new?launcher=launcher-a");
 	});
 
 	it("stores a newly scheduled launch before navigating to its detail route", async () => {
@@ -414,7 +414,7 @@ describe("HomePage", () => {
 				'[data-section="launcher-skills"] input[value="review"]',
 			)?.checked,
 		).toBe(true);
-		expect(buildHomePath).toHaveBeenCalledWith("launcher-a");
+		expect(buildCreateProcessPath).toHaveBeenCalledWith("launcher-a");
 
 		(target.querySelector(".page-header-button") as HTMLButtonElement | null)?.click();
 		await flush();

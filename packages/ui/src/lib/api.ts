@@ -15,6 +15,7 @@ import type {
 import type {
 	AuthMeResponseBody,
 	CronPreviewResponseBody,
+	DashboardResponseBody,
 	FutureExecutionSummary as FullFutureExecutionSummary,
 	FutureExecutionDetailResponseBody,
 	FutureExecutionOverviewItem,
@@ -884,5 +885,15 @@ export async function updateProcessModelConfig(
 		preview ? "Couldn't preview model settings" : "Couldn't save model settings",
 		"Malformed model configuration response",
 		jsonRequestInit(preview ? "POST" : "PATCH", patch),
+	);
+}
+
+/** Fetch the server-owned installation overview. @internal */
+export function fetchDashboard(signal?: AbortSignal): Promise<DashboardResponseBody> {
+	return requestStatusJson(
+		"/api/dashboard",
+		"Couldn't load the dashboard",
+		"Malformed dashboard response",
+		{ signal },
 	);
 }

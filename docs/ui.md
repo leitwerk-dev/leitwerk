@@ -5,6 +5,31 @@ establish durable state; WebSocket frames update live activity or invalidate tho
 snapshots. This page defines interaction and rendering behavior for contributors.
 For everyday use, see [Operate a process](operator-guide.md).
 
+## Dashboard
+
+The root route `/` opens the dashboard. **Start a process** opens the launcher at
+`/processes/new`. Existing `/?launcher=…`, `/config`, and `/system` launcher links
+forward to the creation route. The brand link returns to the dashboard.
+
+The dashboard shows loaded process definitions, configured watchers, installed
+and bundled skills, retained process instances, estimated LLM costs, and model
+configuration issues. Definition, watcher, and skill widgets link to their
+corresponding pages. Watcher totals include disabled registrations. Process totals
+exclude future launches that have not created an instance and deleted processes.
+Status groups combine Discovered and Active as Running; Waiting, Error, Completed,
+and Aborted remain separate. Operators can switch the distribution to process
+definition. Labels and counts accompany the charts.
+
+Costs cover all retained LLM turns, including retries, alternate branches, and
+recorded usage during active work. Per-model totals combine profiles using the
+same recorded provider/model and appear in descending order. Missing telemetry
+produces a partial estimate or an unavailable state, never an assumed zero. See
+[Model costs and readiness](models.md#dashboard-costs-and-readiness).
+
+`GET /api/dashboard` supplies the authenticated snapshot. The page refreshes on
+entry, reconnect, return to the tab, manual refresh, and every 30 seconds while
+visible. Refresh failures retain the last snapshot and offer Retry.
+
 ## Skills
 
 The Skills page includes extension-provided skills in the Installed view with a

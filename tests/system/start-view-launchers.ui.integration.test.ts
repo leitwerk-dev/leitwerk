@@ -346,7 +346,7 @@ describe("start view launcher UI", () => {
 
 		try {
 			harness = await setupMountedUiHarness({
-				route: "/",
+				route: "/processes/new",
 				extensionCatalog,
 				configureConfig: configureLauncherModel,
 				initialFetchFailures: [{ path: "/api/launchers", status: 503 }],
@@ -367,7 +367,7 @@ describe("start view launcher UI", () => {
 
 		try {
 			harness = await setupMountedUiHarness({
-				route: "/",
+				route: "/processes/new",
 				extensionCatalog: emptyExtensionCatalog,
 			});
 
@@ -385,7 +385,7 @@ describe("start view launcher UI", () => {
 
 		try {
 			harness = await setupMountedUiHarness({
-				route: "/",
+				route: "/processes/new",
 				extensionCatalog,
 				configureConfig: configureLauncherModel,
 				async prepare(testApp) {
@@ -463,7 +463,7 @@ describe("start view launcher UI", () => {
 
 		try {
 			harness = await setupMountedUiHarness({
-				route: "/?launcher=launcher_ui_test_process.local_repo_ui",
+				route: "/processes/new?launcher=launcher_ui_test_process.local_repo_ui",
 				extensionCatalog,
 				configureConfig: configureLauncherModel,
 			});
@@ -518,7 +518,7 @@ describe("start view launcher UI", () => {
 
 		try {
 			harness = await setupMountedUiHarness({
-				route: "/?launcher=launcher_ui_test_process.local_repo_ui",
+				route: "/processes/new?launcher=launcher_ui_test_process.local_repo_ui",
 				extensionCatalog,
 				configureConfig: configureLauncherModel,
 				initialFetchFailures: [
@@ -545,7 +545,7 @@ describe("start view launcher UI", () => {
 
 		try {
 			harness = await setupMountedUiHarness({
-				route: "/?launcher=launcher_ui_test_process.local_repo_ui",
+				route: "/processes/new?launcher=launcher_ui_test_process.local_repo_ui",
 				extensionCatalog,
 				configureConfig: configureLauncherModel,
 			});
@@ -586,7 +586,7 @@ describe("start view launcher UI", () => {
 
 		try {
 			harness = await setupMountedUiHarness({
-				route: "/?launcher=launcher_ui_test_process.local_repo_ui",
+				route: "/processes/new?launcher=launcher_ui_test_process.local_repo_ui",
 				extensionCatalog,
 				configureConfig: configureLauncherModel,
 			});
@@ -624,7 +624,7 @@ describe("start view launcher UI", () => {
 
 		try {
 			harness = await setupMountedUiHarness({
-				route: "/?launcher=launcher_ui_test_process.local_repo_ui",
+				route: "/processes/new?launcher=launcher_ui_test_process.local_repo_ui",
 				extensionCatalog,
 				configureConfig: configureLauncherModel,
 			});
@@ -659,7 +659,7 @@ describe("start view launcher UI", () => {
 
 		try {
 			harness = await setupMountedUiHarness({
-				route: "/?launcher=launcher_ui_test_process.local_repo_ui",
+				route: "/processes/new?launcher=launcher_ui_test_process.local_repo_ui",
 				extensionCatalog,
 				configureConfig: configureLauncherModel,
 			});
@@ -708,7 +708,7 @@ describe("start view launcher UI", () => {
 
 		try {
 			harness = await setupMountedUiHarness({
-				route: "/",
+				route: "/processes/new",
 				extensionCatalog,
 				configureConfig: configureLauncherModel,
 				fastReconnect: true,
@@ -739,7 +739,7 @@ describe("start view launcher UI", () => {
 
 		try {
 			harness = await setupMountedUiHarness({
-				route: "/?launcher=launcher_ui_test_process.local_repo_ui",
+				route: "/processes/new?launcher=launcher_ui_test_process.local_repo_ui",
 				extensionCatalog,
 				configureConfig: configureLauncherModel,
 				fastReconnect: true,
@@ -785,7 +785,7 @@ describe("start view launcher UI", () => {
 				throw new Error("spawn failed intentionally");
 			}) as typeof spawn;
 			harness = await setupMountedUiHarness({
-				route: "/?launcher=launcher_ui_test_process.local_repo_ui",
+				route: "/processes/new?launcher=launcher_ui_test_process.local_repo_ui",
 				extensionCatalog,
 				configureConfig: configureLauncherModel,
 				localWorkerSpawnImpl: failingSpawn,

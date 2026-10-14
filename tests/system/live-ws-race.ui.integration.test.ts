@@ -181,7 +181,7 @@ describe("live websocket launch races", () => {
 		try {
 			harness = await setupMountedUiHarness({
 				extensionCatalog,
-				route: "/",
+				route: "/processes/new",
 			});
 
 			await waitFor(() => expect(document.querySelector('[data-page="home"]')).not.toBeNull());
@@ -227,7 +227,7 @@ describe("live websocket launch races", () => {
 			let instanceId = "";
 			harness = await setupMountedUiHarness({
 				extensionCatalog,
-				route: "/",
+				route: "/processes/new",
 				async prepare(testApp) {
 					const process = testApp.ctx.deps.processes.create({
 						processId: "single_prompt_process",
@@ -381,7 +381,7 @@ describe("live websocket launch races", () => {
 			let instanceId = "";
 			harness = await setupMountedUiHarness({
 				extensionCatalog,
-				route: "/",
+				route: "/processes/new",
 				async prepare(testApp) {
 					const process = testApp.ctx.deps.processes.create({
 						processId: "single_prompt_process",

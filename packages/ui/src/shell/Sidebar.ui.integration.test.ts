@@ -67,6 +67,7 @@ vi.mock("../lib/router.svelte", () => ({
 		(futureExecutionId: string) => `/future-launches/${futureExecutionId}`,
 	),
 	buildHomePath: vi.fn(() => "/"),
+	buildCreateProcessPath: vi.fn(() => "/processes/new"),
 	buildProcessesPath: vi.fn(() => "/processes"),
 	buildProcessPath: vi.fn((instanceId: string) => `/processes/${instanceId}`),
 	buildSkillsPath: vi.fn(() => "/skills"),
@@ -175,6 +176,26 @@ afterEach(async () => {
 });
 
 describe("Sidebar", () => {
+	it("marks the dashboard active in the expanded navigation and collapsed rail", async () => {
+		const { target } = mountSubject({ page: "dashboard", params: {} });
+		await flush();
+		expect(
+			target.querySelector('[data-action="view-dashboard"]')?.getAttribute("aria-current"),
+		).toBe("page");
+		expect(
+			target.querySelector('[data-action="create-process"]')?.getAttribute("aria-current"),
+		).toBeNull();
+		click(target.querySelector('[data-action="view-dashboard"]'));
+		expect(mocks.navigate).toHaveBeenCalledWith("/");
+		click(target.querySelector('[data-action="toggle-sidebar"]'));
+		await flush();
+		expect(
+			target.querySelector('[data-action="view-dashboard"]')?.getAttribute("aria-current"),
+		).toBe("page");
+		expect(target.querySelector('[data-action="view-dashboard"]')?.getAttribute("aria-label")).toBe(
+			"Dashboard",
+		);
+	});
 	it("renders the Leitwerk header, active work, and the all-processes primary link", async () => {
 		mocks.processRowsStore.set([
 			makeRow("agt_1", "RUN-101", "active", "active"),
@@ -189,6 +210,10 @@ describe("Sidebar", () => {
 		expect(target.querySelector('[data-action="toggle-sidebar"]')).toBeTruthy();
 		expect(target.querySelector('[data-action="create-process"]')).toBeTruthy();
 		expect(target.textContent).toContain("Start a process");
+		expect(target.querySelector('[data-action="create-process"]')?.getAttribute("href")).toBe(
+			"/processes/new",
+		);
+		expect(target.querySelector('[data-action="view-dashboard"]')?.getAttribute("href")).toBe("/");
 		expect(target.textContent).toContain("Watchers");
 		expect(target.querySelector('[data-action="view-watchers"]')).toBeTruthy();
 		expect(target.textContent).toContain("Future");

@@ -12,7 +12,7 @@ import {
 import { NEW_TAB_WINDOW_FEATURES } from "../lib/external-links.js";
 import { keyboardShortcutHelpOpen } from "../lib/keyboard-shortcuts-help.js";
 import { setPendingRetryConfig } from "../lib/retry-config.svelte.js";
-import { buildHomePath, navigate } from "../lib/router.svelte.js";
+import { buildCreateProcessPath, navigate } from "../lib/router.svelte.js";
 import { resolveApiUrl } from "../lib/runtime-config.js";
 
 interface Props {
@@ -277,7 +277,7 @@ async function handleRetry() {
 	await runBusy(async () => {
 		const config = await fetchProcessRetryConfig(instanceId);
 		setPendingRetryConfig(config);
-		navigate(buildHomePath(config.launcherId));
+		navigate(buildCreateProcessPath(config.launcherId));
 	}, "Couldn't load retry config");
 }
 
@@ -290,7 +290,7 @@ async function handleAbortAndRetry() {
 		const config = await fetchProcessRetryConfig(instanceId);
 		await postProcessAbort(instanceId);
 		setPendingRetryConfig(config);
-		navigate(buildHomePath(config.launcherId));
+		navigate(buildCreateProcessPath(config.launcherId));
 	}, "Couldn't abort and retry");
 }
 

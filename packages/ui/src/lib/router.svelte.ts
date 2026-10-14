@@ -1,6 +1,7 @@
 export type { Page, Route } from "./router-logic.js";
 export {
 	buildAvailableSkillPath,
+	buildCreateProcessPath,
 	buildFutureLaunchPath,
 	buildHomePath,
 	buildInstalledSkillPath,
@@ -12,7 +13,7 @@ export {
 } from "./router-logic.js";
 
 import { derived, writable } from "svelte/store";
-import { matchRoute } from "./router-logic.js";
+import { canonicalizeRoutePath, matchRoute } from "./router-logic.js";
 
 interface NavigateOptions {
 	replace?: boolean;
@@ -20,7 +21,10 @@ interface NavigateOptions {
 }
 
 function readCurrentLocationPath(): string {
-	return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+	const path = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+	const canonical = canonicalizeRoutePath(path);
+	if (canonical !== path) history.replaceState(history.state, "", canonical);
+	return canonical;
 }
 
 const currentLocationPath = writable(readCurrentLocationPath());

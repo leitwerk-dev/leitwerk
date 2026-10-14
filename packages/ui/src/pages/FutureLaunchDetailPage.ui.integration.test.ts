@@ -36,7 +36,7 @@ vi.mock("../lib/router.svelte", () => ({
 	buildFutureLaunchPath: vi.fn(
 		(futureExecutionId: string) => `/future-launches/${futureExecutionId}`,
 	),
-	buildHomePath: vi.fn(() => "/"),
+	buildCreateProcessPath: vi.fn(() => "/processes/new"),
 	buildProcessesPath: vi.fn(() => "/processes"),
 	buildProcessPath: vi.fn((instanceId: string) => `/processes/${instanceId}`),
 	navigate: mocks.navigate,
@@ -199,7 +199,7 @@ describe("FutureLaunchDetailPage", () => {
 
 		expect(mocks.deleteFutureExecution).toHaveBeenCalledWith("fut_1");
 		expect(mocks.loadProcessesList).toHaveBeenCalled();
-		expect(mocks.navigate).toHaveBeenCalledWith("/");
+		expect(mocks.navigate).toHaveBeenCalledWith("/processes/new");
 	});
 
 	it("waits for an explicit retry after a detail request fails", async () => {

@@ -41,7 +41,7 @@ test("keeps mobile navigation reachable and hides the drawer until requested", a
 	await expect(sidebar).not.toBeVisible();
 	await expect(menuButton).toBeFocused();
 
-	await page.goto("/");
+	await page.goto("/processes/new");
 	await page.waitForSelector('[data-page="home"]');
 	await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
 	await expect(menuButton).toBeInViewport();

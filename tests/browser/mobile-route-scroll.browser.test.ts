@@ -84,7 +84,7 @@ async function expectGestureToScrollPage(page: Page, surface: Locator) {
 
 test("scrolls the process type selection on a mobile viewport", async ({ page, leitwerk }) => {
 	void leitwerk;
-	await page.goto("/");
+	await page.goto("/processes/new");
 	const launcherList = page.locator('[data-section="launcher-list"]');
 	await expect.poll(() => launcherList.locator("li").count()).toBeGreaterThan(1);
 
@@ -93,7 +93,7 @@ test("scrolls the process type selection on a mobile viewport", async ({ page, l
 
 test("scrolls launcher setup on a mobile viewport", async ({ page, leitwerk }) => {
 	void leitwerk;
-	await page.goto("/?launcher=single_prompt_process.single_prompt_ui");
+	await page.goto("/processes/new?launcher=single_prompt_process.single_prompt_ui");
 	const launcherForm = page.locator('[data-section="launcher-form"]');
 	await expect(launcherForm).toBeVisible();
 

@@ -76,7 +76,8 @@ copying an ambient Pi credential directory.
 npm run dev
 ```
 
-Open the Vite URL printed by the command. On the launcher page:
+Open the Vite URL printed by the command. The dashboard summarizes the installation.
+Choose **Start a process**, then on the launcher page:
 
 1. Choose **Single Prompt**.
 2. Enter a short instruction, such as “Explain what a code review checks.”

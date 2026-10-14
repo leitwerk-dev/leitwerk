@@ -3,9 +3,9 @@ import type {
 	PrimaryPathUiSnapshot,
 	TurnTracePreview,
 } from "@leitwerk-dev/protocol";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { LeitwerkDb } from "./database.js";
-import { sessionSummaries, turnSummaries } from "./schema.js";
+import { sessionSummaries, turnRecords, turnStartRecords, turnSummaries } from "./schema.js";
 
 /** @internal */
 export interface SessionSummary {
@@ -42,6 +42,29 @@ export interface SessionSummary {
 /** @internal */
 export function createTurnSummaryRepo(db: LeitwerkDb) {
 	return {
+		/** Dashboard projections never load assistant text, event payloads or session files. @internal */
+		listDashboardCosts() {
+			return db
+				.select({
+					/** @internal */
+					providerId: sql<
+						string | null
+					>`case when json_extract(${turnStartRecords.stateJson}, '$.kind') = 'accepted' then json_extract(${turnStartRecords.stateJson}, '$.start.model.providerId') end`,
+					/** @internal */
+					modelId: sql<
+						string | null
+					>`case when json_extract(${turnStartRecords.stateJson}, '$.kind') = 'accepted' then json_extract(${turnStartRecords.stateJson}, '$.start.model.modelId') end`,
+					/** @internal */
+					costUsd: sql<
+						number | null
+					>`json_extract(${turnSummaries.summaryJson}, '$.usage.cost.total')`,
+				})
+				.from(turnRecords)
+				.leftJoin(turnSummaries, eq(turnSummaries.turnRecordId, turnRecords.id))
+				.leftJoin(turnStartRecords, eq(turnStartRecords.id, turnRecords.turnStartRecordId))
+				.where(eq(turnRecords.turnType, "llm"))
+				.all();
+		},
 		/** @internal */
 		get(turnRecordId: string): CompactTurnSummary | null {
 			const row = db

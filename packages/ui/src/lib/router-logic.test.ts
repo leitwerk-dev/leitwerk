@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	buildAvailableSkillPath,
+	buildCreateProcessPath,
 	buildFutureLaunchPath,
 	buildHomePath,
 	buildInstalledSkillPath,
@@ -8,12 +9,29 @@ import {
 	buildProcessPath,
 	buildSkillsPath,
 	buildWatchersPath,
+	canonicalizeRoutePath,
 	matchRoute,
 } from "./router-logic.js";
 
 describe("matchRoute", () => {
-	it.each(["/", "/#?launcher=not-a-query"])("matches %s to the home page", (path) => {
-		expect(matchRoute(path)).toEqual({ page: "home", params: {} });
+	it("reserves the creation route before process IDs", () => {
+		expect(matchRoute("/processes/new")).toEqual({ page: "home", params: {} });
+		expect(matchRoute("/processes/new/?launcher=a%20b")).toEqual({
+			page: "home",
+			params: { launcher: "a b" },
+		});
+	});
+	it("canonicalizes legacy launcher URLs", () => {
+		expect(canonicalizeRoutePath("/?launcher=a%20b#setup")).toBe("/processes/new?launcher=a+b");
+		expect(canonicalizeRoutePath("/config")).toBe("/processes/new");
+		expect(canonicalizeRoutePath("/system?launcher=abc")).toBe("/processes/new?launcher=abc");
+		expect(canonicalizeRoutePath("/")).toBe("/");
+		expect(canonicalizeRoutePath("/processes/new?launcher=abc")).toBe(
+			"/processes/new?launcher=abc",
+		);
+	});
+	it.each(["/", "/#?launcher=not-a-query"])("matches %s to the dashboard", (path) => {
+		expect(matchRoute(path)).toEqual({ page: "dashboard", params: {} });
 	});
 
 	it("reads a home launcher query parameter", () => {
@@ -95,9 +113,9 @@ describe("matchRoute", () => {
 		expect(matchRoute("/watchers?tab=configured#top")).toEqual({ page: "watchers", params: {} });
 	});
 
-	it("falls back to home for unknown paths", () => {
-		expect(matchRoute("/unknown")).toEqual({ page: "home", params: {} });
-		expect(matchRoute("/foo/bar")).toEqual({ page: "home", params: {} });
+	it("falls back to dashboard for unknown paths", () => {
+		expect(matchRoute("/unknown")).toEqual({ page: "dashboard", params: {} });
+		expect(matchRoute("/foo/bar")).toEqual({ page: "dashboard", params: {} });
 	});
 
 	it("extracts only the first segment for process ID, ignoring trailing path", () => {
@@ -111,8 +129,11 @@ describe("matchRoute", () => {
 describe("route path builders", () => {
 	it("builds canonical home and process detail paths", () => {
 		expect(buildHomePath()).toBe("/");
-		expect(buildHomePath("launcher-a")).toBe("/?launcher=launcher-a");
-		expect(buildHomePath("launcher with space")).toBe("/?launcher=launcher+with+space");
+		expect(buildCreateProcessPath()).toBe("/processes/new");
+		expect(buildCreateProcessPath("launcher-a")).toBe("/processes/new?launcher=launcher-a");
+		expect(buildCreateProcessPath("launcher with space")).toBe(
+			"/processes/new?launcher=launcher+with+space",
+		);
 		expect(buildWatchersPath()).toBe("/watchers");
 		expect(buildProcessesPath()).toBe("/processes");
 		expect(buildSkillsPath()).toBe("/skills");
