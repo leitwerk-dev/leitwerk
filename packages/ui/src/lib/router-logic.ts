@@ -2,6 +2,7 @@ export type Page =
 	| "wiki"
 	| "settings"
 	| "api-tokens"
+	| "dashboard"
 	| "home"
 	| "processes"
 	| "process-detail"
@@ -27,13 +28,17 @@ function decodeFirstSegment(pathname: string, prefix: string): string {
 	return segment ? decodeURIComponent(segment) : "";
 }
 
-export function buildHomePath(launcherId?: string | null): string {
+export function buildHomePath(): string {
+	return "/";
+}
+
+export function buildCreateProcessPath(launcherId?: string | null): string {
 	if (!launcherId) {
-		return "/";
+		return "/processes/new";
 	}
 	const params = new URLSearchParams();
 	params.set("launcher", launcherId);
-	return `/?${params.toString()}`;
+	return `/processes/new?${params.toString()}`;
 }
 
 export function buildFutureLaunchPath(futureExecutionId: string): string {
@@ -95,6 +100,10 @@ export function matchRoute(pathnameWithSearch: string): Route {
 		};
 	if (pathname === "/account/api-tokens" || pathname === "/account/api-tokens/")
 		return { page: "api-tokens", params: {} };
+	if (pathname === "/processes/new" || pathname === "/processes/new/") {
+		const launcher = readSearchParams(pathnameWithSearch).get("launcher");
+		return { page: "home", params: launcher ? { launcher } : {} };
+	}
 	const processDetailRoute = matchPrefixedDetailRoute(
 		pathname,
 		"/processes/",
@@ -153,10 +162,12 @@ export function matchRoute(pathnameWithSearch: string): Route {
 
 	if (pathname === "/" || pathname === "/config" || pathname === "/system") {
 		const launcher = readSearchParams(pathnameWithSearch).get("launcher");
-		return launcher ? { page: "home", params: { launcher } } : { page: "home", params: {} };
+		return launcher || pathname !== "/"
+			? { page: "home", params: launcher ? { launcher } : {} }
+			: { page: "dashboard", params: {} };
 	}
 
-	return { page: "home", params: {} };
+	return { page: "dashboard", params: {} };
 }
 
 /** @internal */
@@ -240,4 +251,14 @@ export function readInspectorTarget(path: string): InspectorRoute {
 		return target;
 	}
 	return invalid;
+}
+
+/** @internal */
+export function canonicalizeRoutePath(path: string): string {
+	const pathname = stripSearchAndHash(path);
+	const launcher = readSearchParams(path).get("launcher");
+	if (pathname === "/config" || pathname === "/system" || (pathname === "/" && launcher)) {
+		return buildCreateProcessPath(launcher);
+	}
+	return path;
 }

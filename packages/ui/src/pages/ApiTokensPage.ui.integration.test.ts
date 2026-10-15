@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { ADMIN_ACTOR } from "@leitwerk-dev/domain";
-import { mount, unmount } from "svelte";
 import { afterEach, assert, beforeEach, expect, it, vi } from "vitest";
 import { createApiToken, fetchApiTokens, revokeApiToken } from "../lib/api-tokens.js";
+import { mountTest, unmountTests } from "../test-support/mount.js";
+import { flushUi as flush } from "../test-support/wait.js";
 import ApiTokensPage from "./ApiTokensPage.svelte";
 
 vi.mock("../lib/api-tokens.js", () => ({
@@ -24,13 +25,9 @@ const data = {
 	policy: { enabled: true, defaultTtlMs: 604800000, maxTtlMs: 7776000000, allowNoExpiry: true },
 	csrfToken: "csrf",
 };
-const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
-let app: ReturnType<typeof mount> | undefined;
 async function render() {
-	const target = document.createElement("div");
-	document.body.append(target);
-	app = mount(ApiTokensPage, { target, props: { authEnabled: false, actor: ADMIN_ACTOR } });
+	const { target } = mountTest(ApiTokensPage, { authEnabled: false, actor: ADMIN_ACTOR });
 	await flush();
 	return target;
 }
@@ -46,9 +43,7 @@ beforeEach(() => {
 	vi.mocked(revokeApiToken).mockResolvedValue({ ok: true });
 });
 afterEach(async () => {
-	if (app) await unmount(app);
-	app = undefined;
-	document.body.innerHTML = "";
+	await unmountTests();
 	if (originalClipboard) Object.defineProperty(navigator, "clipboard", originalClipboard);
 	else Reflect.deleteProperty(navigator, "clipboard");
 	vi.resetAllMocks();

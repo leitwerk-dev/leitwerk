@@ -9,8 +9,9 @@ import {
 	postProcessAbort,
 } from "../lib/api.js";
 import { setPendingRetryConfig } from "../lib/retry-config.svelte.js";
-import { buildHomePath, navigate } from "../lib/router.svelte.js";
+import { buildCreateProcessPath, navigate } from "../lib/router.svelte.js";
 import { mountTest } from "../test-support/mount.js";
+import { flushUi as flush } from "../test-support/wait.js";
 import ProcessActionsMenu from "./ProcessActionsMenu.svelte";
 
 const defaultRetryConfig = {
@@ -35,7 +36,7 @@ vi.mock("../lib/retry-config.svelte.js", () => ({
 
 vi.mock("../lib/router.svelte.js", () => ({
 	navigate: vi.fn(),
-	buildHomePath: vi.fn(),
+	buildCreateProcessPath: vi.fn(),
 }));
 
 function resetDefaultMocks() {
@@ -53,8 +54,8 @@ function resetDefaultMocks() {
 			"https://leitwerk.example/api/session-transfers/test-instance-id/trg_1#token=secret-token",
 		expiresAt: "2026-09-01T01:00:00.000Z",
 	});
-	vi.mocked(buildHomePath).mockImplementation((launcherId?: string | null) =>
-		launcherId ? `/?launcher=${launcherId}` : "/",
+	vi.mocked(buildCreateProcessPath).mockImplementation((launcherId?: string | null) =>
+		launcherId ? `/processes/new?launcher=${launcherId}` : "/processes/new",
 	);
 }
 
@@ -88,10 +89,6 @@ function mountSubject({
 		hasSessionFile,
 		sessionTransfer,
 	});
-}
-
-async function flush() {
-	await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 function openMenu(target: HTMLElement) {
@@ -246,8 +243,8 @@ describe("ProcessActionsMenu", () => {
 			expect(fetchProcessRetryConfig).toHaveBeenCalledWith("test-instance-id");
 			expect(postProcessAbort).not.toHaveBeenCalled();
 			expect(setPendingRetryConfig).toHaveBeenCalledWith(defaultRetryConfig);
-			expect(buildHomePath).toHaveBeenCalledWith("test-launcher");
-			expect(navigate).toHaveBeenCalledWith("/?launcher=test-launcher");
+			expect(buildCreateProcessPath).toHaveBeenCalledWith("test-launcher");
+			expect(navigate).toHaveBeenCalledWith("/processes/new?launcher=test-launcher");
 		});
 
 		it("loads retry config before aborting during abort and retry", async () => {
@@ -277,8 +274,8 @@ describe("ProcessActionsMenu", () => {
 
 			expect(callOrder).toEqual(["fetch", "abort"]);
 			expect(setPendingRetryConfig).toHaveBeenCalledWith(defaultRetryConfig);
-			expect(buildHomePath).toHaveBeenCalledWith("test-launcher");
-			expect(navigate).toHaveBeenCalledWith("/?launcher=test-launcher");
+			expect(buildCreateProcessPath).toHaveBeenCalledWith("test-launcher");
+			expect(navigate).toHaveBeenCalledWith("/processes/new?launcher=test-launcher");
 		});
 
 		it("does not abort during abort and retry when loading retry config fails", async () => {

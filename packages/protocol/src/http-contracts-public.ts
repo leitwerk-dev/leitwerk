@@ -4,6 +4,7 @@ export type {
 	ApiTokensResponseBody,
 	CreateApiTokenResponseBody,
 } from "./api-token-contracts.js";
+export type { DashboardConfigurationIssue, DashboardResponseBody } from "./dashboard-contracts.js";
 export type {
 	AuthMeResponseBody,
 	CronPreviewResponseBody,

@@ -6,7 +6,9 @@ person, or wait for an external event.
 
 ## Launch work
 
-Choose a launcher on the home page. Its form defines the inputs for that process.
+The home page is a dashboard of process activity, resources, estimated costs, and
+model configuration issues. Choose **Start a process** or open the process
+definitions widget to reach the launcher page. Its form defines the inputs for that process.
 Select an available model profile and any offered skills, then submit.
 
 An immediate launch shows a startup checklist. The browser opens the process when

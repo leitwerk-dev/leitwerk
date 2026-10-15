@@ -10,6 +10,7 @@ import {
 } from "../lib/api.js";
 import { navigate } from "../lib/router.svelte";
 import { mountTest, unmountTests } from "../test-support/mount.js";
+import { flushUi as flush } from "../test-support/wait.js";
 import SkillsPage from "./SkillsPage.svelte";
 
 const usage = {
@@ -82,12 +83,6 @@ function catalog() {
 		availableSkills: [remote],
 		installedSkills: [installed],
 	};
-}
-
-async function flush() {
-	await Promise.resolve();
-	await Promise.resolve();
-	await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 function mountSubject(props: { detailKind?: string; skillId?: string } = {}) {

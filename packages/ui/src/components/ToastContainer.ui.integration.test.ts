@@ -1,20 +1,14 @@
 // @vitest-environment jsdom
 
-import { mount, unmount } from "svelte";
 import { get } from "svelte/store";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearPendingProcessToastFocus } from "../lib/process-toast-focus.svelte.js";
 import { dismissToast, pushToast, toastStore } from "../lib/toasts.svelte.js";
+import { mountTest, unmountTests } from "../test-support/mount.js";
 import ToastContainer from "./ToastContainer.svelte";
 
-const mountedApps: Array<ReturnType<typeof mount>> = [];
-
 function mountSubject() {
-	const target = document.createElement("div");
-	document.body.appendChild(target);
-	const app = mount(ToastContainer, { target });
-	mountedApps.push(app);
-	return { app, target };
+	return mountTest(ToastContainer, {});
 }
 
 function resetToasts(): void {
@@ -37,10 +31,9 @@ describe("ToastContainer", () => {
 	});
 
 	afterEach(async () => {
-		for (const app of mountedApps.splice(0)) await unmount(app);
+		await unmountTests();
 		resetToasts();
 		clearPendingProcessToastFocus();
-		document.body.innerHTML = "";
 		window.history.replaceState(null, "", "/");
 		vi.useRealTimers();
 	});

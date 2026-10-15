@@ -128,7 +128,7 @@ test("launcher presents both unchecked skip controls on desktop and mobile", asy
 }) => {
 	void leitwerk;
 	await page.setViewportSize({ width: 1280, height: 1100 });
-	await page.goto("/");
+	await page.goto("/processes/new");
 	await page.getByText("GitLab Repo Change", { exact: true }).first().click();
 	const approval = page.getByLabel("Skip plan approval", { exact: true });
 	const simplification = page.getByLabel("Skip simplification", { exact: true });

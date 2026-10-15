@@ -1,4 +1,5 @@
 export { createCompactProcessDetailFixtureFactory } from "./compact-process-detail-fixture.js";
+export { createDashboardFixture } from "./dashboard-fixture.js";
 export {
 	createProcessFixture,
 	createProjectFixture,

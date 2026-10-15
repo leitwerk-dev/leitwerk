@@ -1,43 +1,22 @@
 // @vitest-environment jsdom
 
-import { mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { mountTest, unmountTests } from "../test-support/mount.js";
+import { flushUi as flush } from "../test-support/wait.js";
 import Sidebar from "./Sidebar.svelte";
 
-const mocks = vi.hoisted(() => {
-	function createStore<T>(initial: T) {
-		let value = initial;
-		const subscribers = new Set<(value: T) => void>();
-		return {
-			subscribe(run: (value: T) => void) {
-				run(value);
-				subscribers.add(run);
-				return () => {
-					subscribers.delete(run);
-				};
-			},
-			set(next: T) {
-				value = next;
-				for (const subscriber of subscribers) {
-					subscriber(value);
-				}
-			},
-			get() {
-				return value;
-			},
-		};
-	}
-
+const mocks = await vi.hoisted(async () => {
+	const { writable } = await import("svelte/store");
 	return {
-		futureExecutionsStore: createStore([] as unknown[]),
-		listStateStore: createStore({ loading: false, error: null as string | null }),
-		processRowsStore: createStore([] as unknown[]),
-		wsStore: createStore({
+		futureExecutionsStore: writable([] as unknown[]),
+		listStateStore: writable({ loading: false, error: null as string | null }),
+		processRowsStore: writable([] as unknown[]),
+		wsStore: writable({
 			status: "connected",
 			serverVersion: "test-server",
 			reconnectCount: 0,
 		}),
-		keyboardShortcutHelpOpenStore: createStore(false),
+		keyboardShortcutHelpOpenStore: writable(false),
 		loadProcessesList: vi.fn().mockResolvedValue(undefined),
 		logout: vi.fn().mockResolvedValue(undefined),
 		navigate: vi.fn(),
@@ -67,6 +46,7 @@ vi.mock("../lib/router.svelte", () => ({
 		(futureExecutionId: string) => `/future-launches/${futureExecutionId}`,
 	),
 	buildHomePath: vi.fn(() => "/"),
+	buildCreateProcessPath: vi.fn(() => "/processes/new"),
 	buildProcessesPath: vi.fn(() => "/processes"),
 	buildProcessPath: vi.fn((instanceId: string) => `/processes/${instanceId}`),
 	buildSkillsPath: vi.fn(() => "/skills"),
@@ -83,7 +63,6 @@ vi.mock("../lib/ws.svelte", () => ({
 }));
 
 const HOME_ROUTE = { page: "home", params: {} };
-const mountedApps: Array<ReturnType<typeof mount>> = [];
 
 function makeRow(
 	instanceId: string,
@@ -138,28 +117,12 @@ function mountSubject(
 		actor?: { id: string; kind: "user"; provider: string | null; displayName?: string };
 	} = {},
 ) {
-	const target = document.createElement("div");
-	document.body.appendChild(target);
-
-	mountedApps.push(
-		mount(Sidebar, {
-			target,
-			props: {
-				currentRoute,
-				authEnabled: auth.authEnabled ?? false,
-				actor: auth.actor ?? { id: "admin", kind: "user", provider: null },
-				onLoggedOut: mocks.onLoggedOut,
-			},
-		}),
-	);
-
-	return { target };
-}
-
-async function flush() {
-	await Promise.resolve();
-	await Promise.resolve();
-	await Promise.resolve();
+	return mountTest(Sidebar, {
+		currentRoute,
+		authEnabled: auth.authEnabled ?? false,
+		actor: auth.actor ?? { id: "admin", kind: "user", provider: null },
+		onLoggedOut: mocks.onLoggedOut,
+	});
 }
 
 function click(element: Element | null) {
@@ -167,14 +130,31 @@ function click(element: Element | null) {
 }
 
 afterEach(async () => {
-	for (const app of mountedApps.splice(0)) {
-		await unmount(app);
-	}
-	document.body.innerHTML = "";
+	await unmountTests();
 	resetMocks();
 });
 
 describe("Sidebar", () => {
+	it("marks the dashboard active in the expanded navigation and collapsed rail", async () => {
+		const { target } = mountSubject({ page: "dashboard", params: {} });
+		await flush();
+		expect(
+			target.querySelector('[data-action="view-dashboard"]')?.getAttribute("aria-current"),
+		).toBe("page");
+		expect(
+			target.querySelector('[data-action="create-process"]')?.getAttribute("aria-current"),
+		).toBeNull();
+		click(target.querySelector('[data-action="view-dashboard"]'));
+		expect(mocks.navigate).toHaveBeenCalledWith("/");
+		click(target.querySelector('[data-action="toggle-sidebar"]'));
+		await flush();
+		expect(
+			target.querySelector('[data-action="view-dashboard"]')?.getAttribute("aria-current"),
+		).toBe("page");
+		expect(target.querySelector('[data-action="view-dashboard"]')?.getAttribute("aria-label")).toBe(
+			"Dashboard",
+		);
+	});
 	it("renders the Leitwerk header, active work, and the all-processes primary link", async () => {
 		mocks.processRowsStore.set([
 			makeRow("agt_1", "RUN-101", "active", "active"),
@@ -189,6 +169,10 @@ describe("Sidebar", () => {
 		expect(target.querySelector('[data-action="toggle-sidebar"]')).toBeTruthy();
 		expect(target.querySelector('[data-action="create-process"]')).toBeTruthy();
 		expect(target.textContent).toContain("Start a process");
+		expect(target.querySelector('[data-action="create-process"]')?.getAttribute("href")).toBe(
+			"/processes/new",
+		);
+		expect(target.querySelector('[data-action="view-dashboard"]')?.getAttribute("href")).toBe("/");
 		expect(target.textContent).toContain("Watchers");
 		expect(target.querySelector('[data-action="view-watchers"]')).toBeTruthy();
 		expect(target.textContent).toContain("Future");

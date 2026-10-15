@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	buildAvailableSkillPath,
+	buildCreateProcessPath,
 	buildFutureLaunchPath,
 	buildHomePath,
 	buildInstalledSkillPath,
@@ -8,111 +9,75 @@ import {
 	buildProcessPath,
 	buildSkillsPath,
 	buildWatchersPath,
+	canonicalizeRoutePath,
 	matchRoute,
 } from "./router-logic.js";
 
 describe("matchRoute", () => {
-	it.each(["/", "/#?launcher=not-a-query"])("matches %s to the home page", (path) => {
-		expect(matchRoute(path)).toEqual({ page: "home", params: {} });
+	it("canonicalizes legacy launcher URLs", () => {
+		expect(canonicalizeRoutePath("/?launcher=a%20b#setup")).toBe("/processes/new?launcher=a+b");
+		expect(canonicalizeRoutePath("/config")).toBe("/processes/new");
+		expect(canonicalizeRoutePath("/system?launcher=abc")).toBe("/processes/new?launcher=abc");
+		expect(canonicalizeRoutePath("/")).toBe("/");
+		expect(canonicalizeRoutePath("/processes/new?launcher=abc")).toBe(
+			"/processes/new?launcher=abc",
+		);
 	});
-
-	it("reads a home launcher query parameter", () => {
-		expect(matchRoute("/?launcher=launcher-a")).toEqual({
-			page: "home",
-			params: { launcher: "launcher-a" },
-		});
-		expect(matchRoute("/?launcher=launcher%20with%20space#setup")).toEqual({
-			page: "home",
-			params: { launcher: "launcher with space" },
-		});
-	});
-
-	it("matches /processes to the all processes page", () => {
-		expect(matchRoute("/processes")).toEqual({ page: "processes", params: {} });
-		expect(matchRoute("/processes/")).toEqual({ page: "processes", params: {} });
-	});
-
-	it("matches /processes/:id to the process detail page", () => {
-		expect(matchRoute("/processes/agt_abc123")).toEqual({
-			page: "process-detail",
-			params: { instanceId: "agt_abc123" },
-		});
-	});
-
-	it("matches scheduled launch detail routes", () => {
-		expect(matchRoute("/future-launches/fut_abc123")).toEqual({
-			page: "future-launch-detail",
-			params: { futureExecutionId: "fut_abc123" },
-		});
-		expect(matchRoute("/future-launches/fut_with%20space?tab=detail#top")).toEqual({
-			page: "future-launch-detail",
-			params: { futureExecutionId: "fut_with space" },
-		});
-	});
-
-	it("matches process detail routes with query strings and hashes", () => {
-		expect(matchRoute("/processes/agt_abc123?overlay=process-info")).toEqual({
-			page: "process-detail",
-			params: { instanceId: "agt_abc123" },
-		});
-		expect(matchRoute("/processes/agt_abc123?overlay=reasoning&turnRecordId=trn_1#trace")).toEqual({
-			page: "process-detail",
-			params: { instanceId: "agt_abc123" },
-		});
-	});
-
-	it("decodes URI-encoded process IDs for canonical detail routes", () => {
-		expect(matchRoute("/processes/agt_with%20space")).toEqual({
-			page: "process-detail",
-			params: { instanceId: "agt_with space" },
-		});
-	});
-
-	it("routes utility urls to the default home page", () => {
-		expect(matchRoute("/config")).toEqual({ page: "home", params: {} });
-		expect(matchRoute("/system")).toEqual({ page: "home", params: {} });
-	});
-
-	it("matches the skill catalog and addressable remote and installed details", () => {
-		expect(matchRoute("/skills")).toEqual({ page: "skills", params: {} });
-		expect(matchRoute("/skills/available/shared/code%20review")).toEqual({
-			page: "skills",
-			params: {
-				detailKind: "available",
-				repositoryId: "shared",
-				skillId: "code review",
-			},
-		});
-		expect(matchRoute("/skills/installed/code%20review")).toEqual({
-			page: "skills",
-			params: { detailKind: "installed", skillId: "code review" },
-		});
-	});
-
-	it("matches /watchers to the watchers page", () => {
-		expect(matchRoute("/watchers")).toEqual({ page: "watchers", params: {} });
-		expect(matchRoute("/watchers/")).toEqual({ page: "watchers", params: {} });
-		expect(matchRoute("/watchers?tab=configured#top")).toEqual({ page: "watchers", params: {} });
-	});
-
-	it("falls back to home for unknown paths", () => {
-		expect(matchRoute("/unknown")).toEqual({ page: "home", params: {} });
-		expect(matchRoute("/foo/bar")).toEqual({ page: "home", params: {} });
-	});
-
-	it("extracts only the first segment for process ID, ignoring trailing path", () => {
-		expect(matchRoute("/processes/agt_123/extra")).toEqual({
-			page: "process-detail",
-			params: { instanceId: "agt_123" },
-		});
+	it.each([
+		["/processes/new", "home", {}],
+		["/processes/new/?launcher=a%20b", "home", { launcher: "a b" }],
+		["/", "dashboard", {}],
+		["/#?launcher=not-a-query", "dashboard", {}],
+		["/?launcher=launcher-a", "home", { launcher: "launcher-a" }],
+		["/?launcher=launcher%20with%20space#setup", "home", { launcher: "launcher with space" }],
+		["/processes", "processes", {}],
+		["/processes/", "processes", {}],
+		["/processes/agt_abc123", "process-detail", { instanceId: "agt_abc123" }],
+		["/future-launches/fut_abc123", "future-launch-detail", { futureExecutionId: "fut_abc123" }],
+		[
+			"/future-launches/fut_with%20space?tab=detail#top",
+			"future-launch-detail",
+			{ futureExecutionId: "fut_with space" },
+		],
+		["/processes/agt_abc123?overlay=process-info", "process-detail", { instanceId: "agt_abc123" }],
+		[
+			"/processes/agt_abc123?overlay=reasoning&turnRecordId=trn_1#trace",
+			"process-detail",
+			{ instanceId: "agt_abc123" },
+		],
+		["/processes/agt_with%20space", "process-detail", { instanceId: "agt_with space" }],
+		["/config", "home", {}],
+		["/system", "home", {}],
+		["/skills", "skills", {}],
+		[
+			"/skills/available/shared/code%20review",
+			"skills",
+			{ detailKind: "available", repositoryId: "shared", skillId: "code review" },
+		],
+		[
+			"/skills/installed/code%20review",
+			"skills",
+			{ detailKind: "installed", skillId: "code review" },
+		],
+		["/watchers", "watchers", {}],
+		["/watchers/", "watchers", {}],
+		["/watchers?tab=configured#top", "watchers", {}],
+		["/unknown", "dashboard", {}],
+		["/foo/bar", "dashboard", {}],
+		["/processes/agt_123/extra", "process-detail", { instanceId: "agt_123" }],
+	] as const)("matches %s to %s", (path, page, params) => {
+		expect(matchRoute(path)).toEqual({ page, params });
 	});
 });
 
 describe("route path builders", () => {
 	it("builds canonical home and process detail paths", () => {
 		expect(buildHomePath()).toBe("/");
-		expect(buildHomePath("launcher-a")).toBe("/?launcher=launcher-a");
-		expect(buildHomePath("launcher with space")).toBe("/?launcher=launcher+with+space");
+		expect(buildCreateProcessPath()).toBe("/processes/new");
+		expect(buildCreateProcessPath("launcher-a")).toBe("/processes/new?launcher=launcher-a");
+		expect(buildCreateProcessPath("launcher with space")).toBe(
+			"/processes/new?launcher=launcher+with+space",
+		);
 		expect(buildWatchersPath()).toBe("/watchers");
 		expect(buildProcessesPath()).toBe("/processes");
 		expect(buildSkillsPath()).toBe("/skills");

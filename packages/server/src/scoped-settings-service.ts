@@ -91,8 +91,23 @@ interface ProcessSettingsPreview {
 	/** @internal */
 	error: string | null;
 }
+/** Read-only model references without repository discovery or choice providers. @internal */
+export interface ScopedModelReference {
+	/** @internal */
+	key: string;
+	/** @internal */
+	label: string;
+	/** Null for extension-defined defaults. @internal */
+	subjectId: string | null;
+	/** @internal */
+	modelProfileId: string | null;
+	/** Invalid schema, version, or override mode; never includes raw values. @internal */
+	invalid: boolean;
+}
 /** @internal */
 export interface ScopedSettingsService extends ScopedSettingsResolver {
+	/** @internal */
+	modelReferences(): ScopedModelReference[];
 	/** @internal */
 	capture(
 		process: SubjectProcess,
@@ -625,6 +640,52 @@ export function createScopedSettingsService(input: {
 	}
 	discoverLocal();
 	return {
+		modelReferences() {
+			const references: ScopedModelReference[] = [];
+			const append = (
+				definition: SettingDefinition,
+				value: unknown,
+				subjectId: string | null,
+				label: string,
+				invalid = false,
+			) => {
+				let modelProfileId: string | null = null;
+				try {
+					const parsed = definition.schema.parse(value);
+					if (parsed !== null && (typeof parsed !== "string" || !parsed.trim())) invalid = true;
+					else modelProfileId = typeof parsed === "string" ? parsed.trim() : null;
+				} catch {
+					invalid = true;
+				}
+				if (invalid || modelProfileId !== null)
+					references.push({ key: definition.key, label, subjectId, modelProfileId, invalid });
+			};
+			for (const { definition } of definitions.values()) {
+				if (definition.form.control === "model")
+					append(
+						definition,
+						definition.defaultValue,
+						null,
+						`${definition.form.label} (code default)`,
+					);
+			}
+			const subjects = new Map(
+				repos.scopedSettings.listSubjects().map((subject) => [subject.id, subject]),
+			);
+			for (const override of repos.scopedSettings.listOverrides()) {
+				const definition = definitions.get(override.key)?.definition;
+				const subject = subjects.get(override.subjectId);
+				if (override.reset || !subject || definition?.form.control !== "model") continue;
+				append(
+					definition,
+					override.value,
+					subject.id,
+					`${subject.label}: ${definition.form.label}`,
+					override.schemaVersion !== definition.schemaVersion || override.mode !== "replace",
+				);
+			}
+			return references;
+		},
 		async overview(scopeType) {
 			const subjects = listScopes().subjects.filter(
 				(subject) => subject.scopeType === scopeType && subject.hasSettings,

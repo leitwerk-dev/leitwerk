@@ -8,6 +8,7 @@ import type { ExtensionUiCatalog } from "../extension-ui/catalog.js";
 import type { IntegrationToolRegistry } from "../integration-tool-registry.js";
 import type { ProcessSessionSnapshotStore } from "../process-session-store.js";
 import type { ResultImageStore } from "../result-image-store.js";
+import { registerDashboardRoutes } from "../routes/dashboard.js";
 import { registerInternalSessionTransferExportRoutes } from "../routes/internal-session-transfer-exports.js";
 import { registerInternalWorkerSessionSnapshotRoutes } from "../routes/internal-worker-session-snapshot.js";
 import { type RouteDeps, registerProcessRoutes } from "../routes/processes.js";
@@ -76,6 +77,10 @@ export function registerHttp(input: {
 		store: input.resultImages,
 	});
 	registerProcessRoutes(input.app, input.deps);
+	registerDashboardRoutes(input.app, {
+		...input.deps,
+		processWatchers: input.processWatcherService,
+	});
 	if (input.deps.topicWiki)
 		registerTopicWikiRoutes(input.app, input.deps.topicWiki, actorForRequest);
 	if (input.deps.scopedSettingsService)

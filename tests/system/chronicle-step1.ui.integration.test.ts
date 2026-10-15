@@ -12,13 +12,13 @@ import {
 const extensionCatalog = buildExtensionCatalogFromModules([singlePromptExtension]);
 
 describe("chronicle step 1 shell", () => {
-	it("renders the home process gallery at root and opens launcher setup", async () => {
+	it("renders the process gallery on the creation route and opens launcher setup", async () => {
 		let harness: MountedUiHarness<Record<string, never>> | null = null;
 
 		try {
 			harness = await setupMountedUiHarness({
 				extensionCatalog,
-				route: "/",
+				route: "/processes/new",
 			});
 
 			await waitFor(() => expect(document.querySelector('[data-shell="app"]')).not.toBeNull());

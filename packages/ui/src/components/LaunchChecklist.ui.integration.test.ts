@@ -2,13 +2,12 @@
 
 import type { LaunchRun } from "@leitwerk-dev/domain";
 import type { WsFrame } from "@leitwerk-dev/protocol";
-import { mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchLaunchRun } from "../lib/api.js";
 import { dispatchLaunchUpdated } from "../lib/launch-updates.js";
+import { mountTest, unmountTests } from "../test-support/mount.js";
+import { flushUi as flush } from "../test-support/wait.js";
 import LaunchChecklist from "./LaunchChecklist.svelte";
-
-const mountedApps: Array<ReturnType<typeof mount>> = [];
 
 vi.mock("../lib/api.js", () => ({
 	fetchLaunchRun: vi.fn(),
@@ -36,15 +35,8 @@ function launchRun(revision: number, safeSummary: string): LaunchRun {
 	};
 }
 
-async function flush(): Promise<void> {
-	await Promise.resolve();
-	await Promise.resolve();
-	await Promise.resolve();
-}
-
 afterEach(async () => {
-	for (const app of mountedApps.splice(0)) await unmount(app);
-	document.body.innerHTML = "";
+	await unmountTests();
 	vi.clearAllMocks();
 });
 
@@ -54,13 +46,7 @@ describe("LaunchChecklist", () => {
 		vi.mocked(fetchLaunchRun)
 			.mockReturnValueOnce(stale.promise)
 			.mockResolvedValueOnce(launchRun(2, "New launch state"));
-		const target = document.createElement("div");
-		document.body.appendChild(target);
-		const component = mount(LaunchChecklist, {
-			target,
-			props: { launchRunId: "launch-1" },
-		});
-		mountedApps.push(component);
+		const { target } = mountTest(LaunchChecklist, { launchRunId: "launch-1" });
 		await vi.waitFor(() => expect(fetchLaunchRun).toHaveBeenCalledTimes(1));
 
 		dispatchLaunchUpdated({
