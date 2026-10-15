@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
 import type { FutureLaunchSummary, UiLauncherSummary } from "@leitwerk-dev/protocol/http-contracts";
-import { mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiResponseError } from "../lib/api.js";
+import { mountTest, unmountTests } from "../test-support/mount.js";
+import { flushUi as flush } from "../test-support/wait.js";
 import FutureLaunchDetailPage from "./FutureLaunchDetailPage.svelte";
 
 const mocks = vi.hoisted(() => ({
@@ -82,25 +83,8 @@ function createLauncher(): UiLauncherSummary {
 	};
 }
 
-const mountedApps: Array<ReturnType<typeof mount>> = [];
-
 function mountSubject(futureExecutionId = "fut_1") {
-	const target = document.createElement("div");
-	document.body.appendChild(target);
-	mountedApps.push(
-		mount(FutureLaunchDetailPage, {
-			target,
-			props: { futureExecutionId },
-		}),
-	);
-	return { target };
-}
-
-async function flush() {
-	await Promise.resolve();
-	await Promise.resolve();
-	await Promise.resolve();
-	await new Promise((resolve) => setTimeout(resolve, 0));
+	return mountTest(FutureLaunchDetailPage, { futureExecutionId });
 }
 
 function click(element: Element | null) {
@@ -119,11 +103,8 @@ function resetMocks() {
 
 resetMocks();
 
-afterEach(() => {
-	for (const app of mountedApps.splice(0)) {
-		unmount(app);
-	}
-	document.body.innerHTML = "";
+afterEach(async () => {
+	await unmountTests();
 	resetMocks();
 });
 

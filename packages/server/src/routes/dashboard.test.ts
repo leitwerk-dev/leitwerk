@@ -146,7 +146,7 @@ describe("dashboard", () => {
 		for (let i = 0; i < 125; i++)
 			repos.processes.create({
 				processId: "retained",
-				lifecycleStatus: i < 20 ? "completed" : "active",
+				lifecycleStatus: i < 20 ? "completed" : i < 50 ? "discovered" : "active",
 			});
 		const deps: DashboardRouteDeps = {
 			...repos,
@@ -163,6 +163,7 @@ describe("dashboard", () => {
 		const events = vi.spyOn(repos.events, "listByTurnRecord");
 		const sessions = vi.spyOn(repos.turnSummaries, "getSession");
 		const body = buildDashboard(deps);
+		expect(body.definitions.items[0].id).toBe("mr_polish_process");
 		expect(body.processes.total).toBe(125);
 		expect(body.processes.byDefinition).toEqual([
 			{ processId: "retained", name: "retained", count: 125 },

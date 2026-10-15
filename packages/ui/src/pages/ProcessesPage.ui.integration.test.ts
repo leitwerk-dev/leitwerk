@@ -1,33 +1,20 @@
 // @vitest-environment jsdom
 
-import { mount, unmount } from "svelte";
+import { tick as flush } from "svelte";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	EMPTY_PROCESS_BROWSER_STATUS_COUNTS as EMPTY_COUNTS,
 	readProcessBrowserView,
 	writeProcessBrowserView,
 } from "../lib/process-browser.js";
+import { mountTest, unmountTests } from "../test-support/mount.js";
 import ProcessesPage from "./ProcessesPage.svelte";
 
-const mocks = vi.hoisted(() => {
-	function createStore<T>(initial: T) {
-		let value = initial;
-		const subscribers = new Set<(value: T) => void>();
-		return {
-			subscribe(run: (value: T) => void) {
-				run(value);
-				subscribers.add(run);
-				return () => subscribers.delete(run);
-			},
-			set(next: T) {
-				value = next;
-				for (const subscriber of subscribers) subscriber(value);
-			},
-		};
-	}
+const mocks = await vi.hoisted(async () => {
+	const { writable } = await import("svelte/store");
 	return {
-		browseItemsStore: createStore([] as unknown[]),
-		browseStateStore: createStore({
+		browseItemsStore: writable([] as unknown[]),
+		browseStateStore: writable({
 			loading: false,
 			error: null as string | null,
 			pagination: null as null | Record<string, unknown>,
@@ -89,8 +76,6 @@ function makeFuture(overrides: Record<string, unknown> = {}) {
 	};
 }
 
-const mountedApps: Array<ReturnType<typeof mount>> = [];
-
 function setBrowseState(overrides: Record<string, unknown> = {}) {
 	mocks.browseStateStore.set({
 		loading: false,
@@ -116,16 +101,7 @@ function resetMocks() {
 }
 
 function mountSubject() {
-	const target = document.createElement("div");
-	document.body.appendChild(target);
-	mountedApps.push(mount(ProcessesPage, { target }));
-	return target;
-}
-
-async function flush() {
-	await Promise.resolve();
-	await Promise.resolve();
-	await Promise.resolve();
+	return mountTest(ProcessesPage, {}).target;
 }
 
 function itemIds(target: HTMLElement): string[] {
@@ -150,8 +126,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
-	for (const app of mountedApps.splice(0)) await unmount(app);
-	document.body.innerHTML = "";
+	await unmountTests();
 	resetMocks();
 });
 

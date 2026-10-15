@@ -11,6 +11,7 @@ import {
 import { setPendingRetryConfig } from "../lib/retry-config.svelte.js";
 import { buildCreateProcessPath, navigate } from "../lib/router.svelte.js";
 import { mountTest } from "../test-support/mount.js";
+import { flushUi as flush } from "../test-support/wait.js";
 import ProcessActionsMenu from "./ProcessActionsMenu.svelte";
 
 const defaultRetryConfig = {
@@ -88,10 +89,6 @@ function mountSubject({
 		hasSessionFile,
 		sessionTransfer,
 	});
-}
-
-async function flush() {
-	await new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 function openMenu(target: HTMLElement) {

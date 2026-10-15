@@ -1,12 +1,11 @@
 // @vitest-environment jsdom
 
 import type { WatcherSummary } from "@leitwerk-dev/protocol/http-contracts";
-import { mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fetchWatchers } from "../lib/api.js";
+import { mountTest, unmountTests } from "../test-support/mount.js";
+import { flushUi as flush } from "../test-support/wait.js";
 import WatchersPage from "./WatchersPage.svelte";
-
-const mountedApps: Array<ReturnType<typeof mount>> = [];
 
 vi.mock("../lib/api.js", () => ({
 	fetchWatchers: vi.fn(),
@@ -57,26 +56,15 @@ const watcherSummaries: WatcherSummary[] = [
 	},
 ];
 
-async function flush() {
-	await Promise.resolve();
-	await Promise.resolve();
-	await new Promise((resolve) => setTimeout(resolve, 0));
-}
-
 afterEach(async () => {
-	for (const app of mountedApps.splice(0)) await unmount(app);
-	document.body.innerHTML = "";
+	await unmountTests();
 	vi.clearAllMocks();
 });
 
 describe("WatchersPage", () => {
 	it("renders registered watcher summaries", async () => {
 		vi.mocked(fetchWatchers).mockResolvedValue(watcherSummaries.map((watcher) => ({ ...watcher })));
-		const target = document.createElement("div");
-		document.body.appendChild(target);
-
-		const app = mount(WatchersPage, { target });
-		mountedApps.push(app);
+		const { target } = mountTest(WatchersPage, {});
 		await flush();
 
 		expect(target.textContent).toContain("Watchers");
@@ -88,11 +76,7 @@ describe("WatchersPage", () => {
 
 	it("renders an empty state when no watchers are configured", async () => {
 		vi.mocked(fetchWatchers).mockResolvedValue([]);
-		const target = document.createElement("div");
-		document.body.appendChild(target);
-
-		const app = mount(WatchersPage, { target });
-		mountedApps.push(app);
+		const { target } = mountTest(WatchersPage, {});
 		await flush();
 
 		expect(target.textContent).toContain("No watchers are currently registered.");

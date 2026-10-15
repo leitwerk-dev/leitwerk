@@ -1,12 +1,11 @@
 // @vitest-environment jsdom
 
 import type { WikiPage, WikiTopic } from "@leitwerk-dev/wiki";
-import { mount, unmount } from "svelte";
 import { afterEach, expect, it, vi } from "vitest";
 import { notifyWikiUpdated } from "../lib/wiki.js";
+import { mountTest, unmountTests } from "../test-support/mount.js";
 import WikiPageView from "./WikiPage.svelte";
 
-const mounted: ReturnType<typeof mount>[] = [];
 const topic: WikiTopic = {
 	id: "epic-one",
 	key: "topic:1",
@@ -40,8 +39,7 @@ const page: WikiPage = {
 };
 
 afterEach(async () => {
-	for (const app of mounted.splice(0)) await unmount(app);
-	document.body.innerHTML = "";
+	await unmountTests();
 	vi.unstubAllGlobals();
 });
 
@@ -100,13 +98,9 @@ async function fixture(
 					: { topic, pages },
 		);
 	});
-	const target = document.createElement("div");
-	document.body.appendChild(target);
-	mounted.push(
-		mount(WikiPageView, {
-			target,
-			props: options.index ? {} : { topicId: topic.id, pageId: page.id },
-		}),
+	const { target } = mountTest(
+		WikiPageView,
+		options.index ? {} : { topicId: topic.id, pageId: page.id },
 	);
 	await vi.waitFor(() =>
 		expect(target.textContent).toContain(options.failure ? "Wiki unavailable" : topic.title),

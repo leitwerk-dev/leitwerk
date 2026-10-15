@@ -1,43 +1,22 @@
 // @vitest-environment jsdom
 
-import { mount, unmount } from "svelte";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { mountTest, unmountTests } from "../test-support/mount.js";
+import { flushUi as flush } from "../test-support/wait.js";
 import Sidebar from "./Sidebar.svelte";
 
-const mocks = vi.hoisted(() => {
-	function createStore<T>(initial: T) {
-		let value = initial;
-		const subscribers = new Set<(value: T) => void>();
-		return {
-			subscribe(run: (value: T) => void) {
-				run(value);
-				subscribers.add(run);
-				return () => {
-					subscribers.delete(run);
-				};
-			},
-			set(next: T) {
-				value = next;
-				for (const subscriber of subscribers) {
-					subscriber(value);
-				}
-			},
-			get() {
-				return value;
-			},
-		};
-	}
-
+const mocks = await vi.hoisted(async () => {
+	const { writable } = await import("svelte/store");
 	return {
-		futureExecutionsStore: createStore([] as unknown[]),
-		listStateStore: createStore({ loading: false, error: null as string | null }),
-		processRowsStore: createStore([] as unknown[]),
-		wsStore: createStore({
+		futureExecutionsStore: writable([] as unknown[]),
+		listStateStore: writable({ loading: false, error: null as string | null }),
+		processRowsStore: writable([] as unknown[]),
+		wsStore: writable({
 			status: "connected",
 			serverVersion: "test-server",
 			reconnectCount: 0,
 		}),
-		keyboardShortcutHelpOpenStore: createStore(false),
+		keyboardShortcutHelpOpenStore: writable(false),
 		loadProcessesList: vi.fn().mockResolvedValue(undefined),
 		logout: vi.fn().mockResolvedValue(undefined),
 		navigate: vi.fn(),
@@ -84,7 +63,6 @@ vi.mock("../lib/ws.svelte", () => ({
 }));
 
 const HOME_ROUTE = { page: "home", params: {} };
-const mountedApps: Array<ReturnType<typeof mount>> = [];
 
 function makeRow(
 	instanceId: string,
@@ -139,28 +117,12 @@ function mountSubject(
 		actor?: { id: string; kind: "user"; provider: string | null; displayName?: string };
 	} = {},
 ) {
-	const target = document.createElement("div");
-	document.body.appendChild(target);
-
-	mountedApps.push(
-		mount(Sidebar, {
-			target,
-			props: {
-				currentRoute,
-				authEnabled: auth.authEnabled ?? false,
-				actor: auth.actor ?? { id: "admin", kind: "user", provider: null },
-				onLoggedOut: mocks.onLoggedOut,
-			},
-		}),
-	);
-
-	return { target };
-}
-
-async function flush() {
-	await Promise.resolve();
-	await Promise.resolve();
-	await Promise.resolve();
+	return mountTest(Sidebar, {
+		currentRoute,
+		authEnabled: auth.authEnabled ?? false,
+		actor: auth.actor ?? { id: "admin", kind: "user", provider: null },
+		onLoggedOut: mocks.onLoggedOut,
+	});
 }
 
 function click(element: Element | null) {
@@ -168,10 +130,7 @@ function click(element: Element | null) {
 }
 
 afterEach(async () => {
-	for (const app of mountedApps.splice(0)) {
-		await unmount(app);
-	}
-	document.body.innerHTML = "";
+	await unmountTests();
 	resetMocks();
 });
 

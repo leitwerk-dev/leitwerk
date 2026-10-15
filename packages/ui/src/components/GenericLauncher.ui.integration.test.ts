@@ -20,6 +20,7 @@ import {
 	validateLauncher,
 } from "../lib/api.js";
 import { mountTest, unmountTests } from "../test-support/mount.js";
+import { flushUi as flush, waitForSelector } from "../test-support/wait.js";
 import GenericLauncher from "./GenericLauncher.svelte";
 
 const serverDefaultProfile = {
@@ -150,14 +151,6 @@ function resetDefaultMocks() {
 
 resetDefaultMocks();
 
-async function flush() {
-	await Promise.resolve();
-	await Promise.resolve();
-	await Promise.resolve();
-	await Promise.resolve();
-	await new Promise((resolve) => setTimeout(resolve, 0));
-}
-
 async function waitForValidation(target: HTMLElement) {
 	await flush();
 	await vi.waitFor(() => {
@@ -165,22 +158,6 @@ async function waitForValidation(target: HTMLElement) {
 			"Checking values",
 		);
 	});
-}
-
-async function waitForSelector(
-	target: HTMLElement,
-	selector: string,
-	timeoutMs = 250,
-): Promise<HTMLElement> {
-	const deadline = performance.now() + timeoutMs;
-	while (performance.now() < deadline) {
-		const element = target.querySelector(selector);
-		if (element instanceof HTMLElement) {
-			return element;
-		}
-		await flush();
-	}
-	throw new Error(`Timed out waiting for selector: ${selector}`);
 }
 
 async function selectScheduleMode(target: HTMLElement, mode: ScheduleConfigInput["mode"]) {
@@ -237,17 +214,25 @@ async function getDefaultModelGroup(target: HTMLElement): Promise<HTMLElement> {
 	return waitForSelector(target, '[data-section="launcher-model-config-default"]');
 }
 
-async function getAdvancedEditor(target: HTMLElement): Promise<HTMLElement> {
-	const summary = await getModelSummary(target);
-	const deadline = performance.now() + 250;
-	while (performance.now() < deadline) {
-		const turnList = target.querySelector('[data-section="launcher-model-config-turn-list"]');
-		if (summary.dataset.editing === "true" && turnList instanceof HTMLElement) {
-			return turnList;
-		}
-		await flush();
-	}
-	throw new Error("Timed out waiting for per-step model editing to open");
+async function getModelSelect(target: HTMLElement, turnId = "default") {
+	return (await waitForSelector(
+		target,
+		`#test-launcher-form-${turnId}-model-profile`,
+	)) as HTMLSelectElement;
+}
+
+function getSummaryTurn(target: HTMLElement, turnId: string) {
+	return waitForSelector(
+		target,
+		`[data-section="launcher-model-config-summary-turn-list"] [data-turn-id="${turnId}"]`,
+	);
+}
+
+function getAdvancedEditor(target: HTMLElement): Promise<HTMLElement> {
+	return waitForSelector(
+		target,
+		'[data-section="launcher-model-config-summary"][data-editing="true"] [data-section="launcher-model-config-turn-list"]',
+	);
 }
 
 async function toggleAdvancedEditor(target: HTMLElement) {
@@ -283,14 +268,8 @@ describe("GenericLauncher", () => {
 		await flush();
 
 		const summary = await getModelSummary(target);
-		const draftPlanSummaryTurn = (await waitForSelector(
-			target,
-			'[data-section="launcher-model-config-summary-turn-list"] [data-turn-id="draft_plan"]',
-		)) as HTMLElement;
-		const implementChangeSummaryTurn = (await waitForSelector(
-			target,
-			'[data-section="launcher-model-config-summary-turn-list"] [data-turn-id="implement_change"]',
-		)) as HTMLElement;
+		const draftPlanSummaryTurn = await getSummaryTurn(target, "draft_plan");
+		const implementChangeSummaryTurn = await getSummaryTurn(target, "implement_change");
 
 		expect(vi.mocked(fetchLauncherModelConfigPreview)).toHaveBeenCalledWith(
 			"test-launcher",
@@ -495,10 +474,7 @@ describe("GenericLauncher", () => {
 		const { target } = mountSubject();
 		await flush();
 
-		const summaryTurn = (await waitForSelector(
-			target,
-			'[data-section="launcher-model-config-summary-turn-list"] [data-turn-id="draft_plan"]',
-		)) as HTMLElement;
+		const summaryTurn = await getSummaryTurn(target, "draft_plan");
 		await ensureAdvancedEditorOpen(target);
 		const draftPlanTurnGroup = (await waitForSelector(
 			target,
@@ -516,14 +492,8 @@ describe("GenericLauncher", () => {
 		await flush();
 		await ensureAdvancedEditorOpen(target);
 
-		const defaultModelSelect = (await waitForSelector(
-			target,
-			"#test-launcher-form-default-model-profile",
-		)) as HTMLSelectElement;
-		const draftPlanSelect = (await waitForSelector(
-			target,
-			"#test-launcher-form-draft_plan-model-profile",
-		)) as HTMLSelectElement;
+		const defaultModelSelect = await getModelSelect(target);
+		const draftPlanSelect = await getModelSelect(target, "draft_plan");
 
 		expect(defaultModelSelect.options[0]?.value).toBe("");
 		expect(defaultModelSelect.options[0]?.text).toBe("Recommended (claude_fast)");
@@ -555,10 +525,7 @@ describe("GenericLauncher", () => {
 		await flush();
 		await ensureAdvancedEditorOpen(target);
 
-		const defaultModelSelect = (await waitForSelector(
-			target,
-			"#test-launcher-form-default-model-profile",
-		)) as HTMLSelectElement;
+		const defaultModelSelect = await getModelSelect(target);
 		const unavailableOption = Array.from(defaultModelSelect.options).find(
 			(option) => option.value === "local_qwen",
 		);
@@ -586,14 +553,8 @@ describe("GenericLauncher", () => {
 
 		const summary = await getModelSummary(target);
 		const editor = await getAdvancedEditor(target);
-		const defaultModelSelect = (await waitForSelector(
-			target,
-			"#test-launcher-form-default-model-profile",
-		)) as HTMLSelectElement;
-		const draftPlanSelect = (await waitForSelector(
-			target,
-			"#test-launcher-form-draft_plan-model-profile",
-		)) as HTMLSelectElement;
+		const defaultModelSelect = await getModelSelect(target);
+		const draftPlanSelect = await getModelSelect(target, "draft_plan");
 
 		expect(summary.dataset.summaryMode).toBe("adjusted");
 		expect(summary.dataset.customizationMode).toBe("mixed");
@@ -627,24 +588,15 @@ describe("GenericLauncher", () => {
 		const initialSummary = await getModelSummary(target);
 		expect(initialSummary.dataset.editing).toBe("false");
 
-		const defaultModelSelect = (await waitForSelector(
-			target,
-			"#test-launcher-form-default-model-profile",
-		)) as HTMLSelectElement;
+		const defaultModelSelect = await getModelSelect(target);
 		defaultModelSelect.value = "local_qwen";
 		defaultModelSelect.dispatchEvent(new Event("change", { bubbles: true }));
 		await flush();
 
 		const summary = await getModelSummary(target);
 		const defaultModelGroup = await getDefaultModelGroup(target);
-		const draftPlanSummaryTurn = (await waitForSelector(
-			target,
-			'[data-section="launcher-model-config-summary-turn-list"] [data-turn-id="draft_plan"]',
-		)) as HTMLElement;
-		const implementChangeSummaryTurn = (await waitForSelector(
-			target,
-			'[data-section="launcher-model-config-summary-turn-list"] [data-turn-id="implement_change"]',
-		)) as HTMLElement;
+		const draftPlanSummaryTurn = await getSummaryTurn(target, "draft_plan");
+		const implementChangeSummaryTurn = await getSummaryTurn(target, "implement_change");
 
 		expect(summary.dataset.summaryMode).toBe("adjusted");
 		expect(summary.dataset.customizationMode).toBe("default_only");
@@ -675,10 +627,7 @@ describe("GenericLauncher", () => {
 		expect(target.querySelector("#test-launcher-form-draft_plan-model-profile")).not.toBeNull();
 		expect(target.querySelector('[data-action="reset-model-config"]')).toBeNull();
 
-		const draftPlanSelect = (await waitForSelector(
-			target,
-			"#test-launcher-form-draft_plan-model-profile",
-		)) as HTMLSelectElement;
+		const draftPlanSelect = await getModelSelect(target, "draft_plan");
 		draftPlanSelect.value = "local_qwen";
 		draftPlanSelect.dispatchEvent(new Event("change", { bubbles: true }));
 		await flush();
@@ -722,10 +671,7 @@ describe("GenericLauncher", () => {
 		await flush();
 		await ensureAdvancedEditorOpen(target);
 
-		const draftPlanSelect = (await waitForSelector(
-			target,
-			"#test-launcher-form-draft_plan-model-profile",
-		)) as HTMLSelectElement;
+		const draftPlanSelect = await getModelSelect(target, "draft_plan");
 		draftPlanSelect.value = "claude_fast";
 		draftPlanSelect.dispatchEvent(new Event("change", { bubbles: true }));
 		await flush();
@@ -738,10 +684,7 @@ describe("GenericLauncher", () => {
 		await flush();
 
 		const summary = await getModelSummary(target);
-		const draftPlanSummaryTurn = (await waitForSelector(
-			target,
-			'[data-section="launcher-model-config-summary-turn-list"] [data-turn-id="draft_plan"]',
-		)) as HTMLElement;
+		const draftPlanSummaryTurn = await getSummaryTurn(target, "draft_plan");
 
 		expect(summary.dataset.editing).toBe("false");
 		expect(target.querySelector("#test-launcher-form-draft_plan-model-profile")).toBeNull();
@@ -770,14 +713,8 @@ describe("GenericLauncher", () => {
 
 		const summary = await getModelSummary(target);
 		await ensureAdvancedEditorOpen(target);
-		const defaultModelSelect = (await waitForSelector(
-			target,
-			"#test-launcher-form-default-model-profile",
-		)) as HTMLSelectElement;
-		const draftPlanSelect = (await waitForSelector(
-			target,
-			"#test-launcher-form-draft_plan-model-profile",
-		)) as HTMLSelectElement;
+		const defaultModelSelect = await getModelSelect(target);
+		const draftPlanSelect = await getModelSelect(target, "draft_plan");
 
 		expect(summary.dataset.summaryMode).toBe("adjusted");
 		expect(summary.dataset.customizationMode).toBe("default_only");
@@ -811,10 +748,7 @@ describe("GenericLauncher", () => {
 		await flush();
 		await ensureAdvancedEditorOpen(target);
 
-		const draftPlanSelect = (await waitForSelector(
-			target,
-			"#test-launcher-form-draft_plan-model-profile",
-		)) as HTMLSelectElement;
+		const draftPlanSelect = await getModelSelect(target, "draft_plan");
 		draftPlanSelect.value = "";
 		draftPlanSelect.dispatchEvent(new Event("change", { bubbles: true }));
 		await flush();

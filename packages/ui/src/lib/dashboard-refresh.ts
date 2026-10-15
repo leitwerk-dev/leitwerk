@@ -27,21 +27,15 @@ export function createDashboardRefresh(
 			active = Promise.resolve()
 				.then(() => fetchSnapshot(signal))
 				.then(
-					(data) => {
-						if (!disposed) state = { data, loading: false, error: null };
-					},
-					() => {
-						if (!disposed)
-							state = {
-								...state,
-								loading: false,
-								error: "Couldn't refresh the dashboard. Try again.",
-							};
-					},
+					(data) => ({ data, error: null }),
+					() => ({ data: state.data, error: "Couldn't refresh the dashboard. Try again." }),
 				)
-				.finally(() => {
+				.then((next) => {
 					active = null;
-					if (!disposed) publish(state);
+					if (!disposed) {
+						state = { data: next.data, loading: false, error: next.error };
+						publish(state);
+					}
 				});
 			return active;
 		},

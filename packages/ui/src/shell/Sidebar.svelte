@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { Actor } from "@leitwerk-dev/domain";
+import type { Snippet } from "svelte";
 import { type FutureActionSummary, type FutureExecutionSummary, logout } from "../lib/api.js";
 
 import {
@@ -71,9 +72,8 @@ const runningRows = $derived(
 const futureRows = $derived($futureExecutions);
 let observedReconnectCount = $state<number | null>(null);
 let sidebarCollapsed = $state(false);
-let currentProcessesPopoverOpen = $state(false);
-let futureExecutionsPopoverOpen = $state(false);
-let userPopoverOpen = $state(false);
+type Popover = "current" | "future" | "user";
+let openPopover = $state<Popover | null>(null);
 let logoutPending = $state(false);
 let logoutError = $state<string | null>(null);
 let collapseSupported = $state(
@@ -105,11 +105,11 @@ const connectionIssue = $derived.by(() => {
 const effectiveSidebarCollapsed = $derived(collapseSupported && sidebarCollapsed);
 const currentProcessesControlActive = $derived(
 	effectiveSidebarCollapsed &&
-		(currentProcessesPopoverOpen || currentRoute.page === "process-detail"),
+		(openPopover === "current" || currentRoute.page === "process-detail"),
 );
 const futureExecutionsControlActive = $derived(
 	effectiveSidebarCollapsed &&
-		(futureExecutionsPopoverOpen || currentRoute.page === "future-launch-detail"),
+		(openPopover === "future" || currentRoute.page === "future-launch-detail"),
 );
 const userName = $derived(authEnabled ? (actor.displayName ?? actor.id) : "Anonymous");
 
@@ -143,18 +143,14 @@ $effect(() => {
 		return;
 	}
 	sidebarCollapsed = false;
-	currentProcessesPopoverOpen = false;
-	futureExecutionsPopoverOpen = false;
-	userPopoverOpen = false;
+	openPopover = null;
 });
 
 $effect(() => {
 	if (effectiveSidebarCollapsed) {
 		return;
 	}
-	currentProcessesPopoverOpen = false;
-	futureExecutionsPopoverOpen = false;
-	userPopoverOpen = false;
+	openPopover = null;
 });
 
 $effect(() => {
@@ -163,22 +159,18 @@ $effect(() => {
 		return;
 	}
 	observedRouteKey = routeKey;
-	currentProcessesPopoverOpen = false;
-	futureExecutionsPopoverOpen = false;
-	userPopoverOpen = false;
+	openPopover = null;
 });
 
 $effect(() => {
-	if (!currentProcessesPopoverOpen && !futureExecutionsPopoverOpen && !userPopoverOpen) {
+	if (!openPopover) {
 		return;
 	}
 
 	const handleDocumentClick = (event: MouseEvent) => {
 		const target = event.target as Node | null;
 		if (!target) {
-			currentProcessesPopoverOpen = false;
-			futureExecutionsPopoverOpen = false;
-			userPopoverOpen = false;
+			openPopover = null;
 			return;
 		}
 		if (
@@ -195,23 +187,20 @@ $effect(() => {
 		) {
 			return;
 		}
-		currentProcessesPopoverOpen = false;
-		futureExecutionsPopoverOpen = false;
-		userPopoverOpen = false;
+		openPopover = null;
 	};
 
 	const handleDocumentKeydown = (event: KeyboardEvent) => {
 		if (event.key !== "Escape") {
 			return;
 		}
-		const focusTarget = currentProcessesPopoverOpen
-			? currentProcessesTriggerRef
-			: futureExecutionsPopoverOpen
-				? futureExecutionsTriggerRef
-				: userTriggerRef;
-		currentProcessesPopoverOpen = false;
-		futureExecutionsPopoverOpen = false;
-		userPopoverOpen = false;
+		const focusTarget =
+			openPopover === "current"
+				? currentProcessesTriggerRef
+				: openPopover === "future"
+					? futureExecutionsTriggerRef
+					: userTriggerRef;
+		openPopover = null;
 		focusTarget?.focus();
 	};
 
@@ -222,10 +211,6 @@ $effect(() => {
 		document.removeEventListener("keydown", handleDocumentKeydown);
 	};
 });
-
-function processPath(instanceId: string): string {
-	return buildProcessPath(instanceId);
-}
 
 function isSelectedRow(row: ProcessRowView): boolean {
 	return (
@@ -251,7 +236,7 @@ function stateKind(row: ProcessRowView): string {
 
 function futurePath(item: FutureExecutionSummary): string {
 	if (item.kind === "action") {
-		return processPath(item.instanceId);
+		return buildProcessPath(item.instanceId);
 	}
 	return buildFutureLaunchPath(item.id);
 }
@@ -309,14 +294,8 @@ function futureStateKind(item: FutureExecutionSummary): string {
 
 function openFutureItem(item: FutureExecutionSummary, event: MouseEvent) {
 	event.preventDefault();
-	futureExecutionsPopoverOpen = false;
+	if (openPopover === "future") openPopover = null;
 	navigate(futurePath(item));
-}
-
-function closePopovers() {
-	currentProcessesPopoverOpen = false;
-	futureExecutionsPopoverOpen = false;
-	userPopoverOpen = false;
 }
 
 function toggleSidebar() {
@@ -324,41 +303,22 @@ function toggleSidebar() {
 		return;
 	}
 	sidebarCollapsed = !sidebarCollapsed;
-	closePopovers();
+	openPopover = null;
 }
 
 function openSidebar() {
 	sidebarCollapsed = false;
-	closePopovers();
+	openPopover = null;
 }
 
-function toggleCurrentProcessesPopover() {
-	if (!effectiveSidebarCollapsed) {
-		return;
-	}
-	currentProcessesPopoverOpen = !currentProcessesPopoverOpen;
-	futureExecutionsPopoverOpen = false;
-	userPopoverOpen = false;
-}
-
-function toggleFutureExecutionsPopover() {
-	if (!effectiveSidebarCollapsed) {
-		return;
-	}
-	futureExecutionsPopoverOpen = !futureExecutionsPopoverOpen;
-	currentProcessesPopoverOpen = false;
-	userPopoverOpen = false;
-}
-
-function toggleUserPopover() {
-	userPopoverOpen = !userPopoverOpen;
-	currentProcessesPopoverOpen = false;
-	futureExecutionsPopoverOpen = false;
-	logoutError = null;
+function togglePopover(popover: Popover) {
+	if (popover !== "user" && !effectiveSidebarCollapsed) return;
+	openPopover = openPopover === popover ? null : popover;
+	if (popover === "user") logoutError = null;
 }
 
 function showHelp() {
-	userPopoverOpen = false;
+	openPopover = null;
 	openKeyboardShortcutHelp();
 }
 
@@ -377,15 +337,78 @@ async function logOut() {
 }
 
 function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
-	currentProcessesPopoverOpen = false;
-	followLink(event, processPath(row.instanceId));
+	if (openPopover === "current") openPopover = null;
+	followLink(event, buildProcessPath(row.instanceId));
 }
 </script>
+
+{#snippet primaryLink(page: Route["page"], href: string, label: string, action: string | null, icon: Snippet, railLabel = label, railTitle = label)}
+	{@const rail = effectiveSidebarCollapsed}
+	{@const active = currentRoute.page === page}
+	<a
+		href={href}
+		class={rail ? "rail-icon-control" : "sidebar-nav-link"}
+		data-action={action ?? undefined}
+		data-pressable={action ? "true" : undefined}
+		class:is-active={active}
+		aria-current={active ? "page" : undefined}
+		aria-label={rail ? railTitle : page === "dashboard" ? label : undefined}
+		title={rail ? railTitle : page === "dashboard" ? label : undefined}
+		onclick={(event) => followLink(event, href)}
+	>
+		<span class={rail ? "rail-control-icon" : "sidebar-nav-icon"} aria-hidden="true">{@render icon()}</span>
+		<span class={rail ? "rail-control-label" : "sidebar-nav-label"}>{rail ? railLabel : label}</span>
+	</a>
+{/snippet}
+
+{#snippet dashboardIcon()}
+	<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+		<rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1"></rect><rect x="14" y="3.5" width="6.5" height="6.5" rx="1"></rect>
+		<rect x="3.5" y="14" width="6.5" height="6.5" rx="1"></rect><rect x="14" y="14" width="6.5" height="6.5" rx="1"></rect>
+	</svg>
+{/snippet}
+
+{#snippet createProcessIcon()}
+	{#if effectiveSidebarCollapsed}
+		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+			<circle cx="12" cy="12" r="8"></circle>
+			<path d="M12 8v8"></path><path d="M8 12h8"></path>
+		</svg>
+	{:else}+{/if}
+{/snippet}
+
+{#snippet watchersIcon()}
+	{#if effectiveSidebarCollapsed}
+		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+			<path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"></path>
+			<circle cx="12" cy="12" r="2.5"></circle>
+		</svg>
+	{:else}◌{/if}
+{/snippet}
+
+{#snippet processesIcon()}
+	{#if effectiveSidebarCollapsed}
+		<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+			<path d="M5 5.5h14"></path><path d="M5 12h14"></path>
+			<path d="M5 18.5h9"></path><path d="M17 17l2 2 2-2"></path>
+		</svg>
+	{:else}⌘{/if}
+{/snippet}
+
+{#snippet wikiIcon()}
+	<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v15M12 5C9 3 5 3 2 4v15c3-1 7-1 10 1 3-2 7-2 10-1V4c-3-1-7-1-10 1Z"></path></svg>
+{/snippet}
+
+{#snippet skillsIcon()}
+	<svg viewBox="0 0 20 20" fill="none">
+		<path d="M4 5.5h12M4 10h12M4 14.5h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+	</svg>
+{/snippet}
 
 {#snippet processRowList(rows: readonly ProcessRowView[], extraListClass = "")}
 	<div class="process-list {extraListClass}">
 		{#each rows as row (row.instanceId)}
-			{@const href = processPath(row.instanceId)}
+			{@const href = buildProcessPath(row.instanceId)}
 			<a
 				href={href}
 				class="process-row"
@@ -460,72 +483,11 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 				<span class="rail-control-label">Open</span>
 			</button>
 
-			<a href={homePath} class="rail-icon-control" data-action="view-dashboard" data-pressable="true" class:is-active={currentRoute.page === "dashboard"} aria-current={currentRoute.page === "dashboard" ? "page" : undefined} aria-label="Dashboard" title="Dashboard" onclick={(event) => followLink(event, homePath)}><span class="rail-control-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1"></rect><rect x="14" y="3.5" width="6.5" height="6.5" rx="1"></rect><rect x="3.5" y="14" width="6.5" height="6.5" rx="1"></rect><rect x="14" y="14" width="6.5" height="6.5" rx="1"></rect></svg></span><span class="rail-control-label">Dashboard</span></a>
-			<a
-				href={createProcessPath}
-				class="rail-icon-control"
-				data-action="create-process"
-				data-pressable="true"
-				class:is-active={currentRoute.page === "home"}
-				aria-current={currentRoute.page === "home" ? "page" : undefined}
-				aria-label="Start process"
-				title="Start process"
-				onclick={(event) => followLink(event, createProcessPath)}
-			>
-				<span class="rail-control-icon" aria-hidden="true">
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-						<circle cx="12" cy="12" r="8"></circle>
-						<path d="M12 8v8"></path>
-						<path d="M8 12h8"></path>
-					</svg>
-				</span>
-				<span class="rail-control-label">New</span>
-			</a>
-
-			<a
-				href={watchersPath}
-				class="rail-icon-control"
-				data-action="view-watchers"
-				data-pressable="true"
-				class:is-active={currentRoute.page === "watchers"}
-				aria-current={currentRoute.page === "watchers" ? "page" : undefined}
-				aria-label="Watchers"
-				title="Watchers"
-				onclick={(event) => followLink(event, watchersPath)}
-			>
-				<span class="rail-control-icon" aria-hidden="true">
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"></path>
-						<circle cx="12" cy="12" r="2.5"></circle>
-					</svg>
-				</span>
-				<span class="rail-control-label">Watch</span>
-			</a>
-			<a href="/wiki" class="rail-icon-control" class:is-active={currentRoute.page === "wiki"} aria-current={currentRoute.page === "wiki" ? "page" : undefined} aria-label="Solution wikis" title="Solution wikis" onclick={(event) => followLink(event, "/wiki")}>
-				<span class="rail-control-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v15M12 5C9 3 5 3 2 4v15c3-1 7-1 10 1 3-2 7-2 10-1V4c-3-1-7-1-10 1Z"></path></svg></span><span class="rail-control-label">Wikis</span>
-			</a>
-
-			<a
-				href={processesPath}
-				class="rail-icon-control"
-				data-action="view-all-processes"
-				data-pressable="true"
-				class:is-active={currentRoute.page === "processes"}
-				aria-current={currentRoute.page === "processes" ? "page" : undefined}
-				aria-label="All processes"
-				title="All processes"
-				onclick={(event) => followLink(event, processesPath)}
-			>
-				<span class="rail-control-icon" aria-hidden="true">
-					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-						<path d="M5 5.5h14"></path>
-						<path d="M5 12h14"></path>
-						<path d="M5 18.5h9"></path>
-						<path d="M17 17l2 2 2-2"></path>
-					</svg>
-				</span>
-				<span class="rail-control-label">All</span>
-			</a>
+			{@render primaryLink("dashboard", homePath, "Dashboard", "view-dashboard", dashboardIcon)}
+			{@render primaryLink("home", createProcessPath, "Start a process", "create-process", createProcessIcon, "New", "Start process")}
+			{@render primaryLink("watchers", watchersPath, "Watchers", "view-watchers", watchersIcon, "Watch")}
+			{@render primaryLink("wiki", "/wiki", "Solution wikis", null, wikiIcon, "Wikis")}
+			{@render primaryLink("processes", processesPath, "All processes", "view-all-processes", processesIcon, "All")}
 
 			<div class="current-processes-anchor">
 				<button
@@ -537,11 +499,11 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 					data-pressable="true"
 					aria-haspopup="dialog"
 					aria-controls="current-processes-popover"
-					aria-expanded={currentProcessesPopoverOpen}
+					aria-expanded={openPopover === "current"}
 					aria-label="Waiting and running processes"
 					title={connectionIssue ? `Waiting and running processes — ${connectionIssue}` : "Waiting and running processes"}
 					bind:this={currentProcessesTriggerRef}
-					onclick={toggleCurrentProcessesPopover}
+					onclick={() => togglePopover("current")}
 				>
 					<span class="rail-control-icon" aria-hidden="true">
 						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -554,7 +516,7 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 					<span class="rail-control-label">Work</span>
 				</button>
 
-				{#if currentProcessesPopoverOpen}
+				{#if openPopover === "current"}
 					<div
 						id="current-processes-popover"
 						class="current-processes-popover"
@@ -579,28 +541,20 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 							{:else if currentRows.length === 0}
 								<div class="empty-state">No waiting or running processes. Start one above and it will appear here.</div>
 							{:else}
-								<div class="popover-section">
-									<div class="group-header compact">
-										<div class="group-heading">Waiting</div>
-										<span class="group-count" aria-label={`${waitingRows.length} waiting process${waitingRows.length === 1 ? "" : "es"}`}>{waitingRows.length}</span>
+								{#each [{ label: "Waiting", rows: waitingRows }, { label: "Running", rows: runningRows }] as group (group.label)}
+									{@const kind = group.label.toLowerCase()}
+									<div class="popover-section">
+										<div class="group-header compact">
+											<div class="group-heading">{group.label}</div>
+											<span class="group-count" aria-label={`${group.rows.length} ${kind} process${group.rows.length === 1 ? "" : "es"}`}>{group.rows.length}</span>
+										</div>
+										{#if group.rows.length === 0}
+											<div class="empty-state">No {kind} processes.</div>
+										{:else}
+											{@render processRowList(group.rows, "popover-process-list")}
+										{/if}
 									</div>
-									{#if waitingRows.length === 0}
-										<div class="empty-state">No waiting processes.</div>
-									{:else}
-										{@render processRowList(waitingRows, "popover-process-list")}
-									{/if}
-								</div>
-								<div class="popover-section">
-									<div class="group-header compact">
-										<div class="group-heading">Running</div>
-										<span class="group-count" aria-label={`${runningRows.length} running process${runningRows.length === 1 ? "" : "es"}`}>{runningRows.length}</span>
-									</div>
-									{#if runningRows.length === 0}
-										<div class="empty-state">No running processes.</div>
-									{:else}
-										{@render processRowList(runningRows, "popover-process-list")}
-									{/if}
-								</div>
+								{/each}
 							{/if}
 						</div>
 					</div>
@@ -616,11 +570,11 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 					data-pressable="true"
 					aria-haspopup="dialog"
 					aria-controls="future-executions-popover"
-					aria-expanded={futureExecutionsPopoverOpen}
+					aria-expanded={openPopover === "future"}
 					aria-label="Future scheduled work"
 					title="Future scheduled work"
 					bind:this={futureExecutionsTriggerRef}
-					onclick={toggleFutureExecutionsPopover}
+					onclick={() => togglePopover("future")}
 				>
 					<span class="rail-control-icon" aria-hidden="true">
 						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -634,7 +588,7 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 					<span class="rail-control-label">Future</span>
 				</button>
 
-				{#if futureExecutionsPopoverOpen}
+				{#if openPopover === "future"}
 					<div
 						id="future-executions-popover"
 						class="current-processes-popover"
@@ -689,66 +643,15 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 			</div>
 
 			<nav class="sidebar-primary-nav" aria-label="Primary sidebar">
-				<a href={homePath} class="sidebar-nav-link" data-action="view-dashboard" data-pressable="true" class:is-active={currentRoute.page === "dashboard"} aria-current={currentRoute.page === "dashboard" ? "page" : undefined} aria-label="Dashboard" title="Dashboard" onclick={(event) => followLink(event, homePath)}><span class="sidebar-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1"></rect><rect x="14" y="3.5" width="6.5" height="6.5" rx="1"></rect><rect x="3.5" y="14" width="6.5" height="6.5" rx="1"></rect><rect x="14" y="14" width="6.5" height="6.5" rx="1"></rect></svg></span><span class="sidebar-nav-label">Dashboard</span></a>
-				<a
-					href={createProcessPath}
-					class="sidebar-nav-link"
-					data-action="create-process"
-					data-pressable="true"
-					class:is-active={currentRoute.page === "home"}
-					aria-current={currentRoute.page === "home" ? "page" : undefined}
-					onclick={(event) => followLink(event, createProcessPath)}
-				>
-					<span class="sidebar-nav-icon" aria-hidden="true">+</span>
-					<span class="sidebar-nav-label">Start a process</span>
-				</a>
-				<a
-					href={processesPath}
-					class="sidebar-nav-link"
-					class:is-active={currentRoute.page === "processes"}
-					data-action="view-all-processes"
-					data-pressable="true"
-					aria-current={currentRoute.page === "processes" ? "page" : undefined}
-					onclick={(event) => followLink(event, processesPath)}
-				>
-					<span class="sidebar-nav-icon" aria-hidden="true">⌘</span>
-					<span class="sidebar-nav-label">All processes</span>
-				</a>
-				<a href="/wiki" class="sidebar-nav-link" class:is-active={currentRoute.page === "wiki"} aria-current={currentRoute.page === "wiki" ? "page" : undefined} onclick={(event) => followLink(event, "/wiki")}>
-					<span class="sidebar-nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v15M12 5C9 3 5 3 2 4v15c3-1 7-1 10 1 3-2 7-2 10-1V4c-3-1-7-1-10 1Z"></path></svg></span>
-					<span class="sidebar-nav-label">Solution wikis</span>
-				</a>
+				{@render primaryLink("dashboard", homePath, "Dashboard", "view-dashboard", dashboardIcon)}
+				{@render primaryLink("home", createProcessPath, "Start a process", "create-process", createProcessIcon)}
+				{@render primaryLink("processes", processesPath, "All processes", "view-all-processes", processesIcon)}
+				{@render primaryLink("wiki", "/wiki", "Solution wikis", null, wikiIcon)}
 				<a href="/settings" class="sidebar-nav-link" data-action="view-settings" data-pressable="true" class:is-active={currentRoute.page === "settings"} aria-current={currentRoute.page === "settings" ? "page" : undefined} onclick={(event) => followLink(event, "/settings")}>
 					<span class="sidebar-nav-icon" aria-hidden="true"><svg viewBox="0 0 20 20" fill="none"><path d="M4 5h12M4 10h12M4 15h12M7 3v4M13 8v4M8 13v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg></span><span class="sidebar-nav-label">Settings</span>
 				</a>
-				<a
-					href={skillsPath}
-					class="sidebar-nav-link"
-					data-action="view-skills"
-					data-pressable="true"
-					class:is-active={currentRoute.page === "skills"}
-					aria-current={currentRoute.page === "skills" ? "page" : undefined}
-					onclick={(event) => followLink(event, skillsPath)}
-				>
-					<span class="sidebar-nav-icon" aria-hidden="true">
-						<svg viewBox="0 0 20 20" fill="none">
-							<path d="M4 5.5h12M4 10h12M4 14.5h8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
-						</svg>
-					</span>
-					<span class="sidebar-nav-label">Skills</span>
-				</a>
-				<a
-					href={watchersPath}
-					class="sidebar-nav-link"
-					data-action="view-watchers"
-					data-pressable="true"
-					class:is-active={currentRoute.page === "watchers"}
-					aria-current={currentRoute.page === "watchers" ? "page" : undefined}
-					onclick={(event) => followLink(event, watchersPath)}
-				>
-					<span class="sidebar-nav-icon" aria-hidden="true">◌</span>
-					<span class="sidebar-nav-label">Watchers</span>
-				</a>
+				{@render primaryLink("skills", skillsPath, "Skills", "view-skills", skillsIcon)}
+				{@render primaryLink("watchers", watchersPath, "Watchers", "view-watchers", watchersIcon)}
 			</nav>
 		</div>
 
@@ -801,11 +704,11 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 				data-pressable="true"
 				aria-haspopup="dialog"
 				aria-controls="user-menu-popover"
-				aria-expanded={userPopoverOpen}
+				aria-expanded={openPopover === "user"}
 				aria-label={`User menu for ${userName}`}
 				title={userName}
 				bind:this={userTriggerRef}
-				onclick={toggleUserPopover}
+				onclick={() => togglePopover("user")}
 			>
 				<span class="footer-icon" aria-hidden="true">
 					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -816,7 +719,7 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 				{#if !effectiveSidebarCollapsed}<span class="user-name">{userName}</span>{/if}
 			</button>
 
-			{#if userPopoverOpen}
+			{#if openPopover === "user"}
 				<div
 					id="user-menu-popover"
 					class="user-popover"
@@ -827,7 +730,7 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 					aria-label={`User options for ${userName}`}
 					bind:this={userPopoverRef}
 				>
-					<a class="user-popover-action" href="/account/api-tokens" onclick={(event) => { userPopoverOpen = false; followLink(event, "/account/api-tokens"); }}>API tokens</a>
+					<a class="user-popover-action" href="/account/api-tokens" onclick={(event) => { openPopover = null; followLink(event, "/account/api-tokens"); }}>API tokens</a>
  <button type="button" class="user-popover-action" onclick={showHelp}>Show help</button>
  {#if authEnabled}
 					<button
@@ -922,7 +825,11 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 
 	.rail-icon-control:hover,
 	.rail-icon-control.is-active,
-	.rail-icon-control[aria-expanded="true"] {
+	.rail-icon-control[aria-expanded="true"],
+	.sidebar-nav-link:hover,
+	.sidebar-nav-link.is-active,
+	.user-trigger:hover,
+	.user-trigger[aria-expanded="true"] {
 		border-color: color-mix(in srgb, var(--chronicle-border) 72%, transparent 28%);
 		background: color-mix(in srgb, var(--chronicle-card-surface) 78%, transparent 22%);
 		color: var(--chronicle-text);
@@ -983,13 +890,6 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 		border-radius: 12px;
 		color: var(--chronicle-text-muted);
 		text-decoration: none;
-	}
-
-	.sidebar-nav-link:hover,
-	.sidebar-nav-link.is-active {
-		background: color-mix(in srgb, var(--chronicle-card-surface) 78%, transparent 22%);
-		border-color: color-mix(in srgb, var(--chronicle-border) 72%, transparent 28%);
-		color: var(--chronicle-text);
 	}
 
 	.sidebar-nav-link.is-active {
@@ -1136,13 +1036,6 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 		font-weight: 620;
 		text-align: left;
 		cursor: pointer;
-	}
-
-	.user-trigger:hover,
-	.user-trigger[aria-expanded="true"] {
-		border-color: color-mix(in srgb, var(--chronicle-border) 72%, transparent 28%);
-		background: color-mix(in srgb, var(--chronicle-card-surface) 78%, transparent 22%);
-		color: var(--chronicle-text);
 	}
 
 	.user-trigger.is-collapsed {
@@ -1414,10 +1307,7 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 	}
 
 	.empty-state {
-		font-size: 0.875rem;
-		line-height: 1.55;
 		color: var(--chronicle-text-muted);
-		padding: 2px 0;
 	}
 
 	.connection-overlay {

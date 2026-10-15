@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 
 import type { UiLauncherSummary } from "@leitwerk-dev/protocol/http-contracts";
-import { mount, unmount } from "svelte";
 import { get } from "svelte/store";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -16,9 +15,9 @@ import {
 import { futureExecutions } from "../lib/processes.svelte.js";
 import { consumePendingRetryConfig } from "../lib/retry-config.svelte.js";
 import { buildCreateProcessPath, navigate } from "../lib/router.svelte";
+import { mountTest, unmountTests } from "../test-support/mount.js";
+import { flushUi as flush, waitForSelector } from "../test-support/wait.js";
 import HomePage from "./HomePage.svelte";
-
-const mountedApps: Array<ReturnType<typeof mount>> = [];
 
 const launcherModelConfigSchema = {
 	availableProfiles: [
@@ -200,14 +199,6 @@ function resetDefaultMocks() {
 
 resetDefaultMocks();
 
-async function flush() {
-	await Promise.resolve();
-	await Promise.resolve();
-	await Promise.resolve();
-	await Promise.resolve();
-	await new Promise((resolve) => setTimeout(resolve, 0));
-}
-
 function setInputValue(input: HTMLInputElement, value: string) {
 	input.value = value;
 	input.dispatchEvent(new Event("input", { bubbles: true }));
@@ -218,25 +209,8 @@ function setSelectValue(select: HTMLSelectElement, value: string) {
 	select.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
-async function waitForSelector(
-	target: HTMLElement,
-	selector: string,
-	timeoutMs = 250,
-): Promise<HTMLElement> {
-	const deadline = Date.now() + timeoutMs;
-	while (Date.now() < deadline) {
-		const element = target.querySelector(selector);
-		if (element instanceof HTMLElement) {
-			return element;
-		}
-		await flush();
-	}
-	throw new Error(`Timed out waiting for selector: ${selector}`);
-}
-
 afterEach(async () => {
-	for (const app of mountedApps.splice(0)) await unmount(app);
-	document.body.innerHTML = "";
+	await unmountTests();
 	vi.mocked(navigate).mockReset();
 	vi.clearAllMocks();
 	resetDefaultMocks();
@@ -244,11 +218,7 @@ afterEach(async () => {
 
 describe("HomePage", () => {
 	it("renders the process gallery at the root start route", async () => {
-		const target = document.createElement("div");
-		document.body.appendChild(target);
-
-		const app = mount(HomePage, { target, props: { launcherId: null } });
-		mountedApps.push(app);
+		const { target } = mountTest(HomePage, { launcherId: null });
 		await flush();
 
 		expect(target.querySelector('[data-section="process-gallery"]')).not.toBeNull();
@@ -257,11 +227,7 @@ describe("HomePage", () => {
 	});
 
 	it("renders launcher setup from a deep link and includes the process flow", async () => {
-		const target = document.createElement("div");
-		document.body.appendChild(target);
-
-		const app = mount(HomePage, { target, props: { launcherId: "launcher-a" } });
-		mountedApps.push(app);
+		const { target } = mountTest(HomePage, { launcherId: "launcher-a" });
 		await flush();
 
 		expect(target.querySelector('[data-section="process-configure"]')).not.toBeNull();
@@ -272,11 +238,7 @@ describe("HomePage", () => {
 	});
 
 	it("falls back to the gallery when a deep-linked launcher is unavailable", async () => {
-		const target = document.createElement("div");
-		document.body.appendChild(target);
-
-		const app = mount(HomePage, { target, props: { launcherId: "missing-launcher" } });
-		mountedApps.push(app);
+		const { target } = mountTest(HomePage, { launcherId: "missing-launcher" });
 		await flush();
 
 		expect(target.querySelector('[data-section="process-gallery"]')).not.toBeNull();
@@ -285,11 +247,7 @@ describe("HomePage", () => {
 	});
 
 	it("selecting a gallery card navigates to that launcher setup", async () => {
-		const target = document.createElement("div");
-		document.body.appendChild(target);
-
-		const app = mount(HomePage, { target, props: { launcherId: null } });
-		mountedApps.push(app);
+		const { target } = mountTest(HomePage, { launcherId: null });
 		await flush();
 
 		(target.querySelector('[data-launcher-id="launcher-a"]') as HTMLButtonElement | null)?.click();
@@ -325,11 +283,7 @@ describe("HomePage", () => {
 			futureExecution: scheduledLaunch,
 		});
 
-		const target = document.createElement("div");
-		document.body.appendChild(target);
-
-		const app = mount(HomePage, { target, props: { launcherId: "launcher-a" } });
-		mountedApps.push(app);
+		const { target } = mountTest(HomePage, { launcherId: "launcher-a" });
 		await flush();
 
 		setInputValue(
@@ -392,11 +346,7 @@ describe("HomePage", () => {
 				modelConfig: {},
 			})
 			.mockReturnValue(null);
-		const target = document.createElement("div");
-		document.body.appendChild(target);
-
-		const app = mount(HomePage, { target });
-		mountedApps.push(app);
+		const { target } = mountTest(HomePage, {});
 		await flush();
 
 		const initialInput = (await waitForSelector(
@@ -452,7 +402,22 @@ describe("HomePage", () => {
 		expect(returnedTitleInput.value).toBe("Default Title A");
 	});
 
-	it("auto-opens advanced model config when retry state includes turn overrides", async () => {
+	it.each([
+		{
+			name: "auto-opens advanced model config when retry state includes turn overrides",
+			modelConfig: { turnConfigs: { draft_plan: { modelProfileId: "local_qwen" } } },
+			defaultSource: "catalog_default",
+			turnSource: "instance_turn_config",
+			editing: true,
+		},
+		{
+			name: "keeps per-step settings collapsed when retry state only changes the process default",
+			modelConfig: { defaultModelProfileId: "local_qwen" },
+			defaultSource: "instance_default",
+			turnSource: "instance_default",
+			editing: false,
+		},
+	] as const)("$name", async ({ modelConfig, defaultSource, turnSource, editing }) => {
 		vi.mocked(consumePendingRetryConfig)
 			.mockReset()
 			.mockReturnValueOnce({
@@ -460,104 +425,49 @@ describe("HomePage", () => {
 				title: "Retry Title",
 				launcherInput: { repoPath: "/retry/a" },
 				skillIds: [],
-				modelConfig: {
-					turnConfigs: {
-						draft_plan: { modelProfileId: "local_qwen" },
-					},
-				},
+				modelConfig,
 			})
 			.mockReturnValue(null);
 		vi.mocked(fetchLauncherModelConfigPreview).mockResolvedValue({
 			defaultModel: {
-				source: "catalog_default",
-				profile: launcherModelConfigSchema.availableProfiles[0],
+				source: defaultSource,
+				profile: launcherModelConfigSchema.availableProfiles[editing ? 0 : 1],
 			},
 			turns: [
 				{
 					turnId: "draft_plan",
 					description: "Draft plan",
 					effective: {
-						source: "instance_turn_config",
+						source: turnSource,
 						profile: launcherModelConfigSchema.availableProfiles[1],
 					},
 				},
 			],
 		});
 
-		const target = document.createElement("div");
-		document.body.appendChild(target);
-
-		const app = mount(HomePage, { target });
-		mountedApps.push(app);
+		const { target } = mountTest(HomePage, {});
 		await flush();
 
-		const summaryCard = (await waitForSelector(
+		const summaryCard = await waitForSelector(
 			target,
 			'[data-section="launcher-model-config-summary"]',
-		)) as HTMLElement;
-		const turnList = (await waitForSelector(
+		);
+		const modelGroup = await waitForSelector(
 			target,
-			'[data-section="launcher-model-config-turn-list"]',
-		)) as HTMLElement;
-		const turnGroup = (await waitForSelector(
-			target,
-			'[data-section="launcher-model-config-turn-list"] [data-turn-id="draft_plan"]',
-		)) as HTMLElement;
-		expect(summaryCard.dataset.editing).toBe("true");
-		expect(turnList.dataset.open).toBe("true");
-		expect(turnList.dataset.overrideCount).toBe("1");
-		expect(turnGroup.dataset.effectiveSource).toBe("instance_turn_config");
-		expect(turnGroup.dataset.effectiveProfileId).toBe("local_qwen");
-	});
-
-	it("keeps per-step settings collapsed when retry state only changes the process default", async () => {
-		vi.mocked(consumePendingRetryConfig)
-			.mockReset()
-			.mockReturnValueOnce({
-				launcherId: "launcher-a",
-				title: "Retry Title",
-				launcherInput: { repoPath: "/retry/a" },
-				skillIds: [],
-				modelConfig: {
-					defaultModelProfileId: "local_qwen",
-				},
-			})
-			.mockReturnValue(null);
-		vi.mocked(fetchLauncherModelConfigPreview).mockResolvedValue({
-			defaultModel: {
-				source: "instance_default",
-				profile: launcherModelConfigSchema.availableProfiles[1],
-			},
-			turns: [
-				{
-					turnId: "draft_plan",
-					description: "Draft plan",
-					effective: {
-						source: "instance_default",
-						profile: launcherModelConfigSchema.availableProfiles[1],
-					},
-				},
-			],
-		});
-
-		const target = document.createElement("div");
-		document.body.appendChild(target);
-
-		const app = mount(HomePage, { target });
-		mountedApps.push(app);
-		await flush();
-
-		const summaryCard = (await waitForSelector(
-			target,
-			'[data-section="launcher-model-config-summary"]',
-		)) as HTMLElement;
-		const defaultGroup = (await waitForSelector(
-			target,
-			'[data-section="launcher-model-config-default"]',
-		)) as HTMLElement;
-		expect(summaryCard.dataset.editing).toBe("false");
-		expect(summaryCard.dataset.customizationMode).toBe("default_only");
-		expect(defaultGroup.dataset.effectiveSource).toBe("instance_default");
-		expect(defaultGroup.dataset.effectiveProfileId).toBe("local_qwen");
+			editing
+				? '[data-section="launcher-model-config-turn-list"] [data-turn-id="draft_plan"]'
+				: '[data-section="launcher-model-config-default"]',
+		);
+		expect(summaryCard.dataset.editing).toBe(String(editing));
+		expect(modelGroup.dataset.effectiveSource).toBe(turnSource);
+		expect(modelGroup.dataset.effectiveProfileId).toBe("local_qwen");
+		if (editing) {
+			const turnList = await waitForSelector(
+				target,
+				'[data-section="launcher-model-config-turn-list"]',
+			);
+			expect(turnList.dataset.open).toBe("true");
+			expect(turnList.dataset.overrideCount).toBe("1");
+		} else expect(summaryCard.dataset.customizationMode).toBe("default_only");
 	});
 });

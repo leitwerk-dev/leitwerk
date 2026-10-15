@@ -1,99 +1,7 @@
 import exampleProcessesExtension from "@leitwerk-dev/example-processes";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
-import type { DashboardResponseBody } from "@leitwerk-dev/protocol";
+import { createDashboardFixture } from "@leitwerk-dev/test-support/fixtures";
 import { expect, expectNoPageOverflow, test } from "./fixtures.js";
-
-// Keep the browser overview stable while exercising real SPA routes and catalogs.
-const dashboardFixture: DashboardResponseBody = {
-	generatedAt: "2026-10-14T10:30:00.000Z",
-	definitions: {
-		total: 4,
-		items: [
-			{ id: "single_prompt_process", name: "Single Prompt" },
-			{ id: "poem_creator_process", name: "Poem Creator" },
-			{ id: "repo_change", name: "Repository Change" },
-			{ id: "smoke", name: "Kubernetes Smoke" },
-		],
-	},
-	watchers: {
-		total: 4,
-		enabled: 3,
-		items: [
-			{ id: "poem", name: "Poem file", enabled: true },
-			{ id: "repo", name: "Repository issues", enabled: true },
-			{ id: "schedule", name: "Scheduled checks", enabled: true },
-			{ id: "paused", name: "Paused trigger", enabled: false },
-		],
-	},
-	skills: { total: 9, installed: 4, bundled: 5 },
-	processes: {
-		total: 27,
-		byStatus: [
-			{ status: "running", count: 3 },
-			{ status: "waiting", count: 5 },
-			{ status: "error", count: 2 },
-			{ status: "completed", count: 16 },
-			{ status: "aborted", count: 1 },
-		],
-		byDefinition: [
-			{ processId: "single_prompt_process", name: "Single Prompt", count: 14 },
-			{ processId: "poem_creator_process", name: "Poem Creator", count: 8 },
-			{ processId: "repo_change", name: "Repository Change", count: 5 },
-		],
-	},
-	costs: {
-		totalUsd: 8.4,
-		totalLlmTurnCount: 65,
-		pricedTurnCount: 60,
-		missingCostTurnCount: 5,
-		isPartial: true,
-		byModel: [
-			"gpt-6.1",
-			"gpt-6",
-			"gpt-6-mini",
-			"claude-sonnet",
-			"claude-haiku",
-			"historical-model",
-		].map((modelId, index) => ({
-			providerId: index < 3 ? "openai" : "anthropic",
-			modelId,
-			costUsd: (6 - index) * 0.4,
-			turnCount: 10,
-		})),
-	},
-	configuration: {
-		issues: [
-			{
-				id: "credential",
-				code: "missing_credential",
-				severity: "error",
-				message: "The review model profile needs a provider credential.",
-				sources: [{ label: "Review model", href: "/settings" }],
-			},
-			{
-				id: "default",
-				code: "missing_default",
-				severity: "warning",
-				message: "Repository Change has no default model profile.",
-				sources: [{ label: "Repository Change", href: "/settings" }],
-			},
-			{
-				id: "unavailable",
-				code: "unavailable_model",
-				severity: "error",
-				message: "A configured model is unavailable from its provider.",
-				sources: [{ label: "Model catalog", href: "/settings" }],
-			},
-			{
-				id: "override",
-				code: "invalid_override",
-				severity: "warning",
-				message: "A turn override references a removed model profile.",
-				sources: [{ label: "Turn settings", href: "/settings" }],
-			},
-		],
-	},
-};
 
 test.use({
 	reducedMotion: "reduce",
@@ -105,27 +13,25 @@ test.use({
 
 test.beforeEach(async ({ page, leitwerk }) => {
 	void leitwerk;
-	await page.route("**/api/dashboard", (route) => route.fulfill({ json: dashboardFixture }));
+	await page.route("**/api/dashboard", (route) =>
+		route.fulfill({ json: createDashboardFixture() }),
+	);
 });
 
 test("root overview opens creation and resource catalogs", async ({ page }) => {
-	await page.goto("/");
 	const dashboard = page.locator('[data-page="dashboard"]');
-	await expect(dashboard.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
-	await dashboard.getByRole("link", { name: "Start a process", exact: true }).click();
-	await expect(page).toHaveURL(/\/processes\/new$/);
-	await expect(page.locator('[data-page="home"]')).toBeVisible();
-	await page.goto("/");
-	await dashboard.getByRole("link", { name: /Process definitions/ }).click();
-	await expect(page).toHaveURL(/\/processes\/new$/);
-	await page.goto("/");
-	await dashboard.getByRole("link", { name: /Watchers/ }).click();
-	await expect(page).toHaveURL(/\/watchers$/);
-	await expect(page.locator('[data-page="watchers"]')).toBeVisible();
-	await page.goto("/");
-	await dashboard.getByRole("link", { name: /Skills/ }).click();
-	await expect(page).toHaveURL(/\/skills$/);
-	await expect(page.locator('[data-page="skills"]')).toBeVisible();
+	for (const [name, url, destination] of [
+		[/^Start a process$/, /\/processes\/new$/, "home"],
+		[/Process definitions/, /\/processes\/new$/, "home"],
+		[/Watchers/, /\/watchers$/, "watchers"],
+		[/Skills/, /\/skills$/, "skills"],
+	] as const) {
+		await page.goto("/");
+		await expect(dashboard.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
+		await dashboard.getByRole("link", { name }).click();
+		await expect(page).toHaveURL(url);
+		await expect(page.locator(`[data-page="${destination}"]`)).toBeVisible();
+	}
 });
 
 test("groups retained processes and expands model costs and readiness issues", async ({

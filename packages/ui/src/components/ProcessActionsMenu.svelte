@@ -90,33 +90,28 @@ function transferExpiryLabel(expiresAt: string): string {
 const idDisambiguator = $derived(idSuffix ? `-${idSuffix}` : "");
 const triggerId = $derived(`process-actions-trigger-${instanceId}${idDisambiguator}`);
 const menuId = $derived(`process-actions-menu-${instanceId}${idDisambiguator}`);
-const confirmationView = $derived({
-	message:
-		confirmation === "abort"
-			? `Abort ${actionTarget}? Active work will stop. Its history will remain available. This can’t be undone.`
-			: confirmation === "delete"
-				? `Permanently delete ${actionTarget}? ${isFinished ? "" : "Active work will be stopped first. "}History and managed stored artifacts will be permanently removed. This can’t be undone.`
-				: `Abort ${actionTarget}, then prepare a new process with the same setup. Existing history will remain available.`,
-	cancelLabel: confirmation === "abort" ? "Keep process running" : "Keep current process",
-	buttonLabel:
-		confirmation === "abort"
-			? busy
-				? "Aborting…"
-				: "Abort process"
-			: confirmation === "delete"
-				? busy
-					? "Deleting…"
-					: "Delete process"
-				: busy
-					? "Preparing new process…"
-					: "Abort and retry",
-	action:
-		confirmation === "abort"
-			? handleAbort
-			: confirmation === "delete"
-				? handleDelete
-				: handleAbortAndRetry,
-});
+const confirmationView = $derived(
+	{
+		abort: {
+			message: `Abort ${actionTarget}? Active work will stop. Its history will remain available. This can’t be undone.`,
+			cancelLabel: "Keep process running",
+			buttonLabel: busy ? "Aborting…" : "Abort process",
+			action: handleAbort,
+		},
+		delete: {
+			message: `Permanently delete ${actionTarget}? ${isFinished ? "" : "Active work will be stopped first. "}History and managed stored artifacts will be permanently removed. This can’t be undone.`,
+			cancelLabel: "Keep current process",
+			buttonLabel: busy ? "Deleting…" : "Delete process",
+			action: handleDelete,
+		},
+		"abort-and-retry": {
+			message: `Abort ${actionTarget}, then prepare a new process with the same setup. Existing history will remain available.`,
+			cancelLabel: "Keep current process",
+			buttonLabel: busy ? "Preparing new process…" : "Abort and retry",
+			action: () => handleRetry(true),
+		},
+	}[confirmation ?? "abort-and-retry"],
+);
 
 function toggleMenu() {
 	if (disabled || busy) return;
@@ -212,10 +207,6 @@ async function runBusy(work: () => Promise<void>, fallbackError: string) {
 }
 
 async function handleAbort() {
-	if (confirmation !== "abort") {
-		confirmation = "abort";
-		return;
-	}
 	await runBusy(async () => {
 		await postProcessAbort(instanceId);
 		closeMenu();
@@ -262,10 +253,6 @@ function showActions() {
 }
 
 async function handleDelete() {
-	if (confirmation !== "delete") {
-		confirmation = "delete";
-		return;
-	}
 	await runBusy(async () => {
 		await requestProcessDeletion(instanceId);
 		closeMenu();
@@ -273,25 +260,16 @@ async function handleDelete() {
 	}, "Couldn't delete process");
 }
 
-async function handleRetry() {
-	await runBusy(async () => {
-		const config = await fetchProcessRetryConfig(instanceId);
-		setPendingRetryConfig(config);
-		navigate(buildCreateProcessPath(config.launcherId));
-	}, "Couldn't load retry config");
-}
-
-async function handleAbortAndRetry() {
-	if (confirmation !== "abort-and-retry") {
-		confirmation = "abort-and-retry";
-		return;
-	}
-	await runBusy(async () => {
-		const config = await fetchProcessRetryConfig(instanceId);
-		await postProcessAbort(instanceId);
-		setPendingRetryConfig(config);
-		navigate(buildCreateProcessPath(config.launcherId));
-	}, "Couldn't abort and retry");
+function handleRetry(abortCurrent: boolean) {
+	return runBusy(
+		async () => {
+			const config = await fetchProcessRetryConfig(instanceId);
+			if (abortCurrent) await postProcessAbort(instanceId);
+			setPendingRetryConfig(config);
+			navigate(buildCreateProcessPath(config.launcherId));
+		},
+		abortCurrent ? "Couldn't abort and retry" : "Couldn't load retry config",
+	);
 }
 
 function handleDownloadSession() {
@@ -422,14 +400,14 @@ function handleDownloadSession() {
 					<div class="menu-divider" role="separator"></div>
 				{/if}
 				{#if !isFinished}
-					{@render menuItem("abort", "Abort process", handleAbort)}
+					{@render menuItem("abort", "Abort process", () => { confirmation = "abort"; })}
 				{/if}
-				{@render menuItem("retry", busy ? "Loading…" : "Retry as new process", handleRetry)}
+				{@render menuItem("retry", busy ? "Loading…" : "Retry as new process", () => handleRetry(false))}
 				{#if !isFinished}
-					{@render menuItem("abort-and-retry", "Abort and retry as new process", handleAbortAndRetry)}
+					{@render menuItem("abort-and-retry", "Abort and retry as new process", () => { confirmation = "abort-and-retry"; })}
 				{/if}
 				<div class="menu-divider" role="separator"></div>
-				{@render menuItem("delete", "Delete process", handleDelete, true)}
+				{@render menuItem("delete", "Delete process", () => { confirmation = "delete"; }, true)}
 			{/if}
 		</div>
 	{/if}

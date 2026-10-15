@@ -134,67 +134,52 @@ $effect(() => {
 	};
 });
 
-const shortcutHelpTitle = $derived.by(() => {
-	if (route.page === "dashboard") return "Dashboard";
-	if (route.page === "settings") return "Settings";
-	if (route.page === "api-tokens") return "API tokens";
-	if (route.page === "home") {
-		return "Start a process";
-	}
-	if (route.page === "processes") {
-		return "All processes";
-	}
-	if (route.page === "watchers") {
-		return "Watchers";
-	}
-	if (route.page === "skills") {
-		return "Skills";
-	}
-	if (route.page === "future-launch-detail") {
-		return "Scheduled launch";
-	}
-	return "Process detail";
-});
-const shortcutHelpDescription = $derived.by(() => {
-	if (route.page === "dashboard") return "Quick reference for reviewing work and system health.";
-	if (route.page === "home") {
-		return "Quick reference for choosing a process type, opening setup, and returning to the process gallery.";
-	}
-	if (route.page === "processes") {
-		return "Quick reference for searching and filtering process records.";
-	}
-	if (route.page === "watchers") {
-		return "Quick reference for reviewing configured watcher registrations.";
-	}
-	if (route.page === "skills") {
-		return "Quick reference for browsing, registering, and maintaining skills.";
-	}
-	if (route.page === "future-launch-detail") {
-		return "Quick reference for reviewing or editing a scheduled launch.";
-	}
-	return "Quick reference for moving through the turn rail and returning to the latest activity.";
-});
-const shortcutHelpItems = $derived.by(() => {
-	const extensionItems = $browserUiExtensionShortcutHelpItems;
-	if (route.page === "home") {
-		return [...homeShortcutItems, ...extensionItems];
-	}
-	if (route.page === "processes") {
-		return [...browseShortcutItems, ...extensionItems];
-	}
-	if (
-		route.page === "dashboard" ||
-		route.page === "watchers" ||
-		route.page === "skills" ||
-		route.page === "api-tokens"
-	) {
-		return [...watcherShortcutItems, ...extensionItems];
-	}
-	if (route.page === "future-launch-detail") {
-		return [...watcherShortcutItems, ...extensionItems];
-	}
-	return [...processShortcutItems, ...extensionItems];
-});
+const processShortcutHelp = {
+	title: "Process detail",
+	description:
+		"Quick reference for moving through the turn rail and returning to the latest activity.",
+	items: processShortcutItems,
+};
+const shortcutHelpByPage: Partial<Record<Route["page"], typeof processShortcutHelp>> = {
+	dashboard: {
+		title: "Dashboard",
+		description: "Quick reference for reviewing work and system health.",
+		items: watcherShortcutItems,
+	},
+	settings: { ...processShortcutHelp, title: "Settings" },
+	"api-tokens": { ...processShortcutHelp, title: "API tokens", items: watcherShortcutItems },
+	home: {
+		title: "Start a process",
+		description:
+			"Quick reference for choosing a process type, opening setup, and returning to the process gallery.",
+		items: homeShortcutItems,
+	},
+	processes: {
+		title: "All processes",
+		description: "Quick reference for searching and filtering process records.",
+		items: browseShortcutItems,
+	},
+	watchers: {
+		title: "Watchers",
+		description: "Quick reference for reviewing configured watcher registrations.",
+		items: watcherShortcutItems,
+	},
+	skills: {
+		title: "Skills",
+		description: "Quick reference for browsing, registering, and maintaining skills.",
+		items: watcherShortcutItems,
+	},
+	"future-launch-detail": {
+		title: "Scheduled launch",
+		description: "Quick reference for reviewing or editing a scheduled launch.",
+		items: watcherShortcutItems,
+	},
+};
+const shortcutHelp = $derived(shortcutHelpByPage[route.page] ?? processShortcutHelp);
+const shortcutHelpItems = $derived([
+	...shortcutHelp.items,
+	...$browserUiExtensionShortcutHelpItems,
+]);
 
 $effect(() => {
 	const helpOpen = $keyboardShortcutHelpOpen;
@@ -340,8 +325,8 @@ $effect(() => {
 
 <KeyboardShortcutsModal
 	open={$keyboardShortcutHelpOpen}
-	title={shortcutHelpTitle}
-	description={shortcutHelpDescription}
+	title={shortcutHelp.title}
+	description={shortcutHelp.description}
 	items={shortcutHelpItems}
 	onClose={closeKeyboardShortcutHelp}
 />

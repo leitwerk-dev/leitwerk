@@ -1,22 +1,14 @@
 import type { DashboardResponseBody } from "@leitwerk-dev/protocol/http-contracts";
 import type { FastifyInstance } from "fastify";
-import { buildDashboardModelIssues } from "../dashboard-model-issues.js";
-import type { ProcessWatcherServiceLike } from "../process-watcher-registry.js";
+import {
+	buildDashboardModelIssues,
+	type DashboardModelIssueDeps,
+} from "../dashboard-model-issues.js";
 import type { RouteDeps } from "./processes.js";
 
 /** @internal */
-export type DashboardRouteDeps = Pick<
-	RouteDeps,
-	| "processes"
-	| "turnSummaries"
-	| "processGraphs"
-	| "skillCatalog"
-	| "config"
-	| "processModelPolicy"
-	| "modelStatusCache"
-	| "futureExecutions"
-	| "scopedSettingsService"
-> & { /** @internal */ processWatchers?: ProcessWatcherServiceLike };
+export type DashboardRouteDeps = DashboardModelIssueDeps &
+	Pick<RouteDeps, "turnSummaries" | "skillCatalog">;
 
 /** Aggregate each accepted LLM turn once, including active, failed and retry branches. @internal */
 export function aggregateDashboardCosts(
@@ -71,7 +63,11 @@ export function buildDashboard(deps: DashboardRouteDeps): DashboardResponseBody 
 		.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 	const skills = deps.skillCatalog?.list().installedSkills ?? [];
 	const bundled = skills.filter((skill) => skill.registrationKind === "bundled").length;
-	const lifecycle = deps.processes.countOverviewByLifecycle({});
+	const lifecycle: Record<string, number> = Object.fromEntries(
+		deps.processes.countOverviewByLifecycle({}).map((row) => [row.lifecycleStatus, row.value]),
+	);
+	const processTotal = Object.values(lifecycle).reduce((sum, count) => sum + count, 0);
+	lifecycle.running = (lifecycle.active ?? 0) + (lifecycle.discovered ?? 0);
 	const statuses = ["running", "waiting", "error", "completed", "aborted"] as const;
 	return {
 		generatedAt: new Date().toISOString(),
@@ -83,17 +79,8 @@ export function buildDashboard(deps: DashboardRouteDeps): DashboardResponseBody 
 		},
 		skills: { total: skills.length, installed: skills.length - bundled, bundled },
 		processes: {
-			total: deps.processes.countOverview({ status: "all" }),
-			byStatus: statuses.map((status) => ({
-				status,
-				count: lifecycle
-					.filter((row) =>
-						status === "running"
-							? ["active", "discovered"].includes(row.lifecycleStatus)
-							: row.lifecycleStatus === status,
-					)
-					.reduce((sum, row) => sum + row.value, 0),
-			})),
+			total: processTotal,
+			byStatus: statuses.map((status) => ({ status, count: lifecycle[status] ?? 0 })),
 			byDefinition: deps.processes
 				.listOverviewProcessTypes({ status: "all" })
 				.map((row) => ({

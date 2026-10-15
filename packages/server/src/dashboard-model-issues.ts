@@ -174,37 +174,26 @@ export function buildDashboardModelIssues(
 					: `/processes/${encodeURIComponent(execution.instanceId ?? "")}`,
 		};
 		check(execution.modelSelection?.modelProfileId, source, execution.processId);
-		if (execution.kind === "launch") {
-			const parsed = parseFutureLaunchPayloadJson(execution.payloadJson);
-			if (parsed.ok) checkPersisted(parsed.value.launchPlan.processInput, source);
-			else
-				add(
-					"invalid_model_configuration",
-					execution.id,
-					"Scheduled launch configuration is invalid.",
-					source,
-				);
-		} else {
-			const parsed = parseFutureActionPayloadJson(execution.payloadJson);
-			if (parsed.ok) check(parsed.value.nextTurnModelProfileId, source, execution.processId);
-			else
-				add(
-					"invalid_model_configuration",
-					execution.id,
-					"Scheduled action configuration is invalid.",
-					source,
-				);
-		}
+		const parsed =
+			execution.kind === "launch"
+				? parseFutureLaunchPayloadJson(execution.payloadJson)
+				: parseFutureActionPayloadJson(execution.payloadJson);
+		if (!parsed.ok)
+			add(
+				"invalid_model_configuration",
+				execution.id,
+				`Scheduled ${execution.kind} configuration is invalid.`,
+				source,
+			);
+		else if ("launchPlan" in parsed.value)
+			checkPersisted(parsed.value.launchPlan.processInput, source);
+		else check(parsed.value.nextTurnModelProfileId, source, execution.processId);
 	}
-	return [...issues.values()]
-		.map((issue) => ({
-			...issue,
-			sources: issue.sources.sort((a, b) => a.label.localeCompare(b.label)),
-		}))
-		.sort(
-			(a, b) =>
-				(a.severity === b.severity ? 0 : a.severity === "error" ? -1 : 1) ||
-				a.message.localeCompare(b.message) ||
-				a.id.localeCompare(b.id),
-		);
+	for (const issue of issues.values()) issue.sources.sort((a, b) => a.label.localeCompare(b.label));
+	return [...issues.values()].sort(
+		(a, b) =>
+			(a.severity === b.severity ? 0 : a.severity === "error" ? -1 : 1) ||
+			a.message.localeCompare(b.message) ||
+			a.id.localeCompare(b.id),
+	);
 }

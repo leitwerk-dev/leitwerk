@@ -20,19 +20,9 @@ let grouping = $state<"status" | "definition">("status");
 let allModels = $state(false);
 let allIssues = $state(false);
 const data = $derived(snapshot.data);
-const definitions = $derived(
-	data ? [...data.definitions.items].sort((a, b) => a.name.localeCompare(b.name)) : [],
-);
-const watchers = $derived(
-	data ? [...data.watchers.items].sort((a, b) => a.name.localeCompare(b.name)) : [],
-);
-const rankedDefinitions = $derived(
-	data
-		? [...data.processes.byDefinition].sort(
-				(a, b) => b.count - a.count || a.name.localeCompare(b.name),
-			)
-		: [],
-);
+const definitions = $derived(data?.definitions.items ?? []);
+const watchers = $derived(data?.watchers.items ?? []);
+const rankedDefinitions = $derived(data?.processes.byDefinition ?? []);
 const processMaximum = $derived(Math.max(1, ...rankedDefinitions.map((item) => item.count)));
 const modelMaximum = $derived(
 	Math.max(0, ...(data?.costs.byModel.map((item) => item.costUsd) ?? [])),
