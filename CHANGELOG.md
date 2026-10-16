@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/leitwerk-dev/leitwerk/compare/v0.4.0...v0.4.0) (2026-10-16)
+
+
+### Features
+
+* **ui:** add landing dashboard ([212c1f6](https://github.com/leitwerk-dev/leitwerk/commit/212c1f6d5033119693ef2381775dd86fc70b0f23))
+
+
+### Bug Fixes
+
+* **build:** unblock stable release image builds ([019334c](https://github.com/leitwerk-dev/leitwerk/commit/019334c285c648eacb71d241541fa1c4f1c90cdd))
+* **deps:** pin docker/dockerfile docker tag to 4edf897 ([#207](https://github.com/leitwerk-dev/leitwerk/issues/207)) ([4f2f9d0](https://github.com/leitwerk-dev/leitwerk/commit/4f2f9d04471a3a5b49f53b9214748f288ac84018))
+
 ## [0.4.0](https://github.com/leitwerk-dev/leitwerk/compare/v0.3.1...v0.4.0) (2026-10-13)
 
 
