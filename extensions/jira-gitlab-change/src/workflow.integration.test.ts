@@ -103,7 +103,11 @@ async function fixture(changes = [true, true]) {
 	};
 	setupJiraIntegration(api, { profiles: () => ["team"], client: () => jira });
 	setupGitLabIntegration(api, { profiles: () => ["team"], client: () => client });
-	const { process } = createJiraGitLabChange({ docker: false });
+	const { process } = createJiraGitLabChange({
+		docker: false,
+		verificationOnMerge: true,
+		verificationStatus: "Ready for Verification",
+	});
 	const params: JiraGitLabParams = {
 		...repositories[0],
 		origin: "jira",
@@ -159,6 +163,15 @@ async function fixture(changes = [true, true]) {
 		gitlab,
 		client,
 		process,
+		params,
+		async prompt(turnId: string) {
+			const turn = required(process.turns.get(turnId)).definition;
+			if (turn.kind !== "llm") throw new Error("Expected LLM turn");
+			return turn.prompt({
+				...context(turnId),
+				turnResultMarkdownByProduct: { plan: "Approved plan" },
+			});
+		},
 		resumeLegacyLinks() {
 			jira.remoteLinks.clear();
 			const issue = required(jira.issues.get("501"));
@@ -188,6 +201,24 @@ async function fixture(changes = [true, true]) {
 
 // Two real repositories and retried publication need a bounded integration budget.
 describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
+	it.each([
+		"generate_plan",
+		"implement",
+	])("uses Markdown in future %s turns of a retained run without changing its snapshot", async (turnId) => {
+		const f = await fixture([false]);
+		const source = "h2. Requirements\n\n* *Check* {{user_name}}\n\n{noformat}*literal*{noformat}";
+		f.params.issue.fields.description = source;
+		f.params.prompt = `APP-1: Change repositories\n\n${source}`;
+		const captured = structuredClone(f.params);
+		const prompt = await f.prompt(turnId);
+		expect(prompt).toContain(
+			"APP-1: Change repositories\n\n## Requirements\n\n- **Check** `user_name`",
+		);
+		expect(prompt).toContain("```\n*literal*\n```");
+		expect(prompt).not.toContain("h2. Requirements");
+		expect(f.params).toEqual(captured);
+	});
+
 	it("keeps the ten-turn graph and links planning before work starts", async () => {
 		const f = await fixture();
 		expect([...f.process.turns.keys()]).toEqual([
@@ -209,6 +240,35 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 			{ object: { url: "https://leitwerk.test/app/processes/process" } },
 		]);
 		expect(await f.jira.listComments("501")).toEqual([]);
+	});
+	it("captures current question policy at planning preparation and retains it for recovery", async () => {
+		const f = await fixture([false]);
+		const turn = required(f.process.turns.get("generate_plan")).definition;
+		if (turn.kind !== "llm") throw new Error("Expected planning");
+		const ctx = createTestWorkerProcessContext({ params: f.params, state: {} });
+		const issue = required(f.jira.issues.get("501"));
+		issue.fields.labels.push("leitwerk-skip-plan-decision");
+		const prepared = await f.plan();
+		expect(prepared).toMatchObject({ skipPlanDecision: true });
+		expect(turn.resolveAskQuestions?.({ ...ctx, prepared })).toBe(false);
+		issue.fields.labels = ["use-leitwerk"];
+		expect(turn.resolveAskQuestions?.({ ...ctx, prepared })).toBe(false);
+		const refreshed = await f.plan();
+		expect(turn.resolveAskQuestions?.({ ...ctx, prepared: refreshed })).toBe(true);
+	});
+	it("keeps questions available when the planning label read is unavailable", async () => {
+		const f = await fixture([false]);
+		vi.spyOn(f.jira, "getIssue").mockRejectedValueOnce(new Error("Jira unavailable"));
+		const prepared = await f.plan();
+		const turn = required(f.process.turns.get("generate_plan")).definition;
+		if (turn.kind !== "llm") throw new Error("Expected planning");
+		expect(prepared).toMatchObject({ skipPlanDecision: false });
+		expect(
+			turn.resolveAskQuestions?.({
+				...createTestWorkerProcessContext({ params: f.params, state: {} }),
+				prepared,
+			}),
+		).toBe(true);
 	});
 	it("stays In Progress after partial publication, then links all MRs and enters review on retry", async () => {
 		const f = await fixture();
@@ -268,10 +328,8 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 	it("retries a failed review transition without duplicating MRs or links", async () => {
 		const f = await fixture();
 		await f.plan();
-		const review = required(
-			f.jira.transitions.find((transition) => transition.to.name === "In Review"),
-		);
-		f.jira.transitions = f.jira.transitions.filter((transition) => transition !== review);
+		const review = required(f.jira.transitions.find((t) => t.to.name === "In Review"));
+		f.jira.transitions = f.jira.transitions.filter((t) => t !== review);
 		await expect(f.deliver()).rejects.toThrow("In Review");
 		expect(await f.status()).toBe("In Progress");
 		f.jira.transitions.push(review);
@@ -279,6 +337,62 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 		expect(await f.status()).toBe("In Review");
 		expect(f.gitlab.state.mrs).toHaveLength(2);
 		expect(await f.jira.listRemoteLinks("501")).toHaveLength(3);
+	});
+	it.each([
+		{ changes: [true, true] },
+		{ changes: [true, false] },
+	])("enters verification only after all created MRs merge (changes: $changes)", async ({
+		changes,
+	}) => {
+		const f = await fixture(changes);
+		await f.plan();
+		await f.deliver();
+		const transition = vi.spyOn(f.jira, "transitionIssue");
+		if (f.gitlab.state.mrs.length > 1) {
+			f.gitlab.state.mrs[0].state = "merged";
+			expect((await f.deliver()).outcome).toBe("awaiting");
+			expect(await f.status()).toBe("In Review");
+			expect((await f.jira.getIssue("501")).fields.labels).toEqual(["use-leitwerk"]);
+		}
+		for (const mr of f.gitlab.state.mrs) mr.state = "merged";
+		expect((await f.deliver()).outcome).toBe("completed");
+		expect(await f.status()).toBe("Ready for Verification");
+		expect((await f.jira.getIssue("501")).fields.labels).toEqual(["leitwerk-done"]);
+		await f.deliver();
+		await f.plan();
+		expect(await f.status()).toBe("Ready for Verification");
+		expect(transition).toHaveBeenCalledTimes(1);
+		expect(f.gitlab.state.mrs).toHaveLength(changes.filter(Boolean).length);
+		expect(await f.jira.listRemoteLinks("501")).toHaveLength(f.gitlab.state.mrs.length + 1);
+	});
+	it("keeps partial completion In Review", async () => {
+		const f = await fixture();
+		await f.plan();
+		await f.deliver();
+		f.gitlab.state.mrs[0].state = "merged";
+		f.gitlab.state.mrs[1].state = "closed";
+		expect((await f.deliver()).outcome).toBe("completed");
+		expect(await f.status()).toBe("In Review");
+		expect((await f.jira.getIssue("501")).fields.labels).toEqual([]);
+	});
+	it("keeps completion labels pending until verification can be retried", async () => {
+		const f = await fixture([true]);
+		await f.plan();
+		await f.deliver();
+		f.gitlab.state.mrs[0].state = "merged";
+		const verification = required(
+			f.jira.transitions.find((t) => t.to.name === "Ready for Verification"),
+		);
+		f.jira.transitions = f.jira.transitions.filter((t) => t !== verification);
+		await expect(f.deliver()).rejects.toThrow("Ready for Verification");
+		expect(await f.status()).toBe("In Review");
+		expect((await f.jira.getIssue("501")).fields.labels).toEqual(["use-leitwerk"]);
+		f.jira.transitions.push(verification);
+		expect((await f.deliver()).outcome).toBe("completed");
+		expect(await f.status()).toBe("Ready for Verification");
+		expect((await f.jira.getIssue("501")).fields.labels).toEqual(["leitwerk-done"]);
+		expect(f.gitlab.state.mrs).toHaveLength(1);
+		expect(await f.jira.listRemoteLinks("501")).toHaveLength(2);
 	});
 	it.each([
 		"merged",
@@ -295,6 +409,7 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 		expect((await f.jira.getIssue("501")).fields.labels).toEqual(
 			outcome === "merged" ? ["leitwerk-done"] : [],
 		);
+		expect(await f.status()).toBe(outcome === "merged" ? "Ready for Verification" : "In Review");
 		expect(await f.jira.listComments("501")).toEqual([]);
 	});
 });

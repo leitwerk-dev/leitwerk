@@ -5,7 +5,11 @@ import {
 	serializeMessage,
 	WORKER_IPC_CONNECT_TOKEN_ENV,
 } from "@leitwerk-dev/worker-protocol";
-import type { ProcessVolume, WorkerRunner } from "@leitwerk-dev/worker-runners/types";
+import type {
+	ProcessVolume,
+	WorkerExitInfo,
+	WorkerRunner,
+} from "@leitwerk-dev/worker-runners/types";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { getDefaultConfig } from "../config/config-loader.js";
 import { closeDatabase } from "../db/database.js";
@@ -252,5 +256,97 @@ describe("createWorkerSupervisor", () => {
 		);
 		expect(t.ensure).not.toHaveBeenCalled();
 		expect(t.launch).not.toHaveBeenCalled();
+	});
+});
+
+describe("runtime exit after graceful cleanup", () => {
+	it.each([
+		{ state: "cleanup", terminal: false, owning: true },
+		{ state: "draining", terminal: false, owning: true },
+		{ state: "cleanup", terminal: true, owning: true },
+		{ state: "cleanup", terminal: false, owning: false },
+	] as const)("reconciles exit after $state with terminal=$terminal owning=$owning", async ({
+		state,
+		terminal,
+		owning,
+	}) => {
+		const t = storageFixture();
+		let exit: ((info: WorkerExitInfo) => void) | undefined;
+		t.launch.mockImplementation(async ({ instanceId, workerId }) => ({
+			instanceId,
+			workerId,
+			unitId: "worker-pod",
+			onExit(listener) {
+				exit = listener;
+			},
+		}));
+		await t.supervisor.spawnWorker(t.process.id);
+		const input = t.launch.mock.calls[0]?.[0];
+		const lease = t.deps.leases.getByInstance(t.process.id);
+		if (!input || !lease?.turnStartRecordId) throw new Error("Missing start");
+		t.deps.leases.compareAndSetBootstrapReceipt(lease.id, {
+			kind: "automatic",
+			startRecordId: lease.turnStartRecordId,
+			workerLeaseId: lease.id,
+			receiptEpoch: "epoch",
+			readyAt: new Date().toISOString(),
+		});
+		class Socket extends EventEmitter {
+			readyState = 1;
+			send() {}
+			close() {
+				this.readyState = 3;
+				this.emit("close");
+			}
+		}
+		const socket = new Socket();
+		expect(
+			t.webSocketIpc.bindSocket({ instanceId: t.process.id, workerId: input.workerId, socket }).ok,
+		).toBe(true);
+		socket.emit("message", input.env[WORKER_IPC_CONNECT_TOKEN_ENV]);
+		socket.emit(
+			"message",
+			serializeMessage(
+				createIpcMessage({
+					type: "worker.turn_started",
+					instanceId: t.process.id,
+					workerId: input.workerId,
+					messageId: crypto.randomUUID(),
+					payload: { startRecordId: lease.turnStartRecordId, proposedTurnRecordId: "turn-storage" },
+				}),
+			),
+		);
+		await vi.waitFor(() =>
+			expect(t.deps.turnRecords.getById("turn-storage")?.status).toBe("running"),
+		);
+		if (terminal)
+			t.deps.turnRecords.update("turn-storage", {
+				status: "succeeded",
+				endedAt: new Date().toISOString(),
+			});
+		const otherLease = !owning
+			? t.deps.leases.create({
+					instanceId: t.process.id,
+					workerId: "other-worker",
+					state: "exited",
+				})
+			: null;
+		if (otherLease)
+			t.deps.turnRecords.update("turn-storage", { acceptedWorkerLeaseId: otherLease.id });
+		t.deps.leases.update(lease.id, { state });
+		exit?.({ exitCode: 0 });
+		await vi.waitFor(() => expect(t.deps.leases.getById(lease.id)?.state).toBe("exited"));
+		await vi.waitFor(() =>
+			expect(t.deps.processes.getById(t.process.id)?.lifecycleStatus).toBe(
+				terminal || !owning ? "active" : "error",
+			),
+		);
+		expect(t.deps.turnRecords.getById("turn-storage")).toMatchObject({
+			status: terminal ? "succeeded" : owning ? "failed" : "running",
+			acceptedWorkerLeaseId: owning ? lease.id : otherLease?.id,
+		});
+		if (!terminal && owning)
+			expect(t.deps.turnRecords.getById("turn-storage")?.errorClass).toBe("infrastructure");
+		expect(t.deps.processes.getById(t.process.id)?.selectedTurnId).toBe("start");
 	});
 });

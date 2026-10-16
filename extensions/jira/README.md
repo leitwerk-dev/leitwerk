@@ -89,7 +89,7 @@ or its pinned merge request. MR link titles use the repository name and MR numbe
 Process URLs use `server.base_url`; stable global IDs
 reconcile links after lost responses and restarts. `jira_transition_source_issue`
 discovers an available transition by destination status name for In Progress or
-In Review. Missing or ambiguous transitions and permission failures fail the owning
+In Review, Ready for Verification or In Verification. Missing or ambiguous transitions and permission failures fail the owning
 turn for generic retry. Replays preserve subsequent human status edits, and planning
 never moves In Review back to In Progress or reopens Done tickets.
 
