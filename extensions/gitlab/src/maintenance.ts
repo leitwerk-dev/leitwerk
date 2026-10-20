@@ -127,7 +127,7 @@ export interface GitLabMaintainedProcess<
 		ctx: GitLabMaintenanceContext<P, S>,
 		binding: GitLabMaintainedBinding,
 	): Promise<boolean>;
-	/** Optional bounded infrastructure retry; repair budgets remain process policy. @public */
+	/** @deprecated Startup recovery uses the server's fixed budget. @public */
 	retry?: GitLabMaintenanceRetry;
 	/** Pure repair policy; shared maintenance supplies settled feedback and observations. @public */
 	observe(
@@ -170,7 +170,7 @@ export interface GitLabMaintainedProcess<
 }
 /** @public */
 export interface GitLabMaintenanceRetry {
-	/** Maximum automatic retries per failed business execution. @public */
+	/** @deprecated Ignored; the server allows three unaccepted starts per episode. @public */
 	maxAttempts: number;
 }
 /** Durable activation and observation, kept separately from worker-owned outcome snapshots. @public */
@@ -633,37 +633,11 @@ export function createGitLabMaintenance(
 						if (
 							fresh &&
 							eligible &&
-							policy.retry &&
 							fresh.lifecycleStatus === "error" &&
-							fresh.currentExecution
+							fresh.currentExecution?.kind === "worker_start"
 						) {
-							const retry = asUnknownRecord(fresh.metadata?.gitlabMaintenanceRetry) ?? {};
-							const attempts = Number(retry.attempts ?? 0);
-							if (retry.executionId !== fresh.currentExecution.id) {
-								await observe(fresh, {
-									metadata: {
-										gitlabMaintenanceRetry: {
-											attempts,
-											executionId: fresh.currentExecution.id,
-											nextAt: now() + Math.min(300_000, 30_000 * 2 ** attempts),
-											attempted: false,
-										},
-									},
-									preserveUpdatedAt: true,
-								});
-							} else if (
-								!retry.attempted &&
-								attempts < policy.retry.maxAttempts &&
-								Number(retry.nextAt) <= now()
-							) {
-								await service.assertOwnership(fresh.id, binding.projectKey, ctx.signal);
-								const saved = await observe(fresh, {
-									metadata: {
-										gitlabMaintenanceRetry: { ...retry, attempts: attempts + 1, attempted: true },
-									},
-								});
-								if (saved.ok) await deps.commands.retryProcess(fresh.id);
-							}
+							await service.assertOwnership(fresh.id, binding.projectKey, ctx.signal);
+							await deps.commands.retryStartupAutomatically(fresh.id, fresh.currentExecution.id);
 						} else if (
 							fresh?.lifecycleStatus === "waiting" &&
 							!fresh.currentExecution &&

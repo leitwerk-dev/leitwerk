@@ -62,7 +62,7 @@ extensions:
 - `registerGitLabMaintainedProcess()` registers a typed MR maintenance policy through
   the capability registry. One server service observes all registered processes,
   including running turns and operator waits. The process supplies its repair
-  destinations, state adapters, completion policy and optional retry budget.
+  destinations, state adapters and completion policy.
 - `gitlabRepositoryCredentials(profile, projects)` derives internal credential references. The core authorizes their HTTPS origin and exact repository path against the process projects.
 - `selectGitLabProjects()` expands exact includes and groups, including subgroups, then applies exclusions. Includes form a union; stable project IDs remove duplicates. An explicit include or `all_accessible: true` is required.
 - `observeMergeRequest()` selects the newest pipeline associated with the current MR source revision. Synthetic merge commits must contain that head as a parent. With no matching MR pipeline, it falls back to the current source branch's push pipeline. A newer pending result supersedes older terminal results. The observation includes GitLab's `has_conflicts`, `merge_status` and `detailed_merge_status`, plus `targetHead` read from the current target branch (not the historical diff base). Closed MRs do not require branch or pipeline reads.
@@ -137,8 +137,15 @@ remaining MRs retain their staged work and repair budgets.
 `messages` supplies retry-safe discussion replies or comments. `settled` advances
 business acknowledgement state after those writes succeed. `completion` determines
 the terminal lifecycle without remote writes. `complete` delivers process-specific
-terminal writes and retries them after the process ends. Optional `retry.maxAttempts`
-bounds generic infrastructure retries without consuming the process's repair budget.
+terminal writes and retries them after the process ends.
+
+Eligible, owned bindings request server-managed recovery for failed unaccepted
+worker starts. The server allows three starts per episode, with 30/60 second
+retry delays for known transient failures. Configuration errors, OOMs and unknown
+failures require manual recovery. Accepted failed turns are never retried by
+maintenance. Recovery does not consume the process's business repair budget.
+The deprecated `retry.maxAttempts` setting is ignored; maintenance cannot override
+the server's startup budget.
 
 Taking responsibility adds `leitwerk-active`. Green CI keeps maintenance active for
 later feedback. Removing the label ends that MR's activation and leaves the MR open.
