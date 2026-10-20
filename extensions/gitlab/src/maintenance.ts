@@ -52,15 +52,6 @@ export interface GitLabMaintenanceEvent<S> {
 	state: S;
 }
 /** @public */
-export interface GitLabMaintenanceDestinations {
-	/** @public */
-	feedback: string;
-	/** @public */
-	conflict: string;
-	/** @public */
-	ci: string;
-}
-/** @public */
 export interface GitLabMaintainedBinding {
 	/** Process repository key. @public */ projectKey: string;
 	/** @public */ profile: string;
@@ -92,7 +83,7 @@ export interface GitLabMaintenanceContext<P, S> {
 /** @public */
 export interface GitLabMaintenanceDecision<S> {
 	/** @public */ state: S;
-	/** Destination key, or an additional recovery action declared by the process. @public */ action?: string;
+	/** External action identity declared by the process. @public */ action?: string;
 	/** Process-specific event fields supplied to its external edge. @public */ event?: Record<
 		string,
 		unknown
@@ -113,7 +104,6 @@ export interface GitLabMaintainedProcess<
 	/** @public */ processId: string;
 	/** @public */ paramsCodec: Codec<P>;
 	/** @public */ stateCodec: Codec<S>;
-	/** External edge identities for business work. @public */ destinations: GitLabMaintenanceDestinations;
 	/** Defaults to gitlabMaintenanceSource. @public */ sourceKind?: string;
 	/** Defaults to each project's GitLab metadata. @public */ bindings?(
 		ctx: GitLabMaintenanceContext<P, S>,
@@ -609,13 +599,11 @@ export function createGitLabMaintenance(
 							fresh.lifecycleStatus === "waiting" &&
 							unchangedWork(fresh, ctx.process)
 						) {
-							const destination =
-								policy.destinations[decision.action as keyof typeof policy.destinations] ??
-								decision.action;
 							const armed = deps.externalSources
 								.listArmed(policy.sourceKind ?? GITLAB_MAINTAINED_KIND)
 								.find(
-									(item) => item.instanceId === process.id && item.externalActionId === destination,
+									(item) =>
+										item.instanceId === process.id && item.externalActionId === decision.action,
 								);
 							if (armed) {
 								await service.assertOwnership(fresh.id, binding.projectKey, ctx.signal);

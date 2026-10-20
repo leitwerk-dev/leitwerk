@@ -66,6 +66,36 @@ import SkillSelector from "./SkillSelector.svelte";
 
 type LauncherFieldInputValue = boolean | string;
 
+class LatestRequest {
+	loading = $state(false);
+	error = $state<string | null>(null);
+	private generation = 0;
+	private fallback: string;
+
+	constructor(fallback: string, loading = false) {
+		this.fallback = fallback;
+		this.loading = loading;
+	}
+
+	invalidate() {
+		this.generation++;
+	}
+
+	async run(work: (isCurrent: () => boolean) => Promise<void>, loading = true) {
+		const generation = ++this.generation;
+		this.loading = loading;
+		this.error = null;
+		try {
+			await work(() => generation === this.generation);
+		} catch (error) {
+			if (generation === this.generation)
+				this.error = error instanceof Error ? error.message : this.fallback;
+		} finally {
+			if (generation === this.generation) this.loading = false;
+		}
+	}
+}
+
 interface Props {
 	launcher: UiLauncherSummary;
 	initialRelaunchDraft?: ProcessRetryConfig | null;
@@ -103,17 +133,14 @@ let defaultModelProfileId = $state("");
 let turnModelProfileIds = $state<Record<string, string>>({});
 let advancedModelConfigOpen = $state(false);
 let turnModelProfileIdsBeforeEditing = $state<Record<string, string> | null>(null);
-let loadingDefaults = $state(true);
-let defaultsError = $state<string | null>(null);
+const defaultsRequest = new LatestRequest("We couldn't load the starter values", true);
 let defaultsWarnings = $state<LauncherValidationError[]>([]);
-let optionsLoading = $state(false);
-let optionsError = $state<string | null>(null);
+const optionsRequest = new LatestRequest("We couldn't refresh the available options");
 let modelConfigPreview = $state<LauncherModelConfigPreview | null>(null);
 let recommendedDefaultModelPreview = $state<LauncherModelConfigPreview["defaultModel"] | null>(
 	null,
 );
-let modelConfigPreviewLoading = $state(false);
-let modelConfigPreviewError = $state<string | null>(null);
+const modelPreviewRequest = new LatestRequest("We couldn't refresh the model preview");
 let submitBusy = $state(false);
 let activeLaunchRunId = $state<string | null>(null);
 let submitError = $state<string | null>(null);
@@ -137,9 +164,6 @@ let cronExpression = $state("");
 let cronPreviewAt = $state<string | null>(null);
 let cronPreviewError = $state<string | null>(null);
 let cronPreviewBusy = $state(false);
-let defaultsLoadToken = 0;
-let optionsLoadToken = 0;
-let modelConfigPreviewLoadToken = 0;
 $effect(() =>
 	onSettingsChanged(() => {
 		settingsRevision += 1;
@@ -212,7 +236,10 @@ const validationKey = $derived(
 	JSON.stringify({ launcherId: launcher.id, request: validationRequest, settingsRevision }),
 );
 const validationPending = $derived(
-	loadingDefaults || optionsLoading || validationLoading || validatedKey !== validationKey,
+	defaultsRequest.loading ||
+		optionsRequest.loading ||
+		validationLoading ||
+		validatedKey !== validationKey,
 );
 const submitDisabled = $derived(
 	submitBusy ||
@@ -249,7 +276,7 @@ $effect(() => {
 	const request = validationRequest;
 	const launcherId = launcher.id;
 	validationRevision;
-	if (loadingDefaults || defaultsError || optionsLoading) return;
+	if (defaultsRequest.loading || defaultsRequest.error || optionsRequest.loading) return;
 	const controller = new AbortController();
 	validationLoading = true;
 	validationError = null;
@@ -332,10 +359,7 @@ function clearDeferredDependentRefresh() {
 }
 
 function flushDeferredDependentRefresh() {
-	if (!deferredDependentRefreshValues) {
-		clearDeferredDependentRefresh();
-		return;
-	}
+	if (!deferredDependentRefreshValues) return;
 	const pendingValues = deferredDependentRefreshValues;
 	clearDeferredDependentRefresh();
 	refreshDependentLauncherState(pendingValues);
@@ -554,55 +578,35 @@ async function loadModelConfigPreview(
 	if (!hasModelConfigFields()) {
 		modelConfigPreview = null;
 		recommendedDefaultModelPreview = null;
-		modelConfigPreviewLoading = false;
-		modelConfigPreviewError = null;
+		modelPreviewRequest.loading = false;
+		modelPreviewRequest.error = null;
 		return;
 	}
 
-	const token = ++modelConfigPreviewLoadToken;
-	modelConfigPreviewLoading = modelConfigPreview === null;
-	modelConfigPreviewError = null;
-	try {
+	return modelPreviewRequest.run(async (isCurrent) => {
 		const nextPreview = await fetchLauncherModelConfigPreview(
 			launcher.id,
 			buildLaunchInputFromValues(values),
 			previewModelConfig,
 		);
-		if (token !== modelConfigPreviewLoadToken) {
-			return;
-		}
+		if (!isCurrent()) return;
 		modelConfigPreview = nextPreview;
 		if ((previewModelConfig.defaultModelProfileId ?? "").trim() === "") {
 			recommendedDefaultModelPreview = nextPreview.defaultModel;
 		}
-	} catch (error) {
-		if (token !== modelConfigPreviewLoadToken) {
-			return;
-		}
-		modelConfigPreviewError =
-			error instanceof Error ? error.message : "We couldn't refresh the model preview";
-	} finally {
-		if (token === modelConfigPreviewLoadToken) {
-			modelConfigPreviewLoading = false;
-		}
-	}
+	}, modelConfigPreview === null);
 }
 
 async function loadOptions(values: Record<string, LauncherFieldInputValue>) {
 	if (!hasSelectableFields()) {
 		fieldOptionsById = {};
-		optionsError = null;
+		optionsRequest.error = null;
 		return;
 	}
 
-	const token = ++optionsLoadToken;
-	optionsLoading = true;
-	optionsError = null;
-	try {
+	return optionsRequest.run(async (isCurrent) => {
 		const options = await fetchLauncherOptions(launcher.id, buildLaunchInputFromValues(values));
-		if (token !== optionsLoadToken) {
-			return;
-		}
+		if (!isCurrent()) return;
 		fieldOptionsById = options;
 		for (const [id, choices] of Object.entries(options)) {
 			const known = new Map(
@@ -621,15 +625,7 @@ async function loadOptions(values: Record<string, LauncherFieldInputValue>) {
 		fieldInputValues = reconciled.values;
 		launcherSelections = reconciled.selections;
 		if (changed) void loadModelConfigPreview(fieldInputValues, buildLaunchModelConfig());
-	} catch (error) {
-		if (token !== optionsLoadToken) {
-			return;
-		}
-		optionsError =
-			error instanceof Error ? error.message : "We couldn't refresh the available options";
-	} finally {
-		if (token === optionsLoadToken) optionsLoading = false;
-	}
+	});
 }
 
 function refreshDependentLauncherState(values: Record<string, LauncherFieldInputValue>) {
@@ -650,10 +646,8 @@ function scheduleDependentLauncherRefresh(
 }
 
 async function loadDefaults() {
-	const token = ++defaultsLoadToken;
 	clearDeferredDependentRefresh();
-	loadingDefaults = true;
-	optionsLoading = false;
+	optionsRequest.loading = false;
 	validatedKey = null;
 	validationError = null;
 	validationDelay = 0;
@@ -662,10 +656,9 @@ async function loadDefaults() {
 	revealAllErrors = false;
 	formErrors = [];
 	fieldErrors = {};
-	defaultsError = null;
 	defaultsWarnings = [];
-	optionsError = null;
-	modelConfigPreviewError = null;
+	optionsRequest.error = null;
+	modelPreviewRequest.error = null;
 	clearSubmissionState();
 	titleInputValue = "";
 	selectedSkillIds = [];
@@ -675,7 +668,7 @@ async function loadDefaults() {
 	launcherSelections = {};
 	recentFieldValuesById = loadRecentFieldValuesFromStorage();
 	modelConfigPreview = null;
-	modelConfigPreviewLoading = false;
+	modelPreviewRequest.loading = false;
 	defaultModelProfileId = "";
 	turnModelProfileIds = createTurnModelProfileIds({});
 	advancedModelConfigOpen = false;
@@ -688,11 +681,9 @@ async function loadDefaults() {
 	cronPreviewAt = null;
 	cronPreviewError = null;
 
-	try {
+	return defaultsRequest.run(async (isCurrent) => {
 		const { defaults, title, modelConfig, warnings } = await fetchLauncherDefaults(launcher.id);
-		if (token !== defaultsLoadToken) {
-			return;
-		}
+		if (!isCurrent()) return;
 		const relaunchDraft = initialRelaunchDraft;
 		const draftValues = relaunchDraft?.launcherInput ?? initialValues;
 		const mergedDefaults = draftValues ? { ...defaults, ...draftValues } : defaults;
@@ -710,9 +701,7 @@ async function loadDefaults() {
 		selectedSkillIds = [...(relaunchDraft?.skillIds ?? initialSkillIds ?? [])];
 		fieldInputValues = nextValues;
 		recentFieldValuesById = await loadRecentFieldValues();
-		if (token !== defaultsLoadToken) {
-			return;
-		}
+		if (!isCurrent()) return;
 		defaultModelProfileId = createDefaultModelProfileId(mergedModelConfig);
 		turnModelProfileIds = createTurnModelProfileIds(mergedModelConfig);
 		advancedModelConfigOpen = shouldAutoOpenAdvancedModelConfig(mergedModelConfig);
@@ -737,16 +726,7 @@ async function loadDefaults() {
 				: "";
 		void loadModelConfigPreview(nextValues, mergedModelConfig);
 		await loadOptions(nextValues);
-	} catch (error) {
-		if (token !== defaultsLoadToken) {
-			return;
-		}
-		defaultsError = error instanceof Error ? error.message : "We couldn't load the starter values";
-	} finally {
-		if (token === defaultsLoadToken) {
-			loadingDefaults = false;
-		}
-	}
+	});
 }
 
 $effect(() => {
@@ -761,9 +741,9 @@ $effect(() => {
 	void loadDefaults();
 	return () => {
 		clearDeferredDependentRefresh();
-		defaultsLoadToken += 1;
-		optionsLoadToken += 1;
-		modelConfigPreviewLoadToken += 1;
+		defaultsRequest.invalidate();
+		optionsRequest.invalidate();
+		modelPreviewRequest.invalidate();
 		cronPreviewToken += 1;
 	};
 });
@@ -1123,20 +1103,7 @@ async function handleSubmit(event: SubmitEvent) {
 	submitBusy = true;
 
 	try {
-		const schedule = buildScheduleConfig();
-		if (schedule.mode === "once" && !schedule.runAt) {
-			submitError = "Choose a future date and time.";
-			focusLauncherField("schedule-date");
-			return;
-		}
-		if (schedule.mode === "cron" && !cronExpression.trim()) {
-			submitError = "Enter a cron expression.";
-			focusLauncherField("schedule-cron");
-			return;
-		}
-		const title = buildSubmittedTitle();
-		const launcherInput = buildLaunchInput();
-		const modelConfig = buildLaunchModelConfig();
+		const { title, launcherInput, modelConfig, schedule, skillIds } = validationRequest;
 		const submit = editingFutureLaunch ? updateScheduledLaunch : launchLauncher;
 		const result = await submit(
 			editingFutureLaunch?.id ?? launcher.id,
@@ -1144,7 +1111,7 @@ async function handleSubmit(event: SubmitEvent) {
 			launcherInput,
 			modelConfig,
 			schedule,
-			selectedSkillIds,
+			skillIds,
 		);
 		switch (result.kind) {
 			case "launch_started":
@@ -1188,14 +1155,14 @@ async function handleSubmit(event: SubmitEvent) {
 	{/if}
 {/snippet}
 
-<div class="launcher-form" data-launcher-id={launcher.id} aria-busy={submitBusy || loadingDefaults}>
-	{#if loadingDefaults}
+<div class="launcher-form" data-launcher-id={launcher.id} aria-busy={submitBusy || defaultsRequest.loading}>
+	{#if defaultsRequest.loading}
 		<p class="state-msg">Loading the starter values for this process…</p>
-	{:else if defaultsError}
+	{:else if defaultsRequest.error}
 		<div class="state-block error" role="status">
 			<div class="state-copy">
 				<p class="state-title">We couldn't prepare this form yet.</p>
-				<p class="state-msg error">{defaultsError}</p>
+				<p class="state-msg error">{defaultsRequest.error}</p>
 			</div>
 			<button
 				type="button"
@@ -1207,12 +1174,12 @@ async function handleSubmit(event: SubmitEvent) {
 			</button>
 		</div>
 	{:else}
-		{#if optionsError}
+		{#if optionsRequest.error}
 			<p class="state-msg error refresh-error" role="status">
 				We couldn't refresh the latest options, so we're showing the last set we loaded.
 			</p>
 		{/if}
-		{#if modelConfigPreviewError}
+		{#if modelPreviewRequest.error}
 			<p class="state-msg error refresh-error" role="status">
 				We couldn't refresh the current model preview, so we're showing the last preview we loaded.
 			</p>
@@ -1376,7 +1343,7 @@ async function handleSubmit(event: SubmitEvent) {
 								{/each}
 							</select>
 						</div>
-						{#if modelConfigPreviewLoading && modelConfigPreview === null}
+						{#if modelPreviewRequest.loading && modelConfigPreview === null}
 							<p class="field-description model-config-status-note">Refreshing the current recommendation…</p>
 						{/if}
 					</div>
@@ -1388,7 +1355,7 @@ async function handleSubmit(event: SubmitEvent) {
 							data-summary-mode={modelSummaryView.mode}
 							data-customization-mode={modelCustomizationState.mode}
 							data-customization-count={modelCustomizationState.totalCustomizedChoices}
-							data-preview-loading={modelConfigPreviewLoading}
+							data-preview-loading={modelPreviewRequest.loading}
 							data-editing={advancedModelConfigOpen ? "true" : "false"}
 							data-override-count={modelCustomizationState.turnOverrideCount}
 							role="status"

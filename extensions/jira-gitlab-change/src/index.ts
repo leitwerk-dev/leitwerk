@@ -26,7 +26,7 @@ import {
 	type LeitwerkExtensionModule,
 	scopedSettingsCapability,
 } from "@leitwerk-dev/process-sdk";
-import { wikiInstructions } from "@leitwerk-dev/wiki";
+import { wikiInstructions, wikiToolNames } from "@leitwerk-dev/wiki";
 import { topicWikiCapability } from "@leitwerk-dev/wiki/integration";
 import {
 	createJiraGitLabLauncher,
@@ -48,8 +48,11 @@ export function createJiraGitLabChange(options: {
 	docker: boolean;
 	/** Opt into the supported Jira verification transition after all changed MRs merge. @internal */
 	verificationOnMerge?: boolean;
+	/** Destination for enabled completion transitions. @internal */
+	verificationStatus?: "In Verification" | "Ready for Verification";
 }) {
 	let verificationOnMerge = options.verificationOnMerge ?? false;
+	let verificationStatus = options.verificationStatus ?? "In Verification";
 	const launcher = createJiraGitLabLauncher();
 	const adapter = createGitLabPublicationAdapter<JiraGitLabParams>([], namespace);
 	adapter.ensureRequest = async (ctx) => {
@@ -98,7 +101,7 @@ export function createJiraGitLabChange(options: {
 		if (done && verificationOnMerge)
 			await ctx.callIntegrationTool("jira_transition_source_issue", {
 				projectKey,
-				targetStatus: "In Verification",
+				targetStatus: verificationStatus,
 			});
 		if (!cancelled)
 			await ctx.callIntegrationTool("jira_finalize_source_issue", {
@@ -148,12 +151,14 @@ export function createJiraGitLabChange(options: {
 				mode: "plan_bypass",
 			})),
 		},
-		repositoryCredentials: ({ params }) =>
-			params.repositories.flatMap((repo) =>
+		repositoryCredentials: ({ params }) => {
+			if (params.startup) throw new Error("Jira repository bindings are not resolved");
+			return params.repositories.flatMap((repo) =>
 				repo.sshProfile
 					? [{ projectKey: repo.key, kind: "git_ssh" as const, credentialRef: repo.sshProfile }]
 					: gitlabRepositoryCredentials(repo.gitlabProfile, [repo]),
-			),
+			);
+		},
 	});
 	process.runtime = { ...process.runtime, developmentTools: true, docker: options.docker };
 	const plan = process.turns.get("generate_plan")?.definition;
@@ -220,9 +225,7 @@ export function createJiraGitLabChange(options: {
 			...(originalTools?.(params, state) ?? turn.integrationTools ?? []),
 			"jira_get_source_issue",
 			"jira_get_issue",
-			...(params.wikiTopicId
-				? ["wiki_index", "wiki_read", "wiki_share", "wiki_edit", "wiki_delete", "wiki_delete_group"]
-				: []),
+			...(params.wikiTopicId ? wikiToolNames : []),
 		];
 		turn.prompt = async (ctx) =>
 			`${await originalPrompt({ ...ctx, params: { ...ctx.params, prompt: jiraChangePrompt(ctx.params.issue) } })}${ctx.params.wikiTopicId ? `\n\n${wikiInstructions}\nWiki: /wiki/${ctx.params.wikiTopicId}` : ""}`;
@@ -242,6 +245,16 @@ export function createJiraGitLabChange(options: {
 			if (verification !== undefined && typeof verification !== "boolean")
 				throw new Error("Jira verification_on_merge must be a boolean");
 			verificationOnMerge = verification ?? options.verificationOnMerge ?? false;
+			const status = asUnknownRecord(config)?.verification_status;
+			if (
+				status !== undefined &&
+				status !== "In Verification" &&
+				status !== "Ready for Verification"
+			)
+				throw new Error(
+					"Jira verification_status must be In Verification or Ready for Verification",
+				);
+			verificationStatus = status ?? options.verificationStatus ?? "In Verification";
 			adapter.maintenance?.register(api, process);
 			const jira = api.require(jiraIntegration),
 				gitlab = api.require(gitlabIntegration),

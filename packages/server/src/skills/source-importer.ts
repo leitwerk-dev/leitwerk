@@ -10,6 +10,7 @@ import {
 } from "@leitwerk-dev/worker-protocol";
 import type { SkillRepositoryConfig } from "../config/config-types.js";
 import { ResourceCollector, SKILL_RESOURCE_OWNER } from "../pi-resources/resource-collector.js";
+import { skillMetadata } from "./skill-frontmatter.js";
 import { SAFE_SKILL_ID_PATTERN } from "./skill-id.js";
 
 const execFileAsync = promisify(execFile);
@@ -81,16 +82,6 @@ async function checkoutGitSource(
 	return { root, commit: stdout.trim() };
 }
 
-function metadataValue(markdown: string, key: string): string | null {
-	if (!markdown.startsWith("---")) return null;
-	const end = markdown.indexOf("\n---", 3);
-	if (end < 0) return null;
-	const match = markdown
-		.slice(3, end)
-		.match(new RegExp(`^${key}:\\s*["']?([^\\n"']+)["']?\\s*$`, "m"));
-	return match?.[1]?.trim() || null;
-}
-
 function fallbackLabel(id: string): string {
 	return id
 		.split(/[-_.]+/)
@@ -152,13 +143,13 @@ export async function importSkillRepository(
 		const skills: ImportedRepositorySkill[] = [];
 		for (const skillRoot of skillRoots) {
 			const skillId = path.basename(skillRoot);
-			const markdown = await readFile(path.join(skillRoot, "SKILL.md"), "utf8");
+			const metadata = skillMetadata(await readFile(path.join(skillRoot, "SKILL.md"), "utf8"));
 			const imported = await importSkillDirectory(
 				skillRoot,
 				{
 					id: skillId,
-					label: metadataValue(markdown, "name") ?? fallbackLabel(skillId),
-					description: metadataValue(markdown, "description") ?? undefined,
+					label: metadata.name ?? fallbackLabel(skillId),
+					description: metadata.description ?? undefined,
 				},
 				checkout.commit,
 			);

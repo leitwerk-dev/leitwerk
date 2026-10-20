@@ -144,7 +144,11 @@ describe("turn semantics", () => {
 		).toEqual([expect.stringContaining("acceptanceCriteria")]);
 	});
 
-	it("rejects invalid outcome parameter schemas", () => {
+	it.each([
+		{ minItems: 0 },
+		{ minimum: 0 },
+		{ items: { type: "string" as const } },
+	])("rejects invalid outcome parameter schemas: %j", (invalid) => {
 		const llmErrors = validateLlmTurnDefinition(
 			"implement",
 			makeLlmTurn({
@@ -155,9 +159,7 @@ describe("turn semantics", () => {
 							summary: {
 								type: "string",
 								description: "Summary",
-								minItems: 0,
-								minimum: 0,
-								items: { type: "string" },
+								...invalid,
 							},
 							changes: {
 								type: "array",
@@ -170,10 +172,8 @@ describe("turn semantics", () => {
 			}),
 		);
 		expect(llmErrors).toEqual([
-			"LLM turn 'implement' outcome 'done' parameter 'summary' uses minItems but is not an array",
-			"LLM turn 'implement' outcome 'done' parameter 'summary' uses minimum but is not a number",
-			"LLM turn 'implement' outcome 'done' parameter 'summary' declares array items but is not an array",
-			"LLM turn 'implement' outcome 'done' parameter 'changes' declares unsupported array item type 'tuple'",
+			expect.stringContaining("parameter 'summary'"),
+			expect.stringMatching(/parameter 'changes'.*unsupported or missing type/),
 		]);
 
 		const automaticErrors = validateAutomaticTurnDefinition(
@@ -186,7 +186,7 @@ describe("turn semantics", () => {
 							summary: {
 								type: "string",
 								description: "Summary",
-								items: { type: "string" },
+								...invalid,
 							},
 						},
 					},

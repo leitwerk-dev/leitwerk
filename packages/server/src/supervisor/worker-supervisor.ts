@@ -641,7 +641,29 @@ export function createWorkerSupervisor(deps: SupervisorDeps): WorkerSupervisor {
 		pendingCleanup.delete(instanceId);
 		const leaseBeforeExit = safeGetLeaseByInstance(instanceId);
 		const startupTimedOut = startupTimedOutWorkers.delete(timedOutWorkerKey(instanceId, workerId));
-		if (isLiveWorkerLease(leaseBeforeExit, workerId)) {
+		// Graceful runtime termination may report cleanup before the exit arrives.
+		// Cleanup alone does not complete an accepted turn's durable outcome.
+		const processBeforeExit = safeGetProcessById(instanceId);
+		const startBeforeExit =
+			processBeforeExit?.currentExecution?.kind === "worker_start"
+				? deps.turnStarts.getById(processBeforeExit.currentExecution.id)
+				: null;
+		const acceptedTurnBeforeExit =
+			startBeforeExit?.state.kind === "accepted"
+				? deps.turnRecords.getById(startBeforeExit.state.turnRecordId)
+				: null;
+		const unfinishedOwningTurn =
+			leaseBeforeExit?.workerId === workerId &&
+			["draining", "cleanup"].includes(leaseBeforeExit.state) &&
+			processBeforeExit?.lifecycleStatus === "active" &&
+			startBeforeExit?.state.kind === "accepted" &&
+			startBeforeExit.state.acceptedWorkerLeaseId === leaseBeforeExit.id &&
+			startBeforeExit.instanceId === instanceId &&
+			acceptedTurnBeforeExit?.instanceId === instanceId &&
+			acceptedTurnBeforeExit.turnStartRecordId === startBeforeExit.id &&
+			acceptedTurnBeforeExit.acceptedWorkerLeaseId === leaseBeforeExit.id &&
+			acceptedTurnBeforeExit.status === "running";
+		if (isLiveWorkerLease(leaseBeforeExit, workerId) || unfinishedOwningTurn) {
 			const diagnostics = formatWorkerExitDiagnostics(info);
 			emitServerObservedWorkerFailure(instanceId, workerId, {
 				errorCode: startupTimedOut

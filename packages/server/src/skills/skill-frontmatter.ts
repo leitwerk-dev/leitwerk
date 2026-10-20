@@ -1,11 +1,11 @@
 import { parse as parseYaml } from "yaml";
 
-function frontmatter(markdown: string): Record<string, unknown> | null {
-	if (!markdown.startsWith("---")) return null;
-	const end = markdown.indexOf("\n---", 3);
-	if (end < 0) return null;
+/** @internal */
+export function skillFrontmatter(markdown: string): Record<string, unknown> | null {
+	const header = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(markdown);
+	if (!header) return null;
 	try {
-		const parsed = parseYaml(markdown.slice(3, end));
+		const parsed = parseYaml(header[1]);
 		return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
 	} catch {
 		return null;
@@ -13,7 +13,7 @@ function frontmatter(markdown: string): Record<string, unknown> | null {
 }
 
 export function isSkillModelInvocable(markdown: string): boolean {
-	return frontmatter(markdown)?.["disable-model-invocation"] !== true;
+	return skillFrontmatter(markdown)?.["disable-model-invocation"] !== true;
 }
 
 /** @internal */
@@ -21,7 +21,7 @@ export function skillMetadata(markdown: string): {
 	name: string | null;
 	description: string | null;
 } {
-	const metadata = frontmatter(markdown);
+	const metadata = skillFrontmatter(markdown);
 	const text = (key: string): string | null => {
 		const value = metadata?.[key];
 		return typeof value === "string" ? value.trim() || null : null;

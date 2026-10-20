@@ -27,7 +27,8 @@ Optional model labels select an instance default at admission:
 ```yaml
 extensions:
   jira-gitlab-change:
-    verification_on_merge: false # opt in if the Jira workflow has In Verification
+    verification_on_merge: false # opt in to the completion transition
+    verification_status: In Verification # or Ready for Verification
     model_labels:
       leitwerk-model-astra: astra-high
       leitwerk-model-sol: sol-medium
@@ -209,7 +210,8 @@ merging, and Jira-comment-driven plan revisions are outside
 this extension.
 
 Set `extensions.jira-gitlab-change.verification_on_merge: true` to transition the
-source issue to **In Verification** after all changed MRs merge. This is disabled
+source issue to **In Verification** after all changed MRs merge. Set
+`verification_status: Ready for Verification` to use that destination instead. This is disabled
 by default. The Jira workflow must expose exactly one matching transition;
 failed reconciliation retries safely and does not rewind later human status edits.
 

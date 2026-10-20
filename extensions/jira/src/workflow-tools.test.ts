@@ -172,6 +172,18 @@ describe("Jira workflow writes", () => {
 		expect((await f.client.getIssue("501")).fields.status.name).toBe("Paused");
 		expect(write).toHaveBeenCalledTimes(1);
 	});
+	it.each([
+		"Ready for Verification",
+		"In Verification",
+	])("preserves %s when retrying earlier workflow stages without receipts", async (status) => {
+		const f = fixture();
+		required(f.client.issues.get("501")).fields.status.name = status;
+		const write = vi.spyOn(f.client, "transitionIssue");
+		for (const targetStatus of ["In Progress", "In Review", "Ready for Verification"])
+			await f.call("jira_transition_source_issue", { targetStatus });
+		expect((await f.client.getIssue("501")).fields.status.name).toBe(status);
+		expect(write).not.toHaveBeenCalled();
+	});
 	it("preserves later human status edits and never reopens Done tickets", async () => {
 		const f = fixture();
 		const write = vi.spyOn(f.client, "transitionIssue");

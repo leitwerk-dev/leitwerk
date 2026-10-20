@@ -38,6 +38,7 @@ const WORKER_LEASE_TRANSITIONS: ReadonlyArray<WorkerLeaseTransitionRule> = [
 	{ from: "idle", to: "failed", observation: "failure_reported" },
 	{ from: "busy", to: "failed", observation: "failure_reported" },
 	{ from: "draining", to: "failed", observation: "failure_reported" },
+	{ from: "cleanup", to: "failed", observation: "failure_reported" },
 
 	{ from: "draining", to: "cleanup", observation: "cleanup_completed" },
 	{ from: "failed", to: "cleanup", observation: "cleanup_completed" },
@@ -68,7 +69,7 @@ const WORKER_LEASE_NOOPS: Readonly<Record<WorkerLeaseObservation, ReadonlySet<Wo
 	busy_reported: new Set(["busy", "draining", "failed", "cleanup", "exited"]),
 	idle_reported: new Set(["idle", "draining", "failed", "cleanup", "exited"]),
 	stop_requested: new Set(["absent", "draining", "failed", "cleanup", "exited"]),
-	failure_reported: new Set(["failed", "cleanup", "exited"]),
+	failure_reported: new Set(["failed", "exited"]),
 	cleanup_completed: new Set(["cleanup", "exited"]),
 	process_exited: new Set(["absent", "exited"]),
 	reclaimed: new Set(["absent"]),

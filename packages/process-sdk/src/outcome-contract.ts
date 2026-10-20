@@ -28,6 +28,19 @@ function freeze<T>(value: T): T {
 	return value;
 }
 
+function validateContractOutcome(
+	spec: OutcomeToolSpec,
+	markdown?: TurnResultMarkdownBehavior | null,
+) {
+	compileOutcomeParameters(
+		outcomeCallParameters(
+			spec,
+			markdown?.mode === "outcome_tool_argument" ? markdown.parameterName : undefined,
+		),
+		spec.strictSchema,
+	);
+}
+
 /** Resolve once on the server, before worker I/O; callbacks receive immutable copies. @internal */
 export function resolveOutcomeContract<TParams, TState>(
 	turn: LlmTurnDefinition<string, TParams, TState>,
@@ -56,24 +69,12 @@ export function resolveOutcomeContract<TParams, TState>(
 		const contract: OutcomeToolSpec = {
 			description: spec.description,
 			parameters: { ...spec.parameters, ...resolved },
-			...(spec.strictSchema ? { strictSchema: true } : {}),
-			...(spec.publishedProduct ? { publishedProduct: spec.publishedProduct } : {}),
-			...(spec.turnResultMarkdownParameter
-				? { turnResultMarkdownParameter: spec.turnResultMarkdownParameter }
-				: {}),
-			...(spec.resultSummaryParameter
-				? { resultSummaryParameter: spec.resultSummaryParameter }
-				: {}),
+			strictSchema: spec.strictSchema || undefined,
+			publishedProduct: spec.publishedProduct || undefined,
+			turnResultMarkdownParameter: spec.turnResultMarkdownParameter || undefined,
+			resultSummaryParameter: spec.resultSummaryParameter || undefined,
 		};
-		compileOutcomeParameters(
-			outcomeCallParameters(
-				contract,
-				turn.turnResultMarkdown?.mode === "outcome_tool_argument"
-					? turn.turnResultMarkdown.parameterName
-					: undefined,
-			),
-			contract.strictSchema,
-		);
+		validateContractOutcome(contract, turn.turnResultMarkdown);
 		outcomes[name] = contract;
 	}
 	return JSON.parse(
@@ -98,15 +99,7 @@ export function applyOutcomeContract<TOutcome extends string, TParams, TState>(
 	for (const [name, spec] of Object.entries(contract.outcomes)) {
 		const current = turn.outcomes?.[name as TOutcome];
 		if (!current) throw new Error(`Frozen outcome '${name}' no longer has an executable handler`);
-		compileOutcomeParameters(
-			outcomeCallParameters(
-				spec,
-				contract.turnResultMarkdown?.mode === "outcome_tool_argument"
-					? contract.turnResultMarkdown.parameterName
-					: undefined,
-			),
-			spec.strictSchema,
-		);
+		validateContractOutcome(spec, contract.turnResultMarkdown);
 		const {
 			resolveParameters,
 			strictSchema,

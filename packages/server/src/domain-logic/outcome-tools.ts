@@ -36,29 +36,20 @@ function validationFailure(code: string, message: string): OutcomeValidationFail
 }
 
 function jsonValuesEqual(left: unknown, right: unknown): boolean {
-	if (left === right) {
-		return true;
-	}
-	if (Array.isArray(left) && Array.isArray(right)) {
-		if (left.length !== right.length) {
-			return false;
-		}
-		return left.every((entry, index) => jsonValuesEqual(entry, right[index]));
-	}
-	if (isJsonObject(left) && isJsonObject(right)) {
-		const leftKeys = Object.keys(left).sort();
-		const rightKeys = Object.keys(right).sort();
-		if (leftKeys.length !== rightKeys.length) {
-			return false;
-		}
-		for (let index = 0; index < leftKeys.length; index += 1) {
-			if (leftKeys[index] !== rightKeys[index]) {
-				return false;
-			}
-		}
-		return leftKeys.every((key) => jsonValuesEqual(left[key], right[key]));
-	}
-	return false;
+	if (left === right) return true;
+	if (Array.isArray(left) && Array.isArray(right))
+		return (
+			left.length === right.length &&
+			left.every((value, index) => jsonValuesEqual(value, right[index]))
+		);
+	return (
+		isJsonObject(left) &&
+		isJsonObject(right) &&
+		Object.keys(left).length === Object.keys(right).length &&
+		Object.keys(left).every(
+			(key) => Object.hasOwn(right, key) && jsonValuesEqual(left[key], right[key]),
+		)
+	);
 }
 
 function resolveOutcomeValidationContract(

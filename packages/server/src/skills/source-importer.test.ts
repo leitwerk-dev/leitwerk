@@ -33,7 +33,7 @@ describe("skill repository import", () => {
 		await mkdir(path.join(root, "skills", "not-a-skill"), { recursive: true });
 		await writeFile(
 			path.join(root, "skills", "engineering", "review", "SKILL.md"),
-			"---\nname: Review changes\ndescription: Review a branch\n---\n# Review\n",
+			"---\nname: Review changes\ndescription: >-\n  Review a\n  branch\n---\n# Review\n",
 		);
 		await writeFile(
 			path.join(root, "skills", "engineering", "review", "references", "rules.md"),
@@ -92,7 +92,8 @@ describe("skill repository import", () => {
 		).toEqual([
 			{
 				path: "skills/review/SKILL.md",
-				content: "---\nname: Review changes\ndescription: Review a branch\n---\n# Review\n",
+				content:
+					"---\nname: Review changes\ndescription: >-\n  Review a\n  branch\n---\n# Review\n",
 			},
 			{ path: "skills/review/references/rules.md", content: "Rules\n" },
 		]);

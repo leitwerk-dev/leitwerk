@@ -118,13 +118,9 @@ async function withTemp<T>(run: (root: string) => Promise<T>): Promise<T> {
 	}
 }
 
-async function patchBytes(root: string): Promise<Buffer> {
-	return readFile(path.join(root, PATCH));
-}
-
 async function patchedCopy(root: string, destination: string): Promise<Buffer> {
 	await copyTree(path.join(root, VENDOR), destination);
-	const patch = await patchBytes(root);
+	const patch = await readFile(path.join(root, PATCH));
 	if (!patch.length) return patch;
 	const patchPath = path.join(path.dirname(destination), "adaptation.patch");
 	await writeFile(patchPath, patch);

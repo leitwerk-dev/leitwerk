@@ -78,6 +78,12 @@ export function requirePublicationParams<P>(params: P): P & PublicationParams {
 /** @public */
 export type PublicationContext<P> = FlowAutomaticRunContext<P, RepositoryChangeState>;
 
+/** Remote reconciliation has no worker checkout or filesystem access. @public */
+export type PublicationReconciliationContext<P> = Pick<
+	PublicationContext<P>,
+	"process" | "projects" | "params" | "state" | "callIntegrationTool"
+>;
+
 /** @public */
 export type PublicationEvidence = (
 	| {
@@ -197,11 +203,11 @@ export interface RepositoryChangePublicationAdapter<P> {
 	): Promise<PublicationRequest | null>;
 
 	/** @public */
-	sourceCancelled?(ctx: PublicationContext<P>): Promise<boolean>;
+	sourceCancelled?(ctx: PublicationReconciliationContext<P>): Promise<boolean>;
 
 	/** @public */
 	reconcileAll?(
-		ctx: PublicationContext<P>,
+		ctx: PublicationReconciliationContext<P>,
 		results: readonly {
 			/** @internal */
 			key: string;
@@ -252,7 +258,7 @@ export interface RepositoryChangePublicationAdapter<P> {
 
 	/** @public */
 	reconcileTerminal(
-		ctx: PublicationContext<P>,
+		ctx: PublicationReconciliationContext<P>,
 		current: PublicationState,
 		request: PublicationRequest,
 	): Promise<void>;

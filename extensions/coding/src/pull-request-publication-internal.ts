@@ -18,6 +18,7 @@ import type {
 	PublicationRequest,
 	PublicationSource,
 	PublicationState,
+	PublicationReconciliationContext as RemoteContext,
 	RepositoryChangePublicationAdapter,
 } from "./repository-change-publication.js";
 import {
@@ -85,7 +86,7 @@ function pullRequestDeliveryTools(provider: string): string[] {
 }
 
 const callFor =
-	<P>(ctx: PublicationContext<P>, provider: string) =>
+	(ctx: Pick<PublicationContext<unknown>, "callIntegrationTool">, provider: string) =>
 	<T>(name: string, args: Record<string, unknown>) =>
 		ctx.callIntegrationTool(`${provider}_${name}`, { projectKey: "repo", ...args }) as Promise<T>;
 
@@ -222,7 +223,7 @@ export function pullRequestPublicationDefaults<P extends PublicationParams>(
 		}),
 		read: () => ({ kind: "cancelled" }),
 	};
-	async function finalizeIssue(ctx: PublicationContext<P>, pr: PublicationRequest | null) {
+	async function finalizeIssue(ctx: RemoteContext<P>, pr: PublicationRequest | null) {
 		const params = issueOrigin(ctx.params);
 		if (!params) return;
 		const call = callFor(ctx, provider);
