@@ -1,5 +1,8 @@
 import coding from "@leitwerk-dev/coding";
-import { patchPublicationState } from "@leitwerk-dev/coding/repository-change-publication";
+import {
+	patchPublicationState,
+	readPublicationState,
+} from "@leitwerk-dev/coding/repository-change-publication";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import { resolveGitLabLaunchProject } from "@leitwerk-dev/gitlab";
 import { LocalGitLabAdapter, setupGitLabIntegration } from "@leitwerk-dev/gitlab/testing";
@@ -133,11 +136,47 @@ async function fixture(changes = [true, true], verificationOnMerge = true) {
 		endedAt: new Date(clock).toISOString(),
 	});
 	return {
+		git,
 		jira,
 		gitlab,
 		provider,
 		publicationTurn,
 		process: () => harness.ctx.deps.processes.getById(instance.id),
+		pushDeveloper() {
+			const mr = gitlab.state.mrs[0];
+			const bare = gitlab.state.projects[0].http_url_to_repo;
+			const tree = git.run(bare, ["rev-parse", `${mr.sha}^{tree}`]);
+			const head = git.run(bare, ["commit-tree", tree, "-p", mr.sha, "-m", "Developer push"]);
+			git.run(bare, ["update-ref", "refs/heads/feature", head]);
+			mr.sha = head;
+			return head;
+		},
+		beginWork() {
+			harness.ctx.deps.processes.update(instance.id, {
+				selectedTurnId: "revise_from_merge_request_feedback",
+				lifecycleStatus: "running",
+			});
+			createAcceptedWorkerTurn(harness.ctx, {
+				id: `working_${instance.id}`,
+				instanceId: instance.id,
+				turnId: "revise_from_merge_request_feedback",
+				turnType: "llm",
+				status: "running",
+				startedAt: new Date(clock).toISOString(),
+			});
+		},
+		stageFeedbackResult() {
+			const process = harness.ctx.deps.processes.getById(instance.id);
+			harness.ctx.deps.processes.update(instance.id, {
+				stateJson: JSON.stringify(
+					patchPublicationState(JSON.parse(process?.stateJson ?? "{}"), "jiraGitLabChange:repo_1", {
+						feedbackIds: [{ kind: "inline", id: 10, discussionId: "review" }],
+						repairReason: "feedback",
+						delivery: { feedbackResult: { published: true, summary: "Previously addressed" } },
+					}),
+				),
+			});
+		},
 		turns: () => harness.ctx.deps.turnRecords.listByInstance(instance.id),
 		status: async () => (await jira.getIssue(issue.id)).fields.status.name,
 		advance() {
@@ -151,6 +190,92 @@ async function fixture(changes = [true, true], verificationOnMerge = true) {
 }
 
 describe("Jira change completion maintenance", { timeout: 60_000 }, () => {
+	it("dispatches pending feedback on a developer-updated head while retaining the old work baseline", async () => {
+		const f = await fixture([true]);
+		const mr = f.gitlab.state.mrs[0];
+		const original = mr.sha;
+		const project = f.gitlab.state.projects.find((p) => p.id === mr.project_id);
+		if (!project) throw new Error("Missing project");
+		const bare = project.http_url_to_repo;
+		const tree = f.git.run(bare, ["rev-parse", `${original}^{tree}`]);
+		const head = f.git.run(bare, ["commit-tree", tree, "-p", original, "-m", "Developer update"]);
+		f.git.run(bare, ["update-ref", "refs/heads/feature", head]);
+		mr.sha = head;
+		const key = `${mr.project_id}:${mr.iid}`;
+		f.gitlab.state.feedback = {
+			[key]: [
+				{
+					id: 10,
+					discussionId: "review",
+					author: "reviewer",
+					body: "Please adjust the configuration",
+					createdAt: "2026-10-09T09:00:00Z",
+				},
+			],
+		};
+		expect((await f.provider.poll()).errors).toEqual([]);
+		expect(f.process()?.selectedTurnId).toBe("revise_from_merge_request_feedback");
+		const current = readPublicationState(
+			JSON.parse(f.process()?.stateJson ?? "{}"),
+			"jiraGitLabChange:repo_1",
+		);
+		expect(current).toMatchObject({
+			headSha: head,
+			workBaselineSha: original,
+			conversationCursor: 0,
+			feedbackIds: [{ id: 10, discussionId: "review" }],
+		});
+		expect(f.gitlab.state.reactions?.[`${key}:10`]).toHaveLength(1);
+	});
+
+	it("adopts an idle remote head without allocating work or consuming feedback", async () => {
+		const f = await fixture([true]);
+		const mr = f.gitlab.state.mrs[0];
+		const old = mr.sha;
+		const bare = f.gitlab.state.projects[0].http_url_to_repo;
+		const tree = f.git.run(bare, ["rev-parse", `${old}^{tree}`]);
+		mr.sha = f.git.run(bare, ["commit-tree", tree, "-p", old, "-m", "Developer update"]);
+		f.git.run(bare, ["update-ref", "refs/heads/feature", mr.sha]);
+		expect((await f.provider.poll()).errors).toEqual([]);
+		expect(f.process()).toMatchObject({
+			selectedTurnId: "deliver_change",
+			lifecycleStatus: "waiting",
+			currentExecution: null,
+		});
+		expect(
+			readPublicationState(JSON.parse(f.process()?.stateJson ?? "{}"), "jiraGitLabChange:repo_1"),
+		).toMatchObject({ headSha: mr.sha, workBaselineSha: old });
+	});
+
+	it("records remote movement without mutating an active worker's state or execution", async () => {
+		const f = await fixture([true]);
+		f.beginWork();
+		const before = f.process();
+		const head = f.pushDeveloper();
+		expect((await f.provider.poll()).errors).toEqual([]);
+		expect(f.process()).toMatchObject({
+			stateJson: before?.stateJson,
+			selectedTurnId: before?.selectedTurnId,
+			currentExecution: before?.currentExecution,
+			lifecycleStatus: "running",
+		});
+		expect(f.process()?.metadata?.gitlabMaintenance).toMatchObject({
+			repo_1: { observation: { mr: { sha: head } } },
+		});
+	});
+
+	it("does not acknowledge an old feedback result against a changed source tree", async () => {
+		const f = await fixture([true]);
+		f.stageFeedbackResult();
+		f.pushDeveloper();
+		expect((await f.provider.poll()).errors).toEqual([]);
+		expect(f.process()?.selectedTurnId).toBe("revise_from_merge_request_feedback");
+		expect(
+			readPublicationState(JSON.parse(f.process()?.stateJson ?? "{}"), "jiraGitLabChange:repo_1"),
+		).toMatchObject({ conversationCursor: 0, delivery: { feedbackResult: null } });
+		expect(f.gitlab.state.discussionNotes ?? {}).toEqual({});
+	});
+
 	it("finishes without a verification transition when it has not been enabled", async () => {
 		const f = await fixture([true], false);
 		const transition = vi.spyOn(f.jira, "transitionIssue");

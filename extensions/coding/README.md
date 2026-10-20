@@ -31,7 +31,7 @@ Worker diagnostics record each command's duration and outcome, with bounded Git
 Trace2 counters for metadata checks, content scans, and inspection phases. Raw
 Trace2 events, file contents, and paths are not stored in these diagnostics.
 
-`commitAndPushWorkBranch()` requires an explicit trusted Git identity, commits dirty workspace files, and pushes only the checked-out feature branch. It rejects invalid Git identity, unresolved conflicts, branch mismatches, and remote heads that do not match the committed HEAD.
+`commitAndPushWorkBranch()` requires an explicit trusted Git identity, commits dirty workspace files, and pushes only the checked-out feature branch. Ordinary publication must retain the captured remote head as an ancestor. An exact-SHA lease also rejects concurrent rewinds; a successful push with a lost acknowledgement is recognized without another commit. Invalid identity, unresolved conflicts, branch mismatches and changed remote heads fail without discarding the local commit.
 
 Turn labels use short task names: Plan, Review Plan, Implement, and Review. Automated assessments use Assess Plan and Assess Implementation so operators can distinguish them from their own decisions. Repository-change processes share these labels and turn ids.
 
@@ -64,6 +64,57 @@ operations, evidence sources, repair tools/prompts, and pinned identities.
 calls, without worker filesystem access. Cursors and receipts remain namespaced;
 Forgejo retains its namespace, turn/action IDs, and write identities.
 
+## Source-branch reconciliation
+
+The remote source branch is authoritative. Implementation preparation captures the
+local baseline before editing. Feedback and CI preparation fetch the current source
+branch; delivery fetches again before publication. Observed revisions and historical
+publication receipts are separate from the baseline for unpublished local work.
+A developer push or rewritten history does not disable feedback handling.
+
+Reconciliation replays only the local work since that baseline onto the current
+remote revision. Previously published commits removed by a developer rewrite are
+not restored. Unpublished commits, staged and unstaged edits, and non-ignored
+untracked files survive synchronization. Dirty submodules, ignored-file collisions,
+missing published branches, unrelated Git operations and unprovable baselines stop
+with an explicit error rather than guessing or discarding files. Fetch and push must
+use the same single origin endpoint. Previously ignored files are protected from
+accidental publication if ignore rules change.
+
+Before changing the checkout, private Git refs retain the original HEAD and separate
+index/worktree checkpoint commits. A journal records the operation and its remote
+revision. Git's rebase state and the journal survive worker replacement. After a
+clean reconciliation, checkpoint commits are removed from the work branch and the
+staged/unstaged distinction is restored. Replayed commits preserve original authors
+and sign-offs, with the captured trusted project identity as committer. New integration
+commits use that identity too; checkpoint identities never enter the published branch.
+Recovery refs are retained; they are never included in feature-branch publication. Only the accepted worker may edit the
+workspace. Deterministic reconciliation additionally takes a repository-local lock;
+a lock from another host is not stolen automatically.
+
+Conflicts use the existing adjustment turn. Its prompt permits rebase continuation
+but prohibits skipping or removing checkpoint commits, resetting, aborting or
+pushing. Delivery restores the normal checkout after resolution, then requests
+validation of the combined result before publishing. A source change after validation
+starts another reconciliation/validation pass; more than three automatic passes
+require operator action. Explicit retry grants a new budget. No synchronization turns
+are added to the process graph.
+
+Publication records local write-ahead intent before sending a push and acceptance
+before checking for subsequent remote movement. This receipt survives a lost server
+acknowledgement: a later developer rewrite does not turn already-published work back
+into an unpublished delta. Remote equality or ancestry can prove uncertain acceptance.
+An explicit Git ref rejection proves no write; an unprovable transport outcome stops
+for operator reconciliation rather than retrying over a possible developer rewind.
+Missing branches with accepted or uncertain publication are never recreated
+automatically. Receipts are recovery evidence on workspace storage; the server remains
+the owner of durable process state.
+
+Maintained processes route even `no_changes` through Deliver. It checks the remote
+lease and publishes any retained unpublished work before acknowledging feedback.
+An unchanged checkout creates no commit or push. A watcher may observe an active
+worker's new remote head, but never mutates its checkout or captured baseline.
+
 ## Git rebase repair
 
 Provider adapters import conflict evidence and reporting helpers from
@@ -93,8 +144,13 @@ incorporate the fetched base even if merging is clean. Interrupted rebases resum
 Git's existing state and preserve authors and sign-offs. Continuation verification
 rejects unfinished/aborted rebases, wrong branches and dirty results. Publication
 uses the original recorded head as an explicit lease, rejects concurrent pushes,
-and recognizes an already-published result after a lost response. Retained state
-and refs are not deleted on success or failure.
+and recognizes an already-published result after a lost response. When its source
+lease changes, shared delivery retains the completed repair and reconciles its net
+change relative to the original source snapshot onto the latest remote branch.
+Developer deletions and the agent's conflict resolutions both survive. The combined
+result retains target-branch ancestry and requires validation before ordinary
+leased fast-forward publication; delivery never substitutes a new lease into the
+old force push. Retained state and refs are not deleted on success or failure.
 
 ## API support
 

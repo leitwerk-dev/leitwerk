@@ -165,8 +165,11 @@ Analysis uses this instruction for each checkout, labelling findings by reposito
 Application consumes the durable findings and accepted plan, applies justified
 changes, preserves behavior, and reruns checks. Empty findings proceed normally.
 Changes stay uncommitted until delivery. Later feedback, conflict, and CI repairs
-return to delivery when they change work. No-change outcomes acknowledge feedback
-and resume observation without executing Deliver.
+return to delivery. No-change outcomes also pass through Deliver to recheck the
+remote source branch and retained unpublished work before acknowledging feedback.
+Developer pushes and rebases are reconciled without discarding local changes; the
+combined result is validated before publication. See the
+[shared reconciliation contract](../coding/README.md#source-branch-reconciliation).
 
 ## Delivery and recovery
 
