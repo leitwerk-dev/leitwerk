@@ -1,6 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+	patchPublicationState,
+	readPublicationState,
+} from "@leitwerk-dev/coding/repository-change-publication";
 import {
 	createTestProcessInstance,
 	createTestProcessProject,
@@ -159,6 +163,9 @@ async function fixture(changes = [true, true]) {
 		},
 	});
 	return {
+		git,
+		root,
+		workspaceRoot,
 		jira,
 		gitlab,
 		client,
@@ -183,6 +190,47 @@ async function fixture(changes = [true, true]) {
 			);
 			for (const [name, tool] of legacy.tools) collector.tools.set(name, tool);
 		},
+		publication: () => readPublicationState(state, "jiraGitLabChange:repo_1"),
+		stageAdjustment() {
+			state = patchPublicationState(state, "jiraGitLabChange:repo_1", {
+				repairReason: "feedback",
+				repairPending: false,
+				delivery: { adjustment: { origin: "feedback", publishRequired: true } },
+			});
+		},
+		stageTargetRepair(headSha: string) {
+			const previous = readPublicationState(state, "jiraGitLabChange:repo_1");
+			const p = params.repositories[0];
+			state = patchPublicationState(state, "jiraGitLabChange:repo_1", {
+				headSha,
+				workBaselineSha: previous.workBaselineSha ?? previous.headSha,
+				repairReason: "rebase",
+				conflict: {
+					owner: p.owner,
+					repo: p.repo,
+					prNumber: previous.prNumber ?? 1,
+					headBranch: p.workBranch,
+					baseBranch: p.baseBranch,
+					headSha,
+					baseSha: git.run(p.repoLocator, ["rev-parse", p.baseBranch]),
+					url: previous.prUrl ?? "https://forge.example/mr/1",
+				},
+			});
+		},
+		async finishRevision(name: "changes_ready" | "no_changes") {
+			const turn = required(process.turns.get("revise_from_merge_request_feedback")).definition;
+			if (turn.kind !== "llm") throw new Error("Expected revision");
+			const effect = await turn.outcomes?.[name]?.effect?.({
+				ctx: context("revise_from_merge_request_feedback"),
+				event: { params: { resultSummary: "Already correct" } },
+			} as never);
+			state = process.stateCodec.parse(effect?.state);
+		},
+		async prepareRevision() {
+			const turn = required(process.turns.get("revise_from_merge_request_feedback")).definition;
+			if (turn.kind !== "llm" || !turn.prepare) throw new Error("Expected revision preparation");
+			return turn.prepare(context("revise_from_merge_request_feedback"));
+		},
 		async plan() {
 			const turn = required(process.turns.get("generate_plan")).definition;
 			if (turn.kind !== "llm") throw new Error("Expected planning");
@@ -201,6 +249,79 @@ async function fixture(changes = [true, true]) {
 
 // Two real repositories and retried publication need a bounded integration budget.
 describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
+	it("reconciles a developer push with retained local work and validates before publishing", async () => {
+		const f = await fixture([true]);
+		expect((await f.deliver()).outcome).toBe("awaiting");
+		const local = join(f.workspaceRoot, "repo_1");
+		const developer = join(f.root, "developer");
+		mkdirSync(developer);
+		f.git.run(developer, ["clone", "-b", "feature", f.params.repositories[0].repoLocator, "."]);
+		writeFileSync(join(developer, "developer.txt"), "developer change\n");
+		f.git.run(developer, ["add", "."]);
+		f.git.run(developer, ["commit", "-m", "Developer change"]);
+		f.git.run(developer, ["push", "origin", "feature"]);
+		writeFileSync(join(local, "local.txt"), "retained local change\n");
+		f.stageAdjustment();
+		expect((await f.deliver()).outcome).toBe("conflict_ready");
+		expect(f.publication().reconciliationRequired).toBe(true);
+		expect(readFileSync(join(local, "developer.txt"), "utf8")).toBe("developer change\n");
+		expect(readFileSync(join(local, "local.txt"), "utf8")).toBe("retained local change\n");
+		await f.prepareRevision();
+		expect(await f.prompt("revise_from_merge_request_feedback")).toContain(
+			"Validate the reconciled repository",
+		);
+		await f.finishRevision("no_changes");
+		expect((await f.deliver()).outcome).toBe("awaiting");
+		const bare = f.params.repositories[0].repoLocator;
+		expect(f.git.run(bare, ["show", "feature:local.txt"])).toBe("retained local change");
+		expect(f.git.run(bare, ["show", "feature:developer.txt"])).toBe("developer change");
+		expect(f.git.run(bare, ["log", "--format=%s", "feature"])).not.toContain("checkpoint");
+		expect(f.publication()).toMatchObject({
+			reconciliationRequired: false,
+			workBaselineSha: f.git.run(bare, ["rev-parse", "feature"]),
+		});
+	});
+
+	it("rechecks a developer push made after revision preparation", async () => {
+		const f = await fixture([true]);
+		await f.deliver();
+		const local = join(f.workspaceRoot, "repo_1");
+		await f.prepareRevision();
+		writeFileSync(join(local, "local.txt"), "agent work\n");
+		const developer = join(f.root, "developer");
+		mkdirSync(developer);
+		f.git.run(developer, ["clone", "-b", "feature", f.params.repositories[0].repoLocator, "."]);
+		writeFileSync(join(developer, "developer.txt"), "concurrent work\n");
+		f.git.run(developer, ["add", "."]);
+		f.git.run(developer, ["commit", "-m", "Concurrent push"]);
+		f.git.run(developer, ["push", "origin", "feature"]);
+		await f.finishRevision("no_changes");
+		expect(f.publication().delivery.feedbackResult).toBeUndefined();
+		expect((await f.deliver()).outcome).toBe("conflict_ready");
+		expect(readFileSync(join(local, "local.txt"), "utf8")).toBe("agent work\n");
+		expect(readFileSync(join(local, "developer.txt"), "utf8")).toBe("concurrent work\n");
+	});
+
+	it("reconciles the source before attempting a target repair on a retained checkout", async () => {
+		const f = await fixture([true]);
+		await f.deliver();
+		const developer = join(f.root, "developer");
+		mkdirSync(developer);
+		f.git.run(developer, ["clone", "-b", "feature", f.params.repositories[0].repoLocator, "."]);
+		writeFileSync(join(developer, "developer.txt"), "source update\n");
+		f.git.run(developer, ["add", "."]);
+		f.git.run(developer, ["commit", "-m", "Update source"]);
+		f.git.run(developer, ["push", "origin", "feature"]);
+		f.stageTargetRepair(f.git.run(developer, ["rev-parse", "HEAD"]));
+		expect(await f.prepareRevision()).toMatchObject({ deferredRebase: true });
+		await f.finishRevision("changes_ready");
+		expect((await f.deliver()).outcome).toBe("conflict_ready");
+		expect(f.publication()).toMatchObject({ reconciliationRequired: true, conflict: null });
+		await f.prepareRevision();
+		await f.finishRevision("changes_ready");
+		expect((await f.deliver()).outcome).toBe("awaiting");
+	});
+
 	it.each([
 		"generate_plan",
 		"implement",

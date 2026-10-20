@@ -137,7 +137,8 @@ export async function noChangeCiRepair({ onTestFinished }: TestContext) {
 	expect(repairs()).toHaveLength(1);
 	expect(f.remote(id, "repo_1").ciRecoveryCycles).toBe(1);
 	expect(f.remote(id, "repo_1").headSha).toBe(head);
-	expect(records().filter((turn) => turn.turnId === "deliver_change")).toHaveLength(1);
+	// No-change repairs still verify source reconciliation through Deliver.
+	expect(records().filter((turn) => turn.turnId === "deliver_change")).toHaveLength(2);
 	// Retrying the same pipeline can produce a new actionable failure.
 	pipeline.status = "running";
 	f.gitlab.save();
@@ -153,7 +154,7 @@ export async function noChangeCiRepair({ onTestFinished }: TestContext) {
 	await settleRepair(3);
 	expect(repairs()).toHaveLength(3);
 	expect(f.remote(id, "repo_1").ciRecoveryCycles).toBe(3);
-	expect(records().filter((turn) => turn.turnId === "deliver_change")).toHaveLength(1);
+	expect(records().filter((turn) => turn.turnId === "deliver_change")).toHaveLength(4);
 }
 
 /** @internal */
@@ -190,8 +191,12 @@ export async function directFeedback({ onTestFinished }: TestContext) {
 	await f.poll();
 	await f.waitForProcess(
 		id,
-		() => f.remote(id, "repo_2").headSha !== head,
-		"feedback adjustment published",
+		() =>
+			f.remote(id, "repo_2").headSha !== head &&
+			deliveryRecords().length === 2 &&
+			deliveryRecords().at(-1)?.status === "succeeded",
+		"feedback adjustment delivery completed",
+		30000,
 	);
 	await f.poll();
 	await f.wait(id, "deliver_change");
@@ -205,7 +210,8 @@ export async function directFeedback({ onTestFinished }: TestContext) {
 	expect(f.remote(id, "repo_2").conversationCursor).toBe(103);
 	expect(Object.values(f.gitlab.state.reactions ?? {}).flat()).toHaveLength(3);
 	expect(Object.values(f.gitlab.state.discussionNotes ?? {}).flat()).toHaveLength(1);
-	// A no-change outcome acknowledges its batch and resumes observation without publication.
+	// A no-change outcome verifies through Deliver without publishing another revision.
+	const noChangeHead = f.remote(id, "repo_2").headSha;
 	f.setRepair("none");
 	f.gitlab.state.feedback[key].push({
 		id: 104,
@@ -220,17 +226,21 @@ export async function directFeedback({ onTestFinished }: TestContext) {
 		id,
 		() =>
 			records().filter((turn) => turn.turnId === "revise_from_merge_request_feedback").length ===
-				2 && f.harness.ctx.deps.processes.getById(id)?.lifecycleStatus === "waiting",
-		"no-change feedback completed",
+				2 &&
+			deliveryRecords().length === 3 &&
+			deliveryRecords().at(-1)?.status === "succeeded",
+		"no-change feedback delivery completed",
+		30000,
 	);
 	await f.poll();
 	await f.wait(id, "deliver_change");
-	expect(deliveryRecords()).toHaveLength(2);
+	expect(deliveryRecords()).toHaveLength(3);
+	expect(f.remote(id, "repo_2").headSha).toBe(noChangeHead);
 	expect(f.remote(id, "repo_2").conversationCursor).toBe(104);
 	expect(f.harness.ctx.deps.processes.getById(id)?.selectedTurnModelProfileId).toBeNull();
 	await f.restart();
 	await f.poll();
-	expect(deliveryRecords()).toHaveLength(2);
+	expect(deliveryRecords()).toHaveLength(3);
 	expect(Object.values(f.gitlab.state.discussionNotes ?? {}).flat()).toHaveLength(2);
 }
 

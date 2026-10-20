@@ -73,6 +73,33 @@ export function registerGitLabPublicationMaintenance<P extends Partial<GitLabPub
 			const p = params(ctx, key);
 			if (publicationFinished(value)) return { state: ctx.state };
 			if (
+				observed.mr.state === "opened" &&
+				(observed.mr.source_project_id !== binding.projectId ||
+					observed.mr.target_project_id !== binding.projectId ||
+					observed.mr.source_branch !== p.workBranch ||
+					observed.mr.target_branch !== p.baseBranch)
+			)
+				throw new Error("GitLab maintenance branch binding changed");
+			// Observations never change an active worker's baseline or checkout.
+			if (
+				!ctx.process.currentExecution &&
+				!value.delivery.adjustment &&
+				observed.mr.sha !== value.headSha
+			) {
+				value = {
+					...value,
+					workBaselineSha: value.workBaselineSha ?? value.headSha,
+					lastPublishedHeadSha: value.lastPublishedHeadSha ?? value.headSha,
+					headSha: observed.mr.sha,
+					pipeline: null,
+					conflict: null,
+					lastConflictKey: null,
+					// A result verified against an older tree cannot acknowledge a rewritten source.
+					delivery: { ...value.delivery, feedbackResult: null },
+				};
+				ctx = { ...ctx, state: patch(ctx, key, value) };
+			}
+			if (
 				ctx.process.selectedTurnId === adapter.ids.deliver &&
 				!ctx.process.currentExecution &&
 				!value.delivery.adjustment &&

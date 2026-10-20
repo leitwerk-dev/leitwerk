@@ -412,6 +412,8 @@ esac
 				(process) =>
 					process.lifecycleStatus !== "active" && process.lifecycleStatus !== "discovered",
 				"settled provider observation",
+				// Match the fixture's delivery budget: discovery may immediately start publication.
+				30000,
 			);
 	};
 	const state = (id: string) =>

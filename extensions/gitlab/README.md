@@ -161,10 +161,26 @@ Processes retain their own reactivation admission and partial-completion rules.
 The shared publication adapter used by Jira and GitLab repository changes registers
 this policy. Settled feedback and actionable conflicts invoke Address Feedback
 directly; failed current-revision CI invokes Fix CI. Changed work returns to Deliver.
-A no-change outcome acknowledges its batch and resumes observation without another
-Deliver execution. Label, target-head and mergeability updates do not replay a
+A no-change outcome returns through Deliver to check concurrent source updates and
+retained local work before acknowledging its batch. An unchanged checkout creates
+no commit or push. Label, target-head and mergeability updates do not replay a
 handled pipeline failure. A new pipeline or an observed running-to-failed retry
 remains actionable. Maintenance adds no business turns.
+
+The current source branch is authoritative, including developer rebases and pushes.
+Idle observations adopt its head while retaining the earlier work baseline and
+publication receipt separately. Feedback stays actionable when the head changes;
+the worker reconciles unpublished local work before adjusting the current revision.
+Source/target project or branch changes are explicit binding errors, not permission
+to publish elsewhere. Active workers keep their captured state; delivery rechecks
+the branch after their work. Only pipelines associated with the current source
+revision or a merge-result commit containing it can trigger repair.
+
+An eyes reaction means the watcher saw an authorized comment. It does not mean a
+worker started, completed an adjustment, or consumed the feedback. Comments remain
+pending until publication or a verified no-change result is acknowledged. Conflict
+resolution, validation retries and safe publication use the shared
+[Coding reconciliation contract](../coding/README.md#source-branch-reconciliation).
 
 ## Creating repository changes
 

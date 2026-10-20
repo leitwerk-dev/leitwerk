@@ -3,6 +3,13 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { repositoryGitArgs, repositoryGitSubprocessEnv } from "@leitwerk-dev/process-sdk";
 import { resolveGitBinary } from "@leitwerk-dev/process-sdk/git-binary";
+import {
+	pushWasRejected,
+	type RepositoryPublicationReceipt,
+	readPublicationReceipt,
+	savePublicationReceipt,
+} from "../repository-publication-receipt.js";
+import { assertReconciliationTargetSafe } from "../repository-reconciliation.js";
 
 import { type ConflictEvidence, conflictKey } from "./index.js";
 import {
@@ -92,6 +99,11 @@ function verifyNoRepairNeeded(input: RebaseInput, headSha: string, baseSha: stri
 	else git(input, "merge-tree", "--write-tree", headSha, baseSha);
 }
 
+/** @internal */
+export function hasPreparedRebase(input: RebaseInput): boolean {
+	return read(area(input))?.key === conflictKey(input.conflict);
+}
+
 /** Persist the lease before changing HEAD; a retry resumes Git's own rebase state. @internal */
 export function prepareRebase(input: RebaseInput): RebaseRecord {
 	const gitDir = area(input);
@@ -151,6 +163,10 @@ export function startRebase(input: RebaseInput): RebaseRecord {
 	} catch (error) {
 		if ((error as { status?: number }).status !== 1) throw error;
 	}
+	assertReconciliationTargetSafe(
+		{ projectKey: input.projectKey, repoPath: input.path },
+		record.baseSha,
+	);
 	record.status = "rebasing";
 	save(gitDir, record);
 	try {
@@ -195,25 +211,102 @@ export function verifyRebase(input: RebaseInput): {
 	};
 }
 /** @internal */
+export class ConcurrentRebaseSourceError extends Error {
+	constructor(
+		readonly repair: ReturnType<typeof verifyRebase>,
+		readonly published = false,
+	) {
+		super("Concurrent remote change rejected by rebase lease; local repair was retained");
+	}
+}
+
+/** @internal */
 export function publishRebase(input: RebaseInput): ReturnType<typeof verifyRebase> {
 	const result = verifyRebase(input);
+	assertReconciliationTargetSafe(
+		{ projectKey: input.projectKey, repoPath: input.path },
+		result.baseSha,
+	);
 	const gitDir = area(input);
 	const record = read(gitDir);
 	if (!record) throw new Error("Missing matching rebase metadata");
 	verifyCurrentBase(input, record);
 	const remote = remoteHead(input);
+	const origin = git(input, "remote", "get-url", "origin");
+	const pushOrigin = git(input, "remote", "get-url", "--push", "--all", "origin");
+	if (origin !== pushOrigin) throw new Error("Fetch and push endpoints must match for publication");
+	const previous = readPublicationReceipt(gitDir);
 	if (
-		rebasePublicationDecision(result.originalHead, result.headSha, remote) === "already_published"
+		previous &&
+		(previous.branch !== input.workBranch ||
+			previous.origin !== origin ||
+			previous.pushOrigin !== pushOrigin)
 	)
+		throw new Error("Repository publication receipt binding changed");
+	const receipt: RepositoryPublicationReceipt = {
+		branch: input.workBranch,
+		origin,
+		pushOrigin,
+		expectedHead: result.originalHead,
+		candidate: result.headSha,
+		status: "attempting",
+	};
+	if (remote === result.headSha) {
+		savePublicationReceipt(gitDir, { ...receipt, status: "accepted" });
 		return result;
-	git(
-		input,
-		"push",
-		`--force-with-lease=refs/heads/${input.workBranch}:${result.originalHead}`,
-		"origin",
-		`${result.headSha}:refs/heads/${input.workBranch}`,
-	);
-	if (remoteHead(input) !== result.headSha)
-		throw new Error("Rebase publication could not be verified");
+	}
+	if (previous?.candidate === result.headSha && previous.status === "accepted")
+		throw new ConcurrentRebaseSourceError(result, true);
+	if (previous?.status === "attempting") {
+		git(
+			input,
+			"fetch",
+			"--no-tags",
+			"origin",
+			`+refs/heads/${input.workBranch}:refs/leitwerk/rebase-publication-proof`,
+		);
+		try {
+			git(
+				input,
+				"merge-base",
+				"--is-ancestor",
+				previous.candidate,
+				"refs/leitwerk/rebase-publication-proof",
+			);
+		} catch {
+			throw new Error(
+				"Prior target publication outcome is uncertain; local repair was retained for operator reconciliation",
+			);
+		}
+		savePublicationReceipt(gitDir, { ...previous, status: "accepted" });
+		throw new ConcurrentRebaseSourceError(result, previous.candidate === result.headSha);
+	}
+	if (remote !== result.originalHead) throw new ConcurrentRebaseSourceError(result);
+	rebasePublicationDecision(result.originalHead, result.headSha, remote);
+	savePublicationReceipt(gitDir, receipt);
+	try {
+		git(
+			input,
+			"push",
+			"--porcelain",
+			"--no-follow-tags",
+			"--recurse-submodules=no",
+			`--force-with-lease=refs/heads/${input.workBranch}:${result.originalHead}`,
+			"origin",
+			`${result.headSha}:refs/heads/${input.workBranch}`,
+		);
+	} catch (error) {
+		const rejected = pushWasRejected((error as { stdout?: Buffer }).stdout?.toString() ?? "");
+		if (rejected) savePublicationReceipt(gitDir, { ...receipt, status: "rejected" });
+		const latest = remoteHead(input);
+		if (latest === result.headSha) {
+			savePublicationReceipt(gitDir, { ...receipt, status: "accepted" });
+			return result;
+		}
+		if (rejected && latest !== result.originalHead) throw new ConcurrentRebaseSourceError(result);
+		throw error;
+	}
+	savePublicationReceipt(gitDir, { ...receipt, status: "accepted" });
+	if (remoteHead(input) !== result.headSha) throw new ConcurrentRebaseSourceError(result, true);
 	return result;
 }

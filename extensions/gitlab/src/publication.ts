@@ -86,11 +86,10 @@ export function gitlabPublicationEvidenceForRequest(
 	const current = state;
 	if (!current.prNumber || !current.headSha)
 		throw new Error("Merge request delivery state is incomplete");
-	const key = { observationKey: event.observationKey };
+	const key = { observationKey: event.observationKey, remoteHeadSha: event.mr.sha };
 	if (event.mr.iid !== current.prNumber) throw new Error("Stale GitLab merge request evidence");
 	if (event.mr.state === "merged" || event.mr.state === "closed")
 		return { kind: "terminal", request: gitlabPublicationRequest(event.mr), ...key };
-	if (event.mr.sha !== current.headSha) return { kind: "observed", ...key };
 	if (event.conflict) return { kind: "conflict", conflict: event.conflict, ...key };
 	if (event.feedback?.length)
 		return {
@@ -104,8 +103,12 @@ export function gitlabPublicationEvidenceForRequest(
 			conversationCursor: Math.max(current.conversationCursor, ...event.feedback.map((n) => n.id)),
 			reviewCursor: 0,
 			inlineCursor: 0,
+			remoteHeadSha: event.mr.sha,
 		};
-	if (event.pipeline?.status === "failed")
+	if (
+		event.pipeline?.status === "failed" &&
+		(event.pipeline.sha === event.mr.sha || event.pipelineSourceHead === event.mr.sha)
+	)
 		return { kind: "failure", pipeline: { ...event.pipeline, number: event.pipeline.id }, ...key };
 	return { kind: "observed", ...key };
 }
@@ -188,6 +191,14 @@ export function createGitLabPublicationAdapter<P extends Partial<GitLabPublicati
 			if (!current.prNumber && !(project?.metadata?.gitlab as { iid?: number } | undefined)?.iid)
 				return null;
 			const { mr } = await callFor(ctx)<GitLabDeliveryObservation>("gitlab_observe_merge_request");
+			if (
+				mr.state === "opened" &&
+				(mr.source_project_id !== ctx.params.projectId ||
+					mr.target_project_id !== ctx.params.projectId ||
+					mr.source_branch !== ctx.params.workBranch ||
+					mr.target_branch !== ctx.params.baseBranch)
+			)
+				throw new Error("GitLab maintenance branch binding changed");
 			return mr.state === "opened" ? null : gitlabPublicationRequest(mr);
 		},
 		reconcileTerminal: (ctx, _current, pr) => finalizeIssue(ctx, pr),

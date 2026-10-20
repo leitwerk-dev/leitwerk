@@ -282,10 +282,10 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 			current.feedbackIds.length === 0
 		);
 	};
-	const armed = async (id: string) => {
+	const armed = async (id: string, timeout = 30000) => {
 		await waitForValue(
 			async () => {
-				// Worker outcomes can stage server acknowledgement without executing Deliver.
+				// Maintenance may still need to acknowledge Deliver's verified feedback result.
 				await pollMaintenance?.();
 				return harness.ctx.deps.processes.getById(id);
 			},
@@ -293,7 +293,7 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 				process?.selectedTurnId === "deliver_change" &&
 				process.lifecycleStatus === "waiting" &&
 				deliverySettled(id),
-			12000,
+			timeout,
 		);
 		await waitForValue(
 			() =>
@@ -319,6 +319,7 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 						p.lifecycleStatus !== "discovered" &&
 						(p.selectedTurnId !== "deliver_change" || deliverySettled(id)),
 					"settled provider observation",
+					30000,
 				);
 				if (process.selectedTurnId === "deliver_change" && process.lifecycleStatus === "waiting")
 					await armed(id);
@@ -583,6 +584,34 @@ async function fixture(provider: Provider, onFinished: (fn: () => Promise<void>)
 /** @internal */
 export function repositoryChangeTests(provider: Provider) {
 	describe(`${provider} repository change`, () => {
+		if (provider === "gitlab")
+			it("addresses feedback on the current developer-updated source without dropping server changes", async ({
+				onTestFinished,
+			}) => {
+				const f = await fixture(provider, onTestFinished);
+				const id = await f.launch();
+				const branch = f.gitlab.state.mrs[0].source_branch;
+				const developer = path.join(path.dirname(f.bare), "developer");
+				await mkdir(developer);
+				f.git.run(developer, ["clone", "-b", branch, f.bare, "."]);
+				writeFileSync(path.join(developer, "developer.txt"), "Developer source change\n");
+				f.git.run(developer, ["add", "."]);
+				f.git.run(developer, ["commit", "-m", "Developer source change"]);
+				const developerHead = f.git.run(developer, ["rev-parse", "HEAD"]);
+				f.git.run(developer, ["push", "origin", branch]);
+				f.feedback(id);
+				await f.poll();
+				// Source reconciliation adds a validation turn before publication and acknowledgement.
+				await f.armed(id, 30000);
+				expect(f.state(id).conversationCursor).toBe(101);
+				expect(f.state(id).feedbackIds).toEqual([]);
+				expect(f.git.run(f.bare, ["show", `${branch}:developer.txt`])).toBe(
+					"Developer source change",
+				);
+				expect(f.git.run(f.bare, ["merge-base", "--is-ancestor", developerHead, branch])).toBe("");
+				expect(f.state(id).headSha).not.toBe(developerHead);
+			}, 60000);
+
 		it("publishes from the UI, repairs exact-head CI, and completes after a file-backed restart", async ({
 			onTestFinished,
 		}) => {
@@ -671,7 +700,7 @@ export function repositoryChangeTests(provider: Provider) {
 			await f.action(id, "retry_repair");
 			await f.armed(id);
 			expect(f.state(id).feedbackIds).toEqual([]);
-			if (provider === "gitlab") expect(deliveries()).toHaveLength(before);
+			if (provider === "gitlab") expect(deliveries()).toHaveLength(before + 1);
 			f.closeRequest(id);
 			await f.poll();
 			await f.wait(id, null, "aborted");

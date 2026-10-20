@@ -66,10 +66,13 @@ or abort. CI repair uses failed jobs and bounded traces from the current MR pipe
 see [pipeline selection](../gitlab/README.md#public-interface). Confirmed conflicts
 use the shared rebase implementation and original-head push lease.
 
-Deliver executes only for initial publication and changed adjustments. Preparing
+Deliver executes for initial publication and adjustment verification. Preparing
 MRs, CI, target-head and label updates refresh durable observations without worker
-allocation or turn records. A no-change repair acknowledges its feedback and resumes
-observation without another Deliver execution. The workflow retains ten business
+allocation or turn records. A no-change repair returns through Deliver to check
+concurrent source updates and retained local work before acknowledging feedback.
+Developer pushes and rebases use the
+[shared reconciliation contract](../coding/README.md#source-branch-reconciliation).
+The workflow retains ten business
 turns; maintenance adds none.
 
 Published MRs receive `leitwerk-active`, retained while CI is green and later
