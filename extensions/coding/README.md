@@ -56,13 +56,13 @@ the existing process flow.
 
 ## Shared publication
 
-`createRepositoryChangePublication()` constructs the delivery, feedback, CI repair,
-rebase, and operator recovery fragment used by Forgejo, GitHub, and GitLab repository
-change processes. Its adapter supplies provider operations, native evidence sources,
-repair tools/prompts, pinned identity resolution, and stored names. The shared module
-owns Git publication and lifecycle policy without importing provider integrations.
-Provider cursors and receipts remain durable in namespaced publication state.
-Forgejo retains its original namespace, turn/action identifiers, and write identities.
+`createRepositoryChangePublication()` builds shared delivery, feedback, CI/rebase
+repair, and operator turns for Forgejo, GitHub, and GitLab. Adapters supply provider
+operations, evidence sources, repair tools/prompts, and pinned identities.
+`sourceCancelled`, `reconcileAll`, and `reconcileTerminal` receive
+`PublicationReconciliationContext`: process, projects, params, state, and integration
+calls, without worker filesystem access. Cursors and receipts remain namespaced;
+Forgejo retains its namespace, turn/action IDs, and write identities.
 
 ## Git rebase repair
 
@@ -104,7 +104,7 @@ The following exported declarations are `@public`:
 - `@leitwerk-dev/coding/auto-work-branch`: `buildAutoWorkBranchFromSeed`.
 - `@leitwerk-dev/coding/finalization-git`: `GitIdentity`, `commitAndPushWorkBranch`.
 - `@leitwerk-dev/coding/repository-change-launch`: `NormalizedRepositoryChangeParamsInput`, `RepositoryChangeLaunchParams`, `RepositoryChangeParamsBase`, `RepositoryIssueOriginParams`, `RepositoryUiOriginParams`, `createRepositoryChangeParamsCodec`, `normalizeRepositoryChangeParamsInput`, `repositoryChangeParamsRecord`.
-- `@leitwerk-dev/coding/repository-change-publication`: `DeliveryState`, `PublicationContext`, `PublicationEvidence`, `PublicationFeedbackId`, `PublicationParams`, `PublicationPipeline`, `PublicationRequest`, `PublicationSource`, `PublicationState`, `RepositoryChangePublicationAdapter`, `applyPublicationEvidence`, `createRepositoryChangePublication`, `patchPublicationState`, `publicationObject`, `readPublicationState`.
+- `@leitwerk-dev/coding/repository-change-publication`: `DeliveryState`, `PublicationContext`, `PublicationReconciliationContext`, `PublicationEvidence`, `PublicationFeedbackId`, `PublicationParams`, `PublicationPipeline`, `PublicationRequest`, `PublicationSource`, `PublicationState`, `RepositoryChangePublicationAdapter`, `applyPublicationEvidence`, `createRepositoryChangePublication`, `patchPublicationState`, `publicationObject`, `readPublicationState`.
 - `@leitwerk-dev/coding/repository-rebase`: `ConflictEvidence`, `conflictEvidence`, `validateConflict`, `describeConflict`, `conflictKey`, `createConflictReporter`.
 - `@leitwerk-dev/coding/repository-change-state`: `RepositoryChangeState`.
 

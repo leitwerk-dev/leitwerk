@@ -62,6 +62,7 @@ import type {
 	MappedTurnItemContext,
 	MappedTurnServerContext,
 } from "./mapped-turn.js";
+import { snakeCase } from "./outcome-schema.js";
 import type { TurnWaitPredicate } from "./turn-wait.js";
 import type {
 	OutcomeToolArrayItemSpec,
@@ -315,15 +316,6 @@ type FlowOutcomeStateEffect<TParams, TState, TContext> = (
 function normalizeProductName(productName: string): string {
 	assertValidProcessProductName(productName);
 	return productName;
-}
-
-function toRequiredErrorCode(name: string): string {
-	const snake = name
-		.replace(/([a-z0-9])([A-Z])/g, "$1_$2")
-		.replace(/[^a-zA-Z0-9]+/g, "_")
-		.replace(/^_+|_+$/g, "")
-		.toLowerCase();
-	return `${snake || "value"}_required`;
 }
 
 function readInitialPrompt<TParams>(params: TParams): string {
@@ -714,7 +706,7 @@ class OutcomeParametersBuilder<TParams = unknown, TState = unknown> {
 		return {
 			...resolved,
 			required: true,
-			requiredErrorCode: resolved.requiredErrorCode ?? toRequiredErrorCode(name),
+			requiredErrorCode: resolved.requiredErrorCode ?? `${snakeCase(name) || "value"}_required`,
 		};
 	}
 

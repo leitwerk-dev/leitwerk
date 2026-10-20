@@ -115,11 +115,6 @@ registerGitLabMaintainedProcess(api, {
   paramsCodec: process.paramsCodec,
   stateCodec: process.stateCodec,
   idleTurnId: "deliver_change",
-  destinations: {
-    feedback: "maintenance_feedback",
-    conflict: "maintenance_conflict",
-    ci: "maintenance_ci",
-  },
   observe: repairPolicy.observe,
   stopped: repairPolicy.stopped,
   terminal: repairPolicy.terminal,
@@ -132,9 +127,9 @@ Bindings default to each process project's `gitlab` metadata. `bindings` can
 provide explicit MR targets. `settings` supplies the consumed feedback cursor,
 activation receipt, polling interval and quiet period; the quiet period defaults
 to two minutes. `assess`, `eligible` and `canWrite` retain process-specific admission
-rules. `observe` returns state and an optional destination key (`feedback`,
-`conflict`, `ci`) or an additional declared external action. The service fires the
-existing edge; ordinary observations allocate no worker and create no turn record.
+rules. `observe` returns state and an optional declared external action ID, such
+as `maintenance_feedback`. It replaces the former `destinations` alias mapping.
+The service fires that edge; ordinary observations allocate no worker or turn record.
 `currentBinding` identifies a selected repair or operator decision so removing a
 different MR's label preserves that business position. Interrupted repairs on
 remaining MRs retain their staged work and repair budgets.

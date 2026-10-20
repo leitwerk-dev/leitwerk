@@ -26,7 +26,7 @@ import {
 	type LeitwerkExtensionModule,
 	scopedSettingsCapability,
 } from "@leitwerk-dev/process-sdk";
-import { wikiInstructions } from "@leitwerk-dev/wiki";
+import { wikiInstructions, wikiToolNames } from "@leitwerk-dev/wiki";
 import { topicWikiCapability } from "@leitwerk-dev/wiki/integration";
 import {
 	createJiraGitLabLauncher,
@@ -225,9 +225,7 @@ export function createJiraGitLabChange(options: {
 			...(originalTools?.(params, state) ?? turn.integrationTools ?? []),
 			"jira_get_source_issue",
 			"jira_get_issue",
-			...(params.wikiTopicId
-				? ["wiki_index", "wiki_read", "wiki_share", "wiki_edit", "wiki_delete", "wiki_delete_group"]
-				: []),
+			...(params.wikiTopicId ? wikiToolNames : []),
 		];
 		turn.prompt = async (ctx) =>
 			`${await originalPrompt({ ...ctx, params: { ...ctx.params, prompt: jiraChangePrompt(ctx.params.issue) } })}${ctx.params.wikiTopicId ? `\n\n${wikiInstructions}\nWiki: /wiki/${ctx.params.wikiTopicId}` : ""}`;

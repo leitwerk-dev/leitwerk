@@ -1,10 +1,10 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import { type Codec, defineProcess, emptyParamsCodec, humanTurn } from "@leitwerk-dev/process-sdk";
 import { createPollingTestExtension } from "@leitwerk-dev/test-support";
-import { createIntegrationHarness, waitForValue } from "@leitwerk-dev/test-support/integration";
+import {
+	createPersistentIntegrationFixture,
+	waitForValue,
+} from "@leitwerk-dev/test-support/integration";
 import { LocalGit } from "@leitwerk-dev/test-support/local-git";
 import { expect, it, onTestFinished } from "vitest";
 import { GitLabClient, GitLabError, type GitLabFeedback } from "./client.js";
@@ -20,7 +20,9 @@ type State = { cursor: number; batch: GitLabFeedback[] };
 const stateCodec: Codec<State> = { parse: (value) => value as State, serialize: (value) => value };
 
 async function fixture(onFinished: (fn: () => Promise<void>) => void) {
-	const root = mkdtempSync(join(tmpdir(), "gitlab-maintained-"));
+	const persistent = createPersistentIntegrationFixture("gitlab-maintained-");
+	onFinished(persistent.dispose);
+	const { root } = persistent;
 	const git = new LocalGit(root);
 	const bare = git.seed({ owner: "team", name: "repo" }).bare;
 	git.run(bare, ["branch", "feature", "main"]);
@@ -130,7 +132,6 @@ async function fixture(onFinished: (fn: () => Promise<void>) => void) {
 					paramsCodec: process.paramsCodec,
 					stateCodec,
 					idleTurnId: "observe",
-					destinations: { feedback: "feedback", conflict: "feedback", ci: "feedback" },
 					settings: (ctx) => ({ cursor: ctx.state.cursor, pollInterval: "1s" }),
 					observe: (ctx, _binding, observation) =>
 						ctx.state.batch.length || !observation.feedback?.length
@@ -140,22 +141,8 @@ async function fixture(onFinished: (fn: () => Promise<void>) => void) {
 			},
 		},
 	]);
-	const open = () =>
-		createIntegrationHarness({
-			listen: false,
-			extensionCatalog: catalog,
-			configOverride(config) {
-				config.storage.sqlite_path = join(root, "state.sqlite");
-				config.storage.tree_files_dir = join(root, "trees");
-				config.storage.process_workspaces_dir = join(root, "workspaces");
-				config.pi.agent_dir = join(root, "pi");
-			},
-		});
+	const open = () => persistent.open({ listen: false, extensionCatalog: catalog });
 	let harness = await open();
-	onFinished(async () => {
-		await harness.close();
-		rmSync(root, { recursive: true, force: true });
-	});
 	const instance = harness.ctx.deps.processes.create({
 		processId: process.id,
 		paramsJson: "{}",
@@ -183,7 +170,7 @@ async function fixture(onFinished: (fn: () => Promise<void>) => void) {
 			return harness;
 		},
 		async restart() {
-			await harness.close();
+			await persistent.close();
 			harness = await open();
 		},
 		unavailableLabels() {

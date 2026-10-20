@@ -5,6 +5,7 @@ import {
 	type PublicationRequest,
 	type PublicationSource,
 	type PublicationState,
+	type PublicationReconciliationContext as RemoteContext,
 	type RepositoryChangePublicationAdapter,
 	resolvePullRequestGitIdentity,
 } from "@leitwerk-dev/coding/repository-change-publication";
@@ -119,7 +120,7 @@ export function createGitLabPublicationAdapter<P extends Partial<GitLabPublicati
 		body: `${ctx.params.origin === "issue" ? `Implements ${ctx.params.issueUrl}\n\n` : ""}Leitwerk process: ${ctx.process.id}`,
 	}),
 ): RepositoryChangePublicationAdapter<P> {
-	async function finalizeIssue(ctx: PublicationContext<P>, pr: PublicationRequest | null) {
+	async function finalizeIssue(ctx: RemoteContext<P>, pr: PublicationRequest | null) {
 		if (ctx.params.origin !== "issue") return;
 		const call = callFor(ctx);
 		await call("gitlab_finalize_source_issue", {

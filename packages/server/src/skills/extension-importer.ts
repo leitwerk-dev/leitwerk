@@ -3,8 +3,8 @@ import path from "node:path";
 import type { LoadedExtensionModule } from "@leitwerk-dev/extension-runtime";
 import { parseSkillPackManifest, type SkillRevisionProvenance } from "@leitwerk-dev/protocol";
 import { createCanonicalPiResourceBundle } from "@leitwerk-dev/worker-protocol";
-import { parse as parseYaml } from "yaml";
 import { ResourceCollector } from "../pi-resources/resource-collector.js";
+import { skillFrontmatter } from "./skill-frontmatter.js";
 import type { ImportedSkill } from "./source-importer.js";
 
 /** @internal */
@@ -71,11 +71,8 @@ export async function importExtensionSkills(
 				{ forbiddenNames: new Set([".git", ".leitwerk-skill.json"]) },
 			);
 			const markdown = collector.files.get(`skills/${skill.id}/SKILL.md`);
-			const header =
-				markdown &&
-				/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(Buffer.from(markdown).toString("utf8"));
-			const metadata = header ? parseYaml(header[1]) : null;
-			if (metadata?.name !== skill.id || metadata.description !== skill.description) {
+			const metadata = markdown ? skillFrontmatter(Buffer.from(markdown).toString("utf8")) : null;
+			if (metadata?.name !== skill.id || metadata?.description !== skill.description) {
 				throw new Error(`Skill '${skill.id}' frontmatter does not match its pack manifest`);
 			}
 			// Include dependency/provenance changes in revision identity even when prose is unchanged.

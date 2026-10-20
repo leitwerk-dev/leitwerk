@@ -76,7 +76,6 @@ export {
 	type GitLabMaintenance,
 	type GitLabMaintenanceContext,
 	type GitLabMaintenanceDecision,
-	type GitLabMaintenanceDestinations,
 	type GitLabMaintenanceEvent,
 	type GitLabMaintenanceMessage,
 	type GitLabMaintenanceRecord,

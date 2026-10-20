@@ -17,55 +17,41 @@ const relativePath = v.pipe(
 );
 
 const upstreamSchema = v.object({
+	/** @public */
 	url: nonEmpty,
+	/** @public */
 	commit: v.pipe(v.string(), v.regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/)),
 });
 
 const entrySchema = v.object({
+	/** @public */
 	id: skillId,
+	/** @public */
 	directory: relativePath,
+	/** @public */
 	label: nonEmpty,
+	/** @public */
 	description: nonEmpty,
+	/** @public */
 	sourcePath: relativePath,
+	/** @public */
 	dependencies: v.array(skillId),
 });
 
+/** Supports the public inferred manifest declaration. @public */
 const manifestSchema = v.object({
+	/** @public */
 	formatVersion: v.literal(1),
+	/** @public */
 	upstream: upstreamSchema,
+	/** @public */
 	patchDigest: v.pipe(v.string(), v.regex(/^[a-f0-9]{64}$/)),
+	/** @public */
 	skills: v.pipe(v.array(entrySchema), v.minLength(1)),
 });
 
 /** On-disk contract for an extension's generated skill pack. @public */
-export interface SkillPackManifest {
-	/** @public */
-	formatVersion: 1;
-	/** @public */
-	upstream: {
-		/** @public */
-		url: string;
-		/** @public */
-		commit: string;
-	};
-	/** @public */
-	patchDigest: string;
-	/** @public */
-	skills: {
-		/** @public */
-		id: string;
-		/** @public */
-		directory: string;
-		/** @public */
-		label: string;
-		/** @public */
-		description: string;
-		/** @public */
-		sourcePath: string;
-		/** @public */
-		dependencies: string[];
-	}[];
-}
+export type SkillPackManifest = v.InferOutput<typeof manifestSchema>;
 
 /** Provenance retained with an immutable installed skill revision. @internal */
 export interface SkillRevisionProvenance {

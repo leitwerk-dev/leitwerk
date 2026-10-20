@@ -156,33 +156,14 @@ function validateOutcomeToolParameters<TParams = unknown, TState = unknown>(
 		}
 		for (const [paramName, paramSpec] of Object.entries(outcomeSpec.parameters)) {
 			const context = `${outcomeContext} parameter '${paramName}'`;
-			const before = errors.length;
-			for (const [property, type, message] of [
-				["minItems", "array", "uses minItems but is not an array"],
-				["minimum", "number", "uses minimum but is not a number"],
-				["items", "array", "declares array items but is not an array"],
-			] as const) {
-				if (paramSpec[property] !== undefined && paramSpec.type !== type)
-					errors.push(`${context} ${message}`);
+			if (paramSpec.type === "array" && !paramSpec.items) {
+				errors.push(`${context} is an array and must declare items`);
+				continue;
 			}
-			if (paramSpec.type === "array") {
-				if (!paramSpec.items) {
-					errors.push(`${context} is an array and must declare items`);
-				} else if (
-					!paramSpec.items.anyOf &&
-					!["string", "number", "boolean", "object", "array"].includes(paramSpec.items.type ?? "")
-				) {
-					errors.push(
-						`${context} declares unsupported array item type '${String(paramSpec.items.type)}'`,
-					);
-				}
-			}
-			if (errors.length === before) {
-				try {
-					compileOutcomeParameters({ [paramName]: paramSpec }, outcomeSpec.strictSchema);
-				} catch (error) {
-					errors.push(`${context}: ${error instanceof Error ? error.message : String(error)}`);
-				}
+			try {
+				compileOutcomeParameters({ [paramName]: paramSpec }, outcomeSpec.strictSchema);
+			} catch (error) {
+				errors.push(`${context}: ${error instanceof Error ? error.message : String(error)}`);
 			}
 		}
 	}

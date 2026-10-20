@@ -312,37 +312,18 @@ describe("server-owned turn readiness", () => {
 		expect(s.counts()).toEqual([0, 0, 0, 0]);
 	});
 	it.each([
-		"automatic",
-		"llm",
-	] as const)("keeps repeated false checks out of %s starts, leases and attempts", async (kind) => {
+		["automatic", false],
+		["automatic", true],
+		["llm", false],
+		["llm", true],
+	] as const)("reschedules %s readiness without attempts (state update: %s)", async (kind, updateState) => {
 		const predicate = vi.fn((ctx: TurnWaitContext) => {
-			ctx.setState({});
+			if (updateState) ctx.setState({});
 			return false;
 		});
 		const s = setup(predicate, kind);
 		const serialize = vi.fn(() => ({ observed: true }));
 		s.definition.stateCodec = { ...emptyParamsCodec, serialize };
-		expect(await s.start()).toMatchObject({
-			ok: true,
-			process: { lifecycleStatus: "waiting", currentExecution: null },
-		});
-		const service = s.service();
-		for (let i = 0; i < 10; i++) {
-			await service.poll();
-			s.advance();
-		}
-		expect(predicate).toHaveBeenCalledTimes(10);
-		expect(serialize).toHaveBeenCalledTimes(10);
-		expect(JSON.parse(s.read().stateJson ?? "null")).toEqual({ observed: true });
-		expect(s.counts()).toEqual([0, 0, 0, 0]);
-	});
-
-	it.each([
-		"automatic",
-		"llm",
-	] as const)("preserves activity time when %s readiness only reschedules", async (kind) => {
-		const predicate = vi.fn(() => false);
-		const s = setup(predicate, kind);
 		expect(await s.start()).toMatchObject({
 			ok: true,
 			process: { lifecycleStatus: "waiting", currentExecution: null },
@@ -358,7 +339,9 @@ describe("server-owned turn readiness", () => {
 			s.advance();
 		}
 		expect(predicate).toHaveBeenCalledTimes(10);
-		expect(s.read().updatedAt).toBe(timestamp);
+		expect(serialize).toHaveBeenCalledTimes(updateState ? 10 : 0);
+		expect(JSON.parse(s.read().stateJson ?? "null")).toEqual(updateState ? { observed: true } : {});
+		expect(s.read().updatedAt === timestamp).toBe(!updateState);
 		expect(pendingTurnWait(s.read())?.revision).toBe(revision + 10);
 		expect(s.counts()).toEqual([0, 0, 0, 0]);
 	});

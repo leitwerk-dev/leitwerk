@@ -1,6 +1,3 @@
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import coding from "@leitwerk-dev/coding";
 import { patchPublicationState } from "@leitwerk-dev/coding/repository-change-publication";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
@@ -10,14 +7,16 @@ import jiraExtension, { type JiraIssue, setupJiraIntegration } from "@leitwerk-d
 import { LocalJiraSplitAdapter } from "@leitwerk-dev/jira/testing";
 import { createAcceptedWorkerTurn } from "@leitwerk-dev/server/testing";
 import { createPollingTestExtension } from "@leitwerk-dev/test-support";
-import { createIntegrationHarness } from "@leitwerk-dev/test-support/integration";
+import { createPersistentIntegrationFixture } from "@leitwerk-dev/test-support/integration";
 import { LocalGit } from "@leitwerk-dev/test-support/local-git";
 import { describe, expect, it, onTestFinished, vi } from "vitest";
 import { createJiraGitLabChange } from "./index.js";
 import type { JiraGitLabParams, RepositoryBinding } from "./launch.js";
 
 async function fixture(changes = [true, true], verificationOnMerge = true) {
-	const root = mkdtempSync(join(tmpdir(), "jira-maintenance-"));
+	const persistent = createPersistentIntegrationFixture("jira-maintenance-");
+	onTestFinished(persistent.dispose);
+	const { root } = persistent;
 	const git = new LocalGit(root);
 	const gitlab = new LocalGitLabAdapter(root);
 	const jira = new LocalJiraSplitAdapter();
@@ -113,22 +112,8 @@ async function fixture(changes = [true, true], verificationOnMerge = true) {
 		repositories,
 		mappings: [],
 	};
-	const open = () =>
-		createIntegrationHarness({
-			listen: false,
-			extensionCatalog: catalog,
-			configOverride(config) {
-				config.storage.sqlite_path = join(root, "state.sqlite");
-				config.storage.tree_files_dir = join(root, "trees");
-				config.storage.process_workspaces_dir = join(root, "workspaces");
-				config.pi.agent_dir = join(root, "pi");
-			},
-		});
+	const open = () => persistent.open({ listen: false, extensionCatalog: catalog });
 	let harness = await open();
-	onTestFinished(async () => {
-		await harness.close();
-		rmSync(root, { recursive: true, force: true });
-	});
 	const instance = harness.ctx.deps.processes.create({
 		processId: change.process.id,
 		selectedTurnId: "deliver_change",
@@ -159,7 +144,7 @@ async function fixture(changes = [true, true], verificationOnMerge = true) {
 			clock += 30_000;
 		},
 		async restart() {
-			await harness.close();
+			await persistent.close();
 			harness = await open();
 		},
 	};

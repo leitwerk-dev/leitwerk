@@ -108,7 +108,7 @@ describe.each([
 		});
 		const message = rejection(() => define(input));
 		for (const reason of [
-			/Process 'validated_process'.*turn 'invalid_parameter'.*minimum.*not a number/,
+			/Process 'validated_process'.*turn 'invalid_parameter'.*invalid minimum.*string/,
 			/Process 'validated_process'.*turn 'invalid_route'.*unknown turn 'missing_first'/,
 			/Process 'validated_process'.*turn 'invalid_route'.*unknown turn 'missing_second'/,
 			/Process 'validated_process'.*turn 'invalid_route'.*unknown turn 'missing_branch'/,
