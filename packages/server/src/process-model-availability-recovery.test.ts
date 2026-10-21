@@ -5,6 +5,7 @@ import {
 	createModelAvailabilitySnapshot,
 	createTestModelPolicy,
 	createTestProcessInstance,
+	createTestTurnStart,
 } from "./test-helpers/process-model-fixtures.js";
 
 function process() {
@@ -20,15 +21,8 @@ function process() {
 }
 
 function start(code: "model_unavailable" | "model_stale" | "provider_preflight_failed") {
-	return {
-		id: "s1",
+	return createTestTurnStart({
 		instanceId: "p1",
-		turnId: "run",
-		turnType: "llm" as const,
-		proposedTurnRecordId: "t1",
-		startKind: "selected_turn" as const,
-		recoveryTurnRecordId: null,
-		continuation: null,
 		state: {
 			kind: "preparation_failed" as const,
 			requestedModelProfileId: "profile",
@@ -38,9 +32,7 @@ function start(code: "model_unavailable" | "model_stale" | "provider_preflight_f
 			modelSelectionProvenance: { kind: "inherited" as const, source: "catalog_default" as const },
 			availabilityRevision: 1,
 		},
-		createdAt: "",
-		updatedAt: "",
-	};
+	});
 }
 
 const availability = createModelAvailabilitySnapshot([], 2);
@@ -63,34 +55,26 @@ function policy(): ServerProcessModelPolicy {
 	};
 }
 
-describe("model availability recovery", () => {
-	it("retries a current pre-acceptance availability failure", async () => {
-		const retryStartupAutomatically = vi.fn(async () => ({
-			ok: true as const,
-			process: process(),
-			data: {
-				status: "retried" as const,
-				reason: "Restored",
-				starts: 2,
-				maxStarts: 3,
-				nextRetryAt: null,
-			},
-		}));
-		const recovered = await recoverModelAvailabilityFailures({
-			processes: { listAll: () => [process()] },
-			turnStarts: { getById: (id) => (id === "s1" ? start("model_unavailable") : null) },
-			commands: { retryStartupAutomatically },
-			policy: policy(),
-			availability,
-			cause: "availability_transition",
-		});
-		expect(recovered).toBe(1);
-		expect(retryStartupAutomatically).toHaveBeenCalledWith("p1", "s1", {
-			availabilityCause: "availability_transition",
-		});
+function recover(
+	commands: Parameters<typeof recoverModelAvailabilityFailures>[0]["commands"],
+	overrides: Partial<Parameters<typeof recoverModelAvailabilityFailures>[0]> = {},
+) {
+	return recoverModelAvailabilityFailures({
+		processes: { listAll: () => [process()] },
+		turnStarts: { getById: (id) => (id === "s1" ? start("model_unavailable") : null) },
+		commands,
+		policy: policy(),
+		availability,
+		cause: "availability_transition",
+		...overrides,
 	});
+}
 
-	it("does not filter inherited recovery by the previously requested profile", async () => {
+describe("model availability recovery", () => {
+	it.each([
+		["a current pre-acceptance availability failure", undefined],
+		["inherited recovery when the requested profile changes", new Set(["replacement"])],
+	])("retries %s", async (_case, profileIds) => {
 		const retryStartupAutomatically = vi.fn(async () => ({
 			ok: true as const,
 			process: process(),
@@ -102,16 +86,8 @@ describe("model availability recovery", () => {
 				nextRetryAt: null,
 			},
 		}));
-		await recoverModelAvailabilityFailures({
-			processes: { listAll: () => [process()] },
-			turnStarts: { getById: (id) => (id === "s1" ? start("model_unavailable") : null) },
-			commands: { retryStartupAutomatically },
-			policy: policy(),
-			availability,
-			cause: "availability_transition",
-			profileIds: new Set(["replacement"]),
-		});
-
+		const recovered = await recover({ retryStartupAutomatically }, { profileIds });
+		expect(recovered).toBe(1);
 		expect(retryStartupAutomatically).toHaveBeenCalledWith("p1", "s1", {
 			availabilityCause: "availability_transition",
 		});
@@ -124,15 +100,7 @@ describe("model availability recovery", () => {
 			code: "stale_turn_start" as const,
 			error: "already replaced",
 		}));
-		const recovered = await recoverModelAvailabilityFailures({
-			processes: { listAll: () => [process()] },
-			turnStarts: { getById: (id) => (id === "s1" ? start("model_unavailable") : null) },
-			commands: { retryStartupAutomatically },
-			policy: policy(),
-			availability,
-			cause: "availability_transition",
-			logger: { warn },
-		});
+		const recovered = await recover({ retryStartupAutomatically }, { logger: { warn } });
 		expect(retryStartupAutomatically).toHaveBeenCalledExactlyOnceWith("p1", "s1", {
 			availabilityCause: "availability_transition",
 		});
@@ -142,14 +110,13 @@ describe("model availability recovery", () => {
 
 	it("never retries provider preflight failures", async () => {
 		const retryStartupAutomatically = vi.fn();
-		await recoverModelAvailabilityFailures({
-			processes: { listAll: () => [process()] },
-			turnStarts: { getById: (id) => (id === "s1" ? start("provider_preflight_failed") : null) },
-			commands: { retryStartupAutomatically },
-			policy: policy(),
-			availability,
-			cause: "startup_reconciliation",
-		});
+		await recover(
+			{ retryStartupAutomatically },
+			{
+				turnStarts: { getById: (id) => (id === "s1" ? start("provider_preflight_failed") : null) },
+				cause: "startup_reconciliation",
+			},
+		);
 		expect(retryStartupAutomatically).not.toHaveBeenCalled();
 	});
 });

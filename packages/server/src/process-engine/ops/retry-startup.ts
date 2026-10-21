@@ -65,11 +65,7 @@ export const RetryStartup = defineOperation<
 								? { modelSelectionProvenance: failed.state.start.modelSelectionProvenance }
 								: {}),
 						};
-		state.automaticRetry = input.automaticRetry ?? {
-			episodeStartRecordId: id,
-			starts: 1,
-			nextRetryAt: null,
-		};
+		state.automaticRetry = input.automaticRetry;
 		const writes = createWrites({
 			workerIntent: state.kind === "starting" ? { kind: "restart_worker" } : undefined,
 		});

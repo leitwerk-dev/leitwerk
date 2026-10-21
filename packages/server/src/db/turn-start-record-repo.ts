@@ -90,9 +90,13 @@ export function createTurnStartRecordRepo(db: LeitwerkDb) {
 		}): TurnStartRecord | null {
 			const current = this.getById(input.id);
 			if (!current || current.state.kind !== input.expectedKind) return null;
+			const state = {
+				...input.state,
+				automaticRetry: input.state.automaticRetry ?? current.state.automaticRetry,
+			};
 			const result = db
 				.update(s.turnStartRecords)
-				.set({ stateJson: JSON.stringify(input.state), updatedAt: now() })
+				.set({ stateJson: JSON.stringify(state), updatedAt: now() })
 				.where(
 					and(
 						eq(s.turnStartRecords.id, input.id),

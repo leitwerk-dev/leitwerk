@@ -52,17 +52,12 @@ function validObservedAt(value: string | null | undefined, notBefore: string): s
 
 export function buildStartupRecovery(
 	process: ProcessInstance,
-	turnStartsById:
-		| ReadonlyMap<string, TurnStartRecord>
-		| { getById(id: string): TurnStartRecord | null },
+	turnStartsById: ReadonlyMap<string, TurnStartRecord>,
 	events: readonly ProcessEvent[] = [],
 ): StartupRecoverySummary | null {
 	if (process.lifecycleStatus !== "error" || process.currentExecution?.kind !== "worker_start")
 		return null;
-	const start =
-		"getById" in turnStartsById
-			? turnStartsById.getById(process.currentExecution.id)
-			: turnStartsById.get(process.currentExecution.id);
+	const start = turnStartsById.get(process.currentExecution.id);
 	if (
 		!start ||
 		(start.state.kind !== "preparation_failed" && start.state.kind !== "bootstrap_failed")
@@ -72,11 +67,7 @@ export function buildStartupRecovery(
 	return {
 		automaticRetry: automaticStartupRecovery(
 			start,
-			startupRetryState(
-				start,
-				"getById" in turnStartsById ? [] : [...turnStartsById.values()],
-				events,
-			),
+			startupRetryState(start, [...turnStartsById.values()], events),
 		),
 		startRecordId: start.id,
 		kind: start.state.kind,

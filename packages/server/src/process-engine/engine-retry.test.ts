@@ -8,6 +8,7 @@ import {
 	createFixtureProcess,
 	createProcessGraphRegistry,
 } from "../test-helpers/process-fixtures.js";
+import { createSelectedTurnStart } from "../test-helpers/unit-deps.js";
 import { createProcessEngine } from "./engine.js";
 
 function setup(kind: "bootstrap_failed" | "preparation_failed" = "bootstrap_failed") {
@@ -33,15 +34,12 @@ function setup(kind: "bootstrap_failed" | "preparation_failed" = "bootstrap_fail
 		selectedTurnId: "assess",
 		lifecycleStatus: "error",
 	});
-	const start = deps.turnStarts.create({
+	const start = createSelectedTurnStart(deps, {
 		id: "tsr_failed",
 		instanceId: process.id,
 		turnId: "assess",
 		turnType: "automatic",
 		proposedTurnRecordId: "trn_unaccepted",
-		startKind: "selected_turn",
-		recoveryTurnRecordId: null,
-		continuation: null,
 		state:
 			kind === "bootstrap_failed"
 				? {
@@ -59,7 +57,6 @@ function setup(kind: "bootstrap_failed" | "preparation_failed" = "bootstrap_fail
 						safeSummary: "Start preparation unavailable",
 					},
 	});
-	deps.processes.update(process.id, { currentExecution: { kind: "worker_start", id: start.id } });
 	const currentStart = () => {
 		const execution = deps.processes.getById(process.id)?.currentExecution;
 		const start = execution?.kind === "worker_start" ? deps.turnStarts.getById(execution.id) : null;
@@ -150,6 +147,7 @@ describe("automatic startup recovery", () => {
 		expect(await recover()).toMatchObject({
 			data: { status: "waiting", nextRetryAt: "2026-10-14T12:00:30.000Z" },
 		});
+		expect(s.currentStart().updatedAt).toBe(s.start.updatedAt);
 		vi.setSystemTime(new Date("2026-10-14T12:00:30Z"));
 		expect(await recover()).toMatchObject({ data: { status: "retried", starts: 2 } });
 		await s.engine.recordWorkerFailure(s.process.id, {

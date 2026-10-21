@@ -1,20 +1,16 @@
 import type { ProcessEvent, TurnStartRecord } from "@leitwerk-dev/domain";
 import { describe, expect, it } from "vitest";
 import { automaticStartupRecovery, startupRetryState } from "./startup-retry-policy.js";
+import { createTestTurnStart } from "./test-helpers/process-model-fixtures.js";
 
 function start(
 	id: string,
 	kind: "selected_turn" | "startup_retry" = "selected_turn",
 ): TurnStartRecord {
-	return {
+	return createTestTurnStart({
 		id,
-		instanceId: "p",
-		turnId: "review",
 		turnType: "automatic",
-		proposedTurnRecordId: `trn_${id}`,
 		startKind: kind,
-		recoveryTurnRecordId: null,
-		continuation: null,
 		createdAt: "2026-10-14T12:00:00Z",
 		updatedAt: "2026-10-14T12:00:00Z",
 		state: {
@@ -24,7 +20,7 @@ function start(
 			code: "startup_timeout",
 			safeSummary: "Timeout",
 		},
-	};
+	});
 }
 
 describe("startup retry policy", () => {

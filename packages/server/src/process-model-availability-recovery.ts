@@ -46,11 +46,7 @@ export async function recoverModelAvailabilityFailures(input: {
 			availabilityCause: input.cause,
 		});
 		if (result.ok && result.data.status === "retried") recovered += 1;
-		else if (
-			!result.ok &&
-			result.code !== "stale_turn_start" &&
-			result.code !== "stale_startup_target"
-		) {
+		else if (!result.ok && result.code !== "stale_turn_start") {
 			input.logger?.warn(
 				{ instanceId: process.id, startRecordId: start.id, code: result.code },
 				"Model availability recovery was rejected",

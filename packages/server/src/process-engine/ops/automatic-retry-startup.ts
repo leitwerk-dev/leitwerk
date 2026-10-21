@@ -17,7 +17,7 @@ export const AutomaticRetryStartup = defineOperation<
 	kind: "automatic_retry_startup",
 	label: "Automatic startup recovery",
 	admission: "new_turn",
-	decide(ctx, input) {
+	async decide(ctx, input) {
 		if (
 			ctx.process.lifecycleStatus !== "error" ||
 			ctx.process.currentExecution?.kind !== "worker_start" ||
@@ -53,33 +53,30 @@ export const AutomaticRetryStartup = defineOperation<
 		}
 		const summary = automaticStartupRecovery(start, retry, Date.now(), modelRestored);
 		if (summary.status !== "ready") {
+			if (start.state.automaticRetry && retry.nextRetryAt === summary.nextRetryAt)
+				return accept({ data: summary });
 			const metadata = { ...retry, nextRetryAt: summary.nextRetryAt };
 			return accept({
 				data: summary,
-				writes:
-					JSON.stringify(start.state.automaticRetry) === JSON.stringify(metadata)
-						? {}
-						: {
-								turnStartWrites: [
-									{
-										kind: "cas_state",
-										id: start.id,
-										expectedKind: start.state.kind,
-										state: { ...start.state, automaticRetry: metadata },
-									},
-								],
-								// Refresh the recovery projection only when retained metadata changes.
-								processPatch: { currentExecution: ctx.process.currentExecution },
-								changedFields: ["currentExecution"],
-							},
+				writes: {
+					turnStartWrites: [
+						{
+							kind: "cas_state",
+							id: start.id,
+							expectedKind: start.state.kind,
+							state: { ...start.state, automaticRetry: metadata },
+						},
+					],
+					// Refresh the recovery projection only when retained metadata changes.
+					processPatch: { currentExecution: ctx.process.currentExecution },
+					changedFields: ["currentExecution"],
+				},
 			});
 		}
-		const decision = RetryStartup.decide(ctx, {
+		const decision = await RetryStartup.decide(ctx, {
 			...input,
 			automaticRetry: { ...retry, starts: retry.starts + 1, nextRetryAt: null },
 		});
-		// RetryStartup's decision is synchronous; no nested process lock is acquired.
-		if (decision instanceof Promise) throw new Error("Startup retry decision must be synchronous");
 		if (!decision.ok) return reject(decision.code, decision.message);
 		return accept({
 			writes: decision.writes,

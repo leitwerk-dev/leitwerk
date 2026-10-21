@@ -273,15 +273,21 @@ it("never retries accepted failed turns even with a legacy maintenance retry pol
 		turnType: "automatic",
 		proposedTurnRecordId: "failed_review",
 		startKind: "selected_turn",
-		state: { kind: "starting", start: { kind: "automatic" } },
+		state: {
+			kind: "accepted",
+			start: { kind: "automatic" },
+			turnRecordId: "failed_review",
+			acceptedWorkerLeaseId: "old_lease",
+		},
 	});
 	const lease = deps.leases.create({
+		id: "old_lease",
 		instanceId: f.instance.id,
 		workerId: "old_worker",
 		state: "exited",
 		turnStartRecordId: start.id,
 	});
-	const turn = deps.turnRecords.create({
+	deps.turnRecords.create({
 		id: start.proposedTurnRecordId,
 		instanceId: f.instance.id,
 		turnId: "review",
@@ -289,16 +295,6 @@ it("never retries accepted failed turns even with a legacy maintenance retry pol
 		status: "failed",
 		turnStartRecordId: start.id,
 		acceptedWorkerLeaseId: lease.id,
-	});
-	deps.turnStarts.compareAndSetState({
-		id: start.id,
-		expectedKind: "starting",
-		state: {
-			kind: "accepted",
-			start: { kind: "automatic" },
-			turnRecordId: turn.id,
-			acceptedWorkerLeaseId: lease.id,
-		},
 	});
 	deps.processes.update(f.instance.id, {
 		selectedTurnId: "review",

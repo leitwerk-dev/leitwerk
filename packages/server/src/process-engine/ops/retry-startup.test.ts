@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createProcessOperationCoordinator } from "../../process-operation-coordinator.js";
 import { createOwnedTestDeps as createTestDeps } from "../../test-helpers/owned-test-deps.js";
 import { createDefaultTestProcessGraphRegistry } from "../../test-helpers/process-fixtures.js";
+import { createSelectedTurnStart } from "../../test-helpers/unit-deps.js";
 import type { DecideContext, ProcessEngineDeps } from "../types.js";
 import { RetryStartup } from "./retry-startup.js";
 
@@ -18,15 +19,12 @@ function setup(kind: "bootstrap_failed" | "preparation_failed") {
 		selectedTurnId: "generate_plan",
 		lifecycleStatus: "error",
 	});
-	const start = deps.turnStarts.create({
+	createSelectedTurnStart(base, {
 		id: "tsr_old",
 		instanceId: process.id,
 		turnId: "generate_plan",
 		turnType: "llm",
 		proposedTurnRecordId: "trn_old",
-		startKind: "selected_turn",
-		recoveryTurnRecordId: null,
-		continuation: null,
 		state:
 			kind === "bootstrap_failed"
 				? {
@@ -52,7 +50,6 @@ function setup(kind: "bootstrap_failed" | "preparation_failed") {
 						safeSummary: "x",
 					},
 	});
-	deps.processes.update(process.id, { currentExecution: { kind: "worker_start", id: start.id } });
 	return {
 		deps,
 		process,

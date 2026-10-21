@@ -55,13 +55,19 @@ export function automaticStartupRecovery(
 	now = Date.now(),
 	modelRestored = false,
 ): AutomaticStartupRecoverySummary {
-	const base = { starts: retry.starts, maxStarts: MAX_STARTUP_STARTS, nextRetryAt: null };
+	const summary = (
+		status: AutomaticStartupRecoverySummary["status"],
+		reason: string,
+		nextRetryAt: string | null = null,
+	): AutomaticStartupRecoverySummary => ({
+		starts: retry.starts,
+		maxStarts: MAX_STARTUP_STARTS,
+		status,
+		reason,
+		nextRetryAt,
+	});
 	if (start.state.kind !== "preparation_failed" && start.state.kind !== "bootstrap_failed")
-		return {
-			...base,
-			status: "blocked",
-			reason: "This start is no longer eligible for automatic recovery.",
-		};
+		return summary("blocked", "This start is no longer eligible for automatic recovery.");
 	const code = start.state.code;
 	const modelFailure = code === "model_unavailable" || code === "model_stale";
 	const transient =
@@ -74,38 +80,27 @@ export function automaticStartupRecovery(
 			"process_exited",
 		].includes(code);
 	if (!modelFailure && !transient)
-		return {
-			...base,
-			status: "blocked",
-			reason: "Automatic retry stopped. Correct the failure and retry manually.",
-		};
+		return summary("blocked", "Automatic retry stopped. Correct the failure and retry manually.");
 	if (retry.starts >= MAX_STARTUP_STARTS)
-		return {
-			...base,
-			status: "exhausted",
-			reason: "Automatic startup retries exhausted. Retry manually after correcting the failure.",
-		};
+		return summary(
+			"exhausted",
+			"Automatic startup retries exhausted. Retry manually after correcting the failure.",
+		);
 	if (modelFailure)
-		return {
-			...base,
-			status: modelRestored ? "ready" : "waiting_for_model",
-			reason: modelRestored
+		return summary(
+			modelRestored ? "ready" : "waiting_for_model",
+			modelRestored
 				? "Model availability restored."
 				: "Waiting for model availability to be restored.",
-		};
+		);
 	const failureAt = Date.parse(start.updatedAt);
 	if (!Number.isFinite(failureAt))
-		return {
-			...base,
-			status: "blocked",
-			reason: "Startup failure timing is unavailable. Retry manually.",
-		};
+		return summary("blocked", "Startup failure timing is unavailable. Retry manually.");
 	const nextRetryAt =
 		retry.nextRetryAt ?? new Date(failureAt + 30_000 * 2 ** (retry.starts - 1)).toISOString();
-	return {
-		...base,
+	return summary(
+		Date.parse(nextRetryAt) > now ? "waiting" : "ready",
+		"A transient worker startup failure is eligible for automatic recovery.",
 		nextRetryAt,
-		status: Date.parse(nextRetryAt) > now ? "waiting" : "ready",
-		reason: "A transient worker startup failure is eligible for automatic recovery.",
-	};
+	);
 }
