@@ -105,6 +105,33 @@ describe("runtime comparison", () => {
 			).warning,
 		).toBe(warning);
 	});
+	it("compares separate E2E and jsdom timings with historical combined timings", () => {
+		const current = createTimingReport([
+			{ phase: "test:e2e:process", seconds: 90 },
+			{ phase: "test:ui-integration", seconds: 10 },
+			{ phase: "test:browser", seconds: 30 },
+		]);
+		const legacy = createTimingReport([
+			{ phase: "test:e2e", seconds: 100 },
+			{ phase: "test:browser", seconds: 30 },
+		]);
+		expect(current.phases.map(({ phase }) => phase)).toEqual([
+			"test:e2e:process",
+			"test:ui-integration",
+			"test:browser",
+		]);
+		// Baselines can contain both report shapes during rollout.
+		const samples = Array.from({ length: 10 }, (_, index) => (index % 2 ? legacy : current));
+		expect(compareRuntime(current, samples)).toMatchObject({
+			baselineSeconds: 130,
+			currentSeconds: 130,
+			growthPercent: 0,
+			warning: false,
+		});
+		expect(formatComparison(current, samples).summary).toContain(
+			"| `test:e2e` | 100.0s | 100.0s |",
+		);
+	});
 	it("uses the arithmetic mean of run totals", () => {
 		const samples = Array.from({ length: 10 }, (_, index) => report(55 + index * 10));
 		expect(compareRuntime(report(104), samples)).toEqual({
@@ -200,6 +227,22 @@ describe("historical baseline", () => {
 		else sample[field] = "different";
 		client.download.mockResolvedValue(sample);
 		expect(await collectBaseline(report(), client)).toEqual([]);
+	});
+	it("collects legacy baselines without hiding an incomplete split workload", async () => {
+		const client = fixtureClient([run(1)]);
+		const legacy = createTimingReport([{ phase: "test:e2e", seconds: 100 }], {
+			GITHUB_RUN_ID: "1",
+			GITHUB_RUN_ATTEMPT: "1",
+		});
+		client.download.mockResolvedValue(legacy);
+		const current = createTimingReport([
+			{ phase: "test:e2e:process", seconds: 90 },
+			{ phase: "test:ui-integration", seconds: 10 },
+		]);
+		expect(await collectBaseline(current, client)).toEqual([legacy]);
+		for (const phase of current.phases) {
+			expect(await collectBaseline({ ...current, phases: [phase] }, client)).toEqual([]);
+		}
 	});
 	it("continues across pages when recent runs lack artifacts", async () => {
 		const client = fixtureClient();

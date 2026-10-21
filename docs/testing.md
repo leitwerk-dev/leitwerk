@@ -42,9 +42,11 @@ npm run test:full -- --composition=../my-extensions/leitwerk.composition.yaml
 ```
 
 See [Development compositions](development-composition.md). The full gate reports
-phase durations and test summaries. It prints the log directory for detailed output
-and replays the failed phase's output on failure. See [CI](ci.md#validation) for test
-runtime warnings.
+phase durations and test summaries, separating process E2E from jsdom UI integration.
+`test:e2e` still runs both; use `test:e2e:process` or `test:ui-integration` to select one.
+The full gate prints its directory of detailed logs and machine-readable Vitest
+reports and replays the failed phase's output on failure. See [CI](ci.md#validation)
+for diagnostic artifacts and test runtime warnings.
 
 For workflow graph visual iteration, `npm run dev:workflow-graph` serves synthetic
 definitions through the production graph package at <http://127.0.0.1:4320> without
@@ -163,8 +165,9 @@ not support Firefox mobile emulation or wheel input in mobile WebKit.
 Browser tests serve the production UI bundle with Vite preview. Rebuild after UI
 changes; the preview server does not transform source files or provide hot reload.
 Each runner gets its own UI server and API port. The browser command
-prints an artifact directory under `test-results/`, with separate outputs per shard.
-Preserve traces and retry artifacts from concurrent runs. For manual source UI work,
+prints an artifact directory under `test-results/`, with separate outputs and JSON
+suite/test timing reports per shard. Reports include retry attempts. Preserve traces
+and retry artifacts from concurrent runs. For manual source UI work,
 use `npm run dev:sandbox`; see the
 [sandbox guide](https://github.com/leitwerk-dev/leitwerk/blob/main/sandbox/README.md).
 

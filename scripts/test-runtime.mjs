@@ -56,14 +56,30 @@ export function validReport(report) {
 	);
 }
 
+// Historical reports measured process E2E and jsdom together. Keep that workload
+// comparable while retaining the separate measurements in new reports.
+function comparisonPhases(report) {
+	const process = report.phases.find(({ phase }) => phase === "test:e2e:process");
+	const ui = report.phases.find(({ phase }) => phase === "test:ui-integration");
+	if (!process || !ui) return report.phases;
+	return report.phases.flatMap((entry) => {
+		if (entry.phase === "test:ui-integration") return [];
+		return entry.phase === "test:e2e:process"
+			? [{ phase: "test:e2e", seconds: process.seconds + ui.seconds }]
+			: [entry];
+	});
+}
+
 function compatible(current, sample) {
+	if (!validReport(sample)) return false;
+	const currentPhases = comparisonPhases(current);
+	const samplePhases = comparisonPhases(sample);
 	return (
-		validReport(sample) &&
 		Object.keys(current.environment).every(
 			(key) => current.environment[key] === sample.environment[key],
 		) &&
-		current.phases.length === sample.phases.length &&
-		current.phases.every(({ phase }) => sample.phases.some((entry) => entry.phase === phase))
+		currentPhases.length === samplePhases.length &&
+		currentPhases.every(({ phase }) => samplePhases.some((entry) => entry.phase === phase))
 	);
 }
 
@@ -149,10 +165,11 @@ export function formatComparison(current, samples) {
 			"",
 			"| Test phase | PR | Main average |",
 			"|---|---:|---:|",
-			...current.phases.map(({ phase, seconds }) => {
+			...comparisonPhases(current).map(({ phase, seconds }) => {
 				const mean =
 					samples.reduce(
-						(sum, sample) => sum + sample.phases.find((entry) => entry.phase === phase).seconds,
+						(sum, sample) =>
+							sum + comparisonPhases(sample).find((entry) => entry.phase === phase).seconds,
 						0,
 					) / samples.length;
 				return `| \`${phase}\` | ${seconds.toFixed(1)}s | ${mean.toFixed(1)}s |`;

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { appendFileSync, closeSync, mkdtempSync, openSync, readFileSync } from "node:fs";
+import { appendFileSync, closeSync, mkdirSync, mkdtempSync, openSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import process from "node:process";
@@ -20,28 +20,43 @@ const phases = [
 	"test:parity:built",
 	"test:unit",
 	"test:integration",
-	"test:e2e",
+	"test:e2e:process",
+	"test:ui-integration",
 	"test:browser",
 ];
 
 const validationEnv = validationEnvironment();
-const quietPhases = new Set(["lint", "test:unit", "test:integration", "test:e2e", "test:browser"]);
-let logDir: string | undefined;
+const vitestPhases = new Set([
+	"test:unit",
+	"test:integration",
+	"test:e2e:process",
+	"test:ui-integration",
+]);
+const quietPhases = new Set(["lint", ...vitestPhases, "test:browser"]);
+const logDir =
+	process.env.LEITWERK_TEST_REPORTS_DIR ?? mkdtempSync(path.join(tmpdir(), "leitwerk-test-full-"));
+mkdirSync(logDir, { recursive: true });
+console.info(`[test:full] detailed logs and reports: ${logDir}`);
 const startedAt = performance.now();
 const timings: Array<{ phase: string; seconds: number }> = [];
 for (const phase of phases) {
 	console.info(`[test:full] ${phase}`);
 	const phaseStartedAt = performance.now();
 	const quiet = quietPhases.has(phase);
-	if (quiet && !logDir) {
-		logDir = mkdtempSync(path.join(tmpdir(), "leitwerk-test-full-"));
-		console.info(`[test:full] detailed logs: ${logDir}`);
+	const logPath = quiet ? path.join(logDir, `${phase}.log`) : undefined;
+	const args = ["run", "--silent", phase];
+	if (vitestPhases.has(phase)) {
+		args.push(
+			"--",
+			"--reporter=agent",
+			"--reporter=json",
+			`--outputFile=${path.join(logDir, `${phase}.json`)}`,
+		);
 	}
-	const logPath = quiet && logDir ? path.join(logDir, `${phase}.log`) : undefined;
 	const logFd = logPath === undefined ? undefined : openSync(logPath, "w");
 	let result: ReturnType<typeof spawnSync>;
 	try {
-		result = spawnSync(npm, ["run", "--silent", phase], {
+		result = spawnSync(npm, args, {
 			cwd: process.cwd(),
 			env: {
 				...validationEnv,
@@ -53,6 +68,10 @@ for (const phase of phases) {
 	} finally {
 		if (logFd !== undefined) closeSync(logFd);
 	}
+	const seconds = (performance.now() - phaseStartedAt) / 1000;
+	timings.push({ phase, seconds });
+	// Retain completed phases and the failed phase even when the gate stops early.
+	writeTimingReport(process.env.LEITWERK_TEST_TIMINGS_FILE, timings);
 	if (logPath && (result.error || result.status !== 0)) {
 		console.error(`[test:full] ${phase} failed; output from ${logPath}:`);
 		process.stderr.write(readFileSync(logPath));
@@ -76,14 +95,11 @@ for (const phase of phases) {
 			for (const summary of summaries) console.info(`[test:full] ${summary.trim()}`);
 		}
 	}
-	const seconds = (performance.now() - phaseStartedAt) / 1000;
-	timings.push({ phase, seconds });
 	console.info(`[test:full] ${phase} completed in ${seconds.toFixed(1)}s`);
 }
 
 const totalSeconds = (performance.now() - startedAt) / 1000;
 console.info(`[test:full] complete in ${totalSeconds.toFixed(1)}s`);
-writeTimingReport(process.env.LEITWERK_TEST_TIMINGS_FILE, timings);
 if (process.env.GITHUB_STEP_SUMMARY) {
 	appendFileSync(
 		process.env.GITHUB_STEP_SUMMARY,
