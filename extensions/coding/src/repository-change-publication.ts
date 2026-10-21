@@ -23,7 +23,6 @@ import {
 import { type ConflictEvidence, conflictKey, validateConflict } from "./repository-rebase/index.js";
 import { rebasePrompt } from "./repository-rebase/prompt.js";
 import {
-	type ReconciliationResult,
 	reconcilePublicationRepository,
 	reconciliationPrompt,
 	recordRepositoryPublication,
@@ -652,10 +651,40 @@ export function createRepositoryChangePublication<P>(
 			expectedRemoteHead,
 		});
 	}
+	async function reconcile(ctx: PublicationContext<P>, current: PublicationState) {
+		const repo = ctx.repo.get("repo");
+		return reconcilePublicationRepository({
+			projectKey: repo.key,
+			repoPath: repo.fsPath,
+			workBranch: repo.workBranch,
+			baselineSha: current.workBaselineSha ?? current.headSha ?? undefined,
+			gitIdentity: await adapter.identity(ctx),
+		});
+	}
 	const runRepository = async (ctx: PublicationContext<P>) => {
 		let current = remote(ctx.state);
 		const update = (patch: Parameters<typeof patchRemote>[1]) => {
 			current = { ...current, ...patch, delivery: { ...current.delivery, ...patch.delivery } };
+		};
+		const acknowledgePublication = (headSha: string, changed: boolean) => {
+			update({
+				headSha,
+				workBaselineSha: headSha,
+				lastPublishedHeadSha: changed ? headSha : current.lastPublishedHeadSha,
+				reconciliationRequired: false,
+				reconciliationCycles: 0,
+				pipeline: changed ? null : current.pipeline,
+			});
+			const repo = ctx.repo.get("repo");
+			recordRepositoryPublication(
+				{
+					projectKey: repo.key,
+					repoPath: repo.fsPath,
+					workBranch: repo.workBranch,
+					baselineSha: headSha,
+				},
+				headSha,
+			);
 		};
 		const result = (
 			outcome:
@@ -682,16 +711,6 @@ export function createRepositoryChangePublication<P>(
 			if (evidence.kind === "conflict") return result("conflict_ready");
 		}
 		ctx.reportProgress(deliveryProgress(current, adapter.label));
-		const reconcile = async (): Promise<ReconciliationResult> => {
-			const repo = ctx.repo.get("repo");
-			return reconcilePublicationRepository({
-				projectKey: repo.key,
-				repoPath: repo.fsPath,
-				workBranch: repo.workBranch,
-				baselineSha: current.workBaselineSha ?? current.headSha ?? undefined,
-				gitIdentity: await adapter.identity(ctx),
-			});
-		};
 		const reconcileAgain = () => {
 			const cycles = (current.reconciliationCycles ?? 0) + 1;
 			update({
@@ -732,7 +751,7 @@ export function createRepositoryChangePublication<P>(
 			(!current.headSha || current.delivery.adjustment) &&
 			current.delivery.adjustment?.origin !== "rebase"
 		) {
-			const synchronized = await reconcile();
+			const synchronized = await reconcile(ctx, current);
 			if (synchronized.changed || synchronized.status === "conflicts") return reconcileAgain();
 			// Fetch is authoritative even if the watcher has not observed a developer push yet.
 			publicationLease = synchronized.remoteHead;
@@ -754,23 +773,7 @@ export function createRepositoryChangePublication<P>(
 				if (!(error instanceof RemoteBranchChangedError)) throw error;
 				return reconcileAgain();
 			}
-			update({
-				headSha: published.headSha,
-				workBaselineSha: published.headSha,
-				lastPublishedHeadSha: published.headSha,
-				reconciliationRequired: false,
-				reconciliationCycles: 0,
-				pipeline: null,
-			});
-			recordRepositoryPublication(
-				{
-					projectKey: ctx.repo.get("repo").key,
-					repoPath: ctx.repo.get("repo").fsPath,
-					workBranch: ctx.repo.get("repo").workBranch,
-					baselineSha: published.headSha,
-				},
-				published.headSha,
-			);
+			acknowledgePublication(published.headSha, true);
 		}
 
 		if (!current.prNumber || !current.prUrl) {
@@ -829,25 +832,7 @@ export function createRepositoryChangePublication<P>(
 						throw new Error("Pull request head has not caught up with rebase publication");
 				}
 				adjustmentPublished = published.headSha !== publicationLease;
-				update({
-					headSha: published.headSha,
-					workBaselineSha: published.headSha,
-					lastPublishedHeadSha: adjustmentPublished
-						? published.headSha
-						: current.lastPublishedHeadSha,
-					reconciliationRequired: false,
-					reconciliationCycles: 0,
-					pipeline: published.headSha !== publicationLease ? null : current.pipeline,
-				});
-				recordRepositoryPublication(
-					{
-						projectKey: ctx.repo.get("repo").key,
-						repoPath: ctx.repo.get("repo").fsPath,
-						workBranch: ctx.repo.get("repo").workBranch,
-						baselineSha: published.headSha,
-					},
-					published.headSha,
-				);
+				acknowledgePublication(published.headSha, adjustmentPublished);
 			}
 			if (adjustment.origin === "rebase") await adapter.afterRebase(ctx, current);
 			if (adjustment.origin === "feedback" && !adapter.maintenance) {
@@ -1132,13 +1117,7 @@ export function createRepositoryChangePublication<P>(
 						},
 					],
 				});
-				const reconciliation = reconcilePublicationRepository({
-					projectKey: project.key,
-					repoPath: project.fsPath,
-					workBranch: project.workBranch,
-					baselineSha: current.workBaselineSha ?? current.headSha ?? undefined,
-					gitIdentity: await adapter.identity(repositoryContext(ctx)),
-				});
+				const reconciliation = await reconcile(repositoryContext(ctx), current);
 				ctx.reportProgress({
 					title: "Repository reconciliation",
 					steps: [

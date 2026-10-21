@@ -8,6 +8,8 @@ import {
 	pushWasRejected,
 	type RepositoryPublicationReceipt,
 	readPublicationReceipt,
+	readRepositoryBinding,
+	repositoryBindingMatches,
 	savePublicationReceipt,
 } from "./repository-publication-receipt.js";
 
@@ -170,22 +172,14 @@ function repositoryGit(projectKey: string, repoPath: string) {
 		const observed = git("ls-remote", "--heads", "origin", ref).split(/\s+/)[0] || null;
 		const lease = expectedRemoteHead === undefined ? observed : expectedRemoteHead;
 		const directory = git("rev-parse", "--absolute-git-dir");
-		const origin = git("remote", "get-url", "origin");
-		const pushOrigin = git("remote", "get-url", "--push", "--all", "origin");
-		if (origin !== pushOrigin)
+		const binding = readRepositoryBinding(git, branch);
+		if (binding.origin !== binding.pushOrigin)
 			throw new DeterministicGitError("Fetch and push endpoints must match for publication");
 		const previous = readPublicationReceipt(directory);
-		if (
-			previous &&
-			(previous.branch !== branch ||
-				previous.origin !== origin ||
-				previous.pushOrigin !== pushOrigin)
-		)
+		if (!repositoryBindingMatches(previous, binding))
 			throw new DeterministicGitError("Repository publication receipt binding changed");
 		const receipt: RepositoryPublicationReceipt = {
-			branch,
-			origin,
-			pushOrigin,
+			...binding,
 			expectedHead: lease,
 			candidate: expectedHeadSha,
 			status: "attempting",

@@ -38,6 +38,21 @@ export interface GitLabPublicationParams extends PublicationParams {
 	doneLabel?: string | null;
 }
 /** @internal */
+export function assertGitLabBranchBinding(
+	mr: GitLabMergeRequest,
+	params: Partial<GitLabPublicationParams>,
+	projectId = params.projectId,
+): void {
+	if (
+		mr.source_project_id !== projectId ||
+		mr.target_project_id !== projectId ||
+		mr.source_branch !== params.workBranch ||
+		mr.target_branch !== params.baseBranch
+	)
+		throw new Error("GitLab maintenance branch binding changed");
+}
+
+/** @internal */
 export const gitlabPublicationRequest = (mr: GitLabMergeRequest): PublicationRequest => ({
 	number: mr.iid,
 	html_url: mr.web_url,
@@ -191,14 +206,7 @@ export function createGitLabPublicationAdapter<P extends Partial<GitLabPublicati
 			if (!current.prNumber && !(project?.metadata?.gitlab as { iid?: number } | undefined)?.iid)
 				return null;
 			const { mr } = await callFor(ctx)<GitLabDeliveryObservation>("gitlab_observe_merge_request");
-			if (
-				mr.state === "opened" &&
-				(mr.source_project_id !== ctx.params.projectId ||
-					mr.target_project_id !== ctx.params.projectId ||
-					mr.source_branch !== ctx.params.workBranch ||
-					mr.target_branch !== ctx.params.baseBranch)
-			)
-				throw new Error("GitLab maintenance branch binding changed");
+			if (mr.state === "opened") assertGitLabBranchBinding(mr, ctx.params);
 			return mr.state === "opened" ? null : gitlabPublicationRequest(mr);
 		},
 		reconcileTerminal: (ctx, _current, pr) => finalizeIssue(ctx, pr),
