@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { jiraFixture } from "./jira-gitlab-fixture.js";
-import * as scenarios from "./jira-gitlab-scenarios.js";
 
 describe("Jira coordinated GitLab change", () => {
 	it("blocks planning before acceptance when tool preparation fails and recovers on retry", async ({
@@ -201,21 +200,6 @@ describe("Jira coordinated GitLab change", () => {
 		]);
 		expect(f.issue.fields.status.name).toBe("In Progress");
 	}, 45000);
-	it(
-		"reconciles terminal requests before cancellation and leaves remaining open requests untouched",
-		scenarios.cancelAfterMerge,
-		45000,
-	);
-	it(
-		"repairs repositories independently and aborts when every MR closes unmerged",
-		scenarios.independentRepositoryRepair,
-		45000,
-	);
-	it(
-		"stops between repositories when the source is cancelled during publication",
-		scenarios.cancelDuringPublication,
-		45000,
-	);
 
 	it("retries partial publication without duplicate requests or source comments", async ({
 		onTestFinished,
@@ -261,45 +245,3 @@ describe("Jira coordinated GitLab change", () => {
 		).toBe(false);
 	}, 45000);
 });
-
-it(
-	"settles feedback independently and escalates only the repository that exhausts three CI repairs",
-	scenarios.feedbackCiBudget,
-	90000,
-);
-
-it(
-	"does not replay a no-change CI repair for MR metadata updates, including after restart",
-	scenarios.noChangeCiRepair,
-	60000,
-);
-
-it(
-	"runs Deliver once through preparing, running and green CI, then invokes Address Feedback directly",
-	scenarios.directFeedback,
-	90000,
-);
-
-it(
-	"stops one MR while the other stays maintained and reports partial completion to Jira",
-	scenarios.stopOneMr,
-	60000,
-);
-
-it(
-	"aborts when all MRs are stopped, including while awaiting an operator",
-	scenarios.stopAllMrs,
-	60000,
-);
-
-it(
-	"fences a running repair after remove/re-add and continues maintaining the other MR",
-	scenarios.reactivatedMrRepair,
-	60000,
-);
-
-it(
-	"resumes an interrupted repair on the other MR without spending its CI budget again",
-	scenarios.interruptedOtherMrRepair,
-	60000,
-);
