@@ -155,7 +155,7 @@ jobs:
         run: npm run publish:dry-run
 
       - name: Upload validated publishable contents
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: publishable-${{ needs.resolve.outputs.git_sha }}
           path: |
@@ -353,7 +353,7 @@ jobs:
           record_digest worker "$WORKER_DIGEST"
 
       - name: Upload platform image digests
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-digests-${{ matrix.platform_slug }}
           path: release-digests
@@ -395,7 +395,7 @@ jobs:
         if: >-
           needs.inspect-images.outputs.server_build == 'true' ||
           needs.inspect-images.outputs.worker_build == 'true'
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: release-digests-*
           path: release-digests
@@ -538,7 +538,7 @@ jobs:
         run: npm ci
 
       - name: Download validated publishable contents
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: publishable-${{ needs.resolve.outputs.git_sha }}
           path: .
@@ -676,7 +676,7 @@ jobs:
 
       - name: Upload release artifacts to workflow run
         if: ${{ always() && steps.coordinates.outcome == 'success' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: leitwerk-${{ needs.resolve.outputs.version }}-release-artifacts
           path: |
