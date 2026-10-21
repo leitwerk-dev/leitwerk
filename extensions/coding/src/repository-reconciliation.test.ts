@@ -12,6 +12,7 @@ import {
 import {
 	ConcurrentRebaseSourceError,
 	publishRebase,
+	type RebaseInput,
 	startRebase,
 	verifyRebase,
 } from "./repository-rebase/git.js";
@@ -67,6 +68,39 @@ function fixture() {
 	};
 	const push = () => git(dev, "push", "origin", "work");
 	return { root, bare, dev, local, input, commit, push };
+}
+function attemptPublication(f: ReturnType<typeof fixture>, candidate: string) {
+	savePublicationReceipt(join(f.local, ".git"), {
+		branch: "work",
+		origin: f.bare,
+		pushOrigin: f.bare,
+		expectedHead: f.input.baselineSha,
+		candidate,
+		status: "attempting",
+	});
+}
+function targetRepair(
+	f: ReturnType<typeof fixture>,
+	headSha: string,
+	baseSha: string,
+	url: string,
+): RebaseInput {
+	return {
+		projectKey: "repo",
+		path: f.local,
+		workBranch: "work",
+		conflict: {
+			owner: "team",
+			repo: "repo",
+			prNumber: 1,
+			headBranch: "work",
+			baseBranch: "target",
+			headSha,
+			baseSha,
+			url,
+			reason: "behind",
+		},
+	};
 }
 afterEach(() => {
 	for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -247,22 +281,14 @@ describe("repository reconciliation", { timeout: 30_000 }, () => {
 		git(f.dev, "commit", "-m", "Track target file");
 		git(f.dev, "push", "origin", "target");
 		expect(() =>
-			startRebase({
-				projectKey: "repo",
-				path: f.local,
-				workBranch: "work",
-				conflict: {
-					owner: "team",
-					repo: "repo",
-					prNumber: 1,
-					headBranch: "work",
-					baseBranch: "target",
-					headSha: f.input.baselineSha,
-					baseSha: git(f.dev, "rev-parse", "HEAD"),
-					url: "https://forge.example/pull/1",
-					reason: "behind",
-				},
-			}),
+			startRebase(
+				targetRepair(
+					f,
+					f.input.baselineSha,
+					git(f.dev, "rev-parse", "HEAD"),
+					"https://forge.example/pull/1",
+				),
+			),
 		).toThrow(/Target changes collide with ignored files/);
 		expect(git(f.local, "rev-parse", "HEAD")).toBe(f.input.baselineSha);
 		expect(readFileSync(join(f.local, "ignored.txt"), "utf8")).toBe("retained\n");
@@ -309,14 +335,7 @@ describe("repository reconciliation", { timeout: 30_000 }, () => {
 	])("blocks an uncertain publication with an unproven %s remote", (remoteState) => {
 		const f = fixture();
 		const candidate = f.commit(f.local, "local.txt", "retained\n");
-		savePublicationReceipt(join(f.local, ".git"), {
-			branch: "work",
-			origin: f.bare,
-			pushOrigin: f.bare,
-			expectedHead: f.input.baselineSha,
-			candidate,
-			status: "attempting",
-		});
+		attemptPublication(f, candidate);
 		if (remoteState === "rewritten") {
 			f.commit(f.dev, "remote.txt", "remote\n");
 			f.push();
@@ -329,14 +348,7 @@ describe("repository reconciliation", { timeout: 30_000 }, () => {
 	it("proves uncertain acceptance from remote ancestry before adopting a subsequent developer push", () => {
 		const f = fixture();
 		const candidate = f.commit(f.local, "local.txt", "published\n");
-		savePublicationReceipt(join(f.local, ".git"), {
-			branch: "work",
-			origin: f.bare,
-			pushOrigin: f.bare,
-			expectedHead: f.input.baselineSha,
-			candidate,
-			status: "attempting",
-		});
+		attemptPublication(f, candidate);
 		git(f.local, "push", "origin", "work");
 		git(f.dev, "pull", "--ff-only", "origin", "work");
 		const remote = f.commit(f.dev, "developer.txt", "developer\n");
@@ -500,22 +512,7 @@ describe("repository reconciliation", { timeout: 30_000 }, () => {
 		f.commit(f.dev, "target.txt", "target change\n");
 		const target = f.commit(f.dev, "file.txt", "target\n");
 		git(f.dev, "push", "origin", "target");
-		const repair = {
-			projectKey: "repo",
-			path: f.local,
-			workBranch: "work",
-			conflict: {
-				owner: "team",
-				repo: "repo",
-				prNumber: 1,
-				headBranch: "work",
-				baseBranch: "target",
-				headSha: source,
-				baseSha: target,
-				url: "https://forge.example/team/repo/pull/1",
-				reason: "behind" as const,
-			},
-		};
+		const repair = targetRepair(f, source, target, "https://forge.example/team/repo/pull/1");
 		startRebase(repair);
 		writeFileSync(join(f.local, "file.txt"), "target and feature resolved\n");
 		git(f.local, "add", "file.txt");

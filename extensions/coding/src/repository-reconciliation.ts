@@ -1,15 +1,19 @@
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { hostname } from "node:os";
 import { join } from "node:path";
 import { repositoryGitArgs, repositoryGitSubprocessEnv } from "@leitwerk-dev/process-sdk";
 import { resolveGitBinary } from "@leitwerk-dev/process-sdk/git-binary";
 import type { GitIdentity } from "./finalization-git.js";
 import {
+	type RepositoryBinding,
 	readPublicationReceipt,
+	readRepositoryBinding,
+	repositoryBindingMatches,
 	savePublicationReceipt,
 } from "./repository-publication-receipt.js";
+import { repositoryRecord } from "./repository-record.js";
 
 /** @internal */
 export interface ReconciliationInput {
@@ -30,10 +34,7 @@ export interface ReconciliationResult {
 	changed: boolean;
 }
 
-interface RecordState {
-	branch: string;
-	origin: string;
-	pushOrigin: string;
+interface RecordState extends RepositoryBinding {
 	baseline: string;
 	remoteSeen?: boolean;
 	protectedIgnored?: string[];
@@ -77,14 +78,9 @@ function repository(input: Pick<ReconciliationInput, "projectKey" | "repoPath">)
 		throw new Error(
 			"Repository reconciliation binding changed: fetch and push endpoints must match",
 		);
-	const file = join(directory, "leitwerk-reconciliation.json");
-	const read = (): RecordState | null =>
-		existsSync(file) ? JSON.parse(readFileSync(file, "utf8")) : null;
-	const save = (record: RecordState) => {
-		writeFileSync(`${file}.tmp`, JSON.stringify(record), { mode: 0o600 });
-		renameSync(`${file}.tmp`, file);
-	};
-	return { git, directory, read, save };
+	const { read, save } = repositoryRecord<RecordState>(directory, "reconciliation");
+	const binding = (branch: string) => readRepositoryBinding((...args) => git(args), branch);
+	return { git, directory, read, save, binding };
 }
 
 function integrationIdentityEnv(identity: GitIdentity | undefined): NodeJS.ProcessEnv {
@@ -133,6 +129,23 @@ function assertIgnoredProtection(
 		throw new Error(
 			"Previously ignored local files became publishable; review ignore rules before continuing. Local files were retained",
 		);
+}
+
+function ignoredPathsCollide(
+	git: ReturnType<typeof repository>["git"],
+	ignored: string[],
+	target: string,
+	replayRange: string,
+): boolean {
+	const paths = [
+		...git(["ls-tree", "-r", "--name-only", "-z", target]).split("\0"),
+		...git(["log", "--format=", "--full-history", "-m", "--name-only", "-z", replayRange]).split(
+			"\0",
+		),
+	];
+	return ignored.some((file) =>
+		paths.some((p) => p === file || p.startsWith(`${file}/`) || file.startsWith(`${p}/`)),
+	);
 }
 
 function ancestor(git: ReturnType<typeof repository>["git"], a: string, b: string): boolean {
@@ -184,18 +197,12 @@ function withLock<T>(directory: string, run: () => T): T {
  * @internal
  */
 export function reconcileRepository(input: ReconciliationInput): ReconciliationResult {
-	const { git, directory, read, save } = repository(input);
+	const { git, directory, read, save, binding: readBinding } = repository(input);
 	return withLock(directory, () => {
 		git(["check-ref-format", `refs/heads/${input.workBranch}`]);
-		const origin = git(["remote", "get-url", "origin"]);
-		const pushOrigin = git(["remote", "get-url", "--push", "--all", "origin"]);
+		const binding = readBinding(input.workBranch);
 		let record = read();
-		if (
-			record &&
-			(record.branch !== input.workBranch ||
-				record.origin !== origin ||
-				record.pushOrigin !== pushOrigin)
-		)
+		if (!repositoryBindingMatches(record, binding))
 			throw new Error("Repository reconciliation binding changed");
 		if (record?.sourceIntegration) {
 			if (git(["branch", "--show-current"]) !== input.workBranch)
@@ -235,12 +242,7 @@ export function reconcileRepository(input: ReconciliationInput): ReconciliationR
 			const head = git(["rev-parse", "HEAD"]);
 			let baseline = record?.baseline ?? input.baselineSha;
 			const receipt = readPublicationReceipt(directory);
-			if (
-				receipt &&
-				(receipt.branch !== input.workBranch ||
-					receipt.origin !== origin ||
-					receipt.pushOrigin !== pushOrigin)
-			)
+			if (!repositoryBindingMatches(receipt, binding))
 				throw new Error("Repository publication receipt binding changed");
 			if (receipt?.status === "attempting") {
 				if (remote === receipt.candidate || ancestor(git, receipt.candidate, remote)) {
@@ -261,9 +263,7 @@ export function reconcileRepository(input: ReconciliationInput): ReconciliationR
 				);
 			record = {
 				...record,
-				branch: input.workBranch,
-				origin,
-				pushOrigin,
+				...binding,
 				baseline,
 				remoteSeen: true,
 				protectedIgnored: [...new Set([...(record?.protectedIgnored ?? []), ...ignored])],
@@ -280,23 +280,7 @@ export function reconcileRepository(input: ReconciliationInput): ReconciliationR
 			// Dirty submodule work cannot be represented by the parent's tree checkpoint.
 			if (git(["submodule", "foreach", "--quiet", "git status --porcelain"]))
 				throw new Error("Commit or preserve dirty submodule work before reconciliation");
-			const paths = [
-				...git(["ls-tree", "-r", "--name-only", "-z", remote]).split("\0"),
-				...git([
-					"log",
-					"--format=",
-					"--full-history",
-					"-m",
-					"--name-only",
-					"-z",
-					`${record.baseline}..${head}`,
-				]).split("\0"),
-			];
-			if (
-				ignored.some((file) =>
-					paths.some((p) => p === file || p.startsWith(`${file}/`) || file.startsWith(`${p}/`)),
-				)
-			)
+			if (ignoredPathsCollide(git, ignored, remote, `${record.baseline}..${head}`))
 				throw new Error("Remote changes collide with ignored files; local files were retained");
 			// A verified remote descendant already contains these local commits, including
 			// publication that succeeded before its receipt reached the server.
@@ -365,13 +349,13 @@ export function reconcileRepository(input: ReconciliationInput): ReconciliationR
 			save(record);
 		}
 		if (operation.phase === "rebasing") {
-			if (rebaseActive())
-				return {
-					status: "conflicts",
-					remoteHead: operation.remote,
-					headSha: git(["rev-parse", "HEAD"]),
-					changed: true,
-				};
+			const conflicts = (): ReconciliationResult => ({
+				status: "conflicts",
+				remoteHead: operation.remote,
+				headSha: git(["rev-parse", "HEAD"]),
+				changed: true,
+			});
+			if (rebaseActive()) return conflicts();
 			// Retry after Git completed the rebase but before the result was journaled.
 			if (git(["rev-parse", "HEAD"]) === operation.work) {
 				try {
@@ -396,12 +380,7 @@ export function reconcileRepository(input: ReconciliationInput): ReconciliationR
 					);
 				} catch (error) {
 					if (!rebaseActive()) throw error;
-					return {
-						status: "conflicts",
-						remoteHead: operation.remote,
-						headSha: git(["rev-parse", "HEAD"]),
-						changed: true,
-					};
+					return conflicts();
 				}
 			}
 			if (
@@ -477,26 +456,7 @@ export function assertReconciliationTargetSafe(
 ): void {
 	const { git, read } = repository(input);
 	assertIgnoredProtection(git, read()?.protectedIgnored);
-	const paths = [
-		...git(["ls-tree", "-r", "--name-only", "-z", targetSha]).split("\0"),
-		...git([
-			"log",
-			"--format=",
-			"--full-history",
-			"-m",
-			"--name-only",
-			"-z",
-			`${targetSha}..HEAD`,
-		]).split("\0"),
-	];
-	if (
-		ignoredPaths(git).some((ignored) =>
-			paths.some(
-				(file) =>
-					file === ignored || file.startsWith(`${ignored}/`) || ignored.startsWith(`${file}/`),
-			),
-		)
-	)
+	if (ignoredPathsCollide(git, ignoredPaths(git), targetSha, `${targetSha}..HEAD`))
 		throw new Error("Target changes collide with ignored files; local files were retained");
 }
 
@@ -508,7 +468,7 @@ export function retainConcurrentRebase(
 		gitIdentity: GitIdentity;
 	},
 ): void {
-	const { git, directory, read, save } = repository(input);
+	const { git, directory, read, save, binding: readBinding } = repository(input);
 	withLock(directory, () => {
 		const old = read();
 		if (old?.operation || old?.sourceIntegration)
@@ -521,12 +481,8 @@ export function retainConcurrentRebase(
 			throw new Error(
 				"Target rebase changed before source reconciliation; local work was retained",
 			);
-		const origin = git(["remote", "get-url", "origin"]);
-		const pushOrigin = git(["remote", "get-url", "--push", "--all", "origin"]);
-		if (
-			old &&
-			(old.branch !== input.workBranch || old.origin !== origin || old.pushOrigin !== pushOrigin)
-		)
+		const binding = readBinding(input.workBranch);
+		if (!repositoryBindingMatches(old, binding))
 			throw new Error("Repository reconciliation binding changed");
 		const identity = integrationIdentityEnv(input.gitIdentity);
 		const id = randomUUID();
@@ -546,9 +502,7 @@ export function retainConcurrentRebase(
 		// The original source tree is the merge baseline, not the old target branch.
 		// This preserves developer deletions as well as the agent's conflict resolution.
 		save({
-			branch: input.workBranch,
-			origin,
-			pushOrigin,
+			...binding,
 			baseline: input.baselineSha,
 			remoteSeen: true,
 			joinParent: input.targetBase,
@@ -571,13 +525,11 @@ export function repositoryWorktreeIsDirty(
 export function prepareInitialRepository(
 	input: Omit<ReconciliationInput, "baselineSha">,
 ): ReconciliationResult {
-	const { git, read, save, directory } = repository(input);
+	const { git, read, save, directory, binding } = repository(input);
 	withLock(directory, () => {
 		if (!read())
 			save({
-				branch: input.workBranch,
-				origin: git(["remote", "get-url", "origin"]),
-				pushOrigin: git(["remote", "get-url", "--push", "--all", "origin"]),
+				...binding(input.workBranch),
 				baseline: git(["rev-parse", "HEAD"]),
 				protectedIgnored: ignoredPaths(git),
 			});
@@ -627,21 +579,15 @@ export function reconcilePublicationRepository(
 
 /** Record only a remotely verified publication, including recovery after a lost reply. @internal */
 export function recordRepositoryPublication(input: ReconciliationInput, headSha: string): void {
-	const { directory, read, save, git } = repository(input);
+	const { directory, read, save, binding: readBinding } = repository(input);
 	withLock(directory, () => {
 		const old = read();
 		if (old?.operation) throw new Error("Cannot acknowledge publication during reconciliation");
-		const origin = git(["remote", "get-url", "origin"]);
-		const pushOrigin = git(["remote", "get-url", "--push", "--all", "origin"]);
-		if (
-			old &&
-			(old.branch !== input.workBranch || old.origin !== origin || old.pushOrigin !== pushOrigin)
-		)
+		const binding = readBinding(input.workBranch);
+		if (!repositoryBindingMatches(old, binding))
 			throw new Error("Repository reconciliation binding changed");
 		save({
-			branch: input.workBranch,
-			origin,
-			pushOrigin,
+			...binding,
 			baseline: headSha,
 			publicationReceiptSha: headSha,
 			remoteSeen: true,

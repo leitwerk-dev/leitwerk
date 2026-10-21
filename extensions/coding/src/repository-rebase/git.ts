@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { repositoryGitArgs, repositoryGitSubprocessEnv } from "@leitwerk-dev/process-sdk";
 import { resolveGitBinary } from "@leitwerk-dev/process-sdk/git-binary";
@@ -7,14 +7,16 @@ import {
 	pushWasRejected,
 	type RepositoryPublicationReceipt,
 	readPublicationReceipt,
+	readRepositoryBinding,
+	repositoryBindingMatches,
 	savePublicationReceipt,
 } from "../repository-publication-receipt.js";
 import { assertReconciliationTargetSafe } from "../repository-reconciliation.js";
+import { repositoryRecord } from "../repository-record.js";
 
 import { type ConflictEvidence, conflictKey } from "./index.js";
 import {
 	type RebaseRecord,
-	rebasePublicationDecision,
 	requireRebaseHead,
 	requireRebaseOrigin,
 	requireRebaseTarget,
@@ -49,15 +51,7 @@ function area(input: RebaseInput): string {
 function active(gitDir: string): boolean {
 	return ["rebase-merge", "rebase-apply"].some((name) => existsSync(join(gitDir, name)));
 }
-function save(gitDir: string, record: RebaseRecord): void {
-	const path = join(gitDir, "leitwerk-rebase.json");
-	writeFileSync(`${path}.tmp`, JSON.stringify(record), { mode: 0o600 });
-	renameSync(`${path}.tmp`, path);
-}
-function read(gitDir: string): RebaseRecord | null {
-	const file = join(gitDir, "leitwerk-rebase.json");
-	return existsSync(file) ? (JSON.parse(readFileSync(file, "utf8")) as RebaseRecord) : null;
-}
+const recordFile = (gitDir: string) => repositoryRecord<RebaseRecord>(gitDir, "rebase");
 function requireWorktree(input: RebaseInput): void {
 	requireRebaseWorktree(input.workBranch, {
 		branch: git(input, "branch", "--show-current"),
@@ -101,13 +95,13 @@ function verifyNoRepairNeeded(input: RebaseInput, headSha: string, baseSha: stri
 
 /** @internal */
 export function hasPreparedRebase(input: RebaseInput): boolean {
-	return read(area(input))?.key === conflictKey(input.conflict);
+	return recordFile(area(input)).read()?.key === conflictKey(input.conflict);
 }
 
 /** Persist the lease before changing HEAD; a retry resumes Git's own rebase state. @internal */
 export function prepareRebase(input: RebaseInput): RebaseRecord {
 	const gitDir = area(input);
-	const old = read(gitDir);
+	const old = recordFile(gitDir).read();
 	requireTarget(input, old?.key === conflictKey(input.conflict) ? old : null);
 	if (old?.key === conflictKey(input.conflict)) {
 		verifyCurrentBase(input, old);
@@ -143,7 +137,7 @@ export function prepareRebase(input: RebaseInput): RebaseRecord {
 		baseBranch: input.conflict.baseBranch,
 	};
 	git(input, "update-ref", "refs/leitwerk/rebase-original", record.originalHead);
-	save(gitDir, record);
+	recordFile(gitDir).save(record);
 	return record;
 }
 /** @internal */
@@ -158,7 +152,7 @@ export function startRebase(input: RebaseInput): RebaseRecord {
 	try {
 		verifyNoRepairNeeded(input, record.originalHead, record.baseSha);
 		record.status = "clean";
-		save(gitDir, record);
+		recordFile(gitDir).save(record);
 		return record;
 	} catch (error) {
 		if ((error as { status?: number }).status !== 1) throw error;
@@ -168,7 +162,7 @@ export function startRebase(input: RebaseInput): RebaseRecord {
 		record.baseSha,
 	);
 	record.status = "rebasing";
-	save(gitDir, record);
+	recordFile(gitDir).save(record);
 	try {
 		git(input, "rebase", "--rebase-merges", record.baseSha);
 	} catch (error) {
@@ -188,7 +182,7 @@ export function verifyRebase(input: RebaseInput): {
 	baseSha: string;
 } {
 	const gitDir = area(input);
-	const record = read(gitDir);
+	const record = recordFile(gitDir).read();
 	if (!record || record.key !== conflictKey(input.conflict))
 		throw new Error("Missing matching rebase metadata");
 	requireTarget(input, record);
@@ -228,25 +222,18 @@ export function publishRebase(input: RebaseInput): ReturnType<typeof verifyRebas
 		result.baseSha,
 	);
 	const gitDir = area(input);
-	const record = read(gitDir);
+	const record = recordFile(gitDir).read();
 	if (!record) throw new Error("Missing matching rebase metadata");
 	verifyCurrentBase(input, record);
 	const remote = remoteHead(input);
-	const origin = git(input, "remote", "get-url", "origin");
-	const pushOrigin = git(input, "remote", "get-url", "--push", "--all", "origin");
-	if (origin !== pushOrigin) throw new Error("Fetch and push endpoints must match for publication");
+	const binding = readRepositoryBinding((...args) => git(input, ...args), input.workBranch);
+	if (binding.origin !== binding.pushOrigin)
+		throw new Error("Fetch and push endpoints must match for publication");
 	const previous = readPublicationReceipt(gitDir);
-	if (
-		previous &&
-		(previous.branch !== input.workBranch ||
-			previous.origin !== origin ||
-			previous.pushOrigin !== pushOrigin)
-	)
+	if (!repositoryBindingMatches(previous, binding))
 		throw new Error("Repository publication receipt binding changed");
 	const receipt: RepositoryPublicationReceipt = {
-		branch: input.workBranch,
-		origin,
-		pushOrigin,
+		...binding,
 		expectedHead: result.originalHead,
 		candidate: result.headSha,
 		status: "attempting",
@@ -282,7 +269,6 @@ export function publishRebase(input: RebaseInput): ReturnType<typeof verifyRebas
 		throw new ConcurrentRebaseSourceError(result, previous.candidate === result.headSha);
 	}
 	if (remote !== result.originalHead) throw new ConcurrentRebaseSourceError(result);
-	rebasePublicationDecision(result.originalHead, result.headSha, remote);
 	savePublicationReceipt(gitDir, receipt);
 	try {
 		git(

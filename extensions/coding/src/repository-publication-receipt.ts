@@ -1,11 +1,41 @@
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { repositoryRecord } from "./repository-record.js";
 
-/** A local write-ahead receipt, not a replacement for the server-owned process state. @internal */
-export interface RepositoryPublicationReceipt {
+/** @internal */
+export interface RepositoryBinding {
 	branch: string;
 	origin: string;
 	pushOrigin: string;
+}
+
+/** @internal */
+export function readRepositoryBinding(
+	git: (...args: string[]) => string,
+	branch: string,
+): RepositoryBinding {
+	return {
+		branch,
+		origin: git("remote", "get-url", "origin"),
+		pushOrigin: git("remote", "get-url", "--push", "--all", "origin"),
+	};
+}
+
+/** @internal */
+export function repositoryBindingMatches(
+	record: RepositoryBinding | null,
+	binding: RepositoryBinding,
+): boolean {
+	return (
+		!record ||
+		(record.branch === binding.branch &&
+			record.origin === binding.origin &&
+			record.pushOrigin === binding.pushOrigin)
+	);
+}
+
+/** A local write-ahead receipt, not a replacement for the server-owned process state. @internal */
+export interface RepositoryPublicationReceipt extends RepositoryBinding {
 	expectedHead: string | null;
 	candidate: string;
 	status: "attempting" | "accepted" | "rejected";
@@ -30,14 +60,10 @@ export function readPublicationReceipt(gitDirectory: string): RepositoryPublicat
 }
 
 /** Persist intent before sending and acceptance before checking for subsequent remote movement. @internal */
-export function savePublicationReceipt(
+export const savePublicationReceipt = (
 	gitDirectory: string,
 	receipt: RepositoryPublicationReceipt,
-): void {
-	const file = join(gitDirectory, "leitwerk-publication.json");
-	writeFileSync(`${file}.tmp`, JSON.stringify(receipt), { mode: 0o600 });
-	renameSync(`${file}.tmp`, file);
-}
+) => repositoryRecord(gitDirectory, "publication").save(receipt);
 
 /** Porcelain rejection is proof of no write; transport failures are not. @internal */
 export function pushWasRejected(porcelain: string): boolean {

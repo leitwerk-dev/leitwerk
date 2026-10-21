@@ -136,17 +136,16 @@ async function fixture(changes = [true, true], verificationOnMerge = true) {
 		endedAt: new Date(clock).toISOString(),
 	});
 	return {
-		git,
 		jira,
 		gitlab,
 		provider,
 		publicationTurn,
 		process: () => harness.ctx.deps.processes.getById(instance.id),
-		pushDeveloper() {
+		pushDeveloper(message = "Developer push") {
 			const mr = gitlab.state.mrs[0];
 			const bare = gitlab.state.projects[0].http_url_to_repo;
 			const tree = git.run(bare, ["rev-parse", `${mr.sha}^{tree}`]);
-			const head = git.run(bare, ["commit-tree", tree, "-p", mr.sha, "-m", "Developer push"]);
+			const head = git.run(bare, ["commit-tree", tree, "-p", mr.sha, "-m", message]);
 			git.run(bare, ["update-ref", "refs/heads/feature", head]);
 			mr.sha = head;
 			return head;
@@ -194,13 +193,7 @@ describe("Jira change completion maintenance", { timeout: 60_000 }, () => {
 		const f = await fixture([true]);
 		const mr = f.gitlab.state.mrs[0];
 		const original = mr.sha;
-		const project = f.gitlab.state.projects.find((p) => p.id === mr.project_id);
-		if (!project) throw new Error("Missing project");
-		const bare = project.http_url_to_repo;
-		const tree = f.git.run(bare, ["rev-parse", `${original}^{tree}`]);
-		const head = f.git.run(bare, ["commit-tree", tree, "-p", original, "-m", "Developer update"]);
-		f.git.run(bare, ["update-ref", "refs/heads/feature", head]);
-		mr.sha = head;
+		const head = f.pushDeveloper("Developer update");
 		const key = `${mr.project_id}:${mr.iid}`;
 		f.gitlab.state.feedback = {
 			[key]: [
@@ -232,10 +225,7 @@ describe("Jira change completion maintenance", { timeout: 60_000 }, () => {
 		const f = await fixture([true]);
 		const mr = f.gitlab.state.mrs[0];
 		const old = mr.sha;
-		const bare = f.gitlab.state.projects[0].http_url_to_repo;
-		const tree = f.git.run(bare, ["rev-parse", `${old}^{tree}`]);
-		mr.sha = f.git.run(bare, ["commit-tree", tree, "-p", old, "-m", "Developer update"]);
-		f.git.run(bare, ["update-ref", "refs/heads/feature", mr.sha]);
+		f.pushDeveloper("Developer update");
 		expect((await f.provider.poll()).errors).toEqual([]);
 		expect(f.process()).toMatchObject({
 			selectedTurnId: "deliver_change",

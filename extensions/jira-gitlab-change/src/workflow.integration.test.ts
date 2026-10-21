@@ -164,13 +164,22 @@ async function fixture(changes = [true, true]) {
 	});
 	return {
 		git,
-		root,
 		workspaceRoot,
 		jira,
 		gitlab,
 		client,
 		process,
 		params,
+		pushDeveloper(content: string, message: string) {
+			const developer = join(root, "developer");
+			mkdirSync(developer);
+			git.run(developer, ["clone", "-b", "feature", params.repositories[0].repoLocator, "."]);
+			writeFileSync(join(developer, "developer.txt"), content);
+			git.run(developer, ["add", "."]);
+			git.run(developer, ["commit", "-m", message]);
+			git.run(developer, ["push", "origin", "feature"]);
+			return git.run(developer, ["rev-parse", "HEAD"]);
+		},
 		async prompt(turnId: string) {
 			const turn = required(process.turns.get(turnId)).definition;
 			if (turn.kind !== "llm") throw new Error("Expected LLM turn");
@@ -253,13 +262,7 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 		const f = await fixture([true]);
 		expect((await f.deliver()).outcome).toBe("awaiting");
 		const local = join(f.workspaceRoot, "repo_1");
-		const developer = join(f.root, "developer");
-		mkdirSync(developer);
-		f.git.run(developer, ["clone", "-b", "feature", f.params.repositories[0].repoLocator, "."]);
-		writeFileSync(join(developer, "developer.txt"), "developer change\n");
-		f.git.run(developer, ["add", "."]);
-		f.git.run(developer, ["commit", "-m", "Developer change"]);
-		f.git.run(developer, ["push", "origin", "feature"]);
+		f.pushDeveloper("developer change\n", "Developer change");
 		writeFileSync(join(local, "local.txt"), "retained local change\n");
 		f.stageAdjustment();
 		expect((await f.deliver()).outcome).toBe("conflict_ready");
@@ -288,13 +291,7 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 		const local = join(f.workspaceRoot, "repo_1");
 		await f.prepareRevision();
 		writeFileSync(join(local, "local.txt"), "agent work\n");
-		const developer = join(f.root, "developer");
-		mkdirSync(developer);
-		f.git.run(developer, ["clone", "-b", "feature", f.params.repositories[0].repoLocator, "."]);
-		writeFileSync(join(developer, "developer.txt"), "concurrent work\n");
-		f.git.run(developer, ["add", "."]);
-		f.git.run(developer, ["commit", "-m", "Concurrent push"]);
-		f.git.run(developer, ["push", "origin", "feature"]);
+		f.pushDeveloper("concurrent work\n", "Concurrent push");
 		await f.finishRevision("no_changes");
 		expect(f.publication().delivery.feedbackResult).toBeUndefined();
 		expect((await f.deliver()).outcome).toBe("conflict_ready");
@@ -305,14 +302,7 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 	it("reconciles the source before attempting a target repair on a retained checkout", async () => {
 		const f = await fixture([true]);
 		await f.deliver();
-		const developer = join(f.root, "developer");
-		mkdirSync(developer);
-		f.git.run(developer, ["clone", "-b", "feature", f.params.repositories[0].repoLocator, "."]);
-		writeFileSync(join(developer, "developer.txt"), "source update\n");
-		f.git.run(developer, ["add", "."]);
-		f.git.run(developer, ["commit", "-m", "Update source"]);
-		f.git.run(developer, ["push", "origin", "feature"]);
-		f.stageTargetRepair(f.git.run(developer, ["rev-parse", "HEAD"]));
+		f.stageTargetRepair(f.pushDeveloper("source update\n", "Update source"));
 		expect(await f.prepareRevision()).toMatchObject({ deferredRebase: true });
 		await f.finishRevision("changes_ready");
 		expect((await f.deliver()).outcome).toBe("conflict_ready");
