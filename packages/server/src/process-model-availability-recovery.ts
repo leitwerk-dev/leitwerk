@@ -11,7 +11,7 @@ import type { ServerProcessModelPolicy } from "./process-model-policy/index.js";
 export async function recoverModelAvailabilityFailures(input: {
 	processes: Pick<RepositoryBundle["processes"], "listAll">;
 	turnStarts: Pick<RepositoryBundle["turnStarts"], "getById">;
-	commands: Pick<ProcessEngine, "retryStartup">;
+	commands: Pick<ProcessEngine, "retryStartupAutomatically">;
 	policy: ServerProcessModelPolicy;
 	availability: ModelStatusCacheSnapshot;
 	cause: "availability_transition" | "startup_reconciliation";
@@ -42,9 +42,11 @@ export async function recoverModelAvailabilityFailures(input: {
 			availability: input.availability,
 		});
 		if (!evaluation.ok || !evaluation.selection) continue;
-		const result = await input.commands.retryStartup(process.id, start.id);
-		if (result.ok) recovered += 1;
-		else if (result.code !== "stale_turn_start" && result.code !== "stale_startup_target") {
+		const result = await input.commands.retryStartupAutomatically(process.id, start.id, {
+			availabilityCause: input.cause,
+		});
+		if (result.ok && result.data.status === "retried") recovered += 1;
+		else if (!result.ok && result.code !== "stale_turn_start") {
 			input.logger?.warn(
 				{ instanceId: process.id, startRecordId: start.id, code: result.code },
 				"Model availability recovery was rejected",

@@ -7,6 +7,7 @@ export {
 export { orderDependencies } from "./dependency-order.js";
 export type {
 	Actor,
+	AutomaticStartupRecoverySummary,
 	CurrentExecutionRef,
 	DurableModelSelection,
 	ExternalWriteLog,
@@ -51,6 +52,7 @@ export type {
 	ProcessTurnType,
 	QuestionAnswerDraft,
 	ResolvedTurnStart,
+	StartupRetryState,
 	ToolApprovalStatus,
 	TransitionTrigger,
 	TurnFailedPayload,

@@ -1,5 +1,6 @@
 import {
 	type Actor,
+	type AutomaticStartupRecoverySummary,
 	type DurableModelSelection,
 	type FutureExecutionBlockReason,
 	type InstanceTurnConfigMap,
@@ -1430,6 +1431,8 @@ export interface CurrentTurnRecoverySummary extends CurrentErrorSummary {
 
 /** @internal */
 export interface StartupRecoverySummary extends CurrentErrorSummary {
+	/** Automatic recovery policy for this current failed start. @internal */
+	automaticRetry?: AutomaticStartupRecoverySummary;
 	/** @internal */
 	startRecordId: string;
 	/** @internal */

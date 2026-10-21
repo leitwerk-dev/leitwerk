@@ -3,6 +3,8 @@ import {
 	maybeBroadcastErrorAttentionToast as maybeBroadcastErrorAttentionToastCore,
 } from "../process-attention-notifier.js";
 import { broadcastProcessAttentionToast } from "../process-operator-attention.js";
+import { automaticStartupRecovery, startupRetryState } from "../startup-retry-policy.js";
+import { AutomaticRetryStartup } from "./ops/automatic-retry-startup.js";
 import {
 	AbortProcess,
 	AbortTurn,
@@ -176,6 +178,18 @@ export function createProcessEngine(deps: ProcessEngineDeps): ProcessEngine {
 
 		retryStartup(instanceId, startRecordId, opts) {
 			return run(RetryStartup, { instanceId, startRecordId, ...(opts ?? {}) });
+		},
+		async retryStartupAutomatically(instanceId, startRecordId, opts) {
+			const result = await run(AutomaticRetryStartup, { instanceId, startRecordId, ...opts });
+			if (!result.ok || result.data.status !== "retried") return result;
+			const current = deps.processes.getById(instanceId)?.currentExecution;
+			const start = current?.kind === "worker_start" ? deps.turnStarts.getById(current.id) : null;
+			if (
+				start &&
+				(start.state.kind === "preparation_failed" || start.state.kind === "bootstrap_failed")
+			)
+				return { ...result, data: automaticStartupRecovery(start, startupRetryState(start, [])) };
+			return result;
 		},
 
 		continueFailedTurn(instanceId, turnRecordId, options) {

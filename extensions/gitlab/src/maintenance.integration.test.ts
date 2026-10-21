@@ -6,7 +6,7 @@ import {
 	waitForValue,
 } from "@leitwerk-dev/test-support/integration";
 import { LocalGit } from "@leitwerk-dev/test-support/local-git";
-import { expect, it, onTestFinished } from "vitest";
+import { expect, it, onTestFinished, vi } from "vitest";
 import { GitLabClient, GitLabError, type GitLabFeedback } from "./client.js";
 import {
 	GITLAB_MAINTAINED_KIND,
@@ -19,7 +19,10 @@ import { LocalGitLabAdapter, setupGitLabIntegration } from "./testing.js";
 type State = { cursor: number; batch: GitLabFeedback[] };
 const stateCodec: Codec<State> = { parse: (value) => value as State, serialize: (value) => value };
 
-async function fixture(onFinished: (fn: () => Promise<void>) => void) {
+async function fixture(
+	onFinished: (fn: () => Promise<void>) => void,
+	retry?: { maxAttempts: number },
+) {
 	const persistent = createPersistentIntegrationFixture("gitlab-maintained-");
 	onFinished(persistent.dispose);
 	const { root } = persistent;
@@ -40,6 +43,7 @@ async function fixture(onFinished: (fn: () => Promise<void>) => void) {
 	let labelReadFailure = false;
 	const readFailures: { labels?: GitLabError; mr?: GitLabError; project?: GitLabError } = {};
 	let reads = 0;
+	let eligible = true;
 	let clock = Date.parse("2026-10-06T10:00:00Z");
 	const source = gitlabMaintenanceSource<Record<string, never>, State>();
 	const process = defineProcess<Record<string, never>, State>({
@@ -132,6 +136,8 @@ async function fixture(onFinished: (fn: () => Promise<void>) => void) {
 					paramsCodec: process.paramsCodec,
 					stateCodec,
 					idleTurnId: "observe",
+					retry,
+					eligible: () => eligible,
 					settings: (ctx) => ({ cursor: ctx.state.cursor, pollInterval: "1s" }),
 					observe: (ctx, _binding, observation) =>
 						ctx.state.batch.length || !observation.feedback?.length
@@ -173,6 +179,9 @@ async function fixture(onFinished: (fn: () => Promise<void>) => void) {
 			await persistent.close();
 			harness = await open();
 		},
+		setEligible(value: boolean) {
+			eligible = value;
+		},
 		unavailableLabels() {
 			labelReadFailure = true;
 		},
@@ -189,6 +198,121 @@ async function fixture(onFinished: (fn: () => Promise<void>) => void) {
 		now: () => clock,
 	};
 }
+
+it("delegates eligible startup failures to the server budget without a process retry policy", async ({
+	onTestFinished,
+}) => {
+	const f = await fixture(onTestFinished);
+	await f.provider.poll();
+	const deps = f.harness.ctx.deps;
+	const start = deps.turnStarts.create({
+		instanceId: f.instance.id,
+		turnId: "review",
+		turnType: "automatic",
+		proposedTurnRecordId: "pending_review",
+		startKind: "selected_turn",
+		state: {
+			kind: "bootstrap_failed",
+			start: { kind: "automatic" },
+			failedWorkerLeaseId: null,
+			code: "startup_timeout",
+			safeSummary: "Timeout",
+		},
+	});
+	deps.processes.update(f.instance.id, {
+		selectedTurnId: "review",
+		lifecycleStatus: "error",
+		currentExecution: { kind: "worker_start", id: start.id },
+	});
+	const recover = vi.spyOn(deps.processEngine, "retryStartupAutomatically");
+	const retryProcess = vi.spyOn(deps.processEngine, "retryProcess");
+	onTestFinished(() => {
+		recover.mockRestore();
+		retryProcess.mockRestore();
+	});
+	f.setEligible(false);
+	f.advance(1000);
+	await f.provider.poll();
+	expect(recover).not.toHaveBeenCalled();
+	f.setEligible(true);
+	f.advance(1000);
+	expect((await f.provider.poll()).errors).toEqual([]);
+	expect(recover).toHaveBeenCalledExactlyOnceWith(f.instance.id, start.id);
+	const retained = deps.turnStarts.getById(start.id)?.state.automaticRetry;
+	expect(retained).toMatchObject({ episodeStartRecordId: start.id, starts: 1 });
+	expect(retained?.nextRetryAt).toEqual(expect.any(String));
+	expect(deps.turnStarts.listByInstance(f.instance.id)).toHaveLength(1);
+	expect(retryProcess).not.toHaveBeenCalled();
+
+	const failed = deps.turnStarts.getById(start.id);
+	if (!failed || !retained) throw new Error("Expected retained startup recovery budget");
+	deps.turnStarts.compareAndSetState({
+		id: start.id,
+		expectedKind: "bootstrap_failed",
+		state: { ...failed.state, automaticRetry: { ...retained, starts: 3 } },
+	});
+	await f.restart();
+	f.advance(1000);
+	expect((await f.provider.poll()).errors).toEqual([]);
+	expect(f.harness.ctx.deps.turnStarts.listByInstance(f.instance.id)).toHaveLength(1);
+	expect(f.harness.ctx.deps.turnStarts.getById(start.id)?.state.automaticRetry).toMatchObject({
+		starts: 3,
+		nextRetryAt: null,
+	});
+});
+
+it("never retries accepted failed turns even with a legacy maintenance retry policy", async ({
+	onTestFinished,
+}) => {
+	const f = await fixture(onTestFinished, { maxAttempts: 10 });
+	await f.provider.poll();
+	const deps = f.harness.ctx.deps;
+	const start = deps.turnStarts.create({
+		instanceId: f.instance.id,
+		turnId: "review",
+		turnType: "automatic",
+		proposedTurnRecordId: "failed_review",
+		startKind: "selected_turn",
+		state: {
+			kind: "accepted",
+			start: { kind: "automatic" },
+			turnRecordId: "failed_review",
+			acceptedWorkerLeaseId: "old_lease",
+		},
+	});
+	const lease = deps.leases.create({
+		id: "old_lease",
+		instanceId: f.instance.id,
+		workerId: "old_worker",
+		state: "exited",
+		turnStartRecordId: start.id,
+	});
+	deps.turnRecords.create({
+		id: start.proposedTurnRecordId,
+		instanceId: f.instance.id,
+		turnId: "review",
+		turnType: "automatic",
+		status: "failed",
+		turnStartRecordId: start.id,
+		acceptedWorkerLeaseId: lease.id,
+	});
+	deps.processes.update(f.instance.id, {
+		selectedTurnId: "review",
+		lifecycleStatus: "error",
+		currentExecution: { kind: "worker_start", id: start.id },
+	});
+	const retryProcess = vi.spyOn(deps.processEngine, "retryProcess");
+	onTestFinished(() => retryProcess.mockRestore());
+	const before = deps.turnRecords.listByInstance(f.instance.id);
+	for (let n = 0; n < 3; n++) {
+		f.advance(300_000);
+		expect((await f.provider.poll()).errors).toEqual([]);
+	}
+	expect(retryProcess).not.toHaveBeenCalled();
+	expect(deps.turnStarts.listByInstance(f.instance.id)).toHaveLength(1);
+	expect(deps.turnRecords.listByInstance(f.instance.id)).toEqual(before);
+	expect(deps.processes.getById(f.instance.id)?.lifecycleStatus).toBe("error");
+});
 
 it("a third process registers maintenance without a watcher and preserves the trailing feedback boundary", async ({
 	onTestFinished,

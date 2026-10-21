@@ -161,7 +161,7 @@ describe("process UI snapshot presenter", () => {
 						lifecycleStatus: "error",
 						currentExecution: { kind: "worker_start", id: start.id },
 					}),
-					{ getById: () => start },
+					new Map([[start.id, start]]),
 				),
 			).toMatchObject({ startRecordId: start.id, kind, action, summary: "safe failure" });
 		}

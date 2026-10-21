@@ -201,9 +201,8 @@ export function commitWrites(
 		}
 		for (const write of writes.turnStartWrites) {
 			if (write.kind === "create") repos.turnStarts.create(write.input);
-			else if (!repos.turnStarts.compareAndSetState(write)) {
+			else if (!repos.turnStarts.compareAndSetState(write))
 				throw new Error(`Turn start '${write.id}' changed before acceptance`);
-			}
 		}
 		const committedLeafOutcomeSnapshots: ProcessLeafOutcomeSnapshot[] = [];
 		const committedAnnotationChanges: Array<{
