@@ -43,14 +43,16 @@ for (const phase of phases) {
 	console.info(`[test:full] ${phase}`);
 	const phaseStartedAt = performance.now();
 	const quiet = quietPhases.has(phase);
-	const logPath = quiet ? path.join(logDir, `${phase}.log`) : undefined;
+	// GitHub artifact uploads reject colons even on POSIX runners.
+	const filename = phase.replaceAll(":", "-");
+	const logPath = quiet ? path.join(logDir, `${filename}.log`) : undefined;
 	const args = ["run", "--silent", phase];
 	if (vitestPhases.has(phase)) {
 		args.push(
 			"--",
 			"--reporter=agent",
 			"--reporter=json",
-			`--outputFile=${path.join(logDir, `${phase}.json`)}`,
+			`--outputFile=${path.join(logDir, `${filename}.json`)}`,
 		);
 	}
 	const logFd = logPath === undefined ? undefined : openSync(logPath, "w");
