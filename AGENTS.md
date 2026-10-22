@@ -87,6 +87,8 @@ Core types live in `packages/domain/src/domain-model.ts`:
 - **Running vitest**: Always rebuild before running vitest to avoid stale artifacts.
 - **Schema Changes:** Test migrations against file-backed storage and verify durable data survives. Do not delete operator data automatically. Preserve durable process, workspace, and tree state.
 - **Fakes:** Use `FakeLlmProvider` and extension-owned fakes for boundary testing. Avoid broad mocking.
+- **Test Value:** Add tests for observable contracts and concrete failure modes not already covered. Set expected results independently of implementation logic; tests must survive behavior-preserving refactors. Running the required suite does not imply adding a test for every edit.
+- **Configuration Checks:** Prefer native validators and focused execution checks over tests that mirror source/YAML structure, internal names, expressions, or wiring. Assert an exact representation only when that representation is itself a supported contract.
 - **Test Levels:** Unit tests should be simple to setup, due to the functional core. Integration tests can use the test support utilities for leitwerk-managed Pi instances and fake external services. Those tests live within the package. Broad system tests are located under `tests/` and should import via package specifiers.
 - **API Classification:** Use `@internal` by default for exported declarations and members. Use `@public` only when the declaration is an intentionally supported external API and its compatibility contract has been established.
 
