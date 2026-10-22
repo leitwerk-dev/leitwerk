@@ -102,6 +102,8 @@ conflict observations remain available.
 
 `ensureGitLabSeenReaction()` lets a process acknowledge an authorized MR comment with an eyes reaction. It reconciles the authenticated bot's reaction and records it with `ctx.externalWrites.ensure()`. Other users' eyes reactions do not suppress the bot's acknowledgement; retries and restarts do not duplicate it. The calling process owns selection and lifecycle checks.
 
+`gitlab_approve_merge_request` approves the bound MR when its current source SHA matches the supplied full SHA. The write key includes that SHA. A repeated call reconciles the bot's existing approval and does not approve again. A SHA that is no longer HEAD is left unapproved. `gitlab_unapprove_merge_request` removes that approval when the same SHA is still HEAD. A repeated call does not unapprove again. A moved HEAD is left unchanged so the next review can decide.
+
 The extension contains no Renovate selection or repair policy. `./testing` exports a persistent `LocalGitLabAdapter` with real local repository ancestry for integration tests.
 
 ## Shared MR maintenance

@@ -336,6 +336,108 @@ export async function ensureGitLabResolveDiscussion(input: {
 	);
 	return { discussionId, resolved: true };
 }
+/** @internal */
+export async function ensureGitLabApproval(input: {
+	/** @internal */
+	client: GitLabClientLike;
+	/** @internal */
+	writes: ExternalWrites;
+	/** @internal */
+	instanceId: string;
+	/** @internal */
+	projectId: number;
+	/** @internal */
+	iid: number;
+	/** @internal */
+	writeKey: string;
+	/** @internal */
+	sha: string;
+	/** @internal */
+	signal?: AbortSignal;
+}): Promise<{ sha: string; approved: boolean }> {
+	const { client, writes, instanceId, projectId, iid, writeKey, sha, signal } = input;
+	if (!/^[a-f0-9]{40}$/i.test(sha)) throw new Error("GitLab approval requires the full source SHA");
+	const current = await client.getMergeRequest(projectId, iid, signal);
+	if (current.sha !== sha) return { sha, approved: false };
+	const digest = hashIdentity([
+		client.baseUrl,
+		projectId,
+		iid,
+		instanceId,
+		"approve",
+		writeKey,
+		sha,
+	]);
+	await writes.ensure(
+		{ writeType: "gitlab.approval", dedupKey: digest },
+		{
+			reconcile: async () => {
+				const head = await client.getMergeRequest(projectId, iid, signal);
+				const approvals = await client.getMergeRequestApprovals(projectId, iid, signal);
+				return head.sha === sha && approvals.user_has_approved ? { sha } : null;
+			},
+			execute: () => client.approveMergeRequest(projectId, iid, sha, signal),
+			toMetadata: (approval) => ({ projectId, iid, sha: approval.sha }),
+		},
+	);
+	return { sha, approved: true };
+}
+/** @internal */
+export async function ensureGitLabUnapproval(input: {
+	/** @internal */
+	client: GitLabClientLike;
+	/** @internal */
+	writes: ExternalWrites;
+	/** @internal */
+	instanceId: string;
+	/** @internal */
+	projectId: number;
+	/** @internal */
+	iid: number;
+	/** @internal */
+	writeKey: string;
+	/** @internal */
+	sha: string;
+	/** @internal */
+	signal?: AbortSignal;
+}): Promise<{ sha: string; unapproved: boolean }> {
+	const { client, writes, instanceId, projectId, iid, writeKey, sha, signal } = input;
+	if (!/^[a-f0-9]{40}$/i.test(sha)) throw new Error("GitLab unapprove requires the full source SHA");
+	const current = await client.getMergeRequest(projectId, iid, signal);
+	if (current.sha !== sha) return { sha, unapproved: false };
+	const digest = hashIdentity([
+		client.baseUrl,
+		projectId,
+		iid,
+		instanceId,
+		"unapprove",
+		writeKey,
+		sha,
+	]);
+	try {
+		await writes.ensure(
+			{ writeType: "gitlab.unapproval", dedupKey: digest },
+			{
+				reconcile: async () => {
+					const head = await client.getMergeRequest(projectId, iid, signal);
+					const approvals = await client.getMergeRequestApprovals(projectId, iid, signal);
+					return head.sha === sha && !approvals.user_has_approved ? { sha } : null;
+				},
+				execute: async () => {
+					const head = await client.getMergeRequest(projectId, iid, signal);
+					if (head.sha !== sha) throw new Error("GitLab source SHA is no longer HEAD");
+					return client.unapproveMergeRequest(projectId, iid, signal);
+				},
+				toMetadata: (removed) => ({ projectId, iid, sha: removed.sha }),
+			},
+		);
+	} catch (error) {
+		if ((await client.getMergeRequest(projectId, iid, signal)).sha !== sha)
+			return { sha, unapproved: false };
+		throw error;
+	}
+	return { sha, unapproved: true };
+}
 /** @public */
 export async function ensureGitLabSeenReaction(input: {
 	/** @public */
@@ -492,6 +594,16 @@ export function registerGitLabTools(
 			"Resolve a retry-safe MR inline discussion",
 			["writeKey", "discussionId"],
 		],
+		[
+			"gitlab_approve_merge_request",
+			"Approve the bound MR at an exact source SHA",
+			["writeKey", "sha"],
+		],
+		[
+			"gitlab_unapprove_merge_request",
+			"Remove the bot approval while the reviewed source SHA is still HEAD",
+			["writeKey", "sha"],
+		],
 	] as const) {
 		api.tool<Record<string, unknown>>({
 			name,
@@ -510,6 +622,7 @@ export function registerGitLabTools(
 					baseSha: { type: "string" },
 					startSha: { type: "string" },
 					headSha: { type: "string" },
+					sha: { type: "string" },
 				},
 				[...required],
 			),
@@ -566,6 +679,18 @@ export function registerGitLabTools(
 						...writeContext,
 						writeKey: stringArg(args, "writeKey"),
 						discussionId: stringArg(args, "discussionId"),
+					});
+				if (name === "gitlab_approve_merge_request")
+					return ensureGitLabApproval({
+						...writeContext,
+						writeKey: stringArg(args, "writeKey"),
+						sha: stringArg(args, "sha"),
+					});
+				if (name === "gitlab_unapprove_merge_request")
+					return ensureGitLabUnapproval({
+						...writeContext,
+						writeKey: stringArg(args, "writeKey"),
+						sha: stringArg(args, "sha"),
 					});
 				const observation = await observeMergeRequest(client, b.projectId, b.iid, ctx.signal);
 				if (!observation.pipeline || observation.pipeline.id !== numberArg(args, "pipelineId"))

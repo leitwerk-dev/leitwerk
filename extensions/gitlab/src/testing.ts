@@ -47,6 +47,8 @@ interface LocalState {
 	discussionResolved?: Record<string, boolean>;
 	/** @public */
 	reactions?: Record<string, GitLabNoteReaction[]>;
+	/** SHA the bot approved. Stays set across later commits until unapprove. @public */
+	approvedSha?: Record<string, string>;
 }
 /** Persistent GitLab test boundary. Repository URLs use local Git's file transport. */
 /** @public */
@@ -65,6 +67,8 @@ export class LocalGitLabAdapter {
 	loseNextReactionResponse = false;
 	/** @public */
 	loseNextLabelResponse = false;
+	/** @public */
+	loseNextApprovalResponse = false;
 	/** @public */
 	constructor(
 		/** @internal */
@@ -352,6 +356,37 @@ export class LocalGitLabAdapter {
 				has_conflicts: this.conflicts(mr(id, iid)),
 				sha: this.git(mr(id, iid).source_project_id, ["rev-parse", mr(id, iid).source_branch]),
 			}),
+			getMergeRequestApprovals: async (id, iid) => ({
+				user_has_approved: this.state.approvedSha?.[`${id}:${iid}`] !== undefined,
+			}),
+			approveMergeRequest: async (id, iid, sha) => {
+				const request = mr(id, iid);
+				const head = commit(request.source_project_id, request.source_branch).id;
+				if (head !== sha) throw new Error("SHA does not match HEAD of source branch");
+				const key = `${id}:${iid}`;
+				this.state.approvedSha ??= {};
+				if (this.state.approvedSha[key] === sha) return { sha };
+				this.state.approvedSha[key] = sha;
+				this.save();
+				if (this.loseNextApprovalResponse) {
+					this.loseNextApprovalResponse = false;
+					throw new Error("Response lost after approval");
+				}
+				return { sha };
+			},
+			unapproveMergeRequest: async (id, iid) => {
+				const request = mr(id, iid);
+				const head = commit(request.source_project_id, request.source_branch).id;
+				const key = `${id}:${iid}`;
+				if (this.state.approvedSha?.[key] === undefined) return { sha: head };
+				delete this.state.approvedSha[key];
+				this.save();
+				if (this.loseNextApprovalResponse) {
+					this.loseNextApprovalResponse = false;
+					throw new Error("Response lost after unapprove");
+				}
+				return { sha: head };
+			},
 			listMergeRequests: async (id, label) =>
 				structuredClone(
 					this.state.mrs.filter(
