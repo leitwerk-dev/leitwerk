@@ -14,9 +14,11 @@ import {
 import { mr } from "./merge-request.test-fixture.js";
 import { parseGitLabSelection, selectGitLabProjects } from "./selection.js";
 import {
+	ensureGitLabApproval,
 	ensureGitLabComment,
 	ensureGitLabInlineComment,
 	ensureGitLabSeenReaction,
+	ensureGitLabUnapproval,
 	gitLabCommentMarker,
 	updateGitLabComment,
 } from "./tools.js";
@@ -143,6 +145,126 @@ describe("GitLab boundary", () => {
 		await reopened();
 		expect(posts).toBe(1);
 		expect(reactions).toHaveLength(2);
+	});
+	it("approves one source SHA once, skips a moved HEAD, and reconciles a lost response", async () => {
+		const sha = "a".repeat(40);
+		const nextSha = "b".repeat(40);
+		let head = sha;
+		let userHasApproved = false;
+		let posts = 0;
+		const request = vi.fn(async (url: URL | Request | string, options?: RequestInit) => {
+			const pathname = new URL(String(url)).pathname;
+			if (pathname.endsWith("/approvals"))
+				return Response.json({ user_has_approved: userHasApproved });
+			if (pathname.endsWith("/approve")) {
+				expect(JSON.parse(String(options?.body))).toEqual({ sha: head });
+				posts++;
+				userHasApproved = true;
+				if (posts === 1) throw new Error("Response lost after approval");
+				return Response.json({ sha: head });
+			}
+			expect(pathname).toBe("/api/v4/projects/7/merge_requests/1");
+			return Response.json({ ...mr, sha: head });
+		});
+		const input = {
+			client: new GitLabClient(profile, { fetch: request as typeof fetch }),
+			instanceId: "process",
+			projectId: 7,
+			iid: 1,
+			writeKey: `approve:${sha}`,
+			sha,
+		};
+		const harness = writeHarness((writes) => ensureGitLabApproval({ ...input, writes }));
+		await expect(harness()).resolves.toEqual({ sha, approved: true });
+		await harness();
+		const reopened = writeHarness((writes) => ensureGitLabApproval({ ...input, writes }));
+		await reopened();
+		expect(posts).toBe(1);
+		head = nextSha;
+		userHasApproved = false;
+		await expect(harness()).resolves.toEqual({ sha, approved: false });
+		expect(posts).toBe(1);
+		await expect(
+			writeHarness((writes) =>
+				ensureGitLabApproval({ ...input, writes, sha: nextSha, writeKey: `approve:${nextSha}` }),
+			)(),
+		).resolves.toEqual({ sha: nextSha, approved: true });
+		expect(posts).toBe(2);
+	});
+	it("removes one approval once and leaves a moved HEAD approved", async () => {
+		const sha = "c".repeat(40);
+		const nextSha = "d".repeat(40);
+		let head = sha;
+		let userHasApproved = false;
+		let posts = 0;
+		const request = vi.fn(async (url: URL | Request | string, options?: RequestInit) => {
+			const pathname = new URL(String(url)).pathname;
+			if (pathname.endsWith("/approvals"))
+				return Response.json({ user_has_approved: userHasApproved });
+			if (pathname.endsWith("/unapprove")) {
+				expect(options?.method).toBe("POST");
+				posts++;
+				userHasApproved = false;
+				if (posts === 1) throw new Error("Response lost after unapprove");
+				return Response.json({ sha: head });
+			}
+			expect(pathname).toBe("/api/v4/projects/7/merge_requests/1");
+			return Response.json({ ...mr, sha: head });
+		});
+		const input = {
+			client: new GitLabClient(profile, { fetch: request as typeof fetch }),
+			instanceId: "process",
+			projectId: 7,
+			iid: 1,
+			writeKey: `unapprove:${sha}`,
+			sha,
+		};
+		await expect(
+			writeHarness((writes) => ensureGitLabUnapproval({ ...input, writes }))(),
+		).resolves.toEqual({ sha, unapproved: true });
+		expect(posts).toBe(0);
+		userHasApproved = true;
+		const harness = writeHarness((writes) => ensureGitLabUnapproval({ ...input, writes }));
+		await expect(harness()).resolves.toEqual({ sha, unapproved: true });
+		await harness();
+		await writeHarness((writes) => ensureGitLabUnapproval({ ...input, writes }))();
+		expect(posts).toBe(1);
+		head = nextSha;
+		userHasApproved = true;
+		await expect(harness()).resolves.toEqual({ sha, unapproved: false });
+		expect(posts).toBe(1);
+	});
+	it("does not unapprove when HEAD moves after the admission check", async () => {
+		const sha = "e".repeat(40);
+		const nextSha = "f".repeat(40);
+		let head = sha;
+		let reads = 0;
+		let posts = 0;
+		const request = vi.fn(async (url: URL | Request | string) => {
+			const pathname = new URL(String(url)).pathname;
+			if (pathname.endsWith("/approvals")) return Response.json({ user_has_approved: true });
+			if (pathname.endsWith("/unapprove")) {
+				posts++;
+				return Response.json({ sha: head });
+			}
+			reads++;
+			if (reads >= 3) head = nextSha;
+			return Response.json({ ...mr, sha: head });
+		});
+		await expect(
+			writeHarness((writes) =>
+				ensureGitLabUnapproval({
+					client: new GitLabClient(profile, { fetch: request as typeof fetch }),
+					writes,
+					instanceId: "process",
+					projectId: 7,
+					iid: 1,
+					writeKey: `unapprove:${sha}`,
+					sha,
+				}),
+			)(),
+		).resolves.toEqual({ sha, unapproved: false });
+		expect(posts).toBe(0);
 	});
 	it.each([
 		undefined,

@@ -747,6 +747,40 @@ export class GitLabClient {
 	getMergeRequest(id: number, iid: number, signal?: AbortSignal): Promise<GitLabMergeRequest> {
 		return this.request(mrPath(id, iid), signal);
 	}
+	/** @internal */
+	getMergeRequestApprovals(
+		id: number,
+		iid: number,
+		signal?: AbortSignal,
+	): Promise<{
+		/** @internal */
+		user_has_approved: boolean;
+	}> {
+		return this.request(`${mrPath(id, iid)}/approvals`, signal);
+	}
+	/** @internal */
+	approveMergeRequest(
+		id: number,
+		iid: number,
+		sha: string,
+		signal?: AbortSignal,
+	): Promise<{
+		/** @internal */
+		sha: string;
+	}> {
+		return this.request(`${mrPath(id, iid)}/approve`, signal, { sha });
+	}
+	/** @internal */
+	unapproveMergeRequest(
+		id: number,
+		iid: number,
+		signal?: AbortSignal,
+	): Promise<{
+		/** @internal */
+		sha: string;
+	}> {
+		return this.request(`${mrPath(id, iid)}/unapprove`, signal, {});
+	}
 	/** Read every label transition, including changes between watcher polls. @public */
 	listMergeRequestLabelEvents(
 		id: number,
@@ -1046,6 +1080,9 @@ export type GitLabClientLike = Pick<
 	| "getGroup"
 	| "getJobTrace"
 	| "getMergeRequest"
+	| "getMergeRequestApprovals"
+	| "approveMergeRequest"
+	| "unapproveMergeRequest"
 	| "listMergeRequestLabelEvents"
 	| "updateMergeRequestLabels"
 	| "getPipeline"
