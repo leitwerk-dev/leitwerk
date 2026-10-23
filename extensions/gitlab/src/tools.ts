@@ -402,7 +402,8 @@ export async function ensureGitLabUnapproval(input: {
 	signal?: AbortSignal;
 }): Promise<{ sha: string; unapproved: boolean }> {
 	const { client, writes, instanceId, projectId, iid, writeKey, sha, signal } = input;
-	if (!/^[a-f0-9]{40}$/i.test(sha)) throw new Error("GitLab unapprove requires the full source SHA");
+	if (!/^[a-f0-9]{40}$/i.test(sha))
+		throw new Error("GitLab unapprove requires the full source SHA");
 	const current = await client.getMergeRequest(projectId, iid, signal);
 	if (current.sha !== sha) return { sha, unapproved: false };
 	const digest = hashIdentity([
