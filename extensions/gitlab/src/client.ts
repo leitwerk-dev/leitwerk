@@ -752,7 +752,10 @@ export class GitLabClient {
 		id: number,
 		iid: number,
 		signal?: AbortSignal,
-	): Promise<{ user_has_approved: boolean }> {
+	): Promise<{
+		/** @internal */
+		user_has_approved: boolean;
+	}> {
 		return this.request(`${mrPath(id, iid)}/approvals`, signal);
 	}
 	/** @internal */
@@ -761,7 +764,10 @@ export class GitLabClient {
 		iid: number,
 		sha: string,
 		signal?: AbortSignal,
-	): Promise<{ sha: string }> {
+	): Promise<{
+		/** @internal */
+		sha: string;
+	}> {
 		return this.request(`${mrPath(id, iid)}/approve`, signal, { sha });
 	}
 	/** @internal */
@@ -769,7 +775,10 @@ export class GitLabClient {
 		id: number,
 		iid: number,
 		signal?: AbortSignal,
-	): Promise<{ sha: string }> {
+	): Promise<{
+		/** @internal */
+		sha: string;
+	}> {
 		return this.request(`${mrPath(id, iid)}/unapprove`, signal, {});
 	}
 	/** Read every label transition, including changes between watcher polls. @public */
