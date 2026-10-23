@@ -306,6 +306,8 @@ esac
 				}),
 			},
 			configOverride(config) {
+				// Held fake repairs cannot exit until released; keep cancellation's force-stop bounded.
+				config.workers.shutdown_grace_period = "100ms";
 				config.development_tools.local.mise_command = miseCommand;
 				config.storage.sqlite_path = path.join(root, "state.sqlite");
 				config.storage.tree_files_dir = path.join(root, "trees");
