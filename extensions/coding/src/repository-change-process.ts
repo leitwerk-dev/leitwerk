@@ -1,4 +1,4 @@
-import { trimString as normalizeMessage } from "@leitwerk-dev/domain";
+import { asUnknownRecord, trimString as normalizeMessage } from "@leitwerk-dev/domain";
 import {
 	type Codec,
 	type ExternalActionSource,
@@ -16,6 +16,7 @@ import {
 	type RepositoryChangeState,
 	repositoryChangeStateCodec,
 } from "./repository-change-state-internal.js";
+import { prepareInitialRepository, reconciliationPrompt } from "./repository-reconciliation.js";
 import { codingPurposes } from "./settings.js";
 import { prepareRepositoryCommitMessageEvidence } from "./turns/commit-message-evidence.js";
 import {
@@ -279,7 +280,23 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		.freshSeededPrimary()
 		.startFromRoot()
 		.consume("plan")
-		.buildPrompt(buildImplementPrompt)
+		.prepare((ctx) => ({
+			reconciliation: ctx.repo.all().map((repo) => {
+				const identity = asUnknownRecord(
+					ctx.projects.find((p) => p.key === repo.key)?.metadata?.["leitwerk.gitIdentity"],
+				);
+				return prepareInitialRepository({
+					projectKey: repo.key,
+					repoPath: repo.fsPath,
+					workBranch: repo.workBranch,
+					gitIdentity:
+						typeof identity?.name === "string" && typeof identity.email === "string"
+							? { name: identity.name, email: identity.email }
+							: undefined,
+				});
+			}),
+		}))
+		.buildPrompt((ctx) => `${buildImplementPrompt(ctx)}\n\n${reconciliationPrompt}`)
 		.outcomeTool("implementation_ready", (tool) =>
 			tool
 				.description("Implementation and checks are complete; continue to delivery")

@@ -12,10 +12,23 @@ import {
 	type GitIdentity,
 	repositoryHasChanges,
 } from "./finalization-git.js";
+import { RemoteBranchChangedError } from "./finalization-git-internal.js";
 import type { RepositoryChangeState } from "./repository-change-state.js";
-import { publishRebase, startRebase } from "./repository-rebase/git.js";
+import {
+	ConcurrentRebaseSourceError,
+	hasPreparedRebase,
+	publishRebase,
+	startRebase,
+} from "./repository-rebase/git.js";
 import { type ConflictEvidence, conflictKey, validateConflict } from "./repository-rebase/index.js";
 import { rebasePrompt } from "./repository-rebase/prompt.js";
+import {
+	reconcilePublicationRepository,
+	reconciliationPrompt,
+	recordRepositoryPublication,
+	repositoryWorktreeIsDirty,
+	retainConcurrentRebase,
+} from "./repository-reconciliation.js";
 import { codingPurposes } from "./settings.js";
 
 export {
@@ -134,6 +147,7 @@ export type PublicationEvidence = (
 ) & {
 	/** @public */
 	observationKey?: string;
+	/** Current provider source revision. @internal */ remoteHeadSha?: string;
 	/** Coordinated repository key. @public */ projectKey?: string;
 };
 
@@ -318,6 +332,8 @@ type AdjustmentInvocation = {
 
 	/** @public */
 	publishRequired: boolean;
+	/** Operator-facing no-change diagnosis retained until delivery. @internal */
+	summary?: string;
 };
 
 /** @public */
@@ -355,6 +371,15 @@ export interface PublicationState {
 
 	/** @public */
 	headSha: string | null;
+
+	/** Baseline retained until the worker reconciles its unpublished delta. @internal */
+	workBaselineSha?: string | null;
+	/** Historical publication receipt, not an eligibility condition. @internal */
+	lastPublishedHeadSha?: string | null;
+	/** Combined tree needs validation before publication. @internal */
+	reconciliationRequired?: boolean;
+	/** Bound automatic reconciliation loops under continuously moving branches. @internal */
+	reconciliationCycles?: number;
 
 	/** @public */
 	prNumber: number | null;
@@ -484,6 +509,14 @@ export function applyPublicationEvidence(
 ): PublicationState {
 	if (evidence.observationKey !== undefined)
 		current = { ...current, observationKey: evidence.observationKey };
+	if (evidence.remoteHeadSha && evidence.remoteHeadSha !== current.headSha)
+		current = {
+			...current,
+			workBaselineSha: current.workBaselineSha ?? current.headSha,
+			lastPublishedHeadSha: current.lastPublishedHeadSha ?? current.headSha,
+			headSha: evidence.remoteHeadSha,
+			pipeline: null,
+		};
 	switch (evidence.kind) {
 		case "feedback": {
 			const { kind: _, ...batch } = evidence;
@@ -600,7 +633,11 @@ export function createRepositoryChangePublication<P>(
 		state: RepositoryChangeState,
 		patch: Partial<Omit<PublicationState, "delivery">> & { delivery?: Partial<DeliveryState> },
 	) => patchPublicationState(state, namespace(state), patch);
-	async function commitWorkBranch(ctx: PublicationContext<P>, commitMessage: string) {
+	async function commitWorkBranch(
+		ctx: PublicationContext<P>,
+		commitMessage: string,
+		expectedRemoteHead = remote(ctx.state).headSha,
+	) {
 		const repo = ctx.repo.get("repo");
 		const gitIdentity = await adapter.identity(ctx);
 		if (adapter.maintenance)
@@ -611,12 +648,43 @@ export function createRepositoryChangePublication<P>(
 			workBranch: repo.workBranch,
 			commitMessage,
 			gitIdentity,
+			expectedRemoteHead,
+		});
+	}
+	async function reconcile(ctx: PublicationContext<P>, current: PublicationState) {
+		const repo = ctx.repo.get("repo");
+		return reconcilePublicationRepository({
+			projectKey: repo.key,
+			repoPath: repo.fsPath,
+			workBranch: repo.workBranch,
+			baselineSha: current.workBaselineSha ?? current.headSha ?? undefined,
+			gitIdentity: await adapter.identity(ctx),
 		});
 	}
 	const runRepository = async (ctx: PublicationContext<P>) => {
 		let current = remote(ctx.state);
 		const update = (patch: Parameters<typeof patchRemote>[1]) => {
 			current = { ...current, ...patch, delivery: { ...current.delivery, ...patch.delivery } };
+		};
+		const acknowledgePublication = (headSha: string, changed: boolean) => {
+			update({
+				headSha,
+				workBaselineSha: headSha,
+				lastPublishedHeadSha: changed ? headSha : current.lastPublishedHeadSha,
+				reconciliationRequired: false,
+				reconciliationCycles: 0,
+				pipeline: changed ? null : current.pipeline,
+			});
+			const repo = ctx.repo.get("repo");
+			recordRepositoryPublication(
+				{
+					projectKey: repo.key,
+					repoPath: repo.fsPath,
+					workBranch: repo.workBranch,
+					baselineSha: headSha,
+				},
+				headSha,
+			);
 		};
 		const result = (
 			outcome:
@@ -643,6 +711,19 @@ export function createRepositoryChangePublication<P>(
 			if (evidence.kind === "conflict") return result("conflict_ready");
 		}
 		ctx.reportProgress(deliveryProgress(current, adapter.label));
+		const reconcileAgain = () => {
+			const cycles = (current.reconciliationCycles ?? 0) + 1;
+			update({
+				reconciliationRequired: true,
+				reconciliationCycles: cycles,
+				repairPending: true,
+				conflict: null,
+				lastConflictKey: null,
+				pipeline: null,
+				delivery: { adjustment: null, feedbackResult: null },
+			});
+			return result(cycles > 3 ? "operator_action" : "conflict_ready");
+		};
 
 		if (current.delivery.terminalPullRequest) {
 			ctx.reportProgress(deliveryProgress(current, adapter.label, "reconcile_terminal"));
@@ -665,15 +746,34 @@ export function createRepositoryChangePublication<P>(
 			await adapter.unchanged?.(ctx);
 			return result("completed");
 		}
+		let publicationLease = current.headSha;
+		if (
+			(!current.headSha || current.delivery.adjustment) &&
+			current.delivery.adjustment?.origin !== "rebase"
+		) {
+			const synchronized = await reconcile(ctx, current);
+			if (synchronized.changed || synchronized.status === "conflicts") return reconcileAgain();
+			// Fetch is authoritative even if the watcher has not observed a developer push yet.
+			publicationLease = synchronized.remoteHead;
+			if (current.headSha && synchronized.remoteHead && current.headSha !== synchronized.remoteHead)
+				update({ headSha: synchronized.remoteHead, workBaselineSha: synchronized.remoteHead });
+		}
 		if (!current.headSha) {
 			ctx.reportProgress(deliveryProgress(current, adapter.label, "publish_branch"));
-			const published = await commitWorkBranch(
-				ctx,
-				ctx.state.finalization.commitMessages?.[ctx.repo.get("repo").key] ??
-					ctx.state.finalization.generatedCommitMessage ??
-					"",
-			);
-			update({ headSha: published.headSha, pipeline: null });
+			let published: { headSha: string };
+			try {
+				published = await commitWorkBranch(
+					ctx,
+					ctx.state.finalization.commitMessages?.[ctx.repo.get("repo").key] ??
+						ctx.state.finalization.generatedCommitMessage ??
+						"",
+					publicationLease,
+				);
+			} catch (error) {
+				if (!(error instanceof RemoteBranchChangedError)) throw error;
+				return reconcileAgain();
+			}
+			acknowledgePublication(published.headSha, true);
 		}
 
 		if (!current.prNumber || !current.prUrl) {
@@ -690,22 +790,49 @@ export function createRepositoryChangePublication<P>(
 
 		if (current.delivery.adjustment) {
 			const adjustment = current.delivery.adjustment;
-			if (adjustment.publishRequired || adjustment.origin === "rebase") {
+			if (adjustment.origin === "rebase" && !hasPreparedRebase(rebaseInput(ctx)))
+				return reconcileAgain();
+			let adjustmentPublished = false;
+			if (adjustment.publishRequired || adjustment.origin === "rebase" || adapter.maintenance) {
 				ctx.reportProgress(deliveryProgress(current, adapter.label, "publish_adjustment"));
 				if (adapter.maintenance)
 					await ctx.callIntegrationTool(adapter.maintenance.ownershipTool, {
 						projectKey: ctx.repo.get("repo").key,
 					});
-				const published =
-					adjustment.origin === "rebase"
-						? publishRebase(rebaseInput(ctx))
-						: await commitWorkBranch(ctx, adapter.commitMessage(adjustment.origin));
+				let published: { headSha: string };
+				try {
+					published =
+						adjustment.origin === "rebase"
+							? publishRebase(rebaseInput(ctx))
+							: await commitWorkBranch(
+									{ ...ctx, state: patchRemote(ctx.state, current) },
+									adapter.commitMessage(adjustment.origin),
+								);
+				} catch (error) {
+					if (error instanceof ConcurrentRebaseSourceError) {
+						if (error.published) return reconcileAgain();
+						const project = ctx.repo.get("repo");
+						retainConcurrentRebase({
+							projectKey: project.key,
+							repoPath: project.fsPath,
+							workBranch: project.workBranch,
+							baselineSha: error.repair.originalHead,
+							rebasedHead: error.repair.headSha,
+							targetBase: error.repair.baseSha,
+							gitIdentity: await adapter.identity(ctx),
+						});
+						return reconcileAgain();
+					}
+					if (!(error instanceof RemoteBranchChangedError)) throw error;
+					return reconcileAgain();
+				}
 				if (adjustment.origin === "rebase") {
 					const head = await adapter.head(ctx, current);
 					if (head !== published.headSha)
 						throw new Error("Pull request head has not caught up with rebase publication");
 				}
-				update({ headSha: published.headSha, pipeline: null });
+				adjustmentPublished = published.headSha !== publicationLease;
+				acknowledgePublication(published.headSha, adjustmentPublished);
 			}
 			if (adjustment.origin === "rebase") await adapter.afterRebase(ctx, current);
 			if (adjustment.origin === "feedback" && !adapter.maintenance) {
@@ -720,8 +847,10 @@ export function createRepositoryChangePublication<P>(
 					...(adjustment.origin === "feedback" && adapter.maintenance
 						? {
 								feedbackResult: {
-									published: adjustment.publishRequired,
-									summary: "Review adjustment published",
+									published: adjustmentPublished,
+									summary: adjustmentPublished
+										? "Review adjustment published"
+										: (adjustment.summary ?? "No repository change was required"),
 								},
 							}
 						: {}),
@@ -753,12 +882,7 @@ export function createRepositoryChangePublication<P>(
 						!current.stopped &&
 						!current.noChanges &&
 						!current.delivery.terminalPullRequest &&
-						(current.delivery.stage !== "awaiting" ||
-							!!(
-								current.delivery.adjustment &&
-								(current.delivery.adjustment.publishRequired ||
-									current.delivery.adjustment.origin === "rebase")
-							))
+						(current.delivery.stage !== "awaiting" || !!current.delivery.adjustment)
 					);
 				return (
 					current.delivery.stage !== "awaiting" ||
@@ -841,13 +965,11 @@ export function createRepositoryChangePublication<P>(
 		delivery.outcome("feedback_ready", (o) =>
 			outcome(o, "Pull request feedback is acknowledged and ready for revision").to(ids.feedback),
 		);
-	for (const [name, target] of adapter.maintenance
-		? []
-		: ([
-				["ci_ready", ids.ciRepair],
-				["conflict_ready", ids.feedback],
-				["operator_action", ids.operator],
-			] as const)) {
+	for (const [name, target] of [
+		["ci_ready", ids.ciRepair],
+		["conflict_ready", ids.feedback],
+		["operator_action", ids.operator],
+	] as const) {
 		delivery.outcome(name, (o) => outcome(o, "Route observed delivery evidence").to(target));
 	}
 	for (const source of adapter.sources) {
@@ -935,11 +1057,22 @@ export function createRepositoryChangePublication<P>(
 	}
 
 	function revisionPrompt(kind: "feedback" | "ci") {
-		return (ctx: { state: RepositoryChangeState }) => {
+		return (ctx: {
+			state: RepositoryChangeState;
+			prepared?: unknown;
+			prompts?: { initial: string };
+		}) => {
 			const current = remote(ctx.state);
+			const repository = adapter.repositories
+				? `Repository: ${activeKey(ctx.state)}. Apply changes only to this checkout. `
+				: "";
+			if (asUnknownRecord(ctx.prepared)?.deferredRebase)
+				return `${repository}${reconciliationPrompt}\nThe source branch or retained local work must be reconciled before the target-branch repair. Resolve any source reconciliation, then use changes_ready. Delivery will restore and validate the result before reassessing current target conflicts.`;
+			if (current.reconciliationRequired)
+				return `${repository}${reconciliationPrompt}\nValidate the reconciled repository, including retained local work, against the requested change and pending feedback: ${JSON.stringify(current.feedbackIds)}. Treat the current remote as authoritative; do not restore deliberately removed code simply to match an older plan. Use changes_ready after validation, even when no further edit is needed, so retained local changes are published. If blocked use cannot_repair.\nOriginal request for context: ${ctx.prompts?.initial ?? "Inspect the current repository and retained request"}`;
 			if (repairReason(ctx.state, kind) === "rebase")
 				return `${rebasePrompt} Evidence: ${JSON.stringify(current.conflict)}. Call changes_ready or no_changes when verified complete, cannot_repair when blocked.`;
-			return `${adapter.repositories ? `Repository: ${activeKey(ctx.state)}. Apply changes only to this checkout. ` : ""}${adapter.prompt(kind, current)}`;
+			return `${adapter.repositories ? `Repository: ${activeKey(ctx.state)}. Apply changes only to this checkout. ` : ""}${adapter.prompt(kind, current)}\n\n${reconciliationPrompt}`;
 		};
 	}
 
@@ -953,23 +1086,67 @@ export function createRepositoryChangePublication<P>(
 					!current.stopped &&
 					!current.delivery.terminalPullRequest &&
 					(kind === "feedback"
-						? current.feedbackIds.length > 0 || !!current.conflict
+						? current.feedbackIds.length > 0 ||
+							!!current.conflict ||
+							!!current.reconciliationRequired
 						: current.repairReason === "ci" && current.pipeline !== null)
 				);
 			})
 			.executionPurpose(codingPurposes.implementation)
 			.tools("read", "bash", "edit", "write")
 			.resolveIntegrationTools((_params, state) =>
-				repairReason(state, kind) === "rebase" ? [] : adapter.tools[kind],
+				repairReason(state, kind) === "rebase" && !remote(state).reconciliationRequired
+					? []
+					: adapter.tools[kind],
 			)
-			.prepare((ctx) =>
-				repairReason(ctx.state, kind) === "rebase" ? startRebase(rebaseInput(ctx)) : {},
-			)
+			.prepare(async (ctx) => {
+				const project = ctx.repo.get(activeKey(ctx.state) ?? "repo");
+				const current = remote(ctx.state);
+				const targetRebase =
+					repairReason(ctx.state, kind) === "rebase" && !current.reconciliationRequired;
+				// Resume Git's existing target repair; it must not be mistaken for source synchronization.
+				if (targetRebase && hasPreparedRebase(rebaseInput(ctx)))
+					return { rebase: startRebase(rebaseInput(ctx)) };
+				ctx.reportProgress({
+					title: "Repository reconciliation",
+					steps: [
+						{
+							id: "reconcile_source",
+							label: "Reconcile remote source and retained local work",
+							status: "in_progress",
+						},
+					],
+				});
+				const reconciliation = await reconcile(repositoryContext(ctx), current);
+				ctx.reportProgress({
+					title: "Repository reconciliation",
+					steps: [
+						{
+							id: "reconcile_source",
+							label:
+								reconciliation.status === "conflicts"
+									? "Resolve source reconciliation conflicts"
+									: "Remote source reconciled",
+							status: reconciliation.status === "conflicts" ? "in_progress" : "completed",
+						},
+					],
+				});
+				if (targetRebase) {
+					if (
+						reconciliation.changed ||
+						reconciliation.headSha !== current.conflict?.headSha ||
+						repositoryWorktreeIsDirty({ projectKey: project.key, repoPath: project.fsPath })
+					)
+						return { reconciliation, deferredRebase: true };
+					return { rebase: startRebase(rebaseInput(ctx)) };
+				}
+				return { reconciliation };
+			})
 			.freshPrimary()
 			.prompt(revisionPrompt(kind));
-		for (const [name, description, publishRequired] of [
-			["changes_ready", "Repository changes are ready to publish", true],
-			["no_changes", "No repository change is required", false],
+		for (const [name, description] of [
+			["changes_ready", "Repository changes are ready to publish"],
+			["no_changes", "No repository change is required"],
 		] as const) {
 			turn.outcomeTool(name, (tool) =>
 				tool
@@ -980,19 +1157,18 @@ export function createRepositoryChangePublication<P>(
 						patchRemote(ctx.state, {
 							repairPending: false,
 							delivery: {
-								adjustment: { origin: repairReason(ctx.state, kind), publishRequired },
-								...(!publishRequired &&
-								adapter.maintenance &&
-								repairReason(ctx.state, kind) !== "rebase"
-									? {
-											feedbackResult: {
-												published: false,
-												summary: String(
-													event.params.resultSummary ?? "No repository change was required",
-												),
-											},
-										}
-									: {}),
+								// Even no_changes must cross delivery's remote race check. It may
+								// have inherited unpublished work or a concurrent developer push.
+								adjustment: {
+									origin: remote(ctx.state).reconciliationRequired
+										? "feedback"
+										: repairReason(ctx.state, kind),
+									publishRequired:
+										name === "changes_ready" || !!remote(ctx.state).reconciliationRequired,
+									summary: String(
+										event.params?.resultSummary ?? "No repository change was required",
+									),
+								},
 							},
 						}),
 					),
@@ -1038,9 +1214,13 @@ export function createRepositoryChangePublication<P>(
 					label: "Retry repair",
 					acceptanceState: "accepted",
 					branches: { feedback: { to: ids.feedback }, ci: { to: ids.ciRepair } },
+					effect: adapter.maintenance
+						? ({ ctx }) => ({ state: patchRemote(ctx.state, { reconciliationCycles: 0 }) })
+						: undefined,
 					choose: ({ ctx }) =>
 						remote(ctx.state).repairReason === "rebase" ||
-						remote(ctx.state).repairReason === "feedback"
+						remote(ctx.state).repairReason === "feedback" ||
+						remote(ctx.state).reconciliationRequired
 							? "feedback"
 							: "ci",
 				},

@@ -2,7 +2,10 @@ import type { FlowPromptContext, StructuralProcessState } from "@leitwerk-dev/pr
 
 /** @internal */
 export function buildImplementPrompt(
-	ctx: FlowPromptContext<unknown, StructuralProcessState, "plan">,
+	ctx: Pick<
+		FlowPromptContext<unknown, StructuralProcessState, "plan">,
+		"prompts" | "input" | "repo"
+	>,
 ): string {
 	return `Implement this requested change:
 ${ctx.prompts.initial}

@@ -4,6 +4,14 @@ import path from "node:path";
 import { trimToNull, type WorkerErrorClass } from "@leitwerk-dev/domain";
 import { repositoryGitArgs, repositoryGitSubprocessEnv } from "@leitwerk-dev/process-sdk";
 import { resolveGitBinary } from "@leitwerk-dev/process-sdk/git-binary";
+import {
+	pushWasRejected,
+	type RepositoryPublicationReceipt,
+	readPublicationReceipt,
+	readRepositoryBinding,
+	repositoryBindingMatches,
+	savePublicationReceipt,
+} from "./repository-publication-receipt.js";
 
 /** @public */
 export interface GitIdentity {
@@ -22,6 +30,13 @@ export class DeterministicGitError extends Error {
 	constructor(message: string) {
 		super(message);
 		this.name = "DeterministicGitError";
+	}
+}
+
+/** @internal */
+export class RemoteBranchChangedError extends DeterministicGitError {
+	constructor() {
+		super("The remote source branch changed before publication; reconcile and validate again");
 	}
 }
 
@@ -147,16 +162,68 @@ function repositoryGit(projectKey: string, repoPath: string) {
 		return git("rev-parse", "HEAD");
 	}
 
-	function pushAndVerify(branch: string, expectedHeadSha: string): string {
+	function pushAndVerify(
+		branch: string,
+		expectedHeadSha: string,
+		expectedRemoteHead?: string | null,
+	): string {
 		const ref = `refs/heads/${branch}`;
 		const pushTarget = `origin/${branch}`;
-		checkedGit(["push", "origin", `HEAD:${ref}`], `Failed to push HEAD to '${pushTarget}'`);
-		const remoteHead = gitOrNull("ls-remote", "--heads", "origin", ref)?.split(/\s+/)[0]?.trim();
-		if (remoteHead !== expectedHeadSha) {
-			throw new DeterministicGitError(
-				`Published '${pushTarget}' resolved to '${remoteHead ?? "missing"}', expected '${expectedHeadSha}'`,
-			);
+		const observed = git("ls-remote", "--heads", "origin", ref).split(/\s+/)[0] || null;
+		const lease = expectedRemoteHead === undefined ? observed : expectedRemoteHead;
+		const directory = git("rev-parse", "--absolute-git-dir");
+		const binding = readRepositoryBinding(git, branch);
+		if (binding.origin !== binding.pushOrigin)
+			throw new DeterministicGitError("Fetch and push endpoints must match for publication");
+		const previous = readPublicationReceipt(directory);
+		if (!repositoryBindingMatches(previous, binding))
+			throw new DeterministicGitError("Repository publication receipt binding changed");
+		const receipt: RepositoryPublicationReceipt = {
+			...binding,
+			expectedHead: lease,
+			candidate: expectedHeadSha,
+			status: "attempting",
+		};
+		// Recover a successful push whose acknowledgement was lost.
+		if (observed === expectedHeadSha) {
+			savePublicationReceipt(directory, { ...receipt, status: "accepted" });
+			return pushTarget;
 		}
+		if (previous?.status === "attempting")
+			throw new DeterministicGitError(
+				"A prior publication is unresolved; retain local work and reconcile its exact candidate first",
+			);
+		if (previous?.status === "accepted" && previous.candidate === expectedHeadSha)
+			throw new RemoteBranchChangedError();
+		if (observed !== lease) throw new RemoteBranchChangedError();
+		if (lease && !runGit(["merge-base", "--is-ancestor", lease, expectedHeadSha]).ok)
+			throw new DeterministicGitError(
+				"Ordinary publication must preserve the captured remote head",
+			);
+		savePublicationReceipt(directory, receipt);
+		const pushed = runGit([
+			"push",
+			"--porcelain",
+			"--no-follow-tags",
+			"--recurse-submodules=no",
+			`--force-with-lease=${ref}:${lease ?? ""}`,
+			"origin",
+			`${expectedHeadSha}:${ref}`,
+		]);
+		if (!pushed.ok) {
+			if (pushWasRejected(pushed.stdout))
+				savePublicationReceipt(directory, { ...receipt, status: "rejected" });
+			const latest = git("ls-remote", "--heads", "origin", ref).split(/\s+/)[0] || null;
+			if (latest === expectedHeadSha) {
+				savePublicationReceipt(directory, { ...receipt, status: "accepted" });
+				return pushTarget;
+			}
+			if (latest !== lease) throw new RemoteBranchChangedError();
+			throw new DeterministicGitError(`Failed to push HEAD to '${pushTarget}': ${pushed.stderr}`);
+		}
+		savePublicationReceipt(directory, { ...receipt, status: "accepted" });
+		const remoteHead = gitOrNull("ls-remote", "--heads", "origin", ref)?.split(/\s+/)[0]?.trim();
+		if (remoteHead !== expectedHeadSha) throw new RemoteBranchChangedError();
 		return pushTarget;
 	}
 
@@ -187,6 +254,8 @@ export function commitAndPushWorkBranch(input: {
 	commitMessage: string;
 	/** @public */
 	gitIdentity: GitIdentity;
+	/** Captured remote head; null requires branch creation. @internal */
+	expectedRemoteHead?: string | null;
 }) {
 	const repoPath = path.resolve(input.repoPath);
 	const { runGit, git, conflictedFiles, mergeInProgress, commitIfDirty, pushAndVerify } =
@@ -216,6 +285,6 @@ export function commitAndPushWorkBranch(input: {
 		/** @public */
 		headSha,
 		/** @internal */
-		pushTarget: pushAndVerify(input.workBranch, headSha),
+		pushTarget: pushAndVerify(input.workBranch, headSha, input.expectedRemoteHead),
 	};
 }
