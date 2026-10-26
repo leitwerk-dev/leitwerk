@@ -70,7 +70,8 @@ jobs:
         run: npm ci
 
       - name: Install Playwright browser dependencies
-        timeout-minutes: 5
+        # Cold hosted runners can spend several minutes downloading OS fonts and libraries.
+        timeout-minutes: 15
         run: npx playwright install --with-deps chromium firefox webkit
 
       - name: Install documentation dependencies
