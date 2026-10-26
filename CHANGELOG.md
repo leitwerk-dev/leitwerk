@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.4.0](https://github.com/leitwerk-dev/leitwerk/compare/v0.4.0...v0.4.0) (2026-10-26)
+
+
+### Features
+
+* **gitlab:** add retry-safe merge request approve and unapprove ([#215](https://github.com/leitwerk-dev/leitwerk/issues/215)) ([664a82a](https://github.com/leitwerk-dev/leitwerk/commit/664a82a50858def8ca844c59dffef7a60d89737e))
+* **ui:** add landing dashboard ([212c1f6](https://github.com/leitwerk-dev/leitwerk/commit/212c1f6d5033119693ef2381775dd86fc70b0f23))
+
+
+### Bug Fixes
+
+* **build:** unblock stable release image builds ([019334c](https://github.com/leitwerk-dev/leitwerk/commit/019334c285c648eacb71d241541fa1c4f1c90cdd))
+* **coding:** reconcile local work with current source branches ([#211](https://github.com/leitwerk-dev/leitwerk/issues/211)) ([3601543](https://github.com/leitwerk-dev/leitwerk/commit/36015437b76a58d07ae8ca4c2ba481a9fe44384e))
+* **deps:** pin docker/dockerfile docker tag to 4edf897 ([#207](https://github.com/leitwerk-dev/leitwerk/issues/207)) ([4f2f9d0](https://github.com/leitwerk-dev/leitwerk/commit/4f2f9d04471a3a5b49f53b9214748f288ac84018))
+* **deps:** update caddy docker tag to v2.11.6 ([#208](https://github.com/leitwerk-dev/leitwerk/issues/208)) ([8171b7c](https://github.com/leitwerk-dev/leitwerk/commit/8171b7c5a1413fa77e295f772aeb76f6bbc52871))
+* **deps:** update caddy docker tag to v2.11.7 ([#210](https://github.com/leitwerk-dev/leitwerk/issues/210)) ([dbecc38](https://github.com/leitwerk-dev/leitwerk/commit/dbecc38f3319d2536400313b96bc1e23506d59ad))
+* **runtime:** bound automatic startup recovery with durable budgets ([#205](https://github.com/leitwerk-dev/leitwerk/issues/205)) ([97233d1](https://github.com/leitwerk-dev/leitwerk/commit/97233d105ff65ae497dfd580a794cf82f7038d9f))
+* **runtime:** retain turn failures and extend Jira workflow verification ([#204](https://github.com/leitwerk-dev/leitwerk/issues/204)) ([36cc774](https://github.com/leitwerk-dev/leitwerk/commit/36cc7749bc52d2e15a138ee667505d6669d24337))
+
 ## [0.4.0](https://github.com/leitwerk-dev/leitwerk/compare/v0.3.1...v0.4.0) (2026-10-13)
 
 
