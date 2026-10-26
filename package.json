@@ -42,7 +42,7 @@
 		"api:check": "node --import tsx packages/dev-tools/src/cli.ts api:check --built",
 		"review:stack": "node scripts/review-stack.mjs",
 		"docs:serve": "python3 -m mkdocs serve -a 127.0.0.1:8006",
-		"docs:build": "python3 -m mkdocs build --strict",
+		"docs:build": "python3 -m unittest discover -s scripts -p docs_hooks_test.py && python3 -m mkdocs build --strict",
 		"test:unit": "vitest run --project unit --project unit-isolated --project unit-forks --passWithNoTests",
 		"test:integration": "vitest run --project integration --project integration-isolated --passWithNoTests",
 		"test:e2e": "npm run --silent test:e2e:process && npm run --silent test:ui-integration",

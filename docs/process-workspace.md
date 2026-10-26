@@ -83,7 +83,7 @@ accepted implementation/adjustment preparation and again before publication. Pri
 Git checkpoints retain unpublished commits, staged/unstaged edits and non-ignored
 untracked files across conflicts and worker replacement. Reconciliation never changes
 an active agent's checkout from a watcher. See the
-[Coding contract](https://github.com/leitwerk-dev/leitwerk/blob/main/extensions/coding/README.md#source-branch-reconciliation).
+[Coding contract](../extensions/coding/README.md#source-branch-reconciliation).
 
 Processes can use `.runtime({ repositoryCheckout: "none" })` to retain repository
 bindings solely for server integration-tool authorization. Startup and resume
