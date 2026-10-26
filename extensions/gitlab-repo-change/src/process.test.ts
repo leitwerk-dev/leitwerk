@@ -75,6 +75,35 @@ describe("GitLab publication routing", () => {
 			}),
 		).toMatchObject({ kind: "observed" });
 	});
+	it("handles feedback and verified merge-result CI on a changed source revision", () => {
+		const head = "b".repeat(40);
+		const event = { ...observation, mr: { ...observation.mr, sha: head } };
+		const feedback = gitlabPublicationEvidence(state, {
+			...event,
+			feedback: [
+				{ id: 12, discussionId: "d", body: "feedback", author: "human", createdAt: "2026-01-01" },
+			],
+		});
+		expect(feedback).toMatchObject({ kind: "feedback", remoteHeadSha: head });
+		expect(
+			applyPublicationEvidence({}, readPublicationState(state, "gitlabRepoChange"), feedback),
+		).toMatchObject({ headSha: head, workBaselineSha: observation.mr.sha });
+		expect(
+			gitlabPublicationEvidence(state, {
+				...event,
+				pipelineSourceHead: head,
+				pipeline: { ...observation.pipeline, sha: "merge-result" },
+			}),
+		).toMatchObject({ kind: "failure", remoteHeadSha: head });
+		expect(
+			gitlabPublicationEvidence(state, {
+				...event,
+				pipelineSourceHead: observation.mr.sha,
+				pipeline: { ...observation.pipeline, sha: "old-merge-result" },
+			}),
+		).toMatchObject({ kind: "observed" });
+	});
+
 	it("keeps failed CI unconsumed when a feedback batch takes priority", () => {
 		const evidence = gitlabPublicationEvidence(state, {
 			...observation,

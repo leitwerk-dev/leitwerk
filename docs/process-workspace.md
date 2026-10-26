@@ -77,6 +77,14 @@ repositories do not block readiness. A failed requested checkout fails that tool
 The returned HEAD describes the local checkout, not necessarily today's remote head.
 Agents must read newly materialized repository instructions before inspection.
 
+Bootstrap preserves retained local work; it does not synchronize a writable checkout
+under an active turn. Shared coding workflows reconcile their source branch during
+accepted implementation/adjustment preparation and again before publication. Private
+Git checkpoints retain unpublished commits, staged/unstaged edits and non-ignored
+untracked files across conflicts and worker replacement. Reconciliation never changes
+an active agent's checkout from a watcher. See the
+[Coding contract](../extensions/coding/README.md#source-branch-reconciliation).
+
 Processes can use `.runtime({ repositoryCheckout: "none" })` to retain repository
 bindings solely for server integration-tool authorization. Startup and resume
 create the workspace directory without preparing, validating, repairing, or

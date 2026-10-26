@@ -17,6 +17,7 @@ leitwerk.yaml
 **/tsconfig.tsbuildinfo
 test-results
 site/
+__pycache__/
 plan
 
 proposals

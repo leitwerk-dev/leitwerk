@@ -291,6 +291,8 @@ export interface GitLabObservation {
 	mr: GitLabMergeRequest;
 	/** @public */
 	pipeline: GitLabPipeline | null;
+	/** Source head verified against pipeline/merge-result ancestry. @internal */
+	pipelineSourceHead?: string;
 	/** @public */
 	targetHead?: string;
 }
@@ -1136,7 +1138,12 @@ export async function observeMergeRequest(
 			matches = commit.parent_ids.includes(mr.sha);
 		}
 		if (matches)
-			return { mr, targetHead, pipeline: await client.getPipeline(id, candidate.id, signal) };
+			return {
+				mr,
+				targetHead,
+				pipeline: await client.getPipeline(id, candidate.id, signal),
+				pipelineSourceHead: mr.sha,
+			};
 	}
 	const candidates = await client.listBranchPipelines(
 		mr.source_project_id,
@@ -1151,5 +1158,6 @@ export async function observeMergeRequest(
 		mr,
 		targetHead,
 		pipeline: latest ? await client.getPipeline(mr.source_project_id, latest.id, signal) : null,
+		...(latest ? { pipelineSourceHead: mr.sha } : {}),
 	};
 }

@@ -18,11 +18,13 @@ it(
 it(
 	"does not replay a no-change CI repair for MR metadata updates, including after restart",
 	scenarios.noChangeCiRepair,
-	60000,
+	// Three repairs now each execute a delivery verification worker as well.
+	90000,
 );
 
 it(
 	"runs Deliver once through preparing, running and green CI, then invokes Address Feedback directly",
 	scenarios.directFeedback,
-	90000,
+	// Includes changed and no-change delivery verification, acknowledgement, and restart.
+	120000,
 );
