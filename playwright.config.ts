@@ -38,7 +38,11 @@ export default defineConfig({
 	forbidOnly: !!process.env.CI,
 	retries: process.env.CI ? 2 : 0,
 	workers: 1,
-	reporter: process.env.CI ? "github" : "dot",
+	reporter: [
+		[process.env.CI ? "github" : "dot"],
+		// Keep the report outside outputDir, which Playwright clears at startup.
+		["json", { outputFile: `${browserOutputDir(process.env)}.json` }],
+	],
 	use: {
 		baseURL,
 		trace: "on-first-retry",

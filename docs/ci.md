@@ -10,6 +10,13 @@ Release candidates also use one version, `X.Y.Z-rc.<run-id>`, across every npm p
 
 Every PR must pass `Full validation` and `Conventional PR title and DCO`. These checks cover builds, type checks, tests, PR title format, and commit sign-offs. Publication also validates release metadata and package contents.
 
+Application validation and image validation run on separate runners in parallel.
+`Full validation` succeeds only when both jobs succeed; failures, cancellations,
+and skipped prerequisites fail the required result. Image validation solves both
+Dockerfiles' `build` targets on one Buildx builder, without loading or pushing
+images. Separate GHA layer caches retain intermediate layers and fall back to
+`main` on new PRs.
+
 CI and publication workflows run `npm run api:check` as a required step after
 `npm run test:full`; the local full gate does not include it. It checks explicit
 `@public`/`@internal` annotations and public signature dependencies. Both
@@ -26,7 +33,11 @@ PR validation warns when combined test runtime is at least 5% above the average
 of the last ten comparable successful `main` runs. Only test execution time counts,
 including browser tests. The warning appears in Actions annotations and the job
 summary; it does not fail validation. Comparison is skipped when timing data is
-unavailable or fewer than ten comparable runs exist.
+unavailable or fewer than ten comparable runs exist. Process E2E and jsdom UI
+integration durations are recorded separately; historical comparisons combine
+them to match older reports. Each validation attempt uploads detailed test logs,
+Vitest suite/test reports, and per-engine browser-shard reports, including retries,
+on success or failure. These diagnostic artifacts are retained for 14 days.
 
 ## Publication safeguards
 
