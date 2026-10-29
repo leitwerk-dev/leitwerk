@@ -637,7 +637,9 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 		expect(validateConfig(config)).toEqual([]);
 		const role = findDocumentsByKind(documents, "ClusterRole")[0];
 		const rules = role.rules as Array<{ resources: string[]; verbs: string[] }>;
-		expect(rules.some((rule) => rule.resources.includes("persistentvolumes"))).toBe(enabled);
+		expect(rules.find((rule) => rule.resources.includes("persistentvolumes"))?.verbs).toEqual(
+			enabled ? ["get", "list", "patch"] : ["get", "patch"],
+		);
 		expect(rules.some((rule) => rule.resources.includes("storageclasses"))).toBe(enabled);
 		expect(rules.filter((rule) => rule.resources.includes("nodes"))).toEqual(
 			imagePreload ? [{ apiGroups: [""], resources: ["nodes"], verbs: ["get", "list"] }] : [],
@@ -660,5 +662,14 @@ describeIfHelm("Kubernetes Helm chart rendering", () => {
 		expect(JSON.stringify(policy).includes("isPreparation")).toBe(enabled || imagePreload);
 		expect(JSON.stringify(policy).includes("isImagePreparation")).toBe(imagePreload);
 		expect(JSON.stringify(policy).includes("volume-preparation")).toBe(enabled);
+	});
+
+	it.each([false, true])("renders explicit terminal storage reclamation opt-in: %s", (enabled) => {
+		const documents = renderChart({ "kubernetes.processVolume.reclaimOnClose": enabled });
+		const config = renderedLeitwerkConfig(documents);
+		expect(((config.kubernetes as JsonObject).process_volume as JsonObject).reclaim_on_close).toBe(
+			enabled,
+		);
+		expect(validateConfig(config)).toEqual([]);
 	});
 });

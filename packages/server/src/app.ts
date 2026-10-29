@@ -259,7 +259,7 @@ async function createConfiguredWorkerRunnerRuntime(input: {
 	webSocketIpc: WorkerWebSocketIpcManager;
 	provided?: AppOptions["workerRunnerRuntime"];
 	helperRelays: ProcessStateExportHelperRelayProvider;
-	onVolumePoolError: () => void;
+	onVolumePoolError: (error?: unknown) => void;
 	onImagePreparationEvent: NonNullable<
 		Parameters<
 			typeof import("@leitwerk-dev/worker-runners/kubernetes").createKubernetesWorkerRunner
@@ -308,6 +308,7 @@ async function createConfiguredWorkerRunnerRuntime(input: {
 		});
 		const created = createKubernetesWorkerRunner({
 			client: kubernetesClient,
+			reclaimOnClose: processVolume?.reclaim_on_close === true,
 			preProvision: processVolume?.pre_provision
 				? { ...processVolume.pre_provision, onError: input.onVolumePoolError }
 				: undefined,
@@ -965,8 +966,11 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			webSocketIpc: workerWebSocketIpc,
 			provided: opts.workerRunnerRuntime,
 			helperRelays: sessionTransferHelperRelays,
-			onVolumePoolError: () =>
-				app.log.warn("Volume pre-provisioning failed; retrying in the background"),
+			onVolumePoolError: (error) =>
+				app.log.warn(
+					{ err: error },
+					"Volume pool degraded; inspect preparation Pods and CSI storage scheduling",
+				),
 			onImagePreparationEvent: (event) => {
 				if (event.outcome === "succeeded") app.log.info(event, "Worker image prepared");
 				else app.log.warn(event, "Worker image preparation failed; retrying in the background");
@@ -1022,30 +1026,67 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		let retentionWork: Promise<void> | undefined;
 		let retainedVolumeCleanupTimer: NodeJS.Timeout | null = null;
 		let retainedVolumeCleanupRunning = false;
-		const releasedRetainedVolumes = new Set<string>();
+		const retentionPolicy = {
+			completedProcessRetention: config.workers.cleanup.completed_process_retention,
+			errorProcessRetention: config.workers.cleanup.error_process_retention,
+		};
+		const reclaimTerminalStorage =
+			config.workers.runner === "kubernetes" &&
+			config.kubernetes?.process_volume.reclaim_on_close === true;
+		const volumeRetentionPolicy = reclaimTerminalStorage
+			? { ...retentionPolicy, completedProcessRetention: "0s", abortedProcessRetention: "0s" }
+			: retentionPolicy;
+		const pendingVolumeReleases = new Set<Promise<void>>();
+		function releaseRetainedVolume(instanceId: string): Promise<void> {
+			const work = processOperations.runExclusive(instanceId, async () => {
+				// Re-read under the lifecycle lock so a resumed process keeps its workspace.
+				const process = baseDeps.processes.getById(instanceId);
+				const lease = baseDeps.leases.getByInstance(instanceId);
+				if (!process || (lease && !lease.exitedAt)) return;
+				await cleanupRetainedProcessVolumes({
+					volume: runnerRuntime.volume,
+					processes: [process],
+					now: new Date(),
+					policy: volumeRetentionPolicy,
+					reclaimTerminalBackingStorage: reclaimTerminalStorage,
+				});
+			});
+			pendingVolumeReleases.add(work);
+			return work.finally(() => pendingVolumeReleases.delete(work));
+		}
+		afterSuccessHooks.add(async (instanceId) => {
+			const process = baseDeps.processes.getById(instanceId);
+			if (
+				!reclaimTerminalStorage ||
+				!process ||
+				!["completed", "aborted"].includes(process.lifecycleStatus)
+			)
+				return;
+			try {
+				await releaseRetainedVolume(instanceId);
+			} catch (err) {
+				app.log.warn({ err, instanceId }, "process PVC release failed; retention sweep will retry");
+			}
+		});
 		async function runRetainedVolumeCleanup(): Promise<void> {
 			if (retainedVolumeCleanupRunning) return;
 			retainedVolumeCleanupRunning = true;
 			const processes = baseDeps.processes.listAll();
 			const now = new Date();
-			const policy = {
-				completedProcessRetention: config.workers.cleanup.completed_process_retention,
-				errorProcessRetention: config.workers.cleanup.error_process_retention,
-			};
 			const expiredImageProcesses = new Set(
-				planProcessVolumeRetentionCleanup({ processes, now, policy }),
+				planProcessVolumeRetentionCleanup({ processes, now, policy: retentionPolicy }),
 			);
-			try {
-				const released = await cleanupRetainedProcessVolumes({
-					volume: runnerRuntime.volume,
-					processes,
-					now,
-					policy,
-					alreadyReleased: releasedRetainedVolumes,
-				});
-				for (const instanceId of released) releasedRetainedVolumes.add(instanceId);
-			} catch (error) {
-				app.log.warn({ error }, "retained process volume cleanup failed");
+			const expiredVolumes = planProcessVolumeRetentionCleanup({
+				processes,
+				now,
+				policy: volumeRetentionPolicy,
+			});
+			for (const instanceId of expiredVolumes) {
+				try {
+					await releaseRetainedVolume(instanceId);
+				} catch (err) {
+					app.log.warn({ err, instanceId }, "retained process volume cleanup failed");
+				}
 			}
 			try {
 				await resultImages.cleanupProcesses({
@@ -1090,6 +1131,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 				retainedVolumeCleanupTimer = null;
 			}
 			await retentionWork;
+			await Promise.allSettled([...pendingVolumeReleases]);
 		});
 
 		if (processTitles?.start) {

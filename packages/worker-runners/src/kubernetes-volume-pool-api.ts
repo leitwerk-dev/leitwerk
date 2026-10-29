@@ -19,6 +19,8 @@ export interface PoolObject {
 		/** @internal */
 		deletionTimestamp?: string;
 		/** @internal */
+		creationTimestamp?: string;
+		/** @internal */
 		labels?: Record<string, string>;
 		/** @internal */
 		annotations?: Record<string, string>;
@@ -54,6 +56,17 @@ export interface PoolObject {
 	status?: {
 		/** @internal */
 		phase?: string;
+		/** @internal */
+		reason?: string;
+		/** @internal */
+		conditions?: Array<{
+			/** @internal */
+			type?: string;
+			/** @internal */
+			status?: string;
+			/** @internal */
+			reason?: string;
+		}>;
 	};
 }
 
@@ -93,7 +106,7 @@ export interface VolumePoolApi {
 	deleteStorageClass(value: PoolStorageClass, signal: AbortSignal): Promise<void>;
 	/** @internal */
 	list(
-		kind: "persistentvolumes" | "persistentvolumeclaims",
+		kind: "persistentvolumes" | "persistentvolumeclaims" | "pods",
 		namespace: string,
 		selector: string,
 		signal: AbortSignal,

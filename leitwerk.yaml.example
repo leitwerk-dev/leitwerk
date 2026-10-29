@@ -90,6 +90,7 @@ workers:
   log_worker_events_to_stdout: true
   cleanup:
     transient_ttl: 1h
+    # Kubernetes reclaim_on_close bypasses terminal volume retention, not result images.
     completed_process_retention: 168h
     error_process_retention: 720h
   turn_max_duration: 6h
@@ -148,6 +149,8 @@ docker:
 #   # Optional; all worker profiles must use digest-qualified images.
 #   image_preload: { enabled: false }
 #   process_volume:
+#     # Opt in to discarding workspaces and backing storage on completion/abort/deletion.
+#     reclaim_on_close: false
 #     storage_class_name: standard
 #     # Optional pool of fresh volumes; omit to disable.
 #     pre_provision: { count: 8 }
