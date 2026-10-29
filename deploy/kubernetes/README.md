@@ -118,4 +118,20 @@ Set resource requests/limits on every `workerRuntimeProfiles.*.resources` entry 
 
 ## Retained process PVC cleanup
 
-Stopping or idling a worker deletes only the worker Pod and waits for it to disappear before replacement. The per-process PVC is retained for resume and is released only through explicit retention cleanup (`ProcessVolume.release`) after a terminal process exceeds the configured retention window. Leitwerk does not back up or restore process PVCs. Operators who need protection from PVC loss or retention cleanup must independently snapshot or back up those PVCs and test restoration before lowering retention.
+Stopping or idling retains the process PVC for resume. Set
+`kubernetes.process_volume.reclaim_on_close: true` (Helm:
+`kubernetes.processVolume.reclaimOnClose=true`) to discard workspaces on completion,
+abort or explicit process deletion. The default is false and preserves retention.
+
+With this opt-in, each owned PV gets Delete policy before its PVC is released;
+the shared StorageClass is unchanged. Space is available only after CSI removes
+the PV and backing storage. Error and result-image retention are unchanged.
+
+Automatic reclamation requires exact ownership, a bound dynamic CSI volume and no
+live Pod references. Pending provisioning, static, foreign or ambiguous storage
+requires resolution before release.
+PV ownership and disposal records identify the process, claim/PV UIDs and closure.
+The server needs PV `get`/`patch` permissions even without a warm pool.
+
+Leitwerk does not back up or restore process PVCs. Back them up and test restoration
+before lowering retention.

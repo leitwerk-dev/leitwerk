@@ -6,6 +6,8 @@ import type { ProcessVolume } from "./types.js";
 export interface ProcessVolumeRetentionPolicy {
 	/** @internal */
 	completedProcessRetention: string;
+	/** Defaults to error retention for callers retaining non-volume artifacts. @internal */
+	abortedProcessRetention?: string;
 	/** @internal */
 	errorProcessRetention: string;
 }
@@ -39,6 +41,9 @@ export function planProcessVolumeRetentionCleanup(
 	input: PlanProcessVolumeRetentionCleanupInput,
 ): string[] {
 	const completedRetentionMs = retentionMs(input.policy.completedProcessRetention);
+	const abortedRetentionMs = retentionMs(
+		input.policy.abortedProcessRetention ?? input.policy.errorProcessRetention,
+	);
 	const errorRetentionMs = retentionMs(input.policy.errorProcessRetention);
 	const nowMs = input.now.getTime();
 	const alreadyReleased = input.alreadyReleased ?? new Set<string>();
@@ -54,9 +59,11 @@ export function planProcessVolumeRetentionCleanup(
 		const retention =
 			process.lifecycleStatus === "completed"
 				? completedRetentionMs
-				: process.lifecycleStatus === "aborted" || process.lifecycleStatus === "error"
-					? errorRetentionMs
-					: Number.POSITIVE_INFINITY;
+				: process.lifecycleStatus === "aborted"
+					? abortedRetentionMs
+					: process.lifecycleStatus === "error"
+						? errorRetentionMs
+						: Number.POSITIVE_INFINITY;
 		if (nowMs - closed >= retention) {
 			candidates.push(process.id);
 		}
@@ -68,6 +75,8 @@ export function planProcessVolumeRetentionCleanup(
 export async function cleanupRetainedProcessVolumes(input: {
 	/** @internal */
 	volume?: ProcessVolume;
+	/** Terminal-process storage disposal policy; error retention is unaffected. @internal */
+	reclaimTerminalBackingStorage?: boolean;
 	/** @internal */
 	processes: readonly ProcessInstance[];
 	/** @internal */
@@ -80,7 +89,21 @@ export async function cleanupRetainedProcessVolumes(input: {
 	const candidates = planProcessVolumeRetentionCleanup(input);
 	if (input.volume) {
 		for (const instanceId of candidates) {
-			await input.volume.release(instanceId);
+			const process = input.processes.find((process) => process.id === instanceId);
+			if (
+				input.reclaimTerminalBackingStorage &&
+				process?.closedAt &&
+				(process.lifecycleStatus === "completed" || process.lifecycleStatus === "aborted")
+			) {
+				await input.volume.release(instanceId, {
+					reclaimBackingStorage: {
+						lifecycleStatus: process.lifecycleStatus,
+						closedAt: process.closedAt,
+					},
+				});
+			} else {
+				await input.volume.release(instanceId);
+			}
 		}
 	}
 	return candidates;

@@ -148,6 +148,8 @@ export interface DockerRunnerConfig {
 
 /** @internal */
 export interface KubernetesProcessVolumeConfig {
+	/** Discard terminal workspaces and their backing storage; disabled by default. @internal */
+	reclaim_on_close?: boolean;
 	/** Optional ready-volume target; zero stops replenishment. @internal */
 	pre_provision?: {
 		/** @internal */

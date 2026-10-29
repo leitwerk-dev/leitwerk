@@ -104,6 +104,14 @@ export interface ProcessStateExportHelperRelayProvider {
 	}): ProcessStateExportHelperRelay;
 }
 
+/** Server authorization to discard a closed process workspace. @internal */
+export interface ProcessVolumeReclamation {
+	/** @internal */
+	lifecycleStatus: "completed" | "aborted";
+	/** @internal */
+	closedAt: string;
+}
+
 /** @internal */
 export interface ProcessVolume {
 	/** Idempotently provisions durable storage for a process instance. @internal */
@@ -113,7 +121,13 @@ export interface ProcessVolume {
 		observer?: WorkerStartObserver,
 	): Promise<VolumeRef>;
 	/** Retention cleanup only. Stopping a worker never calls this. @internal */
-	release(instanceId: string): Promise<void>;
+	release(
+		instanceId: string,
+		options?: {
+			/** Reclaim only after the server's terminal-state and reference checks. @internal */
+			reclaimBackingStorage?: ProcessVolumeReclamation;
+		},
+	): Promise<void>;
 	/** Permanently deletes every runner-managed resource owned by a deleted process. @internal */
 	deleteProcessResources(instanceId: string): Promise<void>;
 }

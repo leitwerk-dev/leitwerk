@@ -73,10 +73,11 @@ metadata:
     {{- include "leitwerk.labels" . | nindent 4 }}
     app.kubernetes.io/component: server
 rules:
-  {{- if .Values.kubernetes.processVolume.preProvision.enabled }}
+  # Exact process ownership must survive PVC/namespace deletion even without a pool.
   - apiGroups: [""]
     resources: ["persistentvolumes"]
-    verbs: ["get", "list", "patch"]
+    verbs: {{ if .Values.kubernetes.processVolume.preProvision.enabled }}["get", "list", "patch"]{{ else }}["get", "patch"]{{ end }}
+  {{- if .Values.kubernetes.processVolume.preProvision.enabled }}
   - apiGroups: ["storage.k8s.io"]
     resources: ["storageclasses"]
     verbs: ["get", "list", "create", "delete"]
