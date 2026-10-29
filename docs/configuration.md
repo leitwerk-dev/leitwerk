@@ -91,8 +91,8 @@ revokes anonymous tokens even when token support is disabled. See
 | `storage.sqlite_path` | Path; `:memory:` | Durable state database. Set a file path for retained work. |
 | `storage.process_workspaces_dir` | Path; `/tmp/leitwerk/workspaces` | Host workspaces for local execution. |
 | `storage.tree_files_dir` | Path; `/tmp/leitwerk/trees` | Server-owned session snapshots and diagnostics. |
-| `workers.cleanup.completed_process_retention` | Duration; `168h` | Retention before completed process-volume cleanup. |
-| `workers.cleanup.error_process_retention` | Duration; `720h` | Retention for errored or aborted process volumes. |
+| `workers.cleanup.completed_process_retention` | Duration; `168h` | Retention for completed process volumes and result images. |
+| `workers.cleanup.error_process_retention` | Duration; `720h` | Retention for errored or aborted process volumes and result images. |
 | `workers.cleanup.transient_ttl` | Duration; `1h` | Retention for transient resources. |
 | `session_transfer.max_entries` | Positive integer; `250000` | Manifest, workspace, and session entry limit. |
 | `session_transfer.max_logical_bytes` | Positive integer; `21474836480` | Expanded regular-file byte limit. |
@@ -102,6 +102,13 @@ Session transfers enforce limits on both export and import. Worker diagnostic tr
 are stored verbatim under `diagnostic-traces/` in the tree directory; treat them as
 sensitive. Retention controls deletion, not protection from volume loss. See
 [Backup and upgrades](operations.md) and [workspace layout](process-workspace.md).
+
+Set `kubernetes.process_volume.reclaim_on_close: true` to discard completed/aborted
+workspaces through CSI after worker shutdown, including on explicit process deletion.
+It defaults to false. When enabled, terminal volumes bypass retention and override
+Retain on their own PV, not the shared StorageClass. Error and result-image retention
+are unchanged. Ambiguous storage requires manual review. See
+[retained-volume operations](../deploy/kubernetes/README.md#retained-process-pvc-cleanup).
 
 ### Per-process storage size
 
@@ -146,6 +153,11 @@ Reducing the count does not delete them. Before removing the setting or changing
 class, wait for preparation PVCs in the server namespace to disappear. Inspect
 `leitwerk.dev/volume-pool` resources and server warnings if preparation stalls;
 do not clear process claim references to resolve ownership conflicts.
+
+Preparation Pods have a 15-minute deadline. Failed Pods and stalled claims retain
+their reservations across server restarts; they do not trigger new allocations.
+Repair the storage fault, then delete only the owned preparation Pod to retry its
+PVC. Server readiness does not imply a healthy warm pool.
 
 ### Preloaded Kubernetes worker images
 

@@ -1,5 +1,5 @@
 import type { ProcessInstance } from "@leitwerk-dev/domain";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	cleanupRetainedProcessVolumes,
 	planProcessVolumeRetentionCleanup,
@@ -61,6 +61,33 @@ describe("planProcessVolumeRetentionCleanup", () => {
 		).toEqual(["completed-old", "aborted-old"]);
 	});
 
+	it("releases newly completed and aborted PVCs without expiring error or artifact retention", () => {
+		const now = new Date("2026-06-23T12:00:00.000Z");
+		const processes = [
+			process({ id: "completed", lifecycleStatus: "completed", closedAt: now.toISOString() }),
+			process({ id: "aborted", lifecycleStatus: "aborted", closedAt: now.toISOString() }),
+			process({ id: "error", lifecycleStatus: "error", closedAt: now.toISOString() }),
+			process({ id: "waiting", lifecycleStatus: "waiting", closedAt: now.toISOString() }),
+			process({ id: "active", lifecycleStatus: "active", closedAt: now.toISOString() }),
+			process({ id: "missing-close", lifecycleStatus: "completed" }),
+		];
+		const artifactPolicy = { completedProcessRetention: "168h", errorProcessRetention: "720h" };
+		expect(
+			planProcessVolumeRetentionCleanup({
+				now,
+				processes,
+				policy: {
+					...artifactPolicy,
+					completedProcessRetention: "0s",
+					abortedProcessRetention: "0s",
+				},
+			}),
+		).toEqual(["completed", "aborted"]);
+		expect(planProcessVolumeRetentionCleanup({ now, processes, policy: artifactPolicy })).toEqual(
+			[],
+		);
+	});
+
 	it("ignores invalid closedAt values and already released process volumes", () => {
 		expect(
 			planProcessVolumeRetentionCleanup({
@@ -81,6 +108,35 @@ describe("planProcessVolumeRetentionCleanup", () => {
 });
 
 describe("cleanupRetainedProcessVolumes", () => {
+	it("authorizes backing reclamation only for expired completed/aborted workspaces", async () => {
+		const release = vi.fn(async () => {});
+		const volume: ProcessVolume = { ensure: vi.fn(), release, deleteProcessResources: vi.fn() };
+		const now = new Date("2026-06-23T12:00:00Z");
+		await cleanupRetainedProcessVolumes({
+			volume,
+			now,
+			reclaimTerminalBackingStorage: true,
+			policy: {
+				completedProcessRetention: "0s",
+				abortedProcessRetention: "0s",
+				errorProcessRetention: "720h",
+			},
+			processes: [
+				process({ id: "completed", lifecycleStatus: "completed", closedAt: now.toISOString() }),
+				process({ id: "aborted", lifecycleStatus: "aborted", closedAt: now.toISOString() }),
+				process({ id: "old-error", lifecycleStatus: "error", closedAt: "2026-01-01T00:00:00Z" }),
+				process({ id: "fresh-error", lifecycleStatus: "error", closedAt: now.toISOString() }),
+			],
+		});
+		for (const lifecycleStatus of ["completed", "aborted"] as const) {
+			expect(release).toHaveBeenCalledWith(lifecycleStatus, {
+				reclaimBackingStorage: { lifecycleStatus, closedAt: now.toISOString() },
+			});
+		}
+		expect(release).toHaveBeenCalledWith("old-error");
+		expect(release).toHaveBeenCalledTimes(3);
+	});
+
 	it("releases only planned process volumes", async () => {
 		const released: string[] = [];
 		const volume: ProcessVolume = {

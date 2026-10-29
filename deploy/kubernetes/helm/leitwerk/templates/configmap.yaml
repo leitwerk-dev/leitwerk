@@ -65,6 +65,7 @@ data:
         enabled: true
       {{- end }}
       process_volume:
+        reclaim_on_close: {{ .Values.kubernetes.processVolume.reclaimOnClose }}
         {{- if .Values.kubernetes.processVolume.preProvision.enabled }}
         pre_provision:
           count: {{ .Values.kubernetes.processVolume.preProvision.count }}

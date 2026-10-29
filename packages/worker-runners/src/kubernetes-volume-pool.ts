@@ -36,7 +36,9 @@ export interface VolumePoolOptions {
 	/** @internal */
 	tolerations?: unknown[];
 	/** @internal */
-	onError?: () => void;
+	onError?: (error?: unknown) => void;
+	/** Clock seam; Kubernetes creation times survive controller restarts. @internal */
+	now?: () => number;
 }
 
 /** Only the staging claim's UID authorizes rebinding; process claims are never recycled. @internal */
@@ -74,6 +76,7 @@ export function createKubernetesVolumePool(options: VolumePoolOptions) {
 			},
 			spec: {
 				...buildPreparationPodSpec(options, [{ name: "volume", mountPath: "/volume" }]),
+				activeDeadlineSeconds: 900,
 				volumes: [{ name: "volume", persistentVolumeClaim: { claimName: claim.metadata.name } }],
 			},
 		};
@@ -169,6 +172,7 @@ export function createKubernetesVolumePool(options: VolumePoolOptions) {
 		for (const pv of volumes) {
 			if (await advanceVolume(pv, signal)) active.add(pv.metadata.annotations?.[CLAIM_NAME] ?? "");
 		}
+		const failures: string[] = [];
 		const claims = await api.list("persistentvolumeclaims", namespace, selector, signal);
 		for (const claim of claims) {
 			active.add(claim.metadata.name);
@@ -189,8 +193,20 @@ export function createKubernetesVolumePool(options: VolumePoolOptions) {
 				!pod.metadata.ownerReferences?.some((owner) => owner.uid === claim.metadata.uid)
 			)
 				throw new Error("Preparation Pod ownership mismatch");
-			if (pod.status?.phase === "Failed") {
-				await api.delete("pods", namespace, pod, signal);
+			const created = Date.parse(claim.metadata.creationTimestamp ?? "");
+			const ageSeconds = Number.isFinite(created)
+				? Math.max(0, Math.floor(((options.now?.() ?? Date.now()) - created) / 1_000))
+				: undefined;
+			if (
+				pod.status?.phase === "Failed" ||
+				(pod.status?.phase !== "Succeeded" && ageSeconds !== undefined && ageSeconds >= 900)
+			) {
+				// Keep the failed receipt and reservation across restarts. An operator retries
+				// the same PVC by deleting its Pod only after fixing storage; never allocate
+				// another volume to work around replica scheduling or attach failures.
+				failures.push(
+					`${namespace}/${pod.metadata.name}: age=${ageSeconds ?? "unknown"}s phase=${pod.status?.phase ?? "unknown"} reason=${pod.status?.reason ?? pod.status?.conditions?.find((condition) => condition.status === "False")?.reason ?? "inspect Pod events and CSI/Longhorn scheduling conditions"}`,
+				);
 				continue;
 			}
 			if (pod.status?.phase !== "Succeeded" || !claim.spec.volumeName) continue;
@@ -223,6 +239,11 @@ export function createKubernetesVolumePool(options: VolumePoolOptions) {
 							[CLAIM_NAME]: claim.metadata.name,
 							[POLICY]: policy,
 							[STATE]: "preparing",
+							"leitwerk.dev/preparation-pod-uid": pod.metadata.uid ?? "",
+							"leitwerk.dev/preparation-image": options.image,
+							"leitwerk.dev/preparation-completed-at": new Date(
+								options.now?.() ?? Date.now(),
+							).toISOString(),
 							[TARGET_CLASS]: options.storageClassName,
 							[SIZE]: claim.metadata.annotations?.[SIZE],
 							[MODES]: claim.metadata.annotations?.[MODES],
@@ -311,6 +332,7 @@ export function createKubernetesVolumePool(options: VolumePoolOptions) {
 				);
 			}
 		}
+		if (failures.length) throw new Error(`Volume pool preparation blocked: ${failures.join("; ")}`);
 	}
 
 	return {
@@ -318,6 +340,6 @@ export function createKubernetesVolumePool(options: VolumePoolOptions) {
 		poolId,
 		/** @internal */
 		reconcile,
-		...createPreparationController(reconcile, 2_000, () => options.onError?.(), 30_000),
+		...createPreparationController(reconcile, 2_000, options.onError, 30_000),
 	};
 }

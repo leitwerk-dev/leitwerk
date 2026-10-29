@@ -50,7 +50,7 @@ export interface PreparationController {
 export function createPreparationController(
 	reconcile: (signal: AbortSignal) => Promise<void>,
 	intervalMs: number,
-	onError?: () => void,
+	onError?: (error?: unknown) => void,
 	errorIntervalMs = intervalMs,
 ): PreparationController {
 	let controller: AbortController | undefined;
@@ -65,9 +65,9 @@ export function createPreparationController(
 					let interval = intervalMs;
 					try {
 						await reconcile(signal);
-					} catch {
+					} catch (error) {
 						interval = errorIntervalMs;
-						if (!signal.aborted) onError?.();
+						if (!signal.aborted) onError?.(error);
 					}
 					try {
 						await delay(interval, undefined, { signal });
