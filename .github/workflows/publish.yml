@@ -153,7 +153,8 @@ jobs:
         with:
           ref: ${{ github.sha }}
           path: .release-tooling
-          sparse-checkout: scripts
+          # Publication imports workspace discovery from packages/dev-tools/src.
+          # Keep the complete tooling checkout rather than a partial import graph.
           persist-credentials: false
 
       - name: Setup trusted-publishing Node.js
@@ -566,7 +567,6 @@ jobs:
         with:
           ref: ${{ github.sha }}
           path: .release-tooling
-          sparse-checkout: scripts
           persist-credentials: false
 
       - name: Package, publish, or reuse digest-pinned Helm chart
