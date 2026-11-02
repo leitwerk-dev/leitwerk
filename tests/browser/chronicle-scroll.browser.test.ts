@@ -687,6 +687,26 @@ async function waitForScrollToSettle(locator: Locator) {
 	return getScrollMetrics(locator);
 }
 
+async function expectScrollPositionStable(locator: Locator, scrollTop: number, tolerancePx = 50) {
+	// Check every frame, including delayed anchor updates. A poll that succeeds
+	// at the initial position would miss a subsequent snap back to current work.
+	const maxDisplacement = await locator.evaluate(
+		(element, expectedTop) =>
+			new Promise<number>((resolve) => {
+				const startedAt = performance.now();
+				let maximum = 0;
+				function sample() {
+					maximum = Math.max(maximum, Math.abs(element.scrollTop - expectedTop));
+					if (performance.now() - startedAt >= 300) resolve(maximum);
+					else requestAnimationFrame(sample);
+				}
+				sample();
+			}),
+		scrollTop,
+	);
+	expect(maxDisplacement).toBeLessThan(tolerancePx);
+}
+
 async function wheelToApproxScrollTop(
 	page: Page,
 	locator: Locator,
@@ -881,6 +901,7 @@ test.describe("rail scroll-anchor behavior", () => {
 	test("keeps multi-line operator-decision rail items expanded when the rail overflows", async ({
 		page,
 	}) => {
+		await page.setViewportSize({ width: 1440, height: 600 });
 		const { process } = createPoemReviewWaitingProcess("RAIL-ACTION-DETAIL-001");
 
 		await page.goto(`/processes/${process.id}`);
@@ -889,6 +910,17 @@ test.describe("rail scroll-anchor behavior", () => {
 
 		const actionRequiredButton = page.locator('[data-section="action-required-indicator"]');
 		await expect(actionRequiredButton).toBeVisible();
+
+		await page.getByRole("button", { name: /Earlier updates/ }).click();
+		const rail = page.locator('[data-section="turn-rail-list"]');
+		await expect
+			.poll(async () => {
+				const metrics = await getScrollMetrics(rail);
+				return metrics.scrollHeight - metrics.clientHeight;
+			})
+			.toBeGreaterThan(0);
+		await actionRequiredButton.scrollIntoViewIfNeeded();
+		await expect(actionRequiredButton.locator(".rail-detail")).toContainText(/decision/i);
 
 		const layout = await actionRequiredButton.evaluate((element) => {
 			const detail = element.querySelector<HTMLElement>(".rail-detail");
@@ -1035,23 +1067,6 @@ async function expectChronicleOverflow(chronicleScroll: Locator) {
 }
 
 test.describe("chronicle scroll behavior", () => {
-	test("keeps live reasoning in the preview card instead of creating an inline nested scroller", async ({
-		page,
-	}) => {
-		const { process, runningTurnId, livePreview } = await openReasoningLiveProcess(
-			page,
-			"SCROLL-REASONING-INNER-001",
-		);
-		await expect(livePreview).toContainText("Thought line");
-
-		emitThinkingDelta(process.id, runningTurnId, "New live thought after render.\n");
-		await expect(livePreview).toContainText("New live thought after render.");
-
-		await expect(
-			page.locator('[data-section="live-tail"] [data-section="reasoning-timeline"]'),
-		).toHaveCount(0);
-	});
-
 	test("keeps the outer chronicle manually scrollable while live reasoning streams", async ({
 		page,
 	}) => {
@@ -1062,17 +1077,15 @@ test.describe("chronicle scroll behavior", () => {
 		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
 		await expectChronicleOverflow(chronicleScroll);
 
+		await expect(livePreview).toContainText("Thought line");
 		await wheelToBoundary(page, chronicleScroll, "top", 50, "top");
-		await page.waitForTimeout(150);
 
 		emitThinkingDelta(process.id, runningTurnId, "More streamed reasoning after page scroll.\n");
 		await expect(livePreview).toContainText("More streamed reasoning after page scroll.");
-		// Observe after rendering too: streaming must not trigger a delayed snap-back.
-		await page.waitForTimeout(300);
-
-		const afterMetrics = await getScrollMetrics(chronicleScroll);
-
-		expect(afterMetrics.scrollTop).toBeLessThan(50);
+		await expect(
+			page.locator('[data-section="live-tail"] [data-section="reasoning-timeline"]'),
+		).toHaveCount(0);
+		await expectScrollPositionStable(chronicleScroll, 0);
 	});
 
 	test("keeps a mid-history desktop chronicle position stable while repository-change reasoning streams", async ({
@@ -1089,24 +1102,18 @@ test.describe("chronicle scroll behavior", () => {
 		await expect(livePreview).toContainText(
 			"Start implementing the approved outcome simplification flow.",
 		);
-		await chronicleScroll.evaluate((element) => {
+		const readingPosition = await chronicleScroll.evaluate((element) => {
 			element.scrollTop = Math.max((element.scrollHeight - element.clientHeight) / 2, 0);
 			element.dispatchEvent(new Event("scroll", { bubbles: true }));
+			return element.scrollTop;
 		});
-		await page.waitForTimeout(150);
-		const beforeMetrics = await getScrollMetrics(chronicleScroll);
-		await page.waitForTimeout(300);
-		const stableBeforeDeltaMetrics = await getScrollMetrics(chronicleScroll);
-		expect(Math.abs(stableBeforeDeltaMetrics.scrollTop - beforeMetrics.scrollTop)).toBeLessThan(20);
+		await expectScrollPositionStable(chronicleScroll, readingPosition, 20);
 
 		emitThinkingDelta(process.id, runningTurnId, "Desktop reasoning delta 1.\n");
 		await expect(livePreview).toContainText("Desktop reasoning delta 1.");
 		emitThinkingDelta(process.id, runningTurnId, "Desktop reasoning delta 2.\n");
 		await expect(livePreview).toContainText("Desktop reasoning delta 2.");
-		await page.waitForTimeout(300);
-
-		const afterMetrics = await getScrollMetrics(chronicleScroll);
-		expect(Math.abs(afterMetrics.scrollTop - beforeMetrics.scrollTop)).toBeLessThan(150);
+		await expectScrollPositionStable(chronicleScroll, readingPosition, 150);
 	});
 
 	test("keeps a followed live tail pinned to the bottom when earlier result content grows", async ({
@@ -1196,7 +1203,6 @@ test.describe("chronicle scroll behavior", () => {
 				page.locator('[data-section="live-tail"] [data-section="reasoning-timeline"]'),
 			).toHaveCount(0);
 			await wheelToBoundary(page, chronicleScroll, "top", 50, "top");
-			await page.waitForTimeout(150);
 			const waitingScrollMetrics = await getScrollMetrics(chronicleScroll);
 			expect(waitingScrollMetrics.scrollTop).toBeLessThan(50);
 
@@ -1205,19 +1211,18 @@ test.describe("chronicle scroll behavior", () => {
 			await expect(
 				page.locator('[data-section="live-tail"] [data-section="reasoning-timeline"]'),
 			).toHaveCount(0);
-			await page.waitForTimeout(150);
+			await expectScrollPositionStable(chronicleScroll, 0);
 
 			await wheelToBoundary(page, chronicleScroll, "bottom", 50, "top");
-			await page.waitForTimeout(100);
 			expect(bottomGap(await getScrollMetrics(chronicleScroll))).toBeLessThan(100);
 
 			emitThinkingDelta(launched.id, runningTurnId, "Streaming thought 2 while still running.\n");
-			await page.waitForTimeout(150);
+			await expect(liveTail.locator('[data-section="thinking-preview"]')).toContainText(
+				"Streaming thought 2 while still running.",
+			);
 
 			await wheelToBoundary(page, chronicleScroll, "top", 50, "top");
-			await page.waitForTimeout(150);
-			const finalMetrics = await getScrollMetrics(chronicleScroll);
-			expect(finalMetrics.scrollTop).toBeLessThan(50);
+			await expectScrollPositionStable(chronicleScroll, 0);
 		} finally {
 			// Dispose the streamed view before releasing the model during fixture cleanup.
 			try {
@@ -1240,98 +1245,34 @@ test.describe("chronicle scroll behavior", () => {
 		expect(bottomGap(initialMetrics)).toBeLessThan(50);
 
 		await wheelToBoundary(page, chronicleScroll, "top", 50, "top");
-		await page.waitForTimeout(300);
-		const afterScrollMetrics = await getScrollMetrics(chronicleScroll);
-		expect(afterScrollMetrics.scrollTop).toBeLessThan(50);
+		await expectScrollPositionStable(chronicleScroll, 0);
 	});
 
-	test("action section stays in view when turn completes", async ({ page }) => {
-		const { process, runningTurnId } = createActivePoemProcess("SCROLL-FOCUS-001");
-		await page.goto(`/processes/${process.id}`);
-		await page.waitForSelector('[data-section="live-tail"]', { timeout: 5000 });
-
-		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
-		expect(bottomGap(await getScrollMetrics(chronicleScroll))).toBeLessThan(50);
-
-		completePoemTurn(process.id, runningTurnId);
-		await page.waitForSelector('[data-section="leaf-outcome-actions"]', { timeout: 10000 });
-		await expect
-			.poll(async () => bottomGap(await getScrollMetrics(chronicleScroll)))
-			.toBeLessThan(200);
-		const actionSection = page.locator('[data-section="leaf-outcome-actions"]');
-		await expect(actionSection).toBeInViewport();
-		expect(bottomGap(await getScrollMetrics(chronicleScroll))).toBeLessThan(200);
-	});
-
-	test("can scroll up when action section appears dynamically after turn completes", async ({
+	test("follows the action section on completion and still allows scrolling into history", async ({
 		page,
 	}) => {
 		const { process, runningTurnId } = createActivePoemProcess("SCROLL-DYNAMIC-001");
 		await page.goto(`/processes/${process.id}`);
 		await page.waitForSelector('[data-page="process-detail"]');
-		await page.waitForSelector('[data-section="chronicle-flow"]');
-		const actionSectionBefore = await page.$('[data-section="leaf-outcome-actions"]');
-		expect(actionSectionBefore).toBeNull();
+		await page.waitForSelector('[data-section="live-tail"]');
+		const actionSection = page.locator('[data-section="leaf-outcome-actions"]');
+		await expect(actionSection).toHaveCount(0);
 
 		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
-		await expectChronicleOverflow(chronicleScroll);
+		const initialMetrics = await expectChronicleOverflow(chronicleScroll);
+		expect(bottomGap(initialMetrics)).toBeLessThan(50);
 
 		completePoemTurn(process.id, runningTurnId);
 		await page.waitForSelector('[data-section="leaf-outcome-actions"]', { timeout: 10000 });
 		await expect
 			.poll(async () => bottomGap(await getScrollMetrics(chronicleScroll)))
 			.toBeLessThan(200);
+		await expect(actionSection).toBeInViewport();
 		await wheelToBoundary(page, chronicleScroll, "top", 50, "top");
-		await page.waitForTimeout(200);
-		const afterScrollMetrics = await getScrollMetrics(chronicleScroll);
-		expect(afterScrollMetrics.scrollTop).toBeLessThan(50);
+		await expectScrollPositionStable(chronicleScroll, 0);
 	});
 
-	test("can scroll up when action section is visible with enough content", async ({ page }) => {
-		const process = createWaitingPoemProcess("SCROLL-TEST-001", false);
-
-		createPoemHistory(process.id);
-
-		await page.goto(`/processes/${process.id}`);
-
-		await page.waitForSelector('[data-page="process-detail"]');
-		await page.waitForSelector('[data-section="chronicle-flow"]');
-
-		await page.waitForSelector('[data-section="leaf-outcome-actions"]', { timeout: 10000 });
-
-		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
-		await expectChronicleOverflow(chronicleScroll);
-
-		// The bug: scroll should not be stuck at the bottom. Aim at the center
-		// so sticky content near the top edge cannot intercept the wheel input.
-		await wheelToBoundary(page, chronicleScroll, "top", 50);
-
-		await page.waitForTimeout(100);
-
-		const afterScrollMetrics = await getScrollMetrics(chronicleScroll);
-
-		expect(afterScrollMetrics.scrollTop).toBeLessThan(50);
-
-		await wheelToBoundary(page, chronicleScroll, "bottom", 50);
-		await page.waitForTimeout(100);
-
-		await chronicleScroll.hover();
-		// Poll until the wheel-up registers; under load a single wheel event plus a
-		// fixed wait can race the scroll handler, so retry until it moves off bottom.
-		let afterWheelMetrics = await getScrollMetrics(chronicleScroll);
-		for (let attempt = 0; attempt < 20; attempt += 1) {
-			afterWheelMetrics = await getScrollMetrics(chronicleScroll);
-			if (bottomGap(afterWheelMetrics) > 100) {
-				break;
-			}
-			await page.mouse.wheel(0, -500);
-			await page.waitForTimeout(50);
-		}
-
-		expect(bottomGap(afterWheelMetrics)).toBeGreaterThan(100);
-	});
-
-	test("scroll position is not locked when action section appears after content", async ({
+	test("waiting actions allow leaving the bottom and retaining a mid-history position", async ({
 		page,
 	}) => {
 		const process = createWaitingPoemProcess("SCROLL-TEST-002", false);
@@ -1357,10 +1298,16 @@ test.describe("chronicle scroll behavior", () => {
 
 		const chronicleScroll = page.locator('[data-role="chronicle-scroll"]');
 
-		const canScroll = await chronicleScroll.evaluate((el) => {
-			return el.scrollHeight > el.clientHeight;
-		});
-		expect(canScroll).toBe(true);
+		await expectChronicleOverflow(chronicleScroll);
+		await wheelToBoundary(page, chronicleScroll, "bottom");
+		// Aim at the center: sticky content near the top must not intercept input.
+		await expect
+			.poll(async () => {
+				const gap = bottomGap(await getScrollMetrics(chronicleScroll));
+				if (gap <= 100) await wheelAtLocator(page, chronicleScroll, -500);
+				return gap;
+			})
+			.toBeGreaterThan(100);
 
 		// Try to scroll to a middle position using wheel scrolling only
 		await wheelToBoundary(page, chronicleScroll, "top", 50, "top");
@@ -1373,12 +1320,6 @@ test.describe("chronicle scroll behavior", () => {
 			"top",
 		);
 
-		await page.waitForTimeout(100);
-
-		// Verify scroll position is maintained (not snapped back to bottom)
-		const actualScrollTop = await chronicleScroll.evaluate((el) => el.scrollTop);
-
-		// Allow some tolerance for wheel-based positioning
-		expect(Math.abs(actualScrollTop - reachedMetrics.scrollTop)).toBeLessThan(150);
+		await expectScrollPositionStable(chronicleScroll, reachedMetrics.scrollTop, 150);
 	});
 });
