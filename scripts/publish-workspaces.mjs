@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, globSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, globSync, readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
@@ -80,7 +80,7 @@ async function main() {
 	}
 	const alreadyPublished = findPublishedWorkspaces(workspaces, expectedGitSha);
 	const unpublished = workspaces.filter((workspace) => !alreadyPublished.has(workspace.name));
-	publishWorkspaces(rootDir, unpublished);
+	await publishWorkspaces(rootDir, unpublished, expectedGitSha);
 	console.info(
 		`[publish:workspaces] Complete (${unpublished.length} published, ${alreadyPublished.size} already published)`,
 	);
@@ -352,16 +352,53 @@ function readExpectedGitSha(rootDir) {
 	return result.stdout.trim();
 }
 
-function publishWorkspaces(rootDir, workspaces) {
-	if (workspaces.length === 0) {
-		return;
+/** Publish independently so a provenance failure cannot hide later package outcomes. @internal */
+export async function publishWorkspaces(
+	rootDir,
+	workspaces,
+	expectedGitSha,
+	{
+		run = runNpm,
+		findPublished = findPublishedWorkspaces,
+		sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+		log = console.info,
+		report = (record) => {
+			if (process.env.RUNNER_TEMP) {
+				appendFileSync(
+					path.join(process.env.RUNNER_TEMP, "npm-publication.jsonl"),
+					`${JSON.stringify(record)}\n`,
+				);
+			}
+		},
+	} = {},
+) {
+	for (const workspace of workspaces) {
+		const spec = `${workspace.name}@${workspace.packageJson.version}`;
+		for (let attempt = 1; attempt <= 3; attempt++) {
+			log(`[publish:workspaces] ${spec}, attempt ${attempt}`);
+			const result = run(["publish", "--workspace", workspace.name, "--access", "public"], {
+				cwd: rootDir,
+				allowFailure: true,
+			});
+			const output = `${result.stdout ?? ""}\n${result.stderr ?? ""}`;
+			const code = output.match(/npm error code ([A-Z0-9_]+)/u)?.[1];
+			// Allowlisted fields only: never persist raw npm logs, credentials or auth URLs.
+			report({ package: spec, attempt, status: result.status, code });
+			if (result.status === 0) break;
+			// A failed client response does not prove the registry rejected the version.
+			// This also rejects an existing version with a different release identity.
+			if (findPublished([workspace], expectedGitSha).has(workspace.name)) break;
+			if (code !== "TLOG_CREATE_ENTRY_ERROR" || !/\b409\b/u.test(output) || attempt === 3) {
+				throw new Error(
+					`npm publication failed for ${spec}: ${code ?? "unknown error"} (exit ${result.status})`,
+				);
+			}
+			log(
+				`[publish:workspaces] ${spec}: duplicate transparency entry; retrying without disabling provenance`,
+			);
+			await sleep(attempt * 15_000);
+		}
 	}
-	const workspaceArgs = workspaces.flatMap((workspace) => ["--workspace", workspace.name]);
-	const args = ["publish", ...workspaceArgs, "--access", "public"];
-	console.info(
-		`[publish:workspaces] publishing ${workspaces.length} workspaces in one npm session`,
-	);
-	runNpm(args, { cwd: rootDir, stdio: "inherit" });
 }
 
 function runNpm(args, options = {}) {

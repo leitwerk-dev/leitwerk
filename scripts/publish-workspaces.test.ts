@@ -1,7 +1,11 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { isSupportedNodeRange, waitForPublishedWorkspaces } from "./publish-workspaces.mjs";
+import {
+	isSupportedNodeRange,
+	publishWorkspaces,
+	waitForPublishedWorkspaces,
+} from "./publish-workspaces.mjs";
 
 describe("npm registry propagation", () => {
 	const workspaces = [{ name: "@leitwerk-dev/a" }, { name: "@leitwerk-dev/b" }];
@@ -93,6 +97,104 @@ describe("npm registry propagation", () => {
 			}),
 		).rejects.toThrow("revision mismatch");
 		expect(time.delays).toEqual([]);
+	});
+});
+
+describe("npm publication recovery", () => {
+	const workspaces = ["a", "b"].map((name) => ({
+		name: `@leitwerk-dev/${name}`,
+		packageJson: { version: "0.4.1" },
+	}));
+	const sha = "a".repeat(40);
+	const conflict = {
+		status: 1,
+		stdout: "",
+		stderr: "npm error code TLOG_CREATE_ENTRY_ERROR\n409 equivalent entry already exists",
+	};
+	const ok = { status: 0, stdout: "", stderr: "" };
+	const defaults = {
+		log: () => {},
+		report: () => {},
+		sleep: async () => {},
+		findPublished: () => new Set<string>(),
+	};
+
+	it("retries the affected package independently without disabling provenance", async () => {
+		const calls: string[][] = [];
+		const delays: number[] = [];
+		await publishWorkspaces("/source", workspaces, sha, {
+			...defaults,
+			run: (args: string[]) => {
+				calls.push(args);
+				return calls.length === 1 ? conflict : ok;
+			},
+			sleep: async (ms: number) => {
+				delays.push(ms);
+			},
+		});
+		expect(calls).toEqual([
+			["publish", "--workspace", "@leitwerk-dev/a", "--access", "public"],
+			["publish", "--workspace", "@leitwerk-dev/a", "--access", "public"],
+			["publish", "--workspace", "@leitwerk-dev/b", "--access", "public"],
+		]);
+		expect(delays).toEqual([15_000]);
+	});
+
+	it("checks registry identity after a failed response and skips an accepted version", async () => {
+		let calls = 0;
+		await publishWorkspaces("/source", workspaces, sha, {
+			...defaults,
+			run: () => {
+				calls++;
+				return conflict;
+			},
+			findPublished: (pending: typeof workspaces, expectedSha: string) => {
+				expect(expectedSha).toBe(sha);
+				return new Set(pending.map(({ name }) => name));
+			},
+		});
+		expect(calls).toBe(2);
+	});
+
+	it.each([
+		"E403",
+		"TLOG_CREATE_ENTRY_ERROR",
+	])("stops after bounded attempts for %s without publishing newer packages", async (code) => {
+		let calls = 0;
+		const records: unknown[] = [];
+		await expect(
+			publishWorkspaces("/source", workspaces, sha, {
+				...defaults,
+				run: () => {
+					calls++;
+					return { ...conflict, stderr: `npm error code ${code}\n409 secret-auth-url` };
+				},
+				report: (record: unknown) => {
+					records.push(record);
+				},
+			}),
+		).rejects.toThrow(`npm publication failed for @leitwerk-dev/a@0.4.1: ${code}`);
+		expect(calls).toBe(code === "E403" ? 1 : 3);
+		expect(records).toEqual(
+			Array.from({ length: calls }, (_, index) => ({
+				package: "@leitwerk-dev/a@0.4.1",
+				attempt: index + 1,
+				status: 1,
+				code,
+			})),
+		);
+	});
+
+	it("rejects conflicting registry identity without retrying", async () => {
+		await expect(
+			publishWorkspaces("/source", workspaces, sha, {
+				...defaults,
+				run: () => conflict,
+				findPublished: () => {
+					throw new Error("different release identity");
+				},
+			}),
+		).rejects.toThrow("different release identity");
 	});
 });
 

@@ -1,15 +1,14 @@
 name: Publish release artifacts
 
 on:
-  push:
-    branches:
-      - main
-  workflow_dispatch:
-    inputs:
-      release_tag:
-        description: Optional latest release tag to resume; omit to drain pending main merges
-        required: false
-        type: string
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  # Git history is the durable queue. Scheduled scans also drain rapid merges and
+  # recover interrupted publication without exposing a manual release entry point.
+  schedule:
+    - cron: '*/15 * * * *'
 
 env:
   DO_NOT_TRACK: '1'
@@ -29,9 +28,16 @@ permissions:
 jobs:
   resolve:
     name: Prepare the oldest pending main release
+    environment: npm-publish
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
     outputs:
       release: ${{ steps.release.outputs.release }}
       version: ${{ steps.release.outputs.version }}
@@ -43,6 +49,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
+          ssh-key: ${{ secrets.RELEASE_TAG_KEY }}
 
       - name: Setup Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -57,7 +64,6 @@ jobs:
         id: release
         env:
           GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
         run: node --import tsx scripts/release-main.ts
 
       - name: Reject a conflicting release lock
@@ -121,6 +127,73 @@ jobs:
           if-no-files-found: error
           retention-days: 1
           overwrite: true
+
+  npm:
+    name: Publish and verify npm packages
+    needs: [resolve, validate]
+    if: needs.resolve.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      RELEASE_GIT_SHA: ${{ needs.resolve.outputs.git_sha }}
+      RELEASE_VERSION: ${{ needs.resolve.outputs.version }}
+      RELEASE_TAG: ${{ needs.resolve.outputs.tag }}
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve.outputs.git_sha }}
+          persist-credentials: false
+
+      - name: Checkout trusted publication tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: .release-tooling
+          sparse-checkout: scripts
+          persist-credentials: false
+
+      - name: Setup trusted-publishing Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          package-manager-cache: false
+          registry-url: https://registry.npmjs.org
+
+      - name: Install trusted-publishing npm CLI
+        run: npm install --global npm@11.16.0
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Download validated publishable contents
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: publishable-${{ needs.resolve.outputs.git_sha }}
+          path: .
+
+      - name: Preflight npm publication
+        run: node .release-tooling/scripts/publish-workspaces.mjs preflight
+
+      - name: Publish missing npm packages
+        run: node .release-tooling/scripts/publish-workspaces.mjs publish
+
+      - name: Verify public npm versions
+        run: node .release-tooling/scripts/publish-workspaces.mjs verify
+        env:
+          npm_config_userconfig: /dev/null
+
+      - name: Upload sanitized npm publication diagnostics
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: npm-publication-diagnostics
+          path: ${{ runner.temp }}/npm-publication.jsonl
+          if-no-files-found: ignore
+          retention-days: 14
 
   inspect-images:
     name: Inspect existing image tags
@@ -201,7 +274,7 @@ jobs:
 
   build-images:
     name: Build images (${{ matrix.platform }})
-    needs: [resolve, inspect-images]
+    needs: [resolve, inspect-images, npm]
     if: >-
       needs.inspect-images.outputs.server_build == 'true' ||
       needs.inspect-images.outputs.worker_build == 'true'
@@ -307,11 +380,13 @@ jobs:
 
   merge-images:
     name: Assemble multi-architecture image manifests
-    needs: [resolve, validate, inspect-images, build-images]
+    needs: [resolve, validate, inspect-images, build-images, npm]
     if: >-
-      always() &&
+      !cancelled() &&
+      needs.resolve.outputs.release == 'true' &&
       needs.resolve.result == 'success' &&
       needs.validate.result == 'success' &&
+      needs.npm.result == 'success' &&
       needs.inspect-images.result == 'success' &&
       (needs.build-images.result == 'success' || needs.build-images.result == 'skipped')
     runs-on: ubuntu-latest
@@ -426,12 +501,17 @@ jobs:
 
   publish:
     name: Publish or resume public artifacts
-    needs: [resolve, validate, merge-images]
+    needs: [resolve, validate, merge-images, npm]
+    if: >-
+      !cancelled() &&
+      needs.resolve.outputs.release == 'true' &&
+      needs.resolve.result == 'success' &&
+      needs.validate.result == 'success' &&
+      needs.npm.result == 'success' &&
+      needs.merge-images.result == 'success'
     runs-on: ubuntu-latest
-    environment: npm-publish
     permissions:
       contents: write
-      id-token: write
       packages: write
     env:
       RELEASE_GIT_SHA: ${{ needs.resolve.outputs.git_sha }}
@@ -470,9 +550,6 @@ jobs:
         with:
           name: publishable-${{ needs.resolve.outputs.git_sha }}
           path: .
-
-      - name: Preflight npm publication
-        run: npm run publish:preflight
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
@@ -536,9 +613,6 @@ jobs:
           echo "archive=$chart_archive" >> "$GITHUB_OUTPUT"
           echo "digest=$chart_digest" >> "$GITHUB_OUTPUT"
 
-      - name: Publish missing npm packages
-        run: npm run publish:workspaces
-
       - name: Verify anonymous reads and multi-architecture manifests
         shell: bash
         run: |
@@ -552,7 +626,7 @@ jobs:
           helm pull oci://ghcr.io/leitwerk-dev/charts/leitwerk \
             --version "$RELEASE_VERSION" \
             --destination release-artifacts/anonymous-chart
-          npm_config_userconfig=/dev/null npm run publish:verify
+          npm_config_userconfig=/dev/null node .release-tooling/scripts/publish-workspaces.mjs verify
 
       - name: Record immutable release coordinates
         id: coordinates
@@ -591,14 +665,21 @@ jobs:
             ${{ steps.chart.outputs.archive }}
             release-artifacts/final/leitwerk-base.lock.yaml
 
-  continue:
-    name: Drain the next release-producing main merge
-    needs: publish
+  release-status:
+    name: Release completion
+    if: always()
+    needs: [resolve, validate, npm, inspect-images, build-images, merge-images, publish]
     runs-on: ubuntu-latest
-    permissions:
-      actions: write
+    permissions: {}
     steps:
-      - name: Start the next queue scan after successful publication
+      - name: Require completed publication for every pending release
         env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run publish.yml --repo "$GITHUB_REPOSITORY" --ref main
+          RESOLVE_RESULT: ${{ needs.resolve.result }}
+          RELEASE_PENDING: ${{ needs.resolve.outputs.release }}
+          PUBLISH_RESULT: ${{ needs.publish.result }}
+        run: |
+          if [[ "$RESOLVE_RESULT" == skipped ]]; then exit 0; fi
+          [[ "$RESOLVE_RESULT" == success ]] || exit 1
+          if [[ "$RELEASE_PENDING" == true ]]; then
+            [[ "$PUBLISH_RESULT" == success ]] || exit 1
+          fi

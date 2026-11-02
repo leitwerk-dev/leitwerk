@@ -41,7 +41,9 @@ on success or failure. These diagnostic artifacts are retained for 14 days.
 
 ## Publication safeguards
 
-Publication runs only from `main`, uses the main-only `npm-publish` environment without required reviewers, and authenticates with short-lived npm credentials. The exact versioned source must pass validation before publication.
+Publication runs automatically after successful push CI on `main`. Scheduled scans every 15 minutes drain the remaining queue and recover interrupted publication; GitHub may delay scheduled runs. There is no manual dispatch, release-tag input, or direct push trigger. Both the originating main revision and the publication tooling revision must have successful main push CI before a tag is reserved or resumed. The exact versioned source also passes release validation.
+
+npm publication uses the main-only `npm-publish` environment without required reviewers and short-lived credentials. All npm versions must be publicly readable before images or charts are published or promoted. The GitHub Release stays a draft until all artifacts are verified. Reusing existing images must not skip publication; a pending release whose publication is skipped fails the workflow.
 
 Each release tag points to a reproducible, signed-off commit whose only parent is the originating main revision. The commit records that revision and the previous release tag. Conflicting tags, changed contents, skipped qualifying merges, and releases not owned by automation are rejected. Release commits do not update `main`. Use release tags for released package and chart versions and the cumulative changelog.
 
@@ -51,24 +53,17 @@ a draft release without changing its tag. CI compiles both image build stages.
 
 ## Retries
 
-Releases publish serially in main's first-parent order. Git history is the durable backlog, and immutable tags reserve versions. Rapid merges and replaced pending Actions runs do not lose releases: every run selects the oldest unfinished release, and successful publication starts another scan. A failed release blocks newer releases rather than reassigning its version or moving npm's `latest` out of order.
+Releases publish serially in main's first-parent order. Git history is the durable backlog, and immutable tags reserve versions. Rapid merges and replaced pending Actions runs do not lose releases: every run selects the oldest unfinished release, and scheduled scans continue draining the queue. A failed release blocks newer releases rather than reassigning its version or moving npm's `latest` out of order.
 
 Retries reuse matching artifacts and reject conflicts. An existing OCI chart must match every packaged file; archive timestamps may differ. Release assets must match byte-for-byte; published releases missing assets require a new version. npm verification waits up to ten minutes for registry visibility and reports any missing versions.
 
-After fixing a publication failure, run **Publish release artifacts** from `main` without inputs to resume the queue:
+After fixing a publication failure, merge the repair through the normal checks. Successful main CI or the next scheduled scan resumes the oldest unfinished release without changing its tag or version. Completed releases are not selected for republication. Rerunning CI or an automatic publication attempt cannot select another version or bypass the CI requirements.
 
-```bash
-gh workflow run publish.yml --repo leitwerk-dev/leitwerk --ref main
-```
+npm packages publish independently. Duplicate transparency-log conflicts receive at most three attempts, with registry identity checks before retrying; provenance remains enabled. Other errors stop the queue. Failure artifacts contain only package names, attempts, exit statuses, and npm error codes, not raw authentication logs.
 
-To explicitly recheck or resume the latest reserved release, set `TAG` to its `vX.Y.Z` tag:
+The `automation-only-release-tags` ruleset restricts `v*` creation to write-enabled deploy keys. Reservation uses the `RELEASE_TAG_KEY` environment secret in the main-only `npm-publish` environment. GitHub's deploy-key bypass covers all write-enabled deploy keys, so treat those keys as trusted release infrastructure and audit them when granting access. The separate `immutable-release-tags` ruleset denies updates and deletion without bypass actors, including automation.
 
-```bash
-gh workflow run publish.yml --repo leitwerk-dev/leitwerk \
-  --ref main -f release_tag="$TAG"
-```
-
-Historical releases cannot be republished after a newer version is reserved. A new dispatch uses current image build recipes; rerunning an old workflow attempt uses its original recipes. Neither changes the reserved release source or version.
+Restrict direct registry publishing credentials as well as workflow entry points. GitHub administrators and npm owners can change these protections; repository code cannot prevent an owner from dismantling them. GitHub does not provide a separate permission to deny Release edits while retaining repository write access, so release writers must remain trusted administrators. npm owner/2FA settings require an authenticated owner to audit; CI's registration check does not establish those settings.
 
 ## Registering new npm packages
 

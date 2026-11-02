@@ -206,14 +206,12 @@ function validateGitHubRelease(release: GitHubRelease, tag: string) {
 export function resolveMainRelease({
 	root,
 	registry,
-	requestedTag = "",
+	assertValidated,
 }: {
 	root: string;
 	registry: ReleaseRegistry;
-	requestedTag?: string;
+	assertValidated: (source: string) => void;
 }): (MainRelease & { sha: string }) | null {
-	if (requestedTag && !stableTag.test(requestedTag))
-		throw new Error("Expected a stable vX.Y.Z tag");
 	git(root, ["fetch", "origin", "main", "--tags"]);
 	const main = git(root, ["rev-parse", "refs/remotes/origin/main"]);
 	const { baselineTag } = readJson(path.join(root, policyPath));
@@ -252,7 +250,6 @@ export function resolveMainRelease({
 		}
 	}
 	const sequence = releaseSequence(root, main, baselineTag);
-	let latest: MainRelease | undefined;
 	let pending: MainRelease | undefined;
 	for (const [index, tag] of tags.entries()) {
 		const expected = sequence.next().value;
@@ -272,15 +269,14 @@ export function resolveMainRelease({
 				throw new Error(`Unfinished release precedes newer tags: ${tag}`);
 			pending = expected;
 		}
-		latest = expected;
 	}
-	if (requestedTag && requestedTag !== latest?.tag) {
-		throw new Error(
-			"Only the latest reserved release can be resumed; older releases cannot move latest backwards",
-		);
-	}
-	const selected = pending ?? (requestedTag ? latest : sequence.next().value);
+	const selected = pending ?? sequence.next().value;
 	if (!selected) return null;
+	// Both the release source and the publication tooling must have passed main CI.
+	// Check before reserving a tag or creating a draft, including on scheduled recovery.
+	for (const source of new Set([selected.source, git(root, ["rev-parse", "HEAD"])])) {
+		assertValidated(source);
+	}
 	const sha = prepareReleaseCommit(root, selected);
 	if (tags.includes(selected.tag)) {
 		if (git(root, ["rev-parse", `${selected.tag}^{commit}`]) !== sha) {
@@ -299,9 +295,28 @@ export function resolveMainRelease({
 export function assertReleaseContext(env: NodeJS.ProcessEnv) {
 	if (
 		env.GITHUB_REF !== "refs/heads/main" ||
-		!["push", "workflow_dispatch"].includes(env.GITHUB_EVENT_NAME ?? "")
+		!["workflow_run", "schedule"].includes(env.GITHUB_EVENT_NAME ?? "") ||
+		env.RELEASE_TAG
 	) {
-		throw new Error("Publication must run from main on push or workflow_dispatch");
+		throw new Error("Publication must run from main after CI or on schedule, without overrides");
+	}
+}
+
+/** @internal */
+export function assertSuccessfulMainCi(
+	runs: { head_sha: string; head_branch: string; event: string; conclusion: string | null }[],
+	source: string,
+) {
+	if (
+		!runs.some(
+			(run) =>
+				run.head_sha === source &&
+				run.head_branch === "main" &&
+				run.event === "push" &&
+				run.conclusion === "success",
+		)
+	) {
+		throw new Error(`Main CI has not succeeded for ${source}`);
 	}
 }
 
@@ -336,7 +351,24 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
 	const release = resolveMainRelease({
 		root: fileURLToPath(new URL("../", import.meta.url)),
 		registry: githubRegistry(repository),
-		requestedTag: process.env.RELEASE_TAG,
+		assertValidated: (source) => {
+			const pages = JSON.parse(
+				execFileSync(
+					"gh",
+					[
+						"api",
+						"--paginate",
+						"--slurp",
+						`repos/${repository}/actions/workflows/ci.yml/runs?head_sha=${source}&event=push&per_page=100`,
+					],
+					{ encoding: "utf8" },
+				),
+			);
+			assertSuccessfulMainCi(
+				pages.flatMap((page: { workflow_runs: [] }) => page.workflow_runs),
+				source,
+			);
+		},
 	});
 	appendFileSync(
 		output,
