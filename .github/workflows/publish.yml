@@ -1,11 +1,14 @@
 name: Publish release artifacts
 
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Release Please draft or published tag to resume, for example v0.2.1
-        required: true
+        description: Optional latest release tag to resume; omit to drain pending main merges
+        required: false
         type: string
 
 env:
@@ -14,68 +17,54 @@ env:
   TURBO_DISABLE_UPDATE_CHECK: '1'
   TURBO_TELEMETRY_DISABLED: '1'
 
+# Git history and immutable tags are the queue. Replaced pending Actions runs are safe:
+# every surviving run starts with the oldest unfinished release, not its triggering SHA.
 concurrency:
-  group: publish-${{ inputs.release_tag }}
+  group: publish-main
   cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
   resolve:
-    name: Resolve release inputs
+    name: Prepare the oldest pending main release
     runs-on: ubuntu-latest
     permissions:
-      # GitHub only lists draft releases for callers with push access.
       contents: write
-      pull-requests: read
     outputs:
+      release: ${{ steps.release.outputs.release }}
       version: ${{ steps.release.outputs.version }}
       tag: ${{ steps.release.outputs.tag }}
       git_sha: ${{ steps.release.outputs.git_sha }}
+      source_sha: ${{ steps.release.outputs.source_sha }}
     steps:
-      - name: Checkout trusted publication tooling
+      - name: Checkout trusted publication tooling and release history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
-          path: .release-tooling
-          persist-credentials: false
+          fetch-depth: 0
 
-      - name: Verify merged Release Please origin
-        id: origin
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 26
+          cache: npm
+
+      - name: Install release tooling dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Reserve or verify an immutable release from main
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}
-        run: node .release-tooling/scripts/verify-release-origin.mjs
-
-      - name: Checkout release tag
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ steps.origin.outputs.git_sha }}
-          persist-credentials: false
-
-      - name: Resolve release coordinates
-        id: release
-        env:
-          RELEASE_TAG: ${{ inputs.release_tag }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="$(node -p "require('./package.json').version")"
-          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
-            echo "Stable release version must be X.Y.Z: $version" >&2
-            exit 1
-          }
-          [[ "$RELEASE_TAG" == "v$version" ]] || {
-            echo "Release tag $RELEASE_TAG must exactly match v$version" >&2
-            exit 1
-          }
-          {
-            echo "version=$version"
-            echo "tag=$RELEASE_TAG"
-            echo "git_sha=$(git rev-parse HEAD)"
-          } >> "$GITHUB_OUTPUT"
+        run: node --import tsx scripts/release-main.ts
 
       - name: Reject a conflicting release lock
+        if: steps.release.outputs.release == 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
           RELEASE_GIT_SHA: ${{ steps.release.outputs.git_sha }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
         shell: bash
@@ -98,6 +87,7 @@ jobs:
   validate:
     name: Validate release contents
     needs: resolve
+    if: needs.resolve.outputs.release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -131,6 +121,9 @@ jobs:
 
       - name: Install npm dependencies
         run: npm ci
+
+      - name: Check public npm package registration
+        run: npm run publish:registration
 
       - name: Install Playwright browser dependencies
         timeout-minutes: 5
@@ -168,6 +161,7 @@ jobs:
   inspect-images:
     name: Inspect existing image tags
     needs: resolve
+    if: needs.resolve.outputs.release == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -246,10 +240,12 @@ jobs:
               exit 1
             fi
             selected_digest="${version_digest:-$sha_digest}"
-            echo "${key}_build=$([[ -z "$selected_digest" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-            echo "${key}_digest=$selected_digest" >> "$GITHUB_OUTPUT"
-            echo "${key}_version_exists=$([[ -n "$version_digest" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-            echo "${key}_sha_exists=$([[ -n "$sha_digest" ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+            {
+              echo "${key}_build=$([[ -z "$selected_digest" ]] && echo true || echo false)"
+              echo "${key}_digest=$selected_digest"
+              echo "${key}_version_exists=$([[ -n "$version_digest" ]] && echo true || echo false)"
+              echo "${key}_sha_exists=$([[ -n "$sha_digest" ]] && echo true || echo false)"
+            } >> "$GITHUB_OUTPUT"
           }
 
           resolve_image server ghcr.io/leitwerk-dev/leitwerk-server
@@ -682,3 +678,15 @@ jobs:
           path: |
             ${{ steps.chart.outputs.archive }}
             release-artifacts/final/leitwerk-base.lock.yaml
+
+  continue:
+    name: Drain the next release-producing main merge
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Start the next queue scan after successful publication
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run publish.yml --repo "$GITHUB_REPOSITORY" --ref main

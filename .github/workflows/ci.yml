@@ -20,21 +20,6 @@ permissions:
   contents: read
 
 jobs:
-  npm-registration:
-    name: npm package registration
-    if: github.event_name == 'pull_request' && github.head_ref == 'release-please--branches--main'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 26
-          package-manager-cache: false
-      - name: Check public npm package registration
-        run: npm run publish:registration
-
   validate:
     name: Application validation
     runs-on: ubuntu-latest
@@ -68,6 +53,9 @@ jobs:
 
       - name: Install npm dependencies
         run: npm ci
+
+      - name: Check public npm package registration
+        run: npm run publish:registration
 
       - name: Install Playwright browser dependencies
         # Cold hosted runners can spend several minutes downloading OS fonts and libraries.

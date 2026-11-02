@@ -156,7 +156,7 @@ describe("immutable release finalization", () => {
 	it("rejects manually created releases", () => {
 		const github = new FakeGitHub();
 		github.author = "maintainer";
-		expect(() => finalizeRelease(fixture(), github.run)).toThrow("Release Please");
+		expect(() => finalizeRelease(fixture(), github.run)).toThrow("automation-owned stable release");
 		expect(github.writes).toEqual([]);
 	});
 

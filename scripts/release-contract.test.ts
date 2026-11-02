@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
@@ -6,36 +5,13 @@ import {
 	validateLockstepVersions,
 	validatePublicationWorkflow,
 	validateReleaseContract,
-	validateReleaseRegistration,
 } from "./release-contract.js";
 
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
 
 describe("release contract", () => {
-	it("keeps every workspace in one linked release group", () => {
+	it("keeps every workspace, lockfile, chart, and image in lockstep", () => {
 		expect(validateReleaseContract(repoRoot)).toEqual([]);
-	});
-
-	it.each(["draft", "force-tag-creation"])("requires %s for the root release", (field) => {
-		const config = JSON.parse(readFileSync(`${repoRoot}/release-please-config.json`, "utf8"));
-		config.packages["."][field] = false;
-		expect(validateReleaseRegistration([], config)).toContain(
-			"root release must create a draft and its Git tag before artifact publication",
-		);
-	});
-
-	it("keeps the release workflow manually recoverable", () => {
-		const workflow = readFileSync(`${repoRoot}/.github/workflows/release-please.yml`, "utf8");
-		expect(workflow.split("\n")).toContain("  workflow_dispatch:");
-	});
-
-	it("fails when a newly added workspace has no release component", () => {
-		const config = JSON.parse(
-			readFileSync(`${repoRoot}/release-please-config.json`, "utf8"),
-		) as Record<string, unknown>;
-		expect(validateReleaseRegistration(["packages/new-workspace"], config)).toContain(
-			"packages/new-workspace: workspace is missing from release-please-config.json",
-		);
 	});
 
 	it("keeps image builds parallel with validation and gates publication on both", () => {
@@ -110,6 +86,8 @@ describe("pre-1.0 Conventional Commit versioning", () => {
 		[["feat(api): add retries"], "0.2.4"],
 		[["feat(api)!: replace request shape"], "0.3.0"],
 		[["fix: reject drift\n\nBREAKING CHANGE: lock files are mandatory"], "0.3.0"],
+		[["refactor!: replace an API"], "0.3.0"],
+		[["chore: replace an API\n\nBREAKING-CHANGE: old API removed"], "0.3.0"],
 		[["docs: explain releases", "test: cover release workflow", "ci: pin action"], null],
 	])("calculates %j as %s", (commits, expected) => {
 		expect(calculateConventionalVersion("0.2.3", commits)).toBe(expected);
@@ -118,6 +96,23 @@ describe("pre-1.0 Conventional Commit versioning", () => {
 	it("returns to standard SemVer at 1.0", () => {
 		expect(calculateConventionalVersion("1.2.3", ["feat: add capability"])).toBe("1.3.0");
 		expect(calculateConventionalVersion("1.2.3", ["feat!: remove API"])).toBe("2.0.0");
+	});
+
+	it.each([
+		"0.9.9",
+		"0.9.8",
+		"1.0.0-rc.1",
+		"1.0.0+build",
+		"01.0.0",
+		"invalid",
+	])("rejects non-increasing or non-stable Release-As: %s", (version) => {
+		expect(() =>
+			calculateConventionalVersion("0.9.9", [`chore: override\n\nRelease-As: ${version}`]),
+		).toThrow();
+	});
+
+	it.each(["1.2.3-rc.1", "1.2", "01.2.3"])("rejects invalid current version %s", (version) => {
+		expect(() => calculateConventionalVersion(version, ["fix: something"])).toThrow();
 	});
 
 	it("honors an explicit Release-As footer", () => {

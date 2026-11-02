@@ -59,7 +59,7 @@ Pull request titles use Conventional Commits syntax because GitHub uses the titl
 
 `feat` and `fix` contribute release notes. Add `!` or a `BREAKING CHANGE:` footer for a breaking change. `docs`, `test`, `ci`, `build`, and `chore` do not request a release by themselves.
 
-Merging an ordinary pull request never publishes. It updates the reviewable Release Please pull request. Maintainers publish by merging that generated pull request. See [docs/ci.md](docs/ci.md) for version rules and artifact coordinates.
+Every merge to `main` that increments the version automatically publishes a stable release. Non-release changes do not publish. Versions are generated in release commits attached to tags, not pushed back to `main`. Before merging new package names, complete npm registration as described in [docs/ci.md](docs/ci.md), which also covers version rules, artifact coordinates, and publication retries.
 
 ## API classification
 

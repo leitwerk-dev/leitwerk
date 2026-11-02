@@ -38,83 +38,6 @@ export function discoverWorkspaces(rootDir: string, rootManifest: PackageManifes
 		.sort();
 }
 
-export function validateReleaseRegistration(
-	workspacePaths: string[],
-	releaseConfig: JsonRecord,
-): string[] {
-	const packages = asRecord(releaseConfig.packages);
-	const configuredPaths = Object.keys(packages).sort();
-	const expectedPaths = [".", ...workspacePaths].sort();
-	const errors: string[] = [];
-	for (const missingPath of expectedPaths.filter((entry) => !configuredPaths.includes(entry))) {
-		errors.push(`${missingPath}: workspace is missing from release-please-config.json`);
-	}
-	for (const stalePath of configuredPaths.filter((entry) => !expectedPaths.includes(entry))) {
-		errors.push(`${stalePath}: release component is not an npm workspace`);
-	}
-
-	const plugins = Array.isArray(releaseConfig.plugins) ? releaseConfig.plugins : [];
-	const nodeWorkspace = plugins.find((plugin) => asRecord(plugin).type === "node-workspace") as
-		| JsonRecord
-		| undefined;
-	const linkedVersions = plugins.find((plugin) => asRecord(plugin).type === "linked-versions") as
-		| JsonRecord
-		| undefined;
-	if (!nodeWorkspace || nodeWorkspace.merge !== false) {
-		errors.push("node-workspace must be configured with merge:false before linked-versions");
-	}
-	if (nodeWorkspace?.updatePeerDependencies !== true) {
-		errors.push("node-workspace must update exact internal peer dependencies");
-	}
-	if (nodeWorkspace?.updateAllPackages !== true) {
-		errors.push("node-workspace must force every package into each lockstep release");
-	}
-	if (!linkedVersions || linkedVersions.merge !== true) {
-		errors.push("linked-versions must merge the lockstep release group");
-	}
-	if (releaseConfig["include-component-in-tag"] !== true) {
-		errors.push("component tags must remain enabled so linked-versions can discover the group");
-	}
-	if (releaseConfig["include-v-in-tag"] !== false || releaseConfig["tag-separator"] !== "") {
-		errors.push("release tag formatting must preserve the public vX.Y.Z coordinate");
-	}
-	if (asRecord(packages["."]).component !== "v") {
-		errors.push("root release component must format as the public vX.Y.Z tag");
-	}
-
-	if (
-		asRecord(packages["."]).draft !== true ||
-		asRecord(packages["."])["force-tag-creation"] !== true
-	) {
-		errors.push("root release must create a draft and its Git tag before artifact publication");
-	}
-
-	const components = new Set(
-		Array.isArray(linkedVersions?.components) ? linkedVersions.components : [],
-	);
-	for (const [packagePath, value] of Object.entries(packages)) {
-		const packageConfig = asRecord(value);
-		const component = packageConfig.component;
-		if (typeof component !== "string" || !components.has(component)) {
-			errors.push(`${packagePath}: component is missing from the linked release group`);
-		}
-		if (packagePath !== ".") {
-			if (packageConfig["skip-github-release"] !== true) {
-				errors.push(`${packagePath}: workspace GitHub releases must be suppressed`);
-			}
-			if (packageConfig["skip-changelog"] !== true) {
-				errors.push(`${packagePath}: workspace changelogs must be suppressed`);
-			}
-		}
-	}
-	if (components.size !== expectedPaths.length) {
-		errors.push(
-			`linked release group has ${components.size} components; expected ${expectedPaths.length}`,
-		);
-	}
-	return errors;
-}
-
 export function validateLockstepVersions(input: {
 	rootManifest: PackageManifest;
 	workspaces: WorkspaceManifest[];
@@ -220,9 +143,7 @@ export function validateReleaseContract(rootDir: string): string[] {
 		path: workspacePath,
 		manifest: readJson(path.join(rootDir, workspacePath, "package.json")) as PackageManifest,
 	}));
-	const releaseConfig = readJson(path.join(rootDir, "release-please-config.json"));
 	const errors = [
-		...validateReleaseRegistration(workspacePaths, releaseConfig),
 		...validateLockstepVersions({
 			rootManifest,
 			workspaces,
@@ -241,24 +162,6 @@ export function validateReleaseContract(rootDir: string): string[] {
 		),
 	];
 
-	const manifest = readJson(path.join(rootDir, ".release-please-manifest.json"));
-	const manifestPaths = Object.keys(manifest).sort();
-	const expectedPaths = [".", ...workspacePaths].sort();
-	if (manifestPaths.length > 0) {
-		for (const packagePath of expectedPaths) {
-			if (manifest[packagePath] !== rootManifest.version) {
-				errors.push(
-					`.release-please-manifest.json ${packagePath}: version must equal '${String(rootManifest.version)}'`,
-				);
-			}
-		}
-		for (const stalePath of manifestPaths.filter((entry) => !expectedPaths.includes(entry))) {
-			errors.push(`${stalePath}: stale release manifest entry`);
-		}
-	} else if (rootManifest.version !== releaseConfig["initial-version"]) {
-		errors.push("empty release manifest is allowed only while bootstrapping the initial version");
-	}
-
 	for (const workspacePath of workspacePaths) {
 		if (existsSync(path.join(rootDir, workspacePath, "CHANGELOG.md"))) {
 			errors.push(`${workspacePath}/CHANGELOG.md: only the root changelog is allowed`);
@@ -271,20 +174,20 @@ export function calculateConventionalVersion(
 	currentVersion: string,
 	commits: string[],
 ): string | null {
+	const [major, minor, patch] = stableVersionParts(currentVersion);
 	for (const commit of commits.toReversed()) {
-		const releaseAs = /^Release-As:\s*(\S+)\s*$/imu.exec(commit)?.[1];
+		const releaseAs = /^Release-As:[ \t]*(\S+)[ \t]*$/imu.exec(commit)?.[1];
 		if (releaseAs) {
-			if (!semverPattern.test(releaseAs)) throw new Error(`Release-As is not SemVer: ${releaseAs}`);
+			if (compareStableVersions(releaseAs, currentVersion) <= 0) {
+				throw new Error(`Release-As must increase ${currentVersion}: ${releaseAs}`);
+			}
 			return releaseAs;
 		}
 	}
-	const [major, minor, patch] = currentVersion.split(".").map(Number);
-	if (![major, minor, patch].every(Number.isInteger)) {
-		throw new Error(`Current version is not stable SemVer: ${currentVersion}`);
-	}
 	const breaking = commits.some(
 		(commit) =>
-			/^[a-z][a-z0-9-]*(?:\([^\r\n()]+\))?!:/u.test(commit) || /^BREAKING CHANGE:/imu.test(commit),
+			/^[a-z][a-z0-9-]*(?:\([^\r\n()]+\))?!:/u.test(commit) ||
+			/^BREAKING[ -]CHANGE:/imu.test(commit),
 	);
 	if (breaking) return major === 0 ? `0.${minor + 1}.0` : `${major + 1}.0.0`;
 	if (commits.some((commit) => /^feat(?:\([^\r\n()]+\))?:/u.test(commit))) {
@@ -294,6 +197,24 @@ export function calculateConventionalVersion(
 		return `${major}.${minor}.${patch + 1}`;
 	}
 	return null;
+}
+
+/** @internal */
+export function compareStableVersions(left: string, right: string): number {
+	const a = stableVersionParts(left);
+	const b = stableVersionParts(right);
+	return a[0] - b[0] || a[1] - b[1] || a[2] - b[2];
+}
+
+function stableVersionParts(version: string): [number, number, number] {
+	const parts = version.split(".").map(Number);
+	if (
+		!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u.test(version) ||
+		!parts.every((part) => Number.isSafeInteger(part) && part < Number.MAX_SAFE_INTEGER)
+	) {
+		throw new Error(`Expected stable X.Y.Z version: ${version}`);
+	}
+	return parts as [number, number, number];
 }
 
 function validateInternalDependencies(

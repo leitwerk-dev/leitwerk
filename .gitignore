@@ -41,4 +41,3 @@ leitwerk.yaml
 !/.agents/skills/open-mr/
 .codex/
 .DS_Store
-.release-please-runtime-config.json

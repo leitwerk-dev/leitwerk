@@ -51,7 +51,7 @@ export function finalizeRelease({ repository, tag, sha, files }, run = gh) {
 		release.isPrerelease !== false ||
 		release.author?.login !== "github-actions[bot]"
 	) {
-		throw new Error("Expected the stable Release Please release");
+		throw new Error("Expected the automation-owned stable release");
 	}
 	checkTag();
 	const directory = mkdtempSync(path.join(tmpdir(), "leitwerk-release-assets-"));
