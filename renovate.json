@@ -30,7 +30,7 @@
 	},
 	"packageRules": [
 		{
-			"description": "Release Please owns internal workspace and published image versions",
+			"description": "Release automation owns internal workspace and published image versions",
 			"matchPackageNames": ["@leitwerk-dev/**", "ghcr.io/leitwerk-dev/leitwerk-**"],
 			"enabled": false
 		},

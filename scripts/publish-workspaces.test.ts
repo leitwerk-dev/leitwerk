@@ -119,14 +119,16 @@ describe("published workspace Node engines", () => {
 		expect(isSupportedNodeRange(range, range)).toBe(false);
 	});
 
-	it("checks the built repository's publishable workspaces through the CLI", () => {
+	it.each(["check", "preflight", "publish", "verify"])("validates the %s command", (mode) => {
 		const root = fileURLToPath(new URL("../", import.meta.url));
-		const result = spawnSync(process.execPath, ["scripts/publish-workspaces.mjs", "check"], {
+		const result = spawnSync(process.execPath, ["scripts/publish-workspaces.mjs", mode], {
 			cwd: root,
 			encoding: "utf8",
+			env: { ...process.env, RELEASE_TAG: "v0.0.0" },
 		});
-		expect(result.stderr).toBe("");
-		expect(result.status).toBe(0);
-		expect(result.stdout).toContain("[publish:check] OK");
+		expect(result.status).toBe(mode === "check" ? 0 : 1);
+		expect(result.stdout + result.stderr).toContain(
+			mode === "check" ? "[publish:check] OK" : "RELEASE_TAG must equal",
+		);
 	});
 });

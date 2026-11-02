@@ -1,10 +1,8 @@
 # CI, dependency updates, and releases
 
-Ordinary merges do not publish artifacts. Release Please collects changes into one release PR; merging it publishes the stable release. Maintainers can explicitly publish npm release candidates from that PR before merging.
+Every merge to `main` that increments the version automatically publishes a stable release. Non-release changes do not publish artifacts.
 
-Stable releases use one version, `X.Y.Z`, across all npm packages, container images, and the Helm deployment chart. Release Please creates tag `vX.Y.Z` and a draft GitHub Release. CI publishes npm packages under `latest`, attaches the chart and lock file, then publishes the draft.
-
-Release candidates also use one version, `X.Y.Z-rc.<run-id>`, across every npm package; internal dependencies pin that same version. RCs publish under `next`, leave `latest` unchanged, and include no container images or Helm chart.
+Stable releases use one version, `X.Y.Z`, across all npm packages, container images, and the Helm deployment chart. CI creates tag `vX.Y.Z` and a draft GitHub Release, publishes npm packages under `latest`, attaches the chart and lock file, then publishes the draft.
 
 ## Validation
 
@@ -43,7 +41,9 @@ on success or failure. These diagnostic artifacts are retained for 14 days.
 
 ## Publication safeguards
 
-Stable publication accepts only releases created from a merged Release Please PR on `main`. RC publication accepts only the validated revision of an open release PR. Both use main-only publishing environments and short-lived npm credentials.
+Publication runs only from `main`, uses the main-only `npm-publish` environment without required reviewers, and authenticates with short-lived npm credentials. The exact versioned source must pass validation before publication.
+
+Each release tag points to a reproducible, signed-off commit whose only parent is the originating main revision. The commit records that revision and the previous release tag. Conflicting tags, changed contents, skipped qualifying merges, and releases not owned by automation are rejected. Release commits do not update `main`. Use release tags for released package and chart versions and the cumulative changelog.
 
 Stable images use application source from the verified release tag and Dockerfiles
 from the main revision running publication. Build recipe fixes can therefore resume
@@ -51,22 +51,28 @@ a draft release without changing its tag. CI compiles both image build stages.
 
 ## Retries
 
-Retries reuse matching artifacts and reject conflicts. Release assets must match byte-for-byte; published releases missing assets require a new version. Stable npm verification waits up to ten minutes for registry visibility and reports any missing versions. If an RC's release PR changes, start a new run.
+Releases publish serially in main's first-parent order. Git history is the durable backlog, and immutable tags reserve versions. Rapid merges and replaced pending Actions runs do not lose releases: every run selects the oldest unfinished release, and successful publication starts another scan. A failed release blocks newer releases rather than reassigning its version or moving npm's `latest` out of order.
 
-To resume stable publication after merging a build recipe fix, dispatch a new run
-from `main` with the original release tag:
+Retries reuse matching artifacts and reject conflicts. An existing OCI chart must match every packaged file; archive timestamps may differ. Release assets must match byte-for-byte; published releases missing assets require a new version. npm verification waits up to ten minutes for registry visibility and reports any missing versions.
+
+After fixing a publication failure, run **Publish release artifacts** from `main` without inputs to resume the queue:
+
+```bash
+gh workflow run publish.yml --repo leitwerk-dev/leitwerk --ref main
+```
+
+To explicitly recheck or resume the latest reserved release, set `TAG` to its `vX.Y.Z` tag:
 
 ```bash
 gh workflow run publish.yml --repo leitwerk-dev/leitwerk \
-  --ref main -f release_tag=v0.4.0
+  --ref main -f release_tag="$TAG"
 ```
 
-Replace `v0.4.0` with the draft release's tag. Rerunning an old workflow attempt
-uses its original build recipes.
+Historical releases cannot be republished after a newer version is reserved. A new dispatch uses current image build recipes; rerunning an old workflow attempt uses its original recipes. Neither changes the reserved release source or version.
 
 ## Registering new npm packages
 
-Release PRs run **npm package registration**. If names are missing, its summary lists them and provides this command to run from the PR checkout:
+PR validation and release validation check npm package registration. Before merging a PR that adds package names, run this command from its checkout if the check reports missing names:
 
 ```bash
 npm run publish:bootstrap
@@ -74,24 +80,13 @@ npm run publish:bootstrap
 
 Requires npm 11.16+ within npm 11 and `npm login` with 2FA enabled. Run from an interactive terminal on macOS/Linux. The command registers missing names as metadata-only `0.0.0-bootstrap.0` placeholders under `bootstrap`, then uses `npm trust` to configure stable publishing (`leitwerk-dev/leitwerk`, `publish.yml`, `npm-publish`). No build is needed; `latest` and `next` stay unchanged.
 
-Reruns skip registered package names and matching publishers, and resume incomplete trust setup. Conflicting publishers stop setup before writes; they are never overwritten. Authentication prompts, notices, and writes go directly to the terminal. Read-only publisher checks use a separate structured JSON channel, not parsed terminal output. The adapter uses npm 11's internal trust-list response API; unsupported versions or malformed responses fail closed. Review npm's confirmation prompts for new publishers. CI checks registration only; the local command also checks publisher settings. npm currently allows one publisher per package, so the separate RC workflow cannot share this stable configuration.
+Reruns skip registered package names and matching publishers, and resume incomplete trust setup. Conflicting publishers stop setup before writes; they are never overwritten. Authentication prompts, notices, and writes go directly to the terminal. Review npm's confirmation prompts for new publishers. CI checks registration only; the local command also checks publisher settings.
 
 Bootstrap changes also need an authorized live acceptance check: complete interactive bootstrap, inspect the registry's tags and publisher settings, rerun to confirm no writes, and publish through the configured GitHub workflow. Local tests do not establish npm authentication or OIDC compatibility. Do not create packages or change trust settings merely to run the automated suite.
 
-## Running an RC
-
-Run **Publish release candidate** from `main` with the open release PR number. By default, it validates and retains package archives. Enable **publish** to publish them under `next`.
-
-```bash
-gh workflow run publish-rc.yml --repo leitwerk-dev/leitwerk \
-  --ref main -f release_pr=40 -F publish=true
-```
-
-Replace `40` with the open release PR number. Omit `-F publish=true` to validate without publishing.
-
 ## Version selection
 
-GitHub squash-merges PRs using their titles as commit titles. Release Please derives versions from these [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):
+GitHub squash-merges PRs using their titles as commit titles. Each qualifying main commit increments the previous release version according to these [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):
 
 | Title | Release effect before 1.0 | Release effect at 1.0 and later |
 |---|---:|---:|
@@ -101,7 +96,7 @@ GitHub squash-merges PRs using their titles as commit titles. Release Please der
 | `feat(scope): description` with a `BREAKING CHANGE:` footer | minor | major |
 | `docs`, `test`, `ci`, `build`, `chore`, `refactor`, `perf` | none | none |
 
-An explicit `Release-As: X.Y.Z` footer overrides version selection. Commit sign-off requirements are documented in [Contributing](https://github.com/leitwerk-dev/leitwerk/blob/main/CONTRIBUTING.md).
+An explicit `Release-As: X.Y.Z` footer overrides version selection. It must specify a stable version greater than the previous release. A breaking marker on any supported commit type requests a release. Commit sign-off requirements are documented in [Contributing](https://github.com/leitwerk-dev/leitwerk/blob/main/CONTRIBUTING.md).
 
 Breaking an `@public` API requires release notes and a minor bump before 1.0,
 or a major bump from 1.0. Removing its supported classification counts as a
@@ -110,7 +105,7 @@ APIs remain usable without this compatibility promise.
 
 ## Release automation
 
-`release-please.yml` updates package versions, internal dependencies, the lockfile, chart metadata, and changelog together. A maintainer approves release-PR CI runs when GitHub requires it. The PR body retains the component metadata Release Please uses to create the release. After merge, Release Please creates the tag and draft GitHub Release, then dispatches `publish.yml`. The release stays a draft until artifact publication succeeds.
+Every release includes all npm workspaces with matching versions and exact internal dependency pins. Release commits update the manifests, lockfile, chart metadata, and root changelog together. A release remains a draft until all artifacts are published and publicly readable.
 
 ## Stable release artifacts
 

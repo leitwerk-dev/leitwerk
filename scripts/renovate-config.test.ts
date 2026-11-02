@@ -39,7 +39,7 @@ describe("Renovate configuration", () => {
 		expect(actions?.semanticCommitType).toBe("ci");
 	});
 
-	it("excludes lockstep artifacts owned by Release Please", () => {
+	it("excludes lockstep artifacts owned by release automation", () => {
 		const exclusion = (config.packageRules as Array<Record<string, unknown>>).find(
 			(rule) => rule.enabled === false,
 		);

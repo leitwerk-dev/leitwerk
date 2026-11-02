@@ -68,10 +68,10 @@ export function bootstrapInstructions(missing) {
 		"",
 		...(missing.length
 			? [
-					"Manual bootstrap required before merging this release PR:",
+					"Manual bootstrap required before merging changes that add these packages:",
 					...missing.map((name) => `- \`${name}\``),
 					"",
-					"From a checkout of this release PR, run:",
+					"From a checkout containing these packages, run:",
 					"```sh",
 					"npm run publish:bootstrap",
 					"```",

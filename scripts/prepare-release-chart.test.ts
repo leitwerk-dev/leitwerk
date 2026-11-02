@@ -2,25 +2,18 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { parse } from "yaml";
 import { prepareReleaseChart } from "./prepare-release-chart.js";
 
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
-const temporaryDirectories: string[] = [];
 const digest = `sha256:${"a".repeat(64)}`;
-
-afterEach(() => {
-	for (const directory of temporaryDirectories.splice(0)) {
-		rmSync(directory, { recursive: true, force: true });
-	}
-});
 
 describe("prepareReleaseChart", () => {
 	it("stages a chart whose default server and worker images are digest-pinned", () => {
-		const temporaryDirectory = mkdtempSync(path.join(tmpdir(), "leitwerk-release-chart-"));
-		temporaryDirectories.push(temporaryDirectory);
-		const destinationDir = path.join(temporaryDirectory, "leitwerk");
+		const directory = mkdtempSync(path.join(tmpdir(), "leitwerk-release-chart-"));
+		onTestFinished(() => rmSync(directory, { recursive: true, force: true }));
+		const destinationDir = path.join(directory, "leitwerk");
 
 		prepareReleaseChart({
 			sourceDir: path.join(repoRoot, "deploy/kubernetes/helm/leitwerk"),
