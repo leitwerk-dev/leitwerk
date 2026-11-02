@@ -154,7 +154,9 @@ describe("immutable release finalization", () => {
 		);
 		const steps = workflow.jobs.publish.steps;
 		const commands = steps.flatMap((step: { run?: string }) => step.run ?? []);
-		const verifyIndex = commands.findIndex((run: string) => run.includes("publish:verify"));
+		const verifyIndex = commands.findIndex((run: string) =>
+			run.includes("publish-workspaces.mjs verify"),
+		);
 		expect(verifyIndex).toBeGreaterThanOrEqual(0);
 		expect(
 			commands.findIndex((run: string) => run.includes("finalize-release.mjs")),

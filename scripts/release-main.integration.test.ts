@@ -6,6 +6,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { parse } from "yaml";
 import {
 	assertReleaseContext,
+	assertSuccessfulMainCi,
 	type GitHubRelease,
 	prepareReleaseCommit,
 	resolveMainRelease,
@@ -114,7 +115,12 @@ function fixture() {
 			});
 		},
 	};
-	const resolve = (requestedTag = "") => resolveMainRelease({ root, registry, requestedTag });
+	const validations: string[] = [];
+	const resolve = (
+		assertValidated = (source: string) => {
+			validations.push(source);
+		},
+	) => resolveMainRelease({ root, registry, assertValidated });
 	const publish = () => {
 		const release = releases.at(-1);
 		if (!release) throw new Error("No release to publish");
@@ -136,6 +142,7 @@ function fixture() {
 		releases,
 		creations,
 		registry,
+		validations,
 		resolve,
 		requireRelease,
 		publish,
@@ -238,6 +245,7 @@ describe("main release queue (real git, local registry boundary)", () => {
 		expect(() =>
 			resolveMainRelease({
 				root: f.root,
+				assertValidated: () => {},
 				registry: {
 					list: f.registry.list,
 					create: () => {
@@ -249,7 +257,9 @@ describe("main release queue (real git, local registry boundary)", () => {
 		const sha = git(f.root, "rev-parse", "v0.4.1");
 		const freshCheckout = path.join(path.dirname(f.root), "retry");
 		git(f.root, "clone", "--branch", "main", f.remote, freshCheckout);
-		expect(resolveMainRelease({ root: freshCheckout, registry: f.registry })).toMatchObject({
+		expect(
+			resolveMainRelease({ root: freshCheckout, registry: f.registry, assertValidated: () => {} }),
+		).toMatchObject({
 			tag: "v0.4.1",
 			sha,
 		});
@@ -280,16 +290,34 @@ describe("main release queue (real git, local registry boundary)", () => {
 		);
 	});
 
-	it("allows a latest-release retry but rejects historical retries that could downgrade npm latest", () => {
+	it("never republishes a completed release or accepts a manually selected version", () => {
 		const f = fixture();
 		f.commit("fix: first");
-		const first = f.resolve();
+		f.requireRelease();
 		f.publish();
-		expect(f.resolve("v0.4.1")).toEqual(first);
+		expect(f.resolve()).toBeNull();
 		f.commit("fix: second");
-		f.resolve();
-		expect(() => f.resolve("v0.4.1")).toThrow("Only the latest reserved release");
-		expect(() => f.resolve("v0.4.9")).toThrow("Only the latest reserved release");
+		expect(f.requireRelease().tag).toBe("v0.4.2");
+	});
+
+	it("requires CI for the exact source and current tooling before reserving any artifacts", () => {
+		const f = fixture();
+		const source = f.commit("fix: first");
+		const tooling = f.commit("ci: repair publication");
+		expect(() =>
+			f.resolve((sha) => {
+				if (sha === tooling) throw new Error("CI pending");
+			}),
+		).toThrow("CI pending");
+		expect(git(f.root, "tag", "--list")).toBe("v0.4.0");
+		expect(f.creations).toEqual([]);
+		f.requireRelease();
+		expect(f.validations).toEqual([source, tooling]);
+		const resumed: string[] = [];
+		f.resolve((sha) => {
+			resumed.push(sha);
+		});
+		expect(resumed).toEqual([source, tooling]);
 	});
 
 	it("does not let a later invalid override prevent recovery of a reserved release", () => {
@@ -367,10 +395,37 @@ describe("main release queue (real git, local registry boundary)", () => {
 });
 
 describe("publication workflow trust boundary", () => {
+	it.each(["schedule", "workflow_run"])("accepts automatic %s only without overrides", (event) => {
+		const env = { GITHUB_REF: "refs/heads/main", GITHUB_EVENT_NAME: event };
+		expect(() => assertReleaseContext(env)).not.toThrow();
+		expect(() => assertReleaseContext({ ...env, RELEASE_TAG: "v0.4.1" })).toThrow(
+			"without overrides",
+		);
+	});
+
+	it("requires a successful main push CI for the exact release revision", () => {
+		const source = "a".repeat(40);
+		const run = { head_sha: source, head_branch: "main", event: "push", conclusion: "success" };
+		expect(() => assertSuccessfulMainCi([run], source)).not.toThrow();
+		for (const other of [
+			{ ...run, head_sha: "b".repeat(40) },
+			{ ...run, head_branch: "feature" },
+			{ ...run, event: "pull_request" },
+			{ ...run, conclusion: "failure" },
+			{ ...run, conclusion: null },
+		]) {
+			expect(() => assertSuccessfulMainCi([other], source)).toThrow("Main CI has not succeeded");
+		}
+		expect(() => assertSuccessfulMainCi([], source)).toThrow("Main CI has not succeeded");
+	});
+
 	it.each([
 		["refs/heads/feature", "workflow_dispatch"],
 		["refs/tags/v0.4.1", "workflow_dispatch"],
 		["refs/heads/main", "pull_request"],
+		["refs/heads/main", "push"],
+		["refs/heads/main", "workflow_dispatch"],
+		["refs/heads/feature", "schedule"],
 	])("rejects %s / %s before accessing git or GitHub", (ref, event) => {
 		expect(() => assertReleaseContext({ GITHUB_REF: ref, GITHUB_EVENT_NAME: event })).toThrow(
 			"Publication must run from main",
@@ -381,16 +436,19 @@ describe("publication workflow trust boundary", () => {
 		const workflow = parse(
 			readFileSync(new URL("../.github/workflows/publish.yml", import.meta.url), "utf8"),
 		);
-		expect(workflow.on.push.branches).toEqual(["main"]);
-		expect(workflow.on.workflow_dispatch.inputs.release_tag.required).toBe(false);
+		expect(workflow.on.push).toBeUndefined();
+		expect(workflow.on.workflow_dispatch).toBeUndefined();
+		expect(workflow.on.workflow_run.workflows).toEqual(["CI"]);
+		expect(workflow.on.workflow_run.branches).toEqual(["main"]);
+		expect(workflow.on.schedule).toHaveLength(1);
 		expect(workflow.concurrency["cancel-in-progress"]).toBe(false);
 		expect(workflow.concurrency.group).not.toContain("${{");
-		expect(workflow.jobs.publish.environment).toBe("npm-publish");
+		expect(workflow.jobs.npm.environment).toBe("npm-publish");
 		expect(workflow.jobs["merge-images"].needs).toEqual(
 			expect.arrayContaining(["validate", "build-images"]),
 		);
 		expect(workflow.jobs.publish.needs).toEqual(
-			expect.arrayContaining(["validate", "merge-images"]),
+			expect.arrayContaining(["validate", "merge-images", "npm"]),
 		);
 	});
 });
