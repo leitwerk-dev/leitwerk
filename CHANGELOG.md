@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1 (2026-11-02)
+
+fix(kubernetes): reclaim terminal process storage safely (#217)
+
+Source: c8ed293c3df904b554d9304959c5cc8fae9c80c8
+Previous release: v0.4.0
+
 ## [0.4.0](https://github.com/leitwerk-dev/leitwerk/compare/v0.3.1...v0.4.0) (2026-10-13)
 
 
