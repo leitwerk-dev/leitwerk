@@ -397,6 +397,7 @@ const configSchema = v.looseObject({
 			worker_service_account: v.optional(v.string()),
 			image_preload: v.optional(v.strictObject({ enabled: v.boolean() })),
 			process_volume: v.looseObject({
+				reclaim_on_close: v.optional(v.boolean()),
 				storage_class_name: v.optional(v.string()),
 				pre_provision: v.optional(
 					v.strictObject({ count: v.pipe(v.number(), v.integer(), v.minValue(0)) }),
@@ -1116,6 +1117,7 @@ export function getDefaultConfig(): LeitwerkConfig {
 			default_worker_runtime_profile: "generic",
 			worker_service_account: "leitwerk-worker",
 			process_volume: {
+				reclaim_on_close: false,
 				size: "20Gi",
 				access_modes: ["ReadWriteOnce"],
 				mount_path: "/state",

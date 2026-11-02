@@ -163,6 +163,8 @@ kubernetes:
   defaultWorkerRuntimeProfile: generic
   workerServiceAccount: leitwerk-worker
   processVolume:
+    # Discard completed/aborted workspaces through CSI; keep false to retain them.
+    reclaimOnClose: false
     # Optional server-managed pool. Requires an explicit dynamic StorageClass.
     preProvision:
       enabled: false
