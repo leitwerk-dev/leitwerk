@@ -3,14 +3,9 @@ import { existsSync, globSync, readFileSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { listWorkspacePackageDirs } from "./workspace-packages.ts";
+import { validateInternalDependencies } from "./release-contract.ts";
+import { listWorkspacePackageDirs, readJson } from "./workspace-packages.ts";
 
-const DEPENDENCY_FIELDS = [
-	"dependencies",
-	"devDependencies",
-	"peerDependencies",
-	"optionalDependencies",
-];
 const BUILT_FILE_PATTERNS = ["dist/**", "!dist/**/*.test.*", "src/**", "!src/**/*.test.ts"];
 const REPOSITORY_URL = "git+https://github.com/leitwerk-dev/leitwerk.git";
 const VALID_MODES = new Set(["check", "dry-run", "preflight", "publish", "verify"]);
@@ -43,8 +38,11 @@ async function main() {
 		workspaceNames,
 	});
 
-	if (mode === "preflight" || mode === "publish" || mode === "verify") {
-		errors.push(...validatePublishRef(rootVersion));
+	if (
+		["preflight", "publish", "verify"].includes(mode) &&
+		process.env.RELEASE_TAG !== `v${rootVersion}`
+	) {
+		errors.push(`RELEASE_TAG must equal v${rootVersion}`);
 	}
 	if (errors.length > 0) {
 		fail(`[publish:${mode}] Validation failed:`, errors);
@@ -120,10 +118,6 @@ function fail(header, errors = [], exitCode = 1) {
 	process.exit(exitCode);
 }
 
-function readJson(filePath) {
-	return JSON.parse(readFileSync(filePath, "utf8"));
-}
-
 function listPublishableWorkspaces(rootDir, rootPackageJson) {
 	return listWorkspacePackageDirs(rootDir, rootPackageJson)
 		.map((dir) => {
@@ -138,14 +132,6 @@ function listPublishableWorkspaces(rootDir, rootPackageJson) {
 		})
 		.filter((workspace) => typeof workspace.name === "string")
 		.sort((left, right) => left.name.localeCompare(right.name));
-}
-
-function dependencyEntries(packageJson, fields) {
-	return fields.flatMap((fieldName) =>
-		isRecord(packageJson[fieldName])
-			? Object.entries(packageJson[fieldName]).map(([name, version]) => [fieldName, name, version])
-			: [],
-	);
 }
 
 function validateWorkspaces({ rootDir, rootVersion, rootNodeRange, workspaces, workspaceNames }) {
@@ -190,16 +176,7 @@ function validateWorkspaces({ rootDir, rootVersion, rootNodeRange, workspaces, w
 			}
 		}
 
-		for (const [fieldName, dependencyName, dependencyVersion] of dependencyEntries(
-			packageJson,
-			DEPENDENCY_FIELDS,
-		)) {
-			if (workspaceNames.has(dependencyName) && dependencyVersion !== rootVersion) {
-				errors.push(
-					`${label}: ${fieldName}.${dependencyName} must be '${rootVersion}' for lockstep publishing`,
-				);
-			}
-		}
+		errors.push(...validateInternalDependencies(label, packageJson, workspaceNames, rootVersion));
 		if (
 			name === "@leitwerk-dev/server" &&
 			packageJson.optionalDependencies?.["@leitwerk-dev/worker"] !== rootVersion
@@ -299,17 +276,6 @@ function collectPackagePaths(value) {
 		return value.flatMap(collectPackagePaths);
 	}
 	return isRecord(value) ? Object.values(value).flatMap(collectPackagePaths) : [];
-}
-
-function validatePublishRef(rootVersion) {
-	const refType = process.env.GITHUB_REF_TYPE;
-	const refName = process.env.GITHUB_REF_NAME;
-	const expectedTag = `v${rootVersion}`;
-	return refType === "tag" && refName === expectedTag
-		? []
-		: [
-				`publish must run from tag ${expectedTag}; got GITHUB_REF_TYPE=${refType ?? "<unset>"} GITHUB_REF_NAME=${refName ?? "<unset>"}`,
-			];
 }
 
 function runPackDryRun(rootDir, workspaces) {

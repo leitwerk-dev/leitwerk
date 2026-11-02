@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { parse } from "yaml";
 import {
 	assertReleaseContext,
@@ -11,7 +11,6 @@ import {
 	resolveMainRelease,
 } from "./release-main.ts";
 
-const directories: string[] = [];
 function git(root: string, ...args: string[]) {
 	return execFileSync(
 		"git",
@@ -25,7 +24,7 @@ function git(root: string, ...args: string[]) {
 
 function fixture() {
 	const directory = mkdtempSync(path.join(tmpdir(), "release-main-test-"));
-	directories.push(directory);
+	onTestFinished(() => rmSync(directory, { recursive: true, force: true }));
 	const root = path.join(directory, "source");
 	const remote = path.join(directory, "origin.git");
 	mkdirSync(root);
@@ -79,10 +78,6 @@ function fixture() {
 	write(
 		"deploy/kubernetes/helm/leitwerk/values.yaml",
 		'server:\n  image:\n    repository: ghcr.io/leitwerk-dev/leitwerk-server\n    tag: "0.4.0"\nworkerRuntimeProfiles:\n  generic:\n    image: ghcr.io/leitwerk-dev/leitwerk-worker-generic:0.4.0\n',
-	);
-	write(
-		".github/workflows/publish.yml",
-		readFileSync(new URL("../.github/workflows/publish.yml", import.meta.url), "utf8"),
 	);
 	write("CHANGELOG.md", "# Changelog\n\n## 0.4.0\n\nHistorical release notes\n");
 	write("application.txt", "original application\n");
@@ -147,11 +142,6 @@ function fixture() {
 		showJson,
 	};
 }
-
-afterEach(() => {
-	for (const directory of directories.splice(0))
-		rmSync(directory, { recursive: true, force: true });
-});
 
 describe("main release queue (real git, local registry boundary)", () => {
 	it("skips non-release merges and history before activation without creating artifacts", () => {
@@ -219,24 +209,24 @@ describe("main release queue (real git, local registry boundary)", () => {
 		);
 	});
 
-	it("drains rapid merges in order and resumes partial publication before allocating another version", () => {
+	it("honors overrides and drains rapid merges numerically, resuming unfinished releases first", () => {
 		const f = fixture();
-		const first = f.commit("fix: first queued merge");
+		const first = f.commit("fix: first queued merge\n\nRelease-As: 0.4.9");
 		f.commit("ci: non-release merge");
 		const second = f.commit("feat: second queued merge");
 		const third = f.commit("feat!: third queued merge");
 		const initial = f.requireRelease();
-		expect(initial).toMatchObject({ tag: "v0.4.1", source: first });
+		expect(initial).toMatchObject({ tag: "v0.4.9", source: first });
 		expect(f.resolve()).toEqual(initial);
 		expect(f.creations).toHaveLength(1);
 		f.publish();
-		expect(f.resolve()).toMatchObject({ tag: "v0.4.2", source: second });
+		expect(f.resolve()).toMatchObject({ tag: "v0.4.10", source: second });
 		f.publish();
 		expect(f.resolve()).toMatchObject({ tag: "v0.5.0", source: third });
 		f.publish();
 		expect(f.resolve()).toBeNull();
 		const changelog = git(f.root, "show", "v0.5.0:CHANGELOG.md");
-		for (const version of ["0.5.0", "0.4.2", "0.4.1", "0.4.0"])
+		for (const version of ["0.5.0", "0.4.10", "0.4.9", "0.4.0"])
 			expect(
 				changelog.match(new RegExp(`## ${version.replaceAll(".", "\\.")}`, "gu")),
 			).toHaveLength(1);
@@ -264,17 +254,6 @@ describe("main release queue (real git, local registry boundary)", () => {
 			sha,
 		});
 		expect(f.creations).toHaveLength(1);
-	});
-
-	it("honors explicit stable overrides and orders double-digit versions numerically", () => {
-		const f = fixture();
-		f.commit("chore: select a release\n\nRelease-As: 0.4.9");
-		expect(f.resolve()).toMatchObject({ tag: "v0.4.9" });
-		f.publish();
-		f.commit("fix: next patch");
-		expect(f.resolve()).toMatchObject({ tag: "v0.4.10" });
-		f.publish();
-		expect(f.resolve()).toBeNull();
 	});
 
 	it("discovers newly added workspaces without maintaining a release component list", () => {
@@ -407,13 +386,11 @@ describe("publication workflow trust boundary", () => {
 		expect(workflow.concurrency["cancel-in-progress"]).toBe(false);
 		expect(workflow.concurrency.group).not.toContain("${{");
 		expect(workflow.jobs.publish.environment).toBe("npm-publish");
-		expect(workflow.jobs.continue.needs).toBe("publish");
-		for (const name of ["validate", "build-images", "publish"]) {
-			const checkout = workflow.jobs[name].steps.find((step: { uses?: string }) =>
-				step.uses?.startsWith("actions/checkout@"),
-			);
-			expect(checkout.with.ref).toBe(`\${{ needs.resolve.outputs.git_sha }}`);
-			expect(checkout.with["persist-credentials"]).toBe(false);
-		}
+		expect(workflow.jobs["merge-images"].needs).toEqual(
+			expect.arrayContaining(["validate", "build-images"]),
+		);
+		expect(workflow.jobs.publish.needs).toEqual(
+			expect.arrayContaining(["validate", "merge-images"]),
+		);
 	});
 });

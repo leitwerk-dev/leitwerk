@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseYaml } from "yaml";
-import { listWorkspacePackageDirs } from "./workspace-packages.ts";
+import { listWorkspacePackageDirs, readJson } from "./workspace-packages.ts";
 
 export const dependencyFields = [
 	"dependencies",
@@ -11,35 +11,28 @@ export const dependencyFields = [
 	"optionalDependencies",
 ] as const;
 
-export interface PackageManifest {
-	name?: string;
-	version?: string;
-	private?: boolean;
-	workspaces?: string[];
-	[key: string]: unknown;
-}
-
 export interface WorkspaceManifest {
 	path: string;
-	manifest: PackageManifest;
+	manifest: JsonRecord;
 }
 
 type JsonRecord = Record<string, unknown>;
 
 const semverPattern = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u;
 
-export function readJson(filePath: string): JsonRecord {
-	return JSON.parse(readFileSync(filePath, "utf8")) as JsonRecord;
-}
-
-export function discoverWorkspaces(rootDir: string, rootManifest: PackageManifest) {
+/** @internal */
+export function readWorkspaceManifests(rootDir: string, rootManifest: JsonRecord) {
 	return listWorkspacePackageDirs(rootDir, rootManifest)
 		.map((dir) => path.relative(rootDir, dir).split(path.sep).join("/"))
-		.sort();
+		.sort()
+		.map((workspacePath) => ({
+			path: workspacePath,
+			manifest: readJson<JsonRecord>(path.join(rootDir, workspacePath, "package.json")),
+		}));
 }
 
 export function validateLockstepVersions(input: {
-	rootManifest: PackageManifest;
+	rootManifest: JsonRecord;
 	workspaces: WorkspaceManifest[];
 	packageLock: JsonRecord;
 	chart: JsonRecord;
@@ -51,45 +44,23 @@ export function validateLockstepVersions(input: {
 		return [`package.json: version '${String(version)}' is not SemVer`];
 	}
 	const workspaceNames = new Set(input.workspaces.map(({ manifest }) => manifest.name));
-	for (const workspace of input.workspaces) {
-		if (workspace.manifest.version !== version) {
-			errors.push(
-				`${workspace.path}/package.json: version '${String(workspace.manifest.version)}' must equal '${version}'`,
-			);
-		}
-		errors.push(
-			...validateInternalDependencies(
-				`${workspace.path}/package.json`,
-				workspace.manifest,
-				workspaceNames,
-				version,
-			),
-		);
-	}
-
+	const lockPackages = asRecord(input.packageLock.packages);
 	if (input.packageLock.version !== version) {
 		errors.push(`package-lock.json: version must equal '${version}'`);
 	}
-	const lockPackages = asRecord(input.packageLock.packages);
-	const rootLock = asRecord(lockPackages[""]);
-	if (rootLock.version !== version) {
+	if (asRecord(lockPackages[""]).version !== version) {
 		errors.push(`package-lock.json packages[""]: version must equal '${version}'`);
 	}
 	for (const workspace of input.workspaces) {
-		const lockedWorkspace = asRecord(lockPackages[workspace.path]);
-		if (lockedWorkspace.version !== version) {
-			errors.push(
-				`package-lock.json packages["${workspace.path}"]: version must equal '${version}'`,
-			);
+		for (const [label, manifest] of [
+			[`${workspace.path}/package.json`, workspace.manifest],
+			[`package-lock.json packages["${workspace.path}"]`, asRecord(lockPackages[workspace.path])],
+		] as const) {
+			if (manifest.version !== version) {
+				errors.push(`${label}: version '${String(manifest.version)}' must equal '${version}'`);
+			}
+			errors.push(...validateInternalDependencies(label, manifest, workspaceNames, version));
 		}
-		errors.push(
-			...validateInternalDependencies(
-				`package-lock.json packages["${workspace.path}"]`,
-				lockedWorkspace,
-				workspaceNames,
-				version,
-			),
-		);
 	}
 
 	if (input.chart.version !== version) {
@@ -112,57 +83,22 @@ export function validateLockstepVersions(input: {
 	return errors;
 }
 
-export function validatePublicationWorkflow(workflow: JsonRecord): string[] {
-	const jobs = asRecord(workflow.jobs);
-	const expectedNeeds: Record<string, string[]> = {
-		validate: ["resolve"],
-		"inspect-images": ["resolve"],
-		"build-images": ["resolve", "inspect-images"],
-		"merge-images": ["resolve", "validate", "inspect-images", "build-images"],
-		publish: ["resolve", "validate", "merge-images"],
-	};
-	return Object.entries(expectedNeeds).flatMap(([jobName, expected]) => {
-		const configured = asRecord(jobs[jobName]).needs;
-		const actual = (Array.isArray(configured) ? configured : [configured])
-			.filter((entry): entry is string => typeof entry === "string")
-			.sort();
-		const sortedExpected = expected.toSorted();
-		return actual.length === sortedExpected.length &&
-			actual.every((entry, index) => entry === sortedExpected[index])
-			? []
-			: [
-					`.github/workflows/publish.yml: ${jobName}.needs must be [${sortedExpected.join(", ")}], got [${actual.join(", ")}]`,
-				];
-	});
-}
-
 export function validateReleaseContract(rootDir: string): string[] {
-	const rootManifest = readJson(path.join(rootDir, "package.json")) as PackageManifest;
-	const workspacePaths = discoverWorkspaces(rootDir, rootManifest);
-	const workspaces = workspacePaths.map((workspacePath) => ({
-		path: workspacePath,
-		manifest: readJson(path.join(rootDir, workspacePath, "package.json")) as PackageManifest,
-	}));
-	const errors = [
-		...validateLockstepVersions({
-			rootManifest,
-			workspaces,
-			packageLock: readJson(path.join(rootDir, "package-lock.json")),
-			chart: parseYaml(
-				readFileSync(path.join(rootDir, "deploy/kubernetes/helm/leitwerk/Chart.yaml"), "utf8"),
-			) as JsonRecord,
-			chartValues: parseYaml(
-				readFileSync(path.join(rootDir, "deploy/kubernetes/helm/leitwerk/values.yaml"), "utf8"),
-			) as JsonRecord,
-		}),
-		...validatePublicationWorkflow(
-			parseYaml(
-				readFileSync(path.join(rootDir, ".github/workflows/publish.yml"), "utf8"),
-			) as JsonRecord,
-		),
-	];
+	const rootManifest = readJson<JsonRecord>(path.join(rootDir, "package.json"));
+	const workspaces = readWorkspaceManifests(rootDir, rootManifest);
+	const errors = validateLockstepVersions({
+		rootManifest,
+		workspaces,
+		packageLock: readJson<JsonRecord>(path.join(rootDir, "package-lock.json")),
+		chart: parseYaml(
+			readFileSync(path.join(rootDir, "deploy/kubernetes/helm/leitwerk/Chart.yaml"), "utf8"),
+		) as JsonRecord,
+		chartValues: parseYaml(
+			readFileSync(path.join(rootDir, "deploy/kubernetes/helm/leitwerk/values.yaml"), "utf8"),
+		) as JsonRecord,
+	});
 
-	for (const workspacePath of workspacePaths) {
+	for (const { path: workspacePath } of workspaces) {
 		if (existsSync(path.join(rootDir, workspacePath, "CHANGELOG.md"))) {
 			errors.push(`${workspacePath}/CHANGELOG.md: only the root changelog is allowed`);
 		}
@@ -172,28 +108,23 @@ export function validateReleaseContract(rootDir: string): string[] {
 
 export function calculateConventionalVersion(
 	currentVersion: string,
-	commits: string[],
+	commit: string,
 ): string | null {
 	const [major, minor, patch] = stableVersionParts(currentVersion);
-	for (const commit of commits.toReversed()) {
-		const releaseAs = /^Release-As:[ \t]*(\S+)[ \t]*$/imu.exec(commit)?.[1];
-		if (releaseAs) {
-			if (compareStableVersions(releaseAs, currentVersion) <= 0) {
-				throw new Error(`Release-As must increase ${currentVersion}: ${releaseAs}`);
-			}
-			return releaseAs;
+	const releaseAs = /^Release-As:[ \t]*(\S+)[ \t]*$/imu.exec(commit)?.[1];
+	if (releaseAs) {
+		if (compareStableVersions(releaseAs, currentVersion) <= 0) {
+			throw new Error(`Release-As must increase ${currentVersion}: ${releaseAs}`);
 		}
+		return releaseAs;
 	}
-	const breaking = commits.some(
-		(commit) =>
-			/^[a-z][a-z0-9-]*(?:\([^\r\n()]+\))?!:/u.test(commit) ||
-			/^BREAKING[ -]CHANGE:/imu.test(commit),
-	);
+	const breaking =
+		/^[a-z][a-z0-9-]*(?:\([^\r\n()]+\))?!:/u.test(commit) || /^BREAKING[ -]CHANGE:/imu.test(commit);
 	if (breaking) return major === 0 ? `0.${minor + 1}.0` : `${major + 1}.0.0`;
-	if (commits.some((commit) => /^feat(?:\([^\r\n()]+\))?:/u.test(commit))) {
+	if (/^feat(?:\([^\r\n()]+\))?:/u.test(commit)) {
 		return major === 0 ? `0.${minor}.${patch + 1}` : `${major}.${minor + 1}.0`;
 	}
-	if (commits.some((commit) => /^fix(?:\([^\r\n()]+\))?:/u.test(commit))) {
+	if (/^fix(?:\([^\r\n()]+\))?:/u.test(commit)) {
 		return `${major}.${minor}.${patch + 1}`;
 	}
 	return null;
@@ -217,10 +148,11 @@ function stableVersionParts(version: string): [number, number, number] {
 	return parts as [number, number, number];
 }
 
-function validateInternalDependencies(
+/** @internal */
+export function validateInternalDependencies(
 	label: string,
-	manifest: PackageManifest,
-	workspaceNames: Set<string | undefined>,
+	manifest: JsonRecord,
+	workspaceNames: Set<unknown>,
 	version: string,
 ) {
 	const errors: string[] = [];

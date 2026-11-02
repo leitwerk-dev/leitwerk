@@ -39,7 +39,7 @@ export function prepareReleaseChart(options: ReleaseChartOptions): void {
 		errorOnExist: true,
 	});
 
-	updateYaml(path.join(options.destinationDir, "Chart.yaml"), (document) => {
+	updateYaml(path.join(options.destinationDir, "Chart.yaml"), 0, (document) => {
 		document.set("version", options.version);
 		document.set("appVersion", options.version);
 		document.setIn(["annotations", "leitwerk.dev/git-sha"], options.gitSha);
@@ -52,7 +52,7 @@ export function prepareReleaseChart(options: ReleaseChartOptions): void {
 			options.workerImage.split("@")[1],
 		);
 	});
-	updateYaml(path.join(options.destinationDir, "values.yaml"), (document) => {
+	updateYaml(path.join(options.destinationDir, "values.yaml"), 0, (document) => {
 		document.setIn(["server", "image", "repository"], serverImage.groups.repository);
 		document.setIn(["server", "image", "tag"], options.version);
 		document.setIn(["server", "image", "digest"], options.serverImage.split("@")[1]);
@@ -60,8 +60,10 @@ export function prepareReleaseChart(options: ReleaseChartOptions): void {
 	});
 }
 
-function updateYaml(
+/** @internal */
+export function updateYaml(
 	filePath: string,
+	lineWidth: number,
 	update: (document: ReturnType<typeof parseDocument>) => void,
 ) {
 	const document = parseDocument(readFileSync(filePath, "utf8"));
@@ -69,7 +71,7 @@ function updateYaml(
 		throw new Error(`${filePath}: ${document.errors.map((error) => error.message).join("; ")}`);
 	}
 	update(document);
-	writeFileSync(filePath, document.toString({ lineWidth: 0 }));
+	writeFileSync(filePath, document.toString({ lineWidth }));
 }
 
 function readOption(name: string): string {

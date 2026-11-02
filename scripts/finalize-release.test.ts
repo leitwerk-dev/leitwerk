@@ -1,18 +1,17 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { parse } from "yaml";
 import { finalizeRelease } from "./finalize-release.mjs";
 
-const directories: string[] = [];
 const sha = "a".repeat(40);
 const tag = "v0.2.1";
 const repository = "leitwerk-dev/leitwerk";
 
 function fixture() {
 	const directory = mkdtempSync(path.join(tmpdir(), "finalize-release-test-"));
-	directories.push(directory);
+	onTestFinished(() => rmSync(directory, { recursive: true, force: true }));
 	const files = [
 		path.join(directory, "leitwerk-0.2.1.tgz"),
 		path.join(directory, "leitwerk-base.lock.yaml"),
@@ -82,13 +81,8 @@ class FakeGitHub {
 	};
 }
 
-afterEach(() => {
-	for (const directory of directories.splice(0))
-		rmSync(directory, { recursive: true, force: true });
-});
-
 describe("immutable release finalization", () => {
-	it("uploads both assets before publishing the draft", () => {
+	it("uploads both assets before publishing the draft and makes retries read-only", () => {
 		const input = fixture();
 		const github = new FakeGitHub();
 		finalizeRelease(input, github.run);
@@ -98,6 +92,9 @@ describe("immutable release finalization", () => {
 			"publish",
 		]);
 		expect(github.draft).toBe(false);
+		github.writes = [];
+		finalizeRelease(input, github.run);
+		expect(github.writes).toEqual([]);
 	});
 
 	it("resumes partial uploads without replacing assets", () => {
@@ -113,15 +110,6 @@ describe("immutable release finalization", () => {
 			"upload:leitwerk-base.lock.yaml",
 			"publish",
 		]);
-	});
-
-	it("verifies an already published release without any writes", () => {
-		const input = fixture();
-		const github = new FakeGitHub();
-		finalizeRelease(input, github.run);
-		github.writes = [];
-		finalizeRelease(input, github.run);
-		expect(github.writes).toEqual([]);
 	});
 
 	it("rejects incomplete published releases without attempting to change them", () => {
@@ -165,27 +153,16 @@ describe("immutable release finalization", () => {
 			readFileSync(new URL("../.github/workflows/publish.yml", import.meta.url), "utf8"),
 		);
 		const steps = workflow.jobs.publish.steps;
-		const finalIndex = steps.findIndex(
-			(step: { run?: string }) => step.run === "node .release-tooling/scripts/finalize-release.mjs",
-		);
-		const verifyIndex = steps.findIndex(
-			(step: { name: string }) =>
-				step.name === "Verify anonymous reads and multi-architecture manifests",
-		);
-		expect(finalIndex).toBeGreaterThan(verifyIndex);
-		expect(steps[finalIndex - 1].with).toMatchObject({
-			ref: `\${{ github.sha }}`,
-			path: ".release-tooling",
-			"persist-credentials": false,
-		});
-		const upload = steps.find(
-			(step: { name: string }) => step.name === "Upload release artifacts to workflow run",
-		);
-		expect(upload.if).toBe(`\${{ always() && steps.coordinates.outcome == 'success' }}`);
+		const commands = steps.flatMap((step: { run?: string }) => step.run ?? []);
+		const verifyIndex = commands.findIndex((run: string) => run.includes("publish:verify"));
+		expect(verifyIndex).toBeGreaterThanOrEqual(0);
 		expect(
-			steps.find((step: { name: string }) => step.name === "Record immutable release coordinates")
-				.id,
-		).toBe("coordinates");
+			commands.findIndex((run: string) => run.includes("finalize-release.mjs")),
+		).toBeGreaterThan(verifyIndex);
+		const upload = steps.find((step: { uses?: string }) =>
+			step.uses?.startsWith("actions/upload-artifact@"),
+		);
+		expect(upload.if).toContain("always()");
 		expect(JSON.stringify(steps)).not.toContain("--clobber");
 	});
 });

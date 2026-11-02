@@ -37,7 +37,6 @@ jobs:
       version: ${{ steps.release.outputs.version }}
       tag: ${{ steps.release.outputs.tag }}
       git_sha: ${{ steps.release.outputs.git_sha }}
-      source_sha: ${{ steps.release.outputs.source_sha }}
     steps:
       - name: Checkout trusted publication tooling and release history
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -98,54 +97,19 @@ jobs:
           ref: ${{ needs.resolve.outputs.git_sha }}
           persist-credentials: false
 
-      - name: Setup Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - name: Checkout trusted validation action
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          node-version: 26
-          cache: npm
+          ref: ${{ github.sha }}
+          path: .release-tooling
+          sparse-checkout: /.github/actions/validate-application/
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
 
-      - name: Setup Python
-        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - name: Validate application and package contents
+        uses: ./.release-tooling/.github/actions/validate-application
         with:
-          python-version: '3.x'
-          cache: pip
-          cache-dependency-path: requirements-docs.txt
-
-      - name: Restore Turbo build cache
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: .turbo
-          key: turbo-${{ runner.os }}-${{ needs.resolve.outputs.git_sha }}
-          restore-keys: |
-            turbo-${{ runner.os }}-
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Check public npm package registration
-        run: npm run publish:registration
-
-      - name: Install Playwright browser dependencies
-        timeout-minutes: 5
-        run: npx playwright install --with-deps chromium firefox webkit
-
-      - name: Install documentation dependencies
-        run: python -m pip install -r requirements-docs.txt
-
-      - name: Validate lockstep release configuration
-        run: npm run release:check
-
-      - name: Run full test gate
-        run: npm run test:full
-
-      - name: Check API classification and interface reports
-        run: npm run api:check
-
-      - name: Build documentation
-        run: npm run docs:build
-
-      - name: Dry-run npm package contents
-        run: npm run publish:dry-run
+          source-sha: ${{ needs.resolve.outputs.git_sha }}
 
       - name: Upload validated publishable contents
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -181,6 +145,15 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
+      - name: Checkout trusted image verification tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: .release-tooling
+          sparse-checkout: scripts/verify-release-images.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       - name: Inspect and validate immutable image tags
         id: images
         shell: bash
@@ -203,38 +176,13 @@ jobs:
             exit 1
           }
 
-          validate_image() {
-            local reference="$1"
-            local manifest
-            manifest="$(docker buildx imagetools inspect "$reference" \
-              --format '{{json .Manifest}}')"
-            for architecture in amd64 arm64; do
-              jq -e --arg architecture "$architecture" \
-                'any(.manifests[]; .platform.os == "linux" and .platform.architecture == $architecture)' \
-                <<<"$manifest" >/dev/null || {
-                  echo "$reference does not contain linux/$architecture" >&2
-                  exit 1
-                }
-              local image format
-              format="{{json (index .Image \"linux/$architecture\")}}"
-              image="$(docker buildx imagetools inspect "$reference" --format "$format")"
-              jq -e --arg revision "$RELEASE_GIT_SHA" --arg version "$RELEASE_VERSION" '
-                .config.Labels["org.opencontainers.image.revision"] == $revision and
-                .config.Labels["org.opencontainers.image.version"] == $version
-              ' <<<"$image" >/dev/null || {
-                echo "$reference linux/$architecture belongs to another release" >&2
-                exit 1
-              }
-            done
-          }
-
           resolve_image() {
             local key="$1" repository="$2"
             local version_digest sha_digest selected_digest
             version_digest="$(inspect_digest "$repository:$RELEASE_VERSION")"
             sha_digest="$(inspect_digest "$repository:$RELEASE_GIT_SHA")"
-            if [[ -n "$version_digest" ]]; then validate_image "$repository:$RELEASE_VERSION"; fi
-            if [[ -n "$sha_digest" ]]; then validate_image "$repository:$RELEASE_GIT_SHA"; fi
+            if [[ -n "$version_digest" ]]; then bash .release-tooling/scripts/verify-release-images.sh "$repository:$RELEASE_VERSION"; fi
+            if [[ -n "$sha_digest" ]]; then bash .release-tooling/scripts/verify-release-images.sh "$repository:$RELEASE_GIT_SHA"; fi
             if [[ -n "$version_digest" && -n "$sha_digest" && "$version_digest" != "$sha_digest" ]]; then
               echo "$repository release and Git-SHA tags resolve to different digests" >&2
               exit 1
@@ -397,6 +345,15 @@ jobs:
           path: release-digests
           merge-multiple: true
 
+      - name: Checkout trusted image verification tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: .release-tooling
+          sparse-checkout: scripts/verify-release-images.sh
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       - name: Assemble or complete immutable image tags
         id: images
         env:
@@ -413,31 +370,6 @@ jobs:
           inspect_digest() {
             docker buildx imagetools inspect "$1" \
               --format '{{json .Manifest}}' | jq -r '.digest'
-          }
-
-          validate_image() {
-            local reference="$1"
-            local manifest
-            manifest="$(docker buildx imagetools inspect "$reference" \
-              --format '{{json .Manifest}}')"
-            for architecture in amd64 arm64; do
-              jq -e --arg architecture "$architecture" \
-                'any(.manifests[]; .platform.os == "linux" and .platform.architecture == $architecture)' \
-                <<<"$manifest" >/dev/null || {
-                  echo "$reference does not contain linux/$architecture" >&2
-                  exit 1
-                }
-              local image format
-              format="{{json (index .Image \"linux/$architecture\")}}"
-              image="$(docker buildx imagetools inspect "$reference" --format "$format")"
-              jq -e --arg revision "$RELEASE_GIT_SHA" --arg version "$RELEASE_VERSION" '
-                .config.Labels["org.opencontainers.image.revision"] == $revision and
-                .config.Labels["org.opencontainers.image.version"] == $version
-              ' <<<"$image" >/dev/null || {
-                echo "$reference linux/$architecture belongs to another release" >&2
-                exit 1
-              }
-            done
           }
 
           assemble_image() {
@@ -479,7 +411,7 @@ jobs:
               echo "$repository did not resolve to a valid digest" >&2
               exit 1
             }
-            validate_image "$repository:$RELEASE_VERSION"
+            bash .release-tooling/scripts/verify-release-images.sh "$repository:$RELEASE_VERSION"
             [[ "$(inspect_digest "$repository:$RELEASE_GIT_SHA")" == "$digest" ]] || {
               echo "$repository release and Git-SHA tags resolve to different digests" >&2
               exit 1
@@ -540,9 +472,7 @@ jobs:
           path: .
 
       - name: Preflight npm publication
-        run: >-
-          env GITHUB_REF_TYPE=tag GITHUB_REF_NAME="$RELEASE_TAG"
-          npm run publish:preflight
+        run: npm run publish:preflight
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
@@ -553,6 +483,14 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout trusted release tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          path: .release-tooling
+          sparse-checkout: scripts
+          persist-credentials: false
 
       - name: Package, publish, or reuse digest-pinned Helm chart
         id: chart
@@ -575,15 +513,9 @@ jobs:
           error_file="$RUNNER_TEMP/helm-pull-error"
           if helm pull "$chart_oci" --version "$RELEASE_VERSION" \
             --destination release-artifacts/existing 2>"$error_file"; then
-            mkdir -p release-artifacts/existing/unpacked
-            tar -xzf "release-artifacts/existing/leitwerk-$RELEASE_VERSION.tgz" \
-              -C release-artifacts/existing/unpacked
-            node --import tsx scripts/verify-release-chart.ts \
-              --chart-dir release-artifacts/existing/unpacked/leitwerk \
-              --version "$RELEASE_VERSION" \
-              --git-sha "$RELEASE_GIT_SHA" \
-              --server-digest "$SERVER_DIGEST" \
-              --worker-digest "$WORKER_DIGEST"
+            bash .release-tooling/scripts/verify-release-chart.sh \
+              "release-artifacts/new/leitwerk-$RELEASE_VERSION.tgz" \
+              "release-artifacts/existing/leitwerk-$RELEASE_VERSION.tgz"
             chart_digest="$(oras manifest fetch --descriptor \
               "$chart_registry:$RELEASE_VERSION" | jq -r '.digest')"
             chart_archive="release-artifacts/existing/leitwerk-$RELEASE_VERSION.tgz"
@@ -605,9 +537,7 @@ jobs:
           echo "digest=$chart_digest" >> "$GITHUB_OUTPUT"
 
       - name: Publish missing npm packages
-        run: >-
-          env GITHUB_REF_TYPE=tag GITHUB_REF_NAME="$RELEASE_TAG"
-          npm run publish:workspaces
+        run: npm run publish:workspaces
 
       - name: Verify anonymous reads and multi-architecture manifests
         shell: bash
@@ -615,25 +545,14 @@ jobs:
           set -euo pipefail
           helm registry logout ghcr.io || true
           docker logout ghcr.io || true
-          for reference in \
+          bash .release-tooling/scripts/verify-release-images.sh \
             "ghcr.io/leitwerk-dev/leitwerk-server@$SERVER_DIGEST" \
-            "ghcr.io/leitwerk-dev/leitwerk-worker-generic@$WORKER_DIGEST"; do
-            manifest="$(docker buildx imagetools inspect "$reference" \
-              --format '{{json .Manifest}}')"
-            for architecture in amd64 arm64; do
-              jq -e --arg architecture "$architecture" \
-                'any(.manifests[]; .platform.os == "linux" and .platform.architecture == $architecture)' \
-                <<<"$manifest" >/dev/null
-            done
-          done
+            "ghcr.io/leitwerk-dev/leitwerk-worker-generic@$WORKER_DIGEST"
           mkdir -p release-artifacts/anonymous-chart
           helm pull oci://ghcr.io/leitwerk-dev/charts/leitwerk \
             --version "$RELEASE_VERSION" \
             --destination release-artifacts/anonymous-chart
-          npm_config_userconfig=/dev/null \
-            GITHUB_REF_TYPE=tag \
-            GITHUB_REF_NAME="$RELEASE_TAG" \
-            npm run publish:verify
+          npm_config_userconfig=/dev/null npm run publish:verify
 
       - name: Record immutable release coordinates
         id: coordinates
@@ -656,13 +575,6 @@ jobs:
             echo "chart_version: $RELEASE_VERSION"
             echo "chart_digest: $CHART_DIGEST"
           } | tee release-artifacts/final/leitwerk-base.lock.yaml
-
-      - name: Checkout trusted release finalization tooling
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ github.sha }}
-          path: .release-tooling
-          persist-credentials: false
 
       - name: Attach assets and publish the draft release
         env:

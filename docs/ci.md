@@ -53,7 +53,7 @@ a draft release without changing its tag. CI compiles both image build stages.
 
 Releases publish serially in main's first-parent order. Git history is the durable backlog, and immutable tags reserve versions. Rapid merges and replaced pending Actions runs do not lose releases: every run selects the oldest unfinished release, and successful publication starts another scan. A failed release blocks newer releases rather than reassigning its version or moving npm's `latest` out of order.
 
-Retries reuse matching artifacts and reject conflicts. Release assets must match byte-for-byte; published releases missing assets require a new version. npm verification waits up to ten minutes for registry visibility and reports any missing versions.
+Retries reuse matching artifacts and reject conflicts. An existing OCI chart must match every packaged file; archive timestamps may differ. Release assets must match byte-for-byte; published releases missing assets require a new version. npm verification waits up to ten minutes for registry visibility and reports any missing versions.
 
 After fixing a publication failure, run **Publish release artifacts** from `main` without inputs to resume the queue:
 

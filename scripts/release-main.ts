@@ -1,17 +1,17 @@
 import { execFileSync } from "node:child_process";
-import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseDocument } from "yaml";
+import { updateYaml } from "./prepare-release-chart.ts";
 import {
 	calculateConventionalVersion,
 	compareStableVersions,
 	dependencyFields,
-	discoverWorkspaces,
-	readJson,
+	readWorkspaceManifests,
 	validateReleaseContract,
 } from "./release-contract.ts";
+import { readJson } from "./workspace-packages.ts";
 
 const botName = "github-actions[bot]";
 const botEmail = "41898282+github-actions[bot]@users.noreply.github.com";
@@ -77,12 +77,8 @@ function releaseNotes(root: string, release: MainRelease): string {
 }
 
 function updateVersions(root: string, version: string) {
-	const manifest = readJson(path.join(root, "package.json"));
-	const workspaces = discoverWorkspaces(root, manifest);
-	const manifests = workspaces.map((workspace) => ({
-		workspace,
-		manifest: readJson(path.join(root, workspace, "package.json")),
-	}));
+	const manifest = readJson<Record<string, unknown>>(path.join(root, "package.json"));
+	const manifests = readWorkspaceManifests(root, manifest);
 	const names = new Set(manifests.map((entry) => entry.manifest.name));
 	const update = (value: Record<string, unknown>) => {
 		value.version = version;
@@ -99,35 +95,30 @@ function updateVersions(root: string, version: string) {
 	writeJson("package.json", manifest);
 	for (const entry of manifests) {
 		update(entry.manifest);
-		writeJson(`${entry.workspace}/package.json`, entry.manifest);
+		writeJson(`${entry.path}/package.json`, entry.manifest);
 	}
 	// Update only local lock records. Never resolve or install dependencies while versioning.
-	const lock = readJson(path.join(root, "package-lock.json"));
+	const lock = readJson<Record<string, unknown>>(path.join(root, "package-lock.json"));
 	lock.version = version;
 	const packages = lock.packages as Record<string, Record<string, unknown>>;
-	for (const workspace of ["", ...workspaces]) {
+	for (const workspace of ["", ...manifests.map((entry) => entry.path)]) {
 		if (!packages[workspace]) throw new Error(`Missing workspace lock record: ${workspace}`);
 		update(packages[workspace]);
 	}
 	writeJson("package-lock.json", lock);
 
-	const chartPath = "deploy/kubernetes/helm/leitwerk/Chart.yaml";
-	const valuesPath = "deploy/kubernetes/helm/leitwerk/values.yaml";
-	for (const filename of [chartPath, valuesPath]) {
-		const document = parseDocument(readFileSync(path.join(root, filename), "utf8"));
-		if (document.errors.length) throw document.errors[0];
-		if (filename === chartPath) {
-			document.set("version", version);
-			document.set("appVersion", version);
-		} else {
-			document.setIn(["server", "image", "tag"], version);
-			document.setIn(
-				["workerRuntimeProfiles", "generic", "image"],
-				`ghcr.io/leitwerk-dev/leitwerk-worker-generic:${version}`,
-			);
-		}
-		writeFileSync(path.join(root, filename), document.toString());
-	}
+	const chartDir = path.join(root, "deploy/kubernetes/helm/leitwerk");
+	updateYaml(path.join(chartDir, "Chart.yaml"), 80, (document) => {
+		document.set("version", version);
+		document.set("appVersion", version);
+	});
+	updateYaml(path.join(chartDir, "values.yaml"), 80, (document) => {
+		document.setIn(["server", "image", "tag"], version);
+		document.setIn(
+			["workerRuntimeProfiles", "generic", "image"],
+			`ghcr.io/leitwerk-dev/leitwerk-worker-generic:${version}`,
+		);
+	});
 }
 
 /** Build a reproducible, signed-off release commit without changing main or executing source hooks.
@@ -191,7 +182,7 @@ function* releaseSequence(root: string, main: string, baselineTag: string): Gene
 	let previousTag = baselineTag;
 	for (let index = 0; index < commits.length - 1; index += 2) {
 		const source = commits[index].trim();
-		const version = calculateConventionalVersion(previousTag.slice(1), [commits[index + 1]]);
+		const version = calculateConventionalVersion(previousTag.slice(1), commits[index + 1]);
 		if (!version) continue;
 		const tag = `v${version}`;
 		yield { source, tag, version, previousTag };
@@ -350,7 +341,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
 	appendFileSync(
 		output,
 		release
-			? `release=true\nversion=${release.version}\ntag=${release.tag}\ngit_sha=${release.sha}\nsource_sha=${release.source}\n`
+			? `release=true\nversion=${release.version}\ntag=${release.tag}\ngit_sha=${release.sha}\n`
 			: "release=false\n",
 	);
 	console.info(
