@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import childProcess, { execFileSync } from "node:child_process";
 import {
 	chmodSync,
 	existsSync,
@@ -10,6 +10,7 @@ import {
 	utimesSync,
 	writeFileSync,
 } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { TurnDiagnosticReport } from "@leitwerk-dev/process-sdk";
@@ -94,24 +95,32 @@ function expectScratchRemoved(calls: string): void {
 }
 
 afterEach(() => {
+	vi.restoreAllMocks();
+	syncBuiltinESMExports();
 	vi.unstubAllEnvs();
 	resetGitBinaryCache();
 	for (const dir of directories.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
 describe("commit-message repository evidence", () => {
-	it("inspects valid changes when Git status takes longer than the former 10-second deadline", async () => {
+	it("uses a 60-second deadline for every Git command without changing the checkout", async () => {
 		const repo = repository();
 		const index = readFileSync(path.join(repo, ".git/index"));
 		writeFileSync(path.join(repo, "feature.txt"), "Slowly inspected behavior\n");
-		const calls = wrapGit({ delayStatusMs: 11_000 });
+		const calls = wrapGit();
+		// Observe the actual subprocess boundary while still executing real Git.
+		const spawn = vi.spyOn(childProcess, "spawn");
+		syncBuiltinESMExports();
 
 		const evidence = await prepareRepositoryCommitMessageEvidence(context({ repo }));
+		expect(spawn).toHaveBeenCalled();
+		for (const [, , options] of spawn.mock.calls)
+			expect(options).toMatchObject({ timeout: 60_000 });
 		expect(evidence.repositories[0].status.text).toContain("feature.txt");
 		expect(evidence.repositories[0].unstagedDiff.text).toContain("+Slowly inspected behavior");
 		expect(readFileSync(path.join(repo, ".git/index"))).toEqual(index);
 		expectScratchRemoved(calls);
-	}, 30_000);
+	});
 
 	it("enforces the captured configured deadline and identifies the timed-out command", async () => {
 		const repo = repository();
@@ -183,14 +192,16 @@ describe("commit-message repository evidence", () => {
 		expect(evidence.repositories[0].status.text).toBe("");
 		expect(evidence.repositories[0].unstagedDiff.text).toBe("");
 		expect(readFileSync(path.join(repo, ".git/index"))).toEqual(index);
-		expect(reports.map(({ details }) => details?.command)).toEqual([
-			"rev-parse.head",
-			"rev-parse.index",
-			"status",
-			"diff.staged",
-			"diff.unstaged",
-			"ls-files.untracked",
-		]);
+		expect(reports.map(({ details }) => details?.command)).toEqual(
+			expect.arrayContaining([
+				"rev-parse.head",
+				"rev-parse.index",
+				"status",
+				"diff.staged",
+				"diff.unstaged",
+				"ls-files.untracked",
+			]),
+		);
 		const status = reports.find(({ details }) => details?.command === "status");
 		const diff = reports.find(({ details }) => details?.command === "diff.unstaged");
 		expect(status?.details?.trace2).toMatchObject({

@@ -1,16 +1,18 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { resolveGitBinary } from "@leitwerk-dev/process-sdk/git-binary";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { commitAndPushWorkBranch, repositoryHasChanges } from "./finalization-git.js";
 
 const tempDirs: string[] = [];
+const templateRoot = mkdtempSync(path.join(tmpdir(), "coding-feature-template-"));
+let template: ReturnType<typeof createTemplate> | undefined;
+afterAll(() => rmSync(templateRoot, { recursive: true, force: true }));
 
 function tempDir(prefix: string): string {
-	const dir = path.join(tmpdir(), `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`);
-	mkdirSync(dir, { recursive: true });
+	const dir = mkdtempSync(path.join(tmpdir(), `${prefix}-`));
 	tempDirs.push(dir);
 	return dir;
 }
@@ -23,11 +25,11 @@ function git(cwd: string, ...args: string[]): string {
 	}).trim();
 }
 
-function createWorkspace() {
-	const remoteDir = tempDir("coding-feature-remote");
-	git(remoteDir, "init", "--bare");
-	const seedDir = tempDir("coding-feature-seed");
-	git(seedDir, "clone", remoteDir, ".");
+function createTemplate() {
+	const remoteDir = path.join(templateRoot, "remote.git");
+	git(templateRoot, "init", "--bare", remoteDir);
+	const seedDir = path.join(templateRoot, "seed");
+	git(templateRoot, "clone", remoteDir, seedDir);
 	git(seedDir, "config", "user.name", "Test User");
 	git(seedDir, "config", "user.email", "test@example.com");
 	writeFileSync(path.join(seedDir, "README.md"), "# Example\n");
@@ -35,9 +37,21 @@ function createWorkspace() {
 	git(seedDir, "commit", "-m", "seed");
 	git(seedDir, "branch", "-M", "main");
 	git(seedDir, "push", "origin", "main");
-	const repoDir = tempDir("coding-feature-workspace");
-	git(repoDir, "clone", remoteDir, ".");
+	const repoDir = path.join(templateRoot, "workspace");
+	git(templateRoot, "clone", remoteDir, repoDir);
 	git(repoDir, "checkout", "-b", "feature/test", "origin/main");
+	rmSync(seedDir, { recursive: true, force: true });
+	return templateRoot;
+}
+
+function createWorkspace() {
+	template ??= createTemplate();
+	const root = tempDir("coding-feature-workspace");
+	// Copy the checkout and remote so no test can mutate the seed or another test.
+	cpSync(template, root, { recursive: true });
+	const remoteDir = path.join(root, "remote.git");
+	const repoDir = path.join(root, "workspace");
+	git(repoDir, "remote", "set-url", "origin", remoteDir);
 	return { remoteDir, repoDir };
 }
 

@@ -1,9 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolveGitBinary } from "@leitwerk-dev/process-sdk/git-binary";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 import { commitAndPushWorkBranch } from "./finalization-git.js";
 import {
 	readPublicationReceipt,
@@ -25,6 +25,10 @@ import {
 } from "./repository-reconciliation.js";
 
 const roots: string[] = [];
+const templateRoot = mkdtempSync(join(tmpdir(), "reconciliation-template-"));
+let template: ReturnType<typeof createTemplate> | undefined;
+afterAll(() => rmSync(templateRoot, { recursive: true, force: true }));
+
 function git(cwd: string, ...args: string[]) {
 	return execFileSync(
 		resolveGitBinary(),
@@ -37,13 +41,11 @@ function git(cwd: string, ...args: string[]) {
 		},
 	).trim();
 }
-function fixture() {
-	const root = mkdtempSync(join(tmpdir(), "repository-reconciliation-"));
-	roots.push(root);
-	const bare = join(root, "remote.git");
-	git(root, "init", "--bare", bare);
-	const dev = join(root, "developer");
-	git(root, "clone", bare, dev);
+function createTemplate() {
+	const bare = join(templateRoot, "remote.git");
+	git(templateRoot, "init", "--bare", bare);
+	const dev = join(templateRoot, "developer");
+	git(templateRoot, "clone", bare, dev);
 	writeFileSync(join(dev, "file.txt"), "original\n");
 	writeFileSync(join(dev, ".gitignore"), "ignored.txt\n");
 	git(dev, "add", ".");
@@ -51,13 +53,25 @@ function fixture() {
 	git(dev, "branch", "-M", "work");
 	git(dev, "push", "origin", "work");
 	const baselineSha = git(dev, "rev-parse", "HEAD");
+	git(templateRoot, "clone", "-b", "work", bare, join(templateRoot, "local"));
+	return { root: templateRoot, baselineSha };
+}
+
+function fixture() {
+	template ??= createTemplate();
+	const root = mkdtempSync(join(tmpdir(), "repository-reconciliation-"));
+	roots.push(root);
+	// All three repositories are private copies; only immutable seed data is shared.
+	cpSync(template.root, root, { recursive: true });
+	const bare = join(root, "remote.git");
+	const dev = join(root, "developer");
 	const local = join(root, "local");
-	git(root, "clone", "-b", "work", bare, local);
+	for (const checkout of [dev, local]) git(checkout, "remote", "set-url", "origin", bare);
 	const input = {
 		projectKey: "repo",
 		repoPath: local,
 		workBranch: "work",
-		baselineSha,
+		baselineSha: template.baselineSha,
 		gitIdentity: { name: "Reconciliation Bot", email: "reconciliation@example.test" },
 	};
 	const commit = (directory: string, file: string, content: string) => {
@@ -294,13 +308,20 @@ describe("repository reconciliation", { timeout: 30_000 }, () => {
 		expect(readFileSync(join(f.local, "ignored.txt"), "utf8")).toBe("retained\n");
 	});
 
-	it("does not duplicate patches already incorporated by a developer", () => {
+	it("reconciles equivalent patches from distinct commits without duplicating content", () => {
 		const f = fixture();
-		f.commit(f.local, "same.txt", "same\n");
+		const local = f.commit(f.local, "same.txt", "same\n");
 		f.commit(f.dev, "same.txt", "same\n");
+		git(f.dev, "commit", "--amend", "-m", "Developer incorporated the same patch");
+		const remote = git(f.dev, "rev-parse", "HEAD");
+		expect(local).not.toBe(remote);
 		f.push();
-		expect(reconcileRepository(f.input).status).toBe("ready");
+		expect(reconcileRepository(f.input)).toMatchObject({ status: "ready", remoteHead: remote });
+		expect(git(f.local, "merge-base", "--is-ancestor", remote, "HEAD")).toBe("");
+		// Replaying may retain an empty commit for lineage, but must not duplicate the patch.
+		expect(git(f.local, "rev-parse", "HEAD^{tree}")).toBe(git(f.dev, "rev-parse", "HEAD^{tree}"));
 		expect(readFileSync(join(f.local, "same.txt"), "utf8")).toBe("same\n");
+		expect(git(f.local, "status", "--porcelain")).toBe("");
 	});
 
 	it("recovers publication before its durable acknowledgement without another commit", () => {
