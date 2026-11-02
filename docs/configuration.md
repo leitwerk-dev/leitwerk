@@ -108,7 +108,7 @@ workspaces through CSI after worker shutdown, including on explicit process dele
 It defaults to false. When enabled, terminal volumes bypass retention and override
 Retain on their own PV, not the shared StorageClass. Error and result-image retention
 are unchanged. Ambiguous storage requires manual review. See
-[retained-volume operations](../deploy/kubernetes/README.md#retained-process-pvc-cleanup).
+[retained-volume operations](https://github.com/leitwerk-dev/leitwerk/blob/main/deploy/kubernetes/README.md#retained-process-pvc-cleanup).
 
 ### Per-process storage size
 
