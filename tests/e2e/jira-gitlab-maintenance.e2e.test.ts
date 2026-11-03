@@ -10,15 +10,14 @@ describe("Jira coordinated GitLab change", () => {
 });
 
 it(
-	"settles feedback independently and escalates only the repository that exhausts three CI repairs",
-	scenarios.feedbackCiBudget,
+	"publishes the third CI repair, escalates the fourth failure, and retains operator waiting across restart",
+	scenarios.ciBudgetBoundary,
 	90000,
 );
 
 it(
 	"does not replay a no-change CI repair for MR metadata updates, including after restart",
 	scenarios.noChangeCiRepair,
-	// Three repairs now each execute a delivery verification worker as well.
 	90000,
 );
 

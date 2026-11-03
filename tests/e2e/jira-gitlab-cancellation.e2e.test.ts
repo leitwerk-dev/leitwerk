@@ -6,7 +6,7 @@ it.each([
 	"deliver_change",
 	"ci_operator_action",
 ] as const)("deleting one linked MR aborts all repositories from %s", async (turn) => {
-	const f = await jiraFixture(onTestFinished);
+	const f = await jiraFixture(onTestFinished, { skipSimplification: true });
 	const id = await f.launch();
 	if (turn === "ci_operator_action") {
 		f.setRepair("operator");
@@ -35,7 +35,7 @@ it.each([
 it("deleting a linked MR fences an in-flight repair and aborts the process", async ({
 	onTestFinished,
 }) => {
-	const f = await jiraFixture(onTestFinished);
+	const f = await jiraFixture(onTestFinished, { skipSimplification: true });
 	const id = await f.launch();
 	const first = f.gitlab.state.mrs[0];
 	const before = f.remote(id, "repo_1").headSha;
