@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.2 (2026-11-03)
+
+fix(gitlab): support globally labeled merge request discovery (#222)
+
+Source: 6720e88b8d8ebcd79d2caca0b679744c95b0938d
+Previous release: v0.4.1
+
+## 0.4.1 (2026-11-02)
+
+fix(kubernetes): reclaim terminal process storage safely (#217)
+
+Source: c8ed293c3df904b554d9304959c5cc8fae9c80c8
+Previous release: v0.4.0
+
 ## [0.4.0](https://github.com/leitwerk-dev/leitwerk/compare/v0.3.1...v0.4.0) (2026-10-13)
 
 

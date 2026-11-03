@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/mattpocock-skills",
-	"version": "0.4.0",
+	"version": "0.4.2",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
@@ -28,12 +28,12 @@
 		"skills:build": "leitwerk-dev skills:build"
 	},
 	"dependencies": {
-		"@leitwerk-dev/process-sdk": "0.4.0"
+		"@leitwerk-dev/process-sdk": "0.4.2"
 	},
 	"devDependencies": {
-		"@leitwerk-dev/dev-tools": "0.4.0",
-		"@leitwerk-dev/extension-runtime": "0.4.0",
-		"@leitwerk-dev/protocol": "0.4.0",
+		"@leitwerk-dev/dev-tools": "0.4.2",
+		"@leitwerk-dev/extension-runtime": "0.4.2",
+		"@leitwerk-dev/protocol": "0.4.2",
 		"@types/node": "^22.15.30",
 		"tsup": "^8.5.1"
 	},
