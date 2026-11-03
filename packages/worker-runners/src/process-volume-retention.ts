@@ -40,6 +40,10 @@ function closedAtMs(process: ProcessInstance): number | null {
 export function planProcessVolumeRetentionCleanup(
 	input: PlanProcessVolumeRetentionCleanupInput,
 ): string[] {
+	return planRetainedProcesses(input).map((process) => process.id);
+}
+
+function planRetainedProcesses(input: PlanProcessVolumeRetentionCleanupInput): ProcessInstance[] {
 	const completedRetentionMs = retentionMs(input.policy.completedProcessRetention);
 	const abortedRetentionMs = retentionMs(
 		input.policy.abortedProcessRetention ?? input.policy.errorProcessRetention,
@@ -47,7 +51,7 @@ export function planProcessVolumeRetentionCleanup(
 	const errorRetentionMs = retentionMs(input.policy.errorProcessRetention);
 	const nowMs = input.now.getTime();
 	const alreadyReleased = input.alreadyReleased ?? new Set<string>();
-	const candidates: string[] = [];
+	const candidates: ProcessInstance[] = [];
 	for (const process of input.processes) {
 		if (alreadyReleased.has(process.id)) {
 			continue;
@@ -65,46 +69,37 @@ export function planProcessVolumeRetentionCleanup(
 						? errorRetentionMs
 						: Number.POSITIVE_INFINITY;
 		if (nowMs - closed >= retention) {
-			candidates.push(process.id);
+			candidates.push(process);
 		}
 	}
 	return candidates;
 }
 
 /** @internal */
-export async function cleanupRetainedProcessVolumes(input: {
-	/** @internal */
-	volume?: ProcessVolume;
-	/** Terminal-process storage disposal policy; error retention is unaffected. @internal */
-	reclaimTerminalBackingStorage?: boolean;
-	/** @internal */
-	processes: readonly ProcessInstance[];
-	/** @internal */
-	now: Date;
-	/** @internal */
-	policy: ProcessVolumeRetentionPolicy;
-	/** @internal */
-	alreadyReleased?: ReadonlySet<string>;
-}): Promise<string[]> {
-	const candidates = planProcessVolumeRetentionCleanup(input);
+export async function cleanupRetainedProcessVolumes(
+	input: PlanProcessVolumeRetentionCleanupInput & {
+		/** @internal */
+		volume?: ProcessVolume;
+		/** Terminal-process storage disposal policy; error retention is unaffected. @internal */
+		reclaimTerminalBackingStorage?: boolean;
+	},
+): Promise<string[]> {
+	const candidates = planRetainedProcesses(input);
 	if (input.volume) {
-		for (const instanceId of candidates) {
-			const process = input.processes.find((process) => process.id === instanceId);
+		for (const process of candidates) {
 			if (
 				input.reclaimTerminalBackingStorage &&
-				process?.closedAt &&
+				process.closedAt &&
 				(process.lifecycleStatus === "completed" || process.lifecycleStatus === "aborted")
-			) {
-				await input.volume.release(instanceId, {
+			)
+				await input.volume.release(process.id, {
 					reclaimBackingStorage: {
 						lifecycleStatus: process.lifecycleStatus,
 						closedAt: process.closedAt,
 					},
 				});
-			} else {
-				await input.volume.release(instanceId);
-			}
+			else await input.volume.release(process.id);
 		}
 	}
-	return candidates;
+	return candidates.map((process) => process.id);
 }

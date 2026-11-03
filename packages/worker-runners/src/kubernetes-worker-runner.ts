@@ -165,6 +165,29 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 	const podDisappearanceTimeoutMs = options.podDisappearanceTimeoutMs ?? 30_000;
 	const podDisappearancePollIntervalMs = options.podDisappearancePollIntervalMs ?? 250;
 
+	async function releaseVolume(
+		instanceId: string,
+		retirement: Pick<
+			Parameters<typeof retireKubernetesProcessVolume>[0],
+			"reason" | "reclaimBackingStorage"
+		> = {},
+	) {
+		const name = kubernetesProcessPvcName(instanceId, options.volume.namePrefix);
+		const namespace = namespaceForProcess(instanceId);
+		if (client.volumePool)
+			return retireKubernetesProcessVolume({
+				api: client.volumePool,
+				namespace,
+				name,
+				instanceId,
+				signal: AbortSignal.timeout(30_000),
+				...retirement,
+			});
+		if (retirement.reclaimBackingStorage)
+			throw new Error("Backing-storage reclamation requires Kubernetes volume inspection");
+		await client.deletePersistentVolumeClaim(name, namespace);
+	}
+
 	const samplers = new Map<string, ReturnType<typeof sampleKubernetesStartup>>();
 	const volume: ProcessVolume = {
 		async ensure(instanceId, requirements, observer) {
@@ -266,39 +289,15 @@ export function createKubernetesWorkerRunner(options: KubernetesWorkerRunnerOpti
 				namespace: manifest.metadata.namespace,
 			});
 		},
-		async release(instanceId, releaseOptions) {
-			if (client.volumePool) {
-				await retireKubernetesProcessVolume({
-					api: client.volumePool,
-					namespace: namespaceForProcess(instanceId),
-					name: kubernetesProcessPvcName(instanceId, options.volume.namePrefix),
-					instanceId,
-					signal: AbortSignal.timeout(30_000),
-					reclaimBackingStorage: releaseOptions?.reclaimBackingStorage,
-				});
-				return;
-			}
-			if (releaseOptions?.reclaimBackingStorage)
-				throw new Error("Backing-storage reclamation requires Kubernetes volume inspection");
-			await client.deletePersistentVolumeClaim(
-				kubernetesProcessPvcName(instanceId, options.volume.namePrefix),
-				namespaceForProcess(instanceId),
-			);
-		},
+		release: releaseVolume,
 		async deleteProcessResources(instanceId) {
 			samplers.get(instanceId)?.stop();
 			samplers.delete(instanceId);
-			if (client.volumePool) {
-				await retireKubernetesProcessVolume({
-					api: client.volumePool,
-					namespace: namespaceForProcess(instanceId),
-					name: kubernetesProcessPvcName(instanceId, options.volume.namePrefix),
-					instanceId,
+			if (client.volumePool)
+				await releaseVolume(instanceId, {
 					reason: "process-deleted",
 					reclaimBackingStorage: options.reclaimOnClose ? "process-deleted" : undefined,
-					signal: AbortSignal.timeout(30_000),
 				});
-			}
 			await client.deleteNamespace(namespaceForProcess(instanceId));
 		},
 	};

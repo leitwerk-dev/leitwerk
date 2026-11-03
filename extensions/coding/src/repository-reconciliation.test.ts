@@ -1,10 +1,9 @@
-import { execFileSync } from "node:child_process";
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { resolveGitBinary } from "@leitwerk-dev/process-sdk/git-binary";
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { commitAndPushWorkBranch } from "./finalization-git.js";
+import { createGitFixture, runGit } from "./git-fixture.test-fixture.js";
 import {
 	readPublicationReceipt,
 	savePublicationReceipt,
@@ -24,24 +23,15 @@ import {
 	retainConcurrentRebase,
 } from "./repository-reconciliation.js";
 
-const roots: string[] = [];
-const templateRoot = mkdtempSync(join(tmpdir(), "reconciliation-template-"));
-let template: ReturnType<typeof createTemplate> | undefined;
-afterAll(() => rmSync(templateRoot, { recursive: true, force: true }));
+const copyRepositories = createGitFixture(createTemplate);
 
 function git(cwd: string, ...args: string[]) {
-	return execFileSync(
-		resolveGitBinary(),
-		["-c", "user.name=Test", "-c", "user.email=test@example.test", ...args],
-		{
-			cwd,
-			encoding: "utf8",
-			stdio: ["ignore", "pipe", "pipe"],
-			env: { ...process.env, GIT_EDITOR: "true" },
-		},
-	).trim();
+	return runGit(cwd, ["-c", "user.name=Test", "-c", "user.email=test@example.test", ...args], {
+		...process.env,
+		GIT_EDITOR: "true",
+	});
 }
-function createTemplate() {
+function createTemplate(templateRoot: string) {
 	const bare = join(templateRoot, "remote.git");
 	git(templateRoot, "init", "--bare", bare);
 	const dev = join(templateRoot, "developer");
@@ -54,15 +44,11 @@ function createTemplate() {
 	git(dev, "push", "origin", "work");
 	const baselineSha = git(dev, "rev-parse", "HEAD");
 	git(templateRoot, "clone", "-b", "work", bare, join(templateRoot, "local"));
-	return { root: templateRoot, baselineSha };
+	return baselineSha;
 }
 
 function fixture() {
-	template ??= createTemplate();
-	const root = mkdtempSync(join(tmpdir(), "repository-reconciliation-"));
-	roots.push(root);
-	// All three repositories are private copies; only immutable seed data is shared.
-	cpSync(template.root, root, { recursive: true });
+	const { root, data: baselineSha } = copyRepositories();
 	const bare = join(root, "remote.git");
 	const dev = join(root, "developer");
 	const local = join(root, "local");
@@ -71,7 +57,7 @@ function fixture() {
 		projectKey: "repo",
 		repoPath: local,
 		workBranch: "work",
-		baselineSha: template.baselineSha,
+		baselineSha,
 		gitIdentity: { name: "Reconciliation Bot", email: "reconciliation@example.test" },
 	};
 	const commit = (directory: string, file: string, content: string) => {
@@ -116,9 +102,6 @@ function targetRepair(
 		},
 	};
 }
-afterEach(() => {
-	for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-});
 
 describe("repository reconciliation", { timeout: 30_000 }, () => {
 	it("adopts the current remote without creating local changes", () => {

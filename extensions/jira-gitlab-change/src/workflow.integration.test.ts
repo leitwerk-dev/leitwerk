@@ -195,21 +195,14 @@ async function fixture(changes = [true, true], { checkout = true, published = fa
 				});
 				continue;
 			}
-			const mr = {
-				iid: gitlab.state.mrs.length + 1,
-				project_id: repository.projectId,
-				source_project_id: repository.projectId,
-				target_project_id: repository.projectId,
+			const mr = gitlab.openMr(required(gitlab.state.projects[index]), repository.workBranch, {
 				title: "Published change",
 				description: "Linked to APP-1",
-				state: "opened" as const,
 				labels: ["leitwerk-active"],
 				sha: "a".repeat(40),
-				source_branch: repository.workBranch,
 				target_branch: repository.baseBranch,
 				web_url: `${gitlab.baseUrl}/team/${repository.key}/-/merge_requests/1`,
-			};
-			gitlab.state.mrs.push(mr);
+			});
 			projects.set(repository.key, {
 				...project,
 				externalId: String(mr.iid),

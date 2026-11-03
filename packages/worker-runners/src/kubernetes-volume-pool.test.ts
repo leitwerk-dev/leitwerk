@@ -157,6 +157,10 @@ const sources = [
 ];
 
 describe("process volume retirement", () => {
+	const authorization = {
+		lifecycleStatus: "completed" as const,
+		closedAt: "2026-01-01T00:00:00Z",
+	};
 	async function setup() {
 		const api = new PoolApi();
 		const { claim, pod, pv } = await provision(api, sources[0]);
@@ -250,10 +254,6 @@ describe("process volume retirement", () => {
 		api.delete = async () => {
 			throw new Error("transport failed");
 		};
-		const authorization = {
-			lifecycleStatus: "completed" as const,
-			closedAt: "2026-01-01T00:00:00Z",
-		};
 		await expect(retire("retention-expired", authorization)).rejects.toThrow("transport failed");
 		expect(pv.spec.persistentVolumeReclaimPolicy).toBe("Delete");
 		expect(await api.get("persistentvolumeclaims", "server", claim.metadata.name)).not.toBeNull();
@@ -265,35 +265,42 @@ describe("process volume retirement", () => {
 		).toHaveLength(1);
 	});
 
-	it("keeps an unbound claim until its backing identity can be audited", async () => {
-		const { api, claim, retire } = await setup();
-		delete claim.spec.volumeName;
-		await expect(
-			retire("retention-expired", {
-				lifecycleStatus: "completed",
-				closedAt: "2026-01-01T00:00:00Z",
-			}),
-		).rejects.toThrow("still provisioning");
+	it.each<[string, (fixture: Awaited<ReturnType<typeof setup>>) => void, string]>([
+		["unbound claim", ({ claim }) => delete claim.spec.volumeName, "still provisioning"],
+		["non-CSI", ({ pv }) => delete pv.spec.csi, "dynamically provisioned CSI"],
+		[
+			"static CSI",
+			({ pv }) => delete pv.metadata.annotations?.["pv.kubernetes.io/provisioned-by"],
+			"dynamically provisioned CSI",
+		],
+		[
+			"foreign PV owner",
+			({ pv }) => {
+				pv.metadata.labels = {
+					"leitwerk.dev/managed-by": "external-owner",
+					"leitwerk.dev/instance-id": "instance",
+				};
+			},
+			"ambiguous claim ownership",
+		],
+		[
+			"another process's PV",
+			({ pv }) => {
+				pv.metadata.labels = {
+					"leitwerk.dev/managed-by": "leitwerk",
+					"leitwerk.dev/instance-id": "another-process",
+				};
+			},
+			"ambiguous claim ownership",
+		],
+	])("refuses reclamation of %s without modifying storage", async (_name, mutate, error) => {
+		const f = await setup();
+		mutate(f);
+		await expect(f.retire("retention-expired", authorization)).rejects.toThrow(error);
 		expect(
-			(await api.get("persistentvolumeclaims", "server", claim.metadata.name))?.metadata.uid,
-		).toBe(claim.metadata.uid);
-		expect(api.operations).toEqual([]);
-	});
-
-	it.each([
-		"non-CSI",
-		"static CSI",
-	])("refuses automatic reclamation of %s storage", async (mode) => {
-		const { api, pv, retire } = await setup();
-		if (mode === "non-CSI") delete pv.spec.csi;
-		else delete pv.metadata.annotations?.["pv.kubernetes.io/provisioned-by"];
-		await expect(
-			retire("retention-expired", {
-				lifecycleStatus: "completed",
-				closedAt: "2026-01-01T00:00:00Z",
-			}),
-		).rejects.toThrow("dynamically provisioned CSI");
-		expect(api.operations).toEqual([]);
+			(await f.api.get("persistentvolumeclaims", "server", f.claim.metadata.name))?.metadata.uid,
+		).toBe(f.claim.metadata.uid);
+		expect(f.api.operations).toEqual([]);
 	});
 
 	it.each([
@@ -309,29 +316,11 @@ describe("process volume retirement", () => {
 
 	it("refuses live references and foreign ownership", async () => {
 		const { retire, pod, claim, api } = await setup();
-		const authorization = {
-			lifecycleStatus: "completed" as const,
-			closedAt: "2026-01-01T00:00:00Z",
-		};
 		pod.status = { phase: "Pending" };
 		await expect(retire("retention-expired", authorization)).rejects.toThrow("live Pod");
 		pod.status = { phase: "Succeeded" };
 		claim.metadata.labels = {};
 		await expect(retire("retention-expired", authorization)).rejects.toThrow("foreign");
-		expect(api.operations).toEqual([]);
-	});
-	it.each([
-		{ "leitwerk.dev/managed-by": "external-owner", "leitwerk.dev/instance-id": "instance" },
-		{ "leitwerk.dev/managed-by": "leitwerk", "leitwerk.dev/instance-id": "another-process" },
-	])("never overwrites conflicting PV ownership: %j", async (labels) => {
-		const { retire, pv, api } = await setup();
-		pv.metadata.labels = labels;
-		await expect(
-			retire("retention-expired", {
-				lifecycleStatus: "completed",
-				closedAt: "2026-01-01T00:00:00Z",
-			}),
-		).rejects.toThrow("ambiguous claim ownership");
 		expect(api.operations).toEqual([]);
 	});
 	it("leaves the claim intact after partial annotation failure", async () => {

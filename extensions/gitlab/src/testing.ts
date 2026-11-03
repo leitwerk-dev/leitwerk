@@ -127,8 +127,12 @@ export class LocalGitLabAdapter {
 		this.save();
 		return project;
 	}
-	/** @public */
-	openMr(project: GitLabProject, branch: string): GitLabMergeRequest {
+	/** An explicit SHA seeds provider facts without requiring a Git checkout. @public */
+	openMr(
+		project: GitLabProject,
+		branch: string,
+		overrides: Partial<GitLabMergeRequest> = {},
+	): GitLabMergeRequest {
 		const mr: GitLabMergeRequest = {
 			iid: this.state.mrs.length + 1,
 			project_id: project.id,
@@ -138,10 +142,11 @@ export class LocalGitLabAdapter {
 			description: "Renovate upgrade",
 			state: "opened",
 			labels: ["renovate"],
-			sha: this.git(project.id, ["rev-parse", branch]),
+			sha: overrides.sha ?? this.git(project.id, ["rev-parse", branch]),
 			source_branch: branch,
 			target_branch: "main",
 			web_url: `${project.web_url}/-/merge_requests/${this.state.mrs.length + 1}`,
+			...overrides,
 		};
 		this.state.mrs.push(mr);
 		this.save();

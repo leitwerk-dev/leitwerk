@@ -1,31 +1,18 @@
-import { execFileSync } from "node:child_process";
-import { cpSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { resolveGitBinary } from "@leitwerk-dev/process-sdk/git-binary";
-import { afterAll, afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { commitAndPushWorkBranch, repositoryHasChanges } from "./finalization-git.js";
 
-const tempDirs: string[] = [];
-const templateRoot = mkdtempSync(path.join(tmpdir(), "coding-feature-template-"));
-let template: ReturnType<typeof createTemplate> | undefined;
-afterAll(() => rmSync(templateRoot, { recursive: true, force: true }));
+import { createGitFixture, runGit } from "./git-fixture.test-fixture.js";
 
-function tempDir(prefix: string): string {
-	const dir = mkdtempSync(path.join(tmpdir(), `${prefix}-`));
-	tempDirs.push(dir);
-	return dir;
-}
+const copyWorkspace = createGitFixture(createTemplate);
 
 function git(cwd: string, ...args: string[]): string {
-	return execFileSync(resolveGitBinary(), args, {
-		cwd,
-		encoding: "utf8",
-		stdio: ["ignore", "pipe", "pipe"],
-	}).trim();
+	return runGit(cwd, args);
 }
 
-function createTemplate() {
+function createTemplate(templateRoot: string) {
 	const remoteDir = path.join(templateRoot, "remote.git");
 	git(templateRoot, "init", "--bare", remoteDir);
 	const seedDir = path.join(templateRoot, "seed");
@@ -41,26 +28,15 @@ function createTemplate() {
 	git(templateRoot, "clone", remoteDir, repoDir);
 	git(repoDir, "checkout", "-b", "feature/test", "origin/main");
 	rmSync(seedDir, { recursive: true, force: true });
-	return templateRoot;
 }
 
 function createWorkspace() {
-	template ??= createTemplate();
-	const root = tempDir("coding-feature-workspace");
-	// Copy the checkout and remote so no test can mutate the seed or another test.
-	cpSync(template, root, { recursive: true });
+	const { root } = copyWorkspace();
 	const remoteDir = path.join(root, "remote.git");
 	const repoDir = path.join(root, "workspace");
 	git(repoDir, "remote", "set-url", "origin", remoteDir);
 	return { remoteDir, repoDir };
 }
-
-afterEach(() => {
-	while (tempDirs.length > 0) {
-		const dir = tempDirs.pop();
-		if (dir) rmSync(dir, { recursive: true, force: true });
-	}
-});
 
 describe("commitAndPushWorkBranch", () => {
 	it.each([
@@ -114,7 +90,8 @@ describe("commitAndPushWorkBranch", () => {
 	});
 
 	it("rejects an unexpected checked-out branch", () => {
-		const repoDir = tempDir("coding-feature-mismatch");
+		const repoDir = mkdtempSync(path.join(tmpdir(), "coding-feature-mismatch-"));
+		onTestFinished(() => rmSync(repoDir, { recursive: true, force: true }));
 		git(repoDir, "init", "--initial-branch=feature/test");
 		expect(() =>
 			commitAndPushWorkBranch({
