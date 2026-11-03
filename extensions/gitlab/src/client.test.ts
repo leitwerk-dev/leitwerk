@@ -39,6 +39,29 @@ const pipeline = (id: number, status: string, sha = "head"): GitLabPipeline => (
 	web_url: `https://forge.test/pipelines/${id}`,
 });
 describe("GitLab boundary", () => {
+	it.each([
+		{ project: null, endpoint: "/api/v4/merge_requests" },
+		{ project: 7, endpoint: "/api/v4/projects/7/merge_requests" },
+	])("paginates labeled MRs at $endpoint with all-user scope", async ({ project, endpoint }) => {
+		const requests: URL[] = [];
+		const client = new GitLabClient(profile, {
+			fetch: async (url) => {
+				const parsed = new URL(String(url));
+				requests.push(parsed);
+				expect(parsed.pathname).toBe(endpoint);
+				expect(parsed.searchParams.get("scope")).toBe("all");
+				expect(parsed.searchParams.get("state")).toBe("opened");
+				expect(parsed.searchParams.get("labels")).toBe("automation,beta");
+				return Response.json([{ ...mr, iid: requests.length }], {
+					headers: { "x-next-page": requests.length === 1 ? "2" : "" },
+				});
+			},
+		});
+		expect((await client.listMergeRequests(project, "automation,beta")).map((m) => m.iid)).toEqual([
+			1, 2,
+		]);
+		expect(requests.map((url) => url.searchParams.get("page"))).toEqual(["1", "2"]);
+	});
 	it("paginates MR label history and updates only the requested label deltas", async () => {
 		const requests: { url: URL; init?: RequestInit }[] = [];
 		const client = new GitLabClient(profile, {
