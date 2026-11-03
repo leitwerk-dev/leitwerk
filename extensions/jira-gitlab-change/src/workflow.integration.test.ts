@@ -20,8 +20,8 @@ import {
 	type ProcessProjectRepoLike,
 } from "@leitwerk-dev/process-sdk";
 import { createTestServerSetupCapability, createToolCollector } from "@leitwerk-dev/test-support";
-import { LocalGit } from "@leitwerk-dev/test-support/local-git";
-import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { LocalGit, LocalGitSeedCache } from "@leitwerk-dev/test-support/local-git";
+import { afterAll, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createJiraGitLabChange } from "./index.js";
 import type { JiraGitLabParams, RepositoryBinding } from "./launch.js";
 
@@ -29,6 +29,9 @@ function required<T>(value: T | null | undefined): T {
 	if (value == null) throw new Error("Missing fixture value");
 	return value;
 }
+
+const gitSeeds = new LocalGitSeedCache();
+afterAll(() => gitSeeds.close());
 
 async function fixture(changes = [true, true], { checkout = true } = {}) {
 	const root = mkdtempSync(join(tmpdir(), "jira-workflow-"));
@@ -62,7 +65,7 @@ async function fixture(changes = [true, true], { checkout = true } = {}) {
 		const key = `repo_${index + 1}`;
 		const repository = gitlab.addProject(
 			`team/${key}`,
-			checkout ? git.seed({ owner: "team", name: key }).bare : join(root, `${key}.git`),
+			checkout ? gitSeeds.copy(git, { owner: "team", name: key }) : join(root, `${key}.git`),
 		);
 		const binding = await resolveGitLabLaunchProject(client, "team", repository, "feature", key);
 		repositories.push({ ...binding.params, key, origin: "jira", sshProfile: "test" });
@@ -318,7 +321,7 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 		"generate_plan",
 		"implement",
 	])("uses Markdown in future %s turns of a retained run without changing its snapshot", async (turnId) => {
-		const f = await fixture([false]);
+		const f = await fixture([false], { checkout: false });
 		const source = "h2. Requirements\n\n* *Check* {{user_name}}\n\n{noformat}*literal*{noformat}";
 		f.params.issue.fields.description = source;
 		f.params.prompt = `APP-1: Change repositories\n\n${source}`;
@@ -477,6 +480,7 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 		expect(transition).toHaveBeenCalledTimes(1);
 		expect(f.gitlab.state.mrs).toHaveLength(changes.filter(Boolean).length);
 		expect(await f.jira.listRemoteLinks("501")).toHaveLength(f.gitlab.state.mrs.length + 1);
+		expect(await f.jira.listComments("501")).toEqual([]);
 	});
 	it("keeps partial completion In Review", async () => {
 		const f = await fixture();
@@ -508,7 +512,6 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 		expect(await f.jira.listRemoteLinks("501")).toHaveLength(2);
 	});
 	it.each([
-		"merged",
 		"closed",
 		"cancelled",
 	])("preserves %s outcome/label behavior without Jira comments", async (outcome) => {
@@ -518,11 +521,9 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 		if (outcome === "cancelled") required(f.jira.issues.get("501")).fields.labels = [];
 		else f.gitlab.state.mrs[0].state = outcome;
 		const result = await f.deliver();
-		expect(result.outcome).toBe(outcome === "merged" ? "completed" : "aborted");
-		expect((await f.jira.getIssue("501")).fields.labels).toEqual(
-			outcome === "merged" ? ["leitwerk-done"] : [],
-		);
-		expect(await f.status()).toBe(outcome === "merged" ? "Ready for Verification" : "In Review");
+		expect(result.outcome).toBe("aborted");
+		expect((await f.jira.getIssue("501")).fields.labels).toEqual([]);
+		expect(await f.status()).toBe("In Review");
 		expect(await f.jira.listComments("501")).toEqual([]);
 	});
 });

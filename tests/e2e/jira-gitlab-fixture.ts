@@ -25,13 +25,16 @@ import {
 	type IntegrationHarness,
 	waitForValue,
 } from "@leitwerk-dev/test-support/integration";
-import { LocalGit } from "@leitwerk-dev/test-support/local-git";
+import { LocalGit, LocalGitSeedCache } from "@leitwerk-dev/test-support/local-git";
 import {
 	createInProcessWorkerSpawn,
 	formatBranchText,
 	StubPiTreeHandleFactory,
 } from "@leitwerk-dev/test-support/worker-testing";
-import { expect } from "vitest";
+import { afterAll, expect } from "vitest";
+
+const gitSeeds = new LocalGitSeedCache();
+afterAll(() => gitSeeds.close());
 
 export async function jiraFixture(
 	onFinished: (fn: () => Promise<void>) => void,
@@ -72,8 +75,8 @@ esac
 	);
 	if (options.toolchainUnavailable) writeFileSync(toolchainFailure, "");
 	const git = new LocalGit(root);
-	const remotes = ["service", "client"].map(
-		(name) => git.seed({ owner: "team", name, files: { "README.md": `${name}\n` } }).bare,
+	const remotes = ["service", "client"].map((name) =>
+		gitSeeds.copy(git, { owner: "team", name, files: { "README.md": `${name}\n` } }),
 	);
 	const gitlab = new LocalGitLabAdapter(root);
 	remotes.forEach((bare, i) => {

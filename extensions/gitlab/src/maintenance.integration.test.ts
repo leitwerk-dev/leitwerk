@@ -5,8 +5,8 @@ import {
 	createPersistentIntegrationFixture,
 	waitForValue,
 } from "@leitwerk-dev/test-support/integration";
-import { LocalGit } from "@leitwerk-dev/test-support/local-git";
-import { expect, it, onTestFinished, vi } from "vitest";
+import { LocalGit, LocalGitSeedCache } from "@leitwerk-dev/test-support/local-git";
+import { afterAll, expect, it, onTestFinished, vi } from "vitest";
 import { GitLabClient, GitLabError, type GitLabFeedback } from "./client.js";
 import {
 	GITLAB_MAINTAINED_KIND,
@@ -19,6 +19,9 @@ import { LocalGitLabAdapter, setupGitLabIntegration } from "./testing.js";
 type State = { cursor: number; batch: GitLabFeedback[] };
 const stateCodec: Codec<State> = { parse: (value) => value as State, serialize: (value) => value };
 
+const gitSeeds = new LocalGitSeedCache();
+afterAll(() => gitSeeds.close());
+
 async function fixture(
 	onFinished: (fn: () => Promise<void>) => void,
 	retry?: { maxAttempts: number },
@@ -27,7 +30,7 @@ async function fixture(
 	onFinished(persistent.dispose);
 	const { root } = persistent;
 	const git = new LocalGit(root);
-	const bare = git.seed({ owner: "team", name: "repo" }).bare;
+	const bare = gitSeeds.copy(git, { owner: "team", name: "repo" });
 	git.run(bare, ["branch", "feature", "main"]);
 	const adapter = new LocalGitLabAdapter(root);
 	const project = adapter.addProject("team/repo", bare);

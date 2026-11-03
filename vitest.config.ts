@@ -4,7 +4,13 @@ import { fileURLToPath } from "node:url";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { defineConfig } from "vitest/config";
 import { loadActiveDevelopmentComposition } from "./scripts/development-composition.js";
+import { validationEnvironment } from "./scripts/validation-environment.js";
 import { buildWorkspaceSourceAliases } from "./scripts/workspace-source-aliases.js";
+
+// Focused Vitest runs need the same direct Git path as the full gate. Repeated
+// PATH searches and Apple's developer-tool launcher otherwise dominate Git fixtures.
+const validationEnv = validationEnvironment();
+if (validationEnv.PATH !== undefined) process.env.PATH = validationEnv.PATH;
 
 const repoRoot = fileURLToPath(new URL(".", import.meta.url));
 // Keep Vitest from resolving bare Node stream built-ins against the worktree root.
@@ -138,6 +144,7 @@ export default defineConfig({
 				},
 				test: {
 					name: "unit-forks",
+					sequence: { groupOrder: 1 },
 					execArgv: sharedExecArgv,
 					setupFiles: sharedSetupFiles,
 					testTimeout: 15_000,
@@ -152,6 +159,9 @@ export default defineConfig({
 				},
 				test: {
 					name: "integration",
+					sequence: { groupOrder: 2 },
+					// Keep logs visible without buffered console RPC calls racing worker teardown.
+					disableConsoleIntercept: true,
 					execArgv: sharedExecArgv,
 					setupFiles: sharedSetupFiles,
 					// Integration files start servers, workers, and resource bundlers. Scale to
@@ -175,6 +185,8 @@ export default defineConfig({
 				},
 				test: {
 					name: "integration-isolated",
+					sequence: { groupOrder: 2 },
+					disableConsoleIntercept: true,
 					execArgv: sharedExecArgv,
 					setupFiles: sharedSetupFiles,
 					testTimeout: 15_000,
@@ -195,6 +207,7 @@ export default defineConfig({
 				},
 				test: {
 					name: "e2e",
+					sequence: { groupOrder: 3 },
 					execArgv: sharedExecArgv,
 					// Scale process-heavy files on larger hosts while retaining two workers on
 					// 1-CPU delivery workers.
@@ -217,6 +230,7 @@ export default defineConfig({
 				},
 				test: {
 					name: "ui-integration",
+					sequence: { groupOrder: 4 },
 					execArgv: sharedExecArgv,
 					setupFiles: sharedSetupFiles,
 					environment: "jsdom",

@@ -31,6 +31,10 @@ npm run test:integration
 npm run test:e2e
 ```
 
+On macOS, Vitest and the full gate resolve Apple's Git launcher to the direct
+Git executable once. Explicitly selected Git installations and wrappers are preserved.
+Focused runs use the same Git environment as full validation.
+
 If a failure points into `dist/`, rebuild before debugging logic. Never edit generated
 files. Concurrent validation needs separate checkouts or worktrees with independent
 dependency installations and build outputs.
