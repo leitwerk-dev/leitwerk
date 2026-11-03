@@ -734,16 +734,14 @@ export class GitLabClient {
 			signal,
 		);
 	}
-	/** @public */
+	/** Open MRs matching every comma-separated label; null selects all accessible projects. @public */
 	listMergeRequests(
-		id: number,
+		id: number | null,
 		label: string,
 		signal?: AbortSignal,
 	): Promise<GitLabMergeRequest[]> {
-		return this.pages(
-			`${projectPath(id)}/merge_requests?state=opened&labels=${encodeURIComponent(label)}`,
-			signal,
-		);
+		const path = id === null ? "/merge_requests" : `${projectPath(id)}/merge_requests`;
+		return this.pages(`${path}?state=opened&scope=all&labels=${encodeURIComponent(label)}`, signal);
 	}
 	/** @internal */
 	getMergeRequest(id: number, iid: number, signal?: AbortSignal): Promise<GitLabMergeRequest> {

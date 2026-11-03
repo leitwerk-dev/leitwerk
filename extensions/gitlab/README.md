@@ -58,6 +58,7 @@ extensions:
   remote reads; unknown names display the stable repository ID until found.
   Admission and delivery still read live project metadata and permissions through
   `client(profile)`.
+- `listMergeRequests(projectId, labels)` reads open MRs matching every comma-separated label. Pass `null` for `projectId` to query all accessible projects without enumerating repositories. Both forms use `scope=all`, not only MRs authored by the token owner.
 - `listMergeRequestLabelEvents()` reads paginated label transitions with stable event IDs. `updateMergeRequestLabels()` applies `add_labels` and `remove_labels` without replacing unrelated labels.
 - `registerGitLabMaintainedProcess()` registers a typed MR maintenance policy through
   the capability registry. One server service observes all registered processes,

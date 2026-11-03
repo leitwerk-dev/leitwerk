@@ -390,7 +390,10 @@ export class LocalGitLabAdapter {
 			listMergeRequests: async (id, label) =>
 				structuredClone(
 					this.state.mrs.filter(
-						(m) => m.project_id === id && m.state === "opened" && m.labels.includes(label),
+						(m) =>
+							(id === null || m.project_id === id) &&
+							m.state === "opened" &&
+							label.split(",").every((name) => m.labels.includes(name)),
 					),
 				),
 			listMergeRequestLabelEvents: async (id, iid) => {
