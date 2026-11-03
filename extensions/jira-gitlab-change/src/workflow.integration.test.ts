@@ -30,7 +30,7 @@ function required<T>(value: T | null | undefined): T {
 	return value;
 }
 
-async function fixture(changes = [true, true]) {
+async function fixture(changes = [true, true], { checkout = true } = {}) {
 	const root = mkdtempSync(join(tmpdir(), "jira-workflow-"));
 	onTestFinished(() => rmSync(root, { recursive: true, force: true }));
 	const workspaceRoot = join(root, "workspace");
@@ -62,7 +62,7 @@ async function fixture(changes = [true, true]) {
 		const key = `repo_${index + 1}`;
 		const repository = gitlab.addProject(
 			`team/${key}`,
-			git.seed({ owner: "team", name: key }).bare,
+			checkout ? git.seed({ owner: "team", name: key }).bare : join(root, `${key}.git`),
 		);
 		const binding = await resolveGitLabLaunchProject(client, "team", repository, "feature", key);
 		repositories.push({ ...binding.params, key, origin: "jira", sshProfile: "test" });
@@ -78,9 +78,11 @@ async function fixture(changes = [true, true]) {
 				},
 			}),
 		);
-		git.run(workspaceRoot, ["clone", repository.http_url_to_repo, key]);
-		git.run(join(workspaceRoot, key), ["checkout", "-b", "feature"]);
-		if (changed) writeFileSync(join(workspaceRoot, key, "README.md"), "# Changed\n");
+		if (checkout) {
+			git.run(workspaceRoot, ["clone", repository.http_url_to_repo, key]);
+			git.run(join(workspaceRoot, key), ["checkout", "-b", "feature"]);
+			if (changed) writeFileSync(join(workspaceRoot, key, "README.md"), "# Changed\n");
+		}
 	}
 	const repoStore: ProcessProjectRepoLike = {
 		create: () => {
@@ -331,7 +333,7 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 	});
 
 	it("keeps the ten-turn graph and links planning before work starts", async () => {
-		const f = await fixture();
+		const f = await fixture([false, false], { checkout: false });
 		expect([...f.process.turns.keys()]).toEqual([
 			"generate_plan",
 			"plan_decision",
@@ -353,7 +355,7 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 		expect(await f.jira.listComments("501")).toEqual([]);
 	});
 	it("captures current question policy at planning preparation and retains it for recovery", async () => {
-		const f = await fixture([false]);
+		const f = await fixture([false], { checkout: false });
 		const turn = required(f.process.turns.get("generate_plan")).definition;
 		if (turn.kind !== "llm") throw new Error("Expected planning");
 		const ctx = createTestWorkerProcessContext({ params: f.params, state: {} });
@@ -368,7 +370,7 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 		expect(turn.resolveAskQuestions?.({ ...ctx, prepared: refreshed })).toBe(true);
 	});
 	it("keeps questions available when the planning label read is unavailable", async () => {
-		const f = await fixture([false]);
+		const f = await fixture([false], { checkout: false });
 		vi.spyOn(f.jira, "getIssue").mockRejectedValueOnce(new Error("Jira unavailable"));
 		const prepared = await f.plan();
 		const turn = required(f.process.turns.get("generate_plan")).definition;

@@ -1,8 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it, onTestFinished } from "vitest";
+import { afterAll, describe, expect, it, onTestFinished } from "vitest";
 import { parse } from "yaml";
 import {
 	assertReleaseContext,
@@ -23,9 +23,28 @@ function git(root: string, ...args: string[]) {
 	).trimEnd();
 }
 
-function fixture() {
-	const directory = mkdtempSync(path.join(tmpdir(), "release-main-test-"));
-	onTestFinished(() => rmSync(directory, { recursive: true, force: true }));
+let baselineDirectory: string | undefined;
+afterAll(() => {
+	if (baselineDirectory) rmSync(baselineDirectory, { recursive: true, force: true });
+});
+
+function repositoryCommands(root: string) {
+	const write = (filename: string, contents: string) => {
+		mkdirSync(path.dirname(path.join(root, filename)), { recursive: true });
+		writeFileSync(path.join(root, filename), contents);
+	};
+	const writeJson = (filename: string, contents: unknown) =>
+		write(filename, `${JSON.stringify(contents, null, "\t")}\n`);
+	const commit = (message: string) => {
+		git(root, "add", "--all");
+		git(root, "commit", "--allow-empty", "-m", message);
+		git(root, "push", "origin", "main");
+		return git(root, "rev-parse", "HEAD");
+	};
+	return { write, writeJson, commit };
+}
+
+function createBaseline(directory: string) {
 	const root = path.join(directory, "source");
 	const remote = path.join(directory, "origin.git");
 	mkdirSync(root);
@@ -34,12 +53,7 @@ function fixture() {
 	git(root, "config", "user.name", "Test Author");
 	git(root, "config", "user.email", "author@example.invalid");
 	git(root, "remote", "add", "origin", remote);
-	const write = (filename: string, contents: string) => {
-		mkdirSync(path.dirname(path.join(root, filename)), { recursive: true });
-		writeFileSync(path.join(root, filename), contents);
-	};
-	const writeJson = (filename: string, contents: unknown) =>
-		write(filename, `${JSON.stringify(contents, null, "\t")}\n`);
+	const { write, writeJson, commit } = repositoryCommands(root);
 	writeJson("package.json", {
 		name: "test-root",
 		private: true,
@@ -82,18 +96,27 @@ function fixture() {
 	);
 	write("CHANGELOG.md", "# Changelog\n\n## 0.4.0\n\nHistorical release notes\n");
 	write("application.txt", "original application\n");
-	const commit = (message: string) => {
-		git(root, "add", "--all");
-		git(root, "commit", "--allow-empty", "-m", message);
-		git(root, "push", "origin", "main");
-		return git(root, "rev-parse", "HEAD");
-	};
 	commit("feat: baseline");
 	git(root, "tag", "v0.4.0");
 	git(root, "push", "origin", "--tags");
 	commit("feat: historical change that must not be backfilled");
 	writeJson("release-policy.json", { baselineTag: "v0.4.0" });
 	commit("ci: enable main releases");
+}
+
+function fixture() {
+	if (!baselineDirectory) {
+		baselineDirectory = mkdtempSync(path.join(tmpdir(), "release-main-baseline-"));
+		createBaseline(baselineDirectory);
+	}
+	const directory = mkdtempSync(path.join(tmpdir(), "release-main-test-"));
+	onTestFinished(() => rmSync(directory, { recursive: true, force: true }));
+	// Copy Git objects and refs, never share mutable checkouts or the remote with another case.
+	cpSync(baselineDirectory, directory, { recursive: true });
+	const root = path.join(directory, "source");
+	const remote = path.join(directory, "origin.git");
+	git(root, "remote", "set-url", "origin", remote);
+	const { write, writeJson, commit } = repositoryCommands(root);
 	const releases: GitHubRelease[] = [
 		{
 			tag_name: "v0.4.0",

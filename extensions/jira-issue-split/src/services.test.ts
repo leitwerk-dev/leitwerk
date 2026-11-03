@@ -168,17 +168,32 @@ async function fixture(
 	};
 }
 
-it.each([
-	"Story",
-	"Task",
-	"Bug",
-	"Change Request",
-])("splits a %s into native subtasks without Epic Link", async (sourceType) => {
-	const test = await fixture(sourceType, (jira) => {
+it("selects native subtasks for non-epic sources and preserves their publication across restart", async () => {
+	const test = await fixture("Story", (jira) => {
 		jira.epicLinkField = null;
 		jira.issueTypes[2].name = "Unteraufgabe";
 	});
-	expect(test.params.subtaskType).toEqual({ id: "10003", name: "Unteraufgabe" });
+	for (const sourceType of ["Story", "Task", "Bug", "Change Request"]) {
+		test.jira.seedIssue({
+			...test.epic,
+			fields: {
+				...test.epic.fields,
+				issuetype: { id: sourceType.toLowerCase(), name: sourceType, subtask: false },
+			},
+		});
+		const launch = await launchSplit(test.services, {
+			jiraProfile: "team",
+			gitlabProfile: "team",
+			sshProfile: "team",
+			epic: test.epic.key,
+			groups: "team",
+		});
+		expect(launch.params, sourceType).toMatchObject({
+			issueType: "Sub-task",
+			subtaskType: { id: "10003", name: "Unteraufgabe" },
+		});
+	}
+	test.jira.seedIssue(test.epic);
 	const result = await test.publish();
 	expect(test.jira.creations[0]).toMatchObject({
 		parent: { id: "10" },

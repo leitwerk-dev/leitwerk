@@ -3,7 +3,7 @@ import { jiraFixture } from "./jira-gitlab-fixture.js";
 
 /** @internal */
 export async function independentRepositoryRepair({ onTestFinished }: TestContext) {
-	const f = await jiraFixture(onTestFinished);
+	const f = await jiraFixture(onTestFinished, { skipSimplification: true });
 	const id = await f.launch();
 	const secondHead = f.remote(id, "repo_2").headSha;
 	f.gitlab.pipeline(f.gitlab.state.mrs[0], "failed");
@@ -27,7 +27,7 @@ export async function independentRepositoryRepair({ onTestFinished }: TestContex
 
 /** @internal */
 export async function feedbackCiBudget({ onTestFinished }: TestContext) {
-	const f = await jiraFixture(onTestFinished);
+	const f = await jiraFixture(onTestFinished, { skipSimplification: true });
 	const id = await f.launch();
 	const second = f.gitlab.state.mrs[1];
 	const before = f.remote(id, "repo_2").headSha;
@@ -77,7 +77,7 @@ export async function feedbackCiBudget({ onTestFinished }: TestContext) {
 
 /** @internal */
 export async function noChangeCiRepair({ onTestFinished }: TestContext) {
-	const f = await jiraFixture(onTestFinished);
+	const f = await jiraFixture(onTestFinished, { skipSimplification: true });
 	const id = await f.launch();
 	f.setRepair("none");
 	const mr = f.gitlab.state.mrs[0];
@@ -159,7 +159,7 @@ export async function noChangeCiRepair({ onTestFinished }: TestContext) {
 
 /** @internal */
 export async function directFeedback({ onTestFinished }: TestContext) {
-	const f = await jiraFixture(onTestFinished);
+	const f = await jiraFixture(onTestFinished, { skipSimplification: true });
 	const id = await f.launch();
 	const records = () => f.harness.ctx.deps.turnRecords.listByInstance(id);
 	const deliveryRecords = () => records().filter((turn) => turn.turnId === "deliver_change");
