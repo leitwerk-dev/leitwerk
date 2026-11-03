@@ -5,6 +5,7 @@ import {
 	patchPublicationState,
 	readPublicationState,
 } from "@leitwerk-dev/coding/repository-change-publication";
+import { asUnknownRecord } from "@leitwerk-dev/domain";
 import {
 	createTestProcessInstance,
 	createTestProcessProject,
@@ -33,7 +34,8 @@ function required<T>(value: T | null | undefined): T {
 const gitSeeds = new LocalGitSeedCache();
 afterAll(() => gitSeeds.close());
 
-async function fixture(changes = [true, true], { checkout = true } = {}) {
+async function fixture(changes = [true, true], { checkout = true, published = false } = {}) {
+	checkout = checkout && !published;
 	const root = mkdtempSync(join(tmpdir(), "jira-workflow-"));
 	onTestFinished(() => rmSync(root, { recursive: true, force: true }));
 	const workspaceRoot = join(root, "workspace");
@@ -41,6 +43,19 @@ async function fixture(changes = [true, true], { checkout = true } = {}) {
 	const git = new LocalGit(root);
 	const gitlab = new LocalGitLabAdapter(root);
 	const client = gitlab.client();
+	if (published) {
+		// Completion depends on provider facts, not checkout or Git execution.
+		client.getMergeRequest = async (id, iid) =>
+			structuredClone(
+				required(gitlab.state.mrs.find((mr) => mr.project_id === id && mr.iid === iid)),
+			);
+		client.getBranch = async (_id, branch) => ({
+			name: branch,
+			can_push: true,
+			protected: false,
+			commit: { id: "b".repeat(40), parent_ids: [], message: "Published base" },
+		});
+	}
 	const jira = new LocalJiraSplitAdapter();
 	const issue: JiraIssue = {
 		id: "501",
@@ -167,6 +182,59 @@ async function fixture(changes = [true, true], { checkout = true } = {}) {
 			);
 		},
 	});
+	if (published) {
+		required(jira.issues.get("501")).fields.status = {
+			name: "In Review",
+			statusCategory: { key: "indeterminate" },
+		};
+		for (const [index, repository] of repositories.entries()) {
+			const project = required(projects.get(repository.key));
+			if (!changes[index]) {
+				state = patchPublicationState(state, `jiraGitLabChange:${repository.key}`, {
+					noChanges: true,
+				});
+				continue;
+			}
+			const mr = {
+				iid: gitlab.state.mrs.length + 1,
+				project_id: repository.projectId,
+				source_project_id: repository.projectId,
+				target_project_id: repository.projectId,
+				title: "Published change",
+				description: "Linked to APP-1",
+				state: "opened" as const,
+				labels: ["leitwerk-active"],
+				sha: "a".repeat(40),
+				source_branch: repository.workBranch,
+				target_branch: repository.baseBranch,
+				web_url: `${gitlab.baseUrl}/team/${repository.key}/-/merge_requests/1`,
+			};
+			gitlab.state.mrs.push(mr);
+			projects.set(repository.key, {
+				...project,
+				externalId: String(mr.iid),
+				externalUrl: mr.web_url,
+				metadata: {
+					...project.metadata,
+					gitlab: { ...asUnknownRecord(project.metadata?.gitlab), iid: mr.iid },
+				},
+			});
+			state = patchPublicationState(state, `jiraGitLabChange:${repository.key}`, {
+				headSha: mr.sha,
+				prNumber: mr.iid,
+				prUrl: mr.web_url,
+				delivery: { stage: "awaiting", issueLinked: true },
+			});
+			await context("deliver_change").callIntegrationTool("jira_ensure_remote_link", {
+				projectKey: repository.key,
+				kind: "merge_request",
+			});
+		}
+		await context("deliver_change").callIntegrationTool("jira_ensure_remote_link", {
+			projectKey: repositories[0].key,
+			kind: "process",
+		});
+	}
 	return {
 		git,
 		workspaceRoot,
@@ -460,9 +528,7 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 	])("enters verification only after all created MRs merge (changes: $changes)", async ({
 		changes,
 	}) => {
-		const f = await fixture(changes);
-		await f.plan();
-		await f.deliver();
+		const f = await fixture(changes, { published: true });
 		const transition = vi.spyOn(f.jira, "transitionIssue");
 		if (f.gitlab.state.mrs.length > 1) {
 			f.gitlab.state.mrs[0].state = "merged";
@@ -483,9 +549,7 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 		expect(await f.jira.listComments("501")).toEqual([]);
 	});
 	it("keeps partial completion In Review", async () => {
-		const f = await fixture();
-		await f.plan();
-		await f.deliver();
+		const f = await fixture([true, true], { published: true });
 		f.gitlab.state.mrs[0].state = "merged";
 		f.gitlab.state.mrs[1].state = "closed";
 		expect((await f.deliver()).outcome).toBe("completed");
@@ -493,9 +557,7 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 		expect((await f.jira.getIssue("501")).fields.labels).toEqual([]);
 	});
 	it("keeps completion labels pending until verification can be retried", async () => {
-		const f = await fixture([true]);
-		await f.plan();
-		await f.deliver();
+		const f = await fixture([true], { published: true });
 		f.gitlab.state.mrs[0].state = "merged";
 		const verification = required(
 			f.jira.transitions.find((t) => t.to.name === "Ready for Verification"),
@@ -515,9 +577,7 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 		"closed",
 		"cancelled",
 	])("preserves %s outcome/label behavior without Jira comments", async (outcome) => {
-		const f = await fixture([true]);
-		await f.plan();
-		await f.deliver();
+		const f = await fixture([true], { published: true });
 		if (outcome === "cancelled") required(f.jira.issues.get("501")).fields.labels = [];
 		else f.gitlab.state.mrs[0].state = outcome;
 		const result = await f.deliver();
