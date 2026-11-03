@@ -222,16 +222,19 @@ describe("Forgejo repository-change composed integration", () => {
 		const implementationTurn = fixture.piTurns.find((turn) => turn.kind === "implementation");
 		expect(implementationTurn).toBeDefined();
 
-		for (const overrides of [
-			{ branch: "main", commit: head1, status: "failure" },
-			{ branch: constants.workBranch, commit: fixture.git.initialSha, status: "failure" },
-			{ branch: constants.workBranch, commit: head1, status: "success" },
-		]) {
-			await fixture.publishPipeline({ id: 501, number: 1, event: "push", ...overrides });
-			const waiting = await fixture.waitForTurn(instanceId, "deliver_change");
-			expect(remoteState(waiting)).toMatchObject({ headSha: head1, pipeline: null });
-			expect(fixture.piTurns.filter((turn) => turn.kind === "ci-repair")).toEqual([]);
-		}
+		// Keep one provider-to-process rejection; the provider suite owns the
+		// branch/revision/status matrix without repeating composed observations.
+		await fixture.publishPipeline({
+			id: 501,
+			number: 1,
+			event: "push",
+			branch: constants.workBranch,
+			commit: head1,
+			status: "success",
+		});
+		const ignored = await fixture.waitForTurn(instanceId, "deliver_change");
+		expect(remoteState(ignored)).toMatchObject({ headSha: head1, pipeline: null });
+		expect(fixture.piTurns.filter((turn) => turn.kind === "ci-repair")).toEqual([]);
 
 		await fixture.publishPipeline({
 			id: 501,
