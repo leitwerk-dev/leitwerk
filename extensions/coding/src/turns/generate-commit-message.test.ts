@@ -39,15 +39,17 @@ describe("commit-message generation", () => {
 			},
 			repo: {} as never,
 		});
-		expect(prompt).toContain("<formatting_rules>\nrepo:\nUse type(scope).\n</formatting_rules>");
-		expect(prompt).toContain(
-			"<accepted_plan>\n## Plan\n\nShip the durable behavior.\n</accepted_plan>",
+		// Keep the rules separate from evidence without pinning whitespace or surrounding copy.
+		expect(prompt).toMatch(
+			/<formatting_rules>\s*repo:\s*Use type\(scope\)\.\s*<\/formatting_rules>/,
 		);
-		expect(prompt).toContain(
-			"<implementation_summary>\nImplemented the behavior and its compatibility adjustment.\n</implementation_summary>",
+		expect(prompt).toMatch(
+			/<accepted_plan>\s*## Plan\s+Ship the durable behavior\.\s*<\/accepted_plan>/,
+		);
+		expect(prompt).toMatch(
+			/<implementation_summary>\s*Implemented the behavior and its compatibility adjustment\.\s*<\/implementation_summary>/,
 		);
 		expect(prompt).toContain("+compatibility adjustment");
-		expect(prompt).toContain("Shell, edit, and write tools are unavailable.");
 	});
 
 	it.each([

@@ -11,10 +11,13 @@ import { LocalJiraSplitAdapter } from "@leitwerk-dev/jira/testing";
 import { createAcceptedWorkerTurn } from "@leitwerk-dev/server/testing";
 import { createPollingTestExtension } from "@leitwerk-dev/test-support";
 import { createPersistentIntegrationFixture } from "@leitwerk-dev/test-support/integration";
-import { LocalGit } from "@leitwerk-dev/test-support/local-git";
-import { describe, expect, it, onTestFinished, vi } from "vitest";
+import { LocalGit, LocalGitSeedCache } from "@leitwerk-dev/test-support/local-git";
+import { afterAll, describe, expect, it, onTestFinished, vi } from "vitest";
 import { createJiraGitLabChange } from "./index.js";
 import type { JiraGitLabParams, RepositoryBinding } from "./launch.js";
+
+const gitSeeds = new LocalGitSeedCache();
+afterAll(() => gitSeeds.close());
 
 async function fixture(changes = [true, true], verificationOnMerge = true) {
 	const persistent = createPersistentIntegrationFixture("jira-maintenance-");
@@ -69,7 +72,7 @@ async function fixture(changes = [true, true], verificationOnMerge = true) {
 	let state = change.process.stateCodec.parse({});
 	for (const [index, changed] of changes.entries()) {
 		const key = `repo_${index + 1}`;
-		const bare = git.seed({ owner: "team", name: key }).bare;
+		const bare = gitSeeds.copy(git, { owner: "team", name: key });
 		git.run(bare, ["branch", "feature", "main"]);
 		const project = gitlab.addProject(`team/${key}`, bare);
 		const binding = await resolveGitLabLaunchProject(

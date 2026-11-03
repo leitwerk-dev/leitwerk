@@ -1,9 +1,8 @@
-import { execFileSync } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { resolveGitBinary } from "@leitwerk-dev/process-sdk/git-binary";
-import { afterAll, describe, expect, it, onTestFinished } from "vitest";
+import { describe, expect, it } from "vitest";
+import { createGitFixture, runGit } from "../git-fixture.test-fixture.js";
 import {
 	prepareRebase,
 	publishRebase,
@@ -23,27 +22,16 @@ function git(path: string, ...args: string[]) {
 		"GIT_COMMITTER_DATE",
 	])
 		delete env[name];
-	return execFileSync(resolveGitBinary(), args, {
-		cwd: path,
-		encoding: "utf8",
-		env: {
-			...env,
-			GIT_CONFIG_NOSYSTEM: "1",
-			GIT_CONFIG_GLOBAL: "/dev/null",
-			GIT_EDITOR: "true",
-		},
-		stdio: ["ignore", "pipe", "pipe"],
-	}).trim();
+	return runGit(path, args, {
+		...env,
+		GIT_CONFIG_NOSYSTEM: "1",
+		GIT_CONFIG_GLOBAL: "/dev/null",
+		GIT_EDITOR: "true",
+	});
 }
-const templates = new Map<boolean, ReturnType<typeof createTemplate>>();
-const templateRoot = mkdtempSync(join(tmpdir(), "rebase-templates-"));
-afterAll(() => {
-	rmSync(templateRoot, { recursive: true, force: true });
-	templates.clear();
-});
+const copyRepositories = createGitFixture(createTemplate);
 
-function createTemplate(conflicting: boolean) {
-	const root = mkdtempSync(join(templateRoot, "repo-"));
+function createTemplate(root: string, conflicting = true) {
 	git(root, "init", "--bare", "remote.git");
 	git(root, "clone", "remote.git", "work");
 	const path = join(root, "work");
@@ -65,20 +53,11 @@ function createTemplate(conflicting: boolean) {
 	const baseSha = git(path, "rev-parse", "HEAD");
 	git(path, "checkout", "work");
 	git(path, "push", "origin", "main", "work");
-	return { root, headSha, baseSha };
+	return { headSha, baseSha };
 }
 
 function fixture(conflicting = true) {
-	let template = templates.get(conflicting);
-	if (!template) {
-		template = createTemplate(conflicting);
-		templates.set(conflicting, template);
-	}
-	const root = mkdtempSync(join(tmpdir(), "rebase-test-"));
-	onTestFinished(() => rmSync(root, { recursive: true, force: true }));
-	// Copy both repositories, including Git objects, so repair and remote mutation
-	// never touch the templates or another scenario's checkout/remote.
-	cpSync(template.root, root, { recursive: true });
+	const { root, data: template } = copyRepositories(conflicting);
 	const path = join(root, "work");
 	git(path, "remote", "set-url", "origin", join(root, "remote.git"));
 	const input: RebaseInput = {

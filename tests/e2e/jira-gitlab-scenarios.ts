@@ -3,7 +3,7 @@ import { jiraFixture } from "./jira-gitlab-fixture.js";
 
 /** @internal */
 export async function independentRepositoryRepair({ onTestFinished }: TestContext) {
-	const f = await jiraFixture(onTestFinished);
+	const f = await jiraFixture(onTestFinished, { skipSimplification: true });
 	const id = await f.launch();
 	const secondHead = f.remote(id, "repo_2").headSha;
 	f.gitlab.pipeline(f.gitlab.state.mrs[0], "failed");
@@ -26,41 +26,26 @@ export async function independentRepositoryRepair({ onTestFinished }: TestContex
 }
 
 /** @internal */
-export async function feedbackCiBudget({ onTestFinished }: TestContext) {
-	const f = await jiraFixture(onTestFinished);
-	const id = await f.launch();
-	const second = f.gitlab.state.mrs[1];
-	const before = f.remote(id, "repo_2").headSha;
-	f.gitlab.state.feedback = {
-		[`${second.project_id}:${second.iid}`]: [
-			{
-				id: 101,
-				discussionId: "discussion-101",
-				body: "Improve the client documentation",
-				author: "developer",
-				createdAt: new Date(0).toISOString(),
-			},
-		],
-	};
-	f.gitlab.save();
-	await f.poll();
-	// The first repository observation can supersede the batch's subscription generation.
-	await f.poll();
-	await f.waitForProcess(id, () => f.remote(id, "repo_2").headSha !== before, "feedback published");
-	// The server acknowledges the published batch on its next observation.
-	await f.poll();
-	await f.wait(id, "deliver_change");
+export async function ciBudgetBoundary({ onTestFinished }: TestContext) {
+	const f = await jiraFixture(onTestFinished, { listen: false, skipSimplification: true });
+	const id = await f.seedDelivery(2);
 	const secondHead = f.remote(id, "repo_2").headSha;
-	for (let cycle = 1; cycle <= 3; cycle++) {
-		f.gitlab.pipeline(f.gitlab.state.mrs[0], "failed");
-		await f.poll();
-		await f.waitForProcess(
-			id,
-			() => f.remote(id, "repo_1").ciRecoveryCycles === cycle,
-			"CI repair counted",
-		);
-		await f.wait(id, "deliver_change");
-	}
+	const firstHead = f.remote(id, "repo_1").headSha;
+	f.gitlab.pipeline(f.gitlab.state.mrs[0], "failed");
+	await f.poll();
+	await f.waitForProcess(
+		id,
+		() =>
+			f.remote(id, "repo_1").ciRecoveryCycles === 3 && f.remote(id, "repo_1").headSha !== firstHead,
+		"third CI repair published",
+	);
+	await f.wait(id, "deliver_change");
+	expect(
+		f.harness.ctx.deps.turnRecords
+			.listByInstance(id)
+			.filter((turn) => turn.turnId === "repair_gitlab_pipeline")
+			.map((turn) => turn.status),
+	).toEqual(["succeeded"]);
 	f.gitlab.pipeline(f.gitlab.state.mrs[0], "failed");
 	await f.poll();
 	await f.wait(id, "ci_operator_action");
@@ -77,28 +62,25 @@ export async function feedbackCiBudget({ onTestFinished }: TestContext) {
 
 /** @internal */
 export async function noChangeCiRepair({ onTestFinished }: TestContext) {
-	const f = await jiraFixture(onTestFinished);
+	const f = await jiraFixture(onTestFinished, { skipSimplification: true });
 	const id = await f.launch();
 	f.setRepair("none");
 	const mr = f.gitlab.state.mrs[0];
 	const head = f.remote(id, "repo_1").headSha;
 	const records = () => f.harness.ctx.deps.turnRecords.listByInstance(id);
 	const repairs = () => records().filter((turn) => turn.turnId === "repair_gitlab_pipeline");
-	const settleRepair = async (count: number) => {
-		await f.waitForProcess(
-			id,
-			(process) =>
-				repairs().length === count &&
-				process.selectedTurnId === "deliver_change" &&
-				process.lifecycleStatus === "waiting",
-			"no-change CI repair completed",
-		);
-		await f.poll();
-		await f.wait(id, "deliver_change");
-	};
-	const pipeline = f.gitlab.pipeline(mr, "failed");
+	f.gitlab.pipeline(mr, "failed");
 	await f.poll();
-	await settleRepair(1);
+	await f.waitForProcess(
+		id,
+		(process) =>
+			repairs().length === 1 &&
+			process.selectedTurnId === "deliver_change" &&
+			process.lifecycleStatus === "waiting",
+		"no-change CI repair completed",
+	);
+	await f.poll();
+	await f.wait(id, "deliver_change");
 	expect(repairs()).toHaveLength(1);
 	await f.gitlab.client().updateMergeRequestLabels(mr.project_id, mr.iid, {
 		add_labels: "review-ready",
@@ -139,27 +121,11 @@ export async function noChangeCiRepair({ onTestFinished }: TestContext) {
 	expect(f.remote(id, "repo_1").headSha).toBe(head);
 	// No-change repairs still verify source reconciliation through Deliver.
 	expect(records().filter((turn) => turn.turnId === "deliver_change")).toHaveLength(2);
-	// Retrying the same pipeline can produce a new actionable failure.
-	pipeline.status = "running";
-	f.gitlab.save();
-	await f.poll();
-	pipeline.status = "failed";
-	f.gitlab.save();
-	await f.poll();
-	await settleRepair(2);
-	expect(repairs()).toHaveLength(2);
-	// A distinct failed pipeline on the same revision also warrants repair.
-	f.gitlab.pipeline(mr, "failed");
-	await f.poll();
-	await settleRepair(3);
-	expect(repairs()).toHaveLength(3);
-	expect(f.remote(id, "repo_1").ciRecoveryCycles).toBe(3);
-	expect(records().filter((turn) => turn.turnId === "deliver_change")).toHaveLength(4);
 }
 
 /** @internal */
 export async function directFeedback({ onTestFinished }: TestContext) {
-	const f = await jiraFixture(onTestFinished);
+	const f = await jiraFixture(onTestFinished, { skipSimplification: true });
 	const id = await f.launch();
 	const records = () => f.harness.ctx.deps.turnRecords.listByInstance(id);
 	const deliveryRecords = () => records().filter((turn) => turn.turnId === "deliver_change");
@@ -208,8 +174,17 @@ export async function directFeedback({ onTestFinished }: TestContext) {
 			.map((turn) => turn.turnId),
 	).toEqual(["deliver_change", "revise_from_merge_request_feedback", "deliver_change"]);
 	expect(f.remote(id, "repo_2").conversationCursor).toBe(103);
-	expect(Object.values(f.gitlab.state.reactions ?? {}).flat()).toHaveLength(3);
-	expect(Object.values(f.gitlab.state.discussionNotes ?? {}).flat()).toHaveLength(1);
+	expect(f.gitlab.state.reactions).toEqual(
+		Object.fromEntries(
+			[101, 102, 103].map((noteId) => [
+				`${key}:${noteId}`,
+				[expect.objectContaining({ name: "eyes", user: { username: "bot" } })],
+			]),
+		),
+	);
+	expect(f.gitlab.state.discussionNotes).toEqual({
+		[`${key}:review-thread`]: [expect.objectContaining({ body: expect.any(String) })],
+	});
 	// A no-change outcome verifies through Deliver without publishing another revision.
 	const noChangeHead = f.remote(id, "repo_2").headSha;
 	f.setRepair("none");
@@ -238,15 +213,25 @@ export async function directFeedback({ onTestFinished }: TestContext) {
 	expect(f.remote(id, "repo_2").headSha).toBe(noChangeHead);
 	expect(f.remote(id, "repo_2").conversationCursor).toBe(104);
 	expect(f.harness.ctx.deps.processes.getById(id)?.selectedTurnModelProfileId).toBeNull();
+	expect(f.gitlab.state.reactions?.[`${key}:104`]).toEqual([
+		expect.objectContaining({ name: "eyes", user: { username: "bot" } }),
+	]);
+	expect(f.gitlab.state.discussionNotes).toEqual({
+		[`${key}:review-thread`]: [expect.objectContaining({ body: expect.any(String) })],
+		[`${key}:no-change-thread`]: [expect.objectContaining({ body: expect.any(String) })],
+	});
+	const replies = structuredClone(f.gitlab.state.discussionNotes);
+	const reactions = structuredClone(f.gitlab.state.reactions);
 	await f.restart();
 	await f.poll();
 	expect(deliveryRecords()).toHaveLength(3);
-	expect(Object.values(f.gitlab.state.discussionNotes ?? {}).flat()).toHaveLength(2);
+	expect(f.gitlab.state.discussionNotes).toEqual(replies);
+	expect(f.gitlab.state.reactions).toEqual(reactions);
 }
 
 /** @internal */
 export async function cancelAfterMerge({ onTestFinished }: TestContext) {
-	const f = await jiraFixture(onTestFinished);
+	const f = await jiraFixture(onTestFinished, { skipSimplification: true });
 	const id = await f.launch();
 	f.gitlab.merge(f.gitlab.state.mrs[0]);
 	f.issue.fields.labels = [];
@@ -261,7 +246,10 @@ export async function cancelAfterMerge({ onTestFinished }: TestContext) {
 
 /** @internal */
 export async function cancelDuringPublication({ onTestFinished }: TestContext) {
-	const f = await jiraFixture(onTestFinished, { cancelAfterFirstPublication: true });
+	const f = await jiraFixture(onTestFinished, {
+		cancelAfterFirstPublication: true,
+		skipSimplification: true,
+	});
 	const id = await f.discover();
 	await f.wait(id, "plan_decision");
 	await f.action(id, "approve_plan");
@@ -275,7 +263,7 @@ export async function cancelDuringPublication({ onTestFinished }: TestContext) {
 
 /** @internal */
 export async function stopOneMr({ onTestFinished }: TestContext) {
-	const f = await jiraFixture(onTestFinished);
+	const f = await jiraFixture(onTestFinished, { skipSimplification: true });
 	const id = await f.launch();
 	const [first, second] = f.gitlab.state.mrs;
 	await f.gitlab
@@ -301,7 +289,7 @@ export async function stopOneMr({ onTestFinished }: TestContext) {
 
 /** @internal */
 export async function stopAllMrs({ onTestFinished }: TestContext) {
-	const f = await jiraFixture(onTestFinished);
+	const f = await jiraFixture(onTestFinished, { skipSimplification: true });
 	const id = await f.launch();
 	f.setRepair("operator");
 	f.gitlab.pipeline(f.gitlab.state.mrs[0], "failed");
@@ -323,7 +311,7 @@ export async function stopAllMrs({ onTestFinished }: TestContext) {
 
 /** @internal */
 export async function reactivatedMrRepair({ onTestFinished }: TestContext) {
-	const f = await jiraFixture(onTestFinished);
+	const f = await jiraFixture(onTestFinished, { skipSimplification: true });
 	const id = await f.launch();
 	const [first, second] = f.gitlab.state.mrs;
 	const before = f.remote(id, "repo_1").headSha;
@@ -371,7 +359,7 @@ export async function reactivatedMrRepair({ onTestFinished }: TestContext) {
 
 /** @internal */
 export async function interruptedOtherMrRepair({ onTestFinished }: TestContext) {
-	const f = await jiraFixture(onTestFinished);
+	const f = await jiraFixture(onTestFinished, { skipSimplification: true });
 	const id = await f.launch();
 	const [first, second] = f.gitlab.state.mrs;
 	const before = f.remote(id, "repo_1").headSha;

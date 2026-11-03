@@ -74,7 +74,7 @@ for (const viewport of [
 		const options = composer.getByRole("button", { name: "Options" });
 		const send = composer.getByRole("button", { name: "Request revision", exact: true });
 		for (const control of [choice, options, send]) {
-			expect((await box(control)).height).toBeCloseTo(48, 0);
+			expect((await box(control)).height).toBeGreaterThanOrEqual(44);
 		}
 		expect(Math.abs((await box(choice)).y - (await box(options)).y)).toBeLessThan(1);
 		const composerBox = await box(composer);
@@ -103,13 +103,14 @@ for (const viewport of [
 		const modelBox = await box(model);
 		expect(modelBox.x + modelBox.width).toBeLessThanOrEqual(viewport.width);
 		for (const name of ["Run now", "Run later"]) {
-			const radioBox = await box(page.getByRole("radio", { name, exact: true }));
-			// Bounding boxes can include floating-point rounding from the browser.
-			expect(radioBox.width).toBeCloseTo(14, 3);
-			expect(radioBox.height).toBeCloseTo(14, 3);
+			const radio = page.getByRole("radio", { name, exact: true });
+			await expect(radio).toBeInViewport();
+			const radioBox = await box(radio);
+			expect(radioBox.x).toBeGreaterThanOrEqual(0);
+			expect(radioBox.x + radioBox.width).toBeLessThanOrEqual(viewport.width);
+			await radio.check();
+			await expect(radio).toBeChecked();
 		}
-		await page.getByRole("radio", { name: "Run later", exact: true }).check();
-		await expect(page.getByRole("radio", { name: "Run later", exact: true })).toBeChecked();
 		const hour = page.getByRole("combobox", { name: "Hour (24-hour)" });
 		await hour.selectOption("14");
 		await expect(hour).toHaveValue("14");

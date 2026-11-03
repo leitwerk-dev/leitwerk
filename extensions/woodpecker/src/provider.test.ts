@@ -82,11 +82,18 @@ describe("createWoodpeckerProvider", () => {
 		);
 	});
 
-	it("still requires the configured branch for push pipelines", async () => {
-		const { provider, fire } = fixture([pipeline({ event: "push", branch: "main" })]);
+	it.each([
+		["wrong push branch", { branch: "main" }],
+		["stale push revision", { commit: "old-head" }],
+		["stale pull-request revision", { event: "pull_request", branch: "main", commit: "old-head" }],
+		["successful CI outside the requested statuses", { status: "success" }],
+	] satisfies [
+		string,
+		Partial<Pipeline>,
+	][])("does not fire for %s", async (_condition, overrides) => {
+		const { provider, fire } = fixture([pipeline(overrides)], { statuses: ["failure"] });
 
-		await provider.poll();
-
+		expect((await provider.poll()).errors).toEqual([]);
 		expect(fire).not.toHaveBeenCalled();
 	});
 

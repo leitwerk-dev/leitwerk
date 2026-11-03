@@ -3,8 +3,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import coding from "@leitwerk-dev/coding";
-import { readPublicationState } from "@leitwerk-dev/coding/repository-change-publication";
-import { SYSTEM_ACTOR } from "@leitwerk-dev/domain";
+import {
+	patchPublicationState,
+	readPublicationState,
+} from "@leitwerk-dev/coding/repository-change-publication";
+import { asUnknownRecord, SYSTEM_ACTOR } from "@leitwerk-dev/domain";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import { gitSshIntegration } from "@leitwerk-dev/git-ssh";
 import type { GitLabMaintenance } from "@leitwerk-dev/gitlab";
@@ -18,6 +21,7 @@ import jira, {
 import { LocalJiraSplitAdapter as LocalJiraAdapter } from "@leitwerk-dev/jira/testing";
 import { createJiraGitLabChange, type JiraGitLabParams } from "@leitwerk-dev/jira-gitlab-change";
 import type { CoreServerSetupDeps } from "@leitwerk-dev/process-sdk";
+import { createAcceptedWorkerTurn } from "@leitwerk-dev/server/testing";
 import { createPollingTestExtension, fixtureModelProviders } from "@leitwerk-dev/test-support";
 import {
 	createIntegrationHarness,
@@ -25,17 +29,21 @@ import {
 	type IntegrationHarness,
 	waitForValue,
 } from "@leitwerk-dev/test-support/integration";
-import { LocalGit } from "@leitwerk-dev/test-support/local-git";
+import { LocalGit, LocalGitSeedCache } from "@leitwerk-dev/test-support/local-git";
 import {
 	createInProcessWorkerSpawn,
 	formatBranchText,
 	StubPiTreeHandleFactory,
 } from "@leitwerk-dev/test-support/worker-testing";
-import { expect } from "vitest";
+import { afterAll, expect } from "vitest";
+
+const gitSeeds = new LocalGitSeedCache();
+afterAll(() => gitSeeds.close());
 
 export async function jiraFixture(
 	onFinished: (fn: () => Promise<void>) => void,
 	options: {
+		listen?: boolean;
 		skipPlan?: boolean;
 		skipSimplification?: boolean;
 		noChanges?: boolean;
@@ -72,8 +80,8 @@ esac
 	);
 	if (options.toolchainUnavailable) writeFileSync(toolchainFailure, "");
 	const git = new LocalGit(root);
-	const remotes = ["service", "client"].map(
-		(name) => git.seed({ owner: "team", name, files: { "README.md": `${name}\n` } }).bare,
+	const remotes = ["service", "client"].map((name) =>
+		gitSeeds.copy(git, { owner: "team", name, files: { "README.md": `${name}\n` } }),
 	);
 	const gitlab = new LocalGitLabAdapter(root);
 	remotes.forEach((bare, i) => {
@@ -375,7 +383,8 @@ esac
 			actor: SYSTEM_ACTOR,
 		});
 	}
-	await harness.ctx.listen({ host: "127.0.0.1", port: 0, useBoundAddressAsBaseUrl: true });
+	if (options.listen !== false)
+		await harness.ctx.listen({ host: "127.0.0.1", port: 0, useBoundAddressAsBaseUrl: true });
 	const driver = createProcessDriver(() => harness.ctx);
 	// Repository Git and tool preparation share the full suite's subprocess load.
 	const wait: typeof driver.wait = (id, turn, lifecycle = "waiting", timeout = 30000) =>
@@ -545,6 +554,72 @@ esac
 				30000,
 			);
 			return id;
+		},
+		async seedDelivery(ciRecoveryCycles: number) {
+			if (options.listen !== false) throw new Error("Seed delivery before listener startup");
+			// Publication is covered by full-workflow cases. Seed only its durable
+			// preconditions; observations, repairs, acceptance and restart remain real.
+			const launch = await flow.launcher.resolve({
+				profile: "team",
+				projects: ["100"],
+				issue,
+				triggerLabel: "use-leitwerk-beta",
+			});
+			if (!launch.projects?.length) throw new Error("Missing seeded projects");
+			let state = flow.process.stateCodec.parse({});
+			const requests = launch.params.repositories.map((repository) => {
+				git.run(repository.repoLocator, ["branch", repository.workBranch, repository.baseBranch]);
+				const project = gitlab.state.projects.find(
+					(project) => project.id === repository.projectId,
+				);
+				if (!project) throw new Error("Missing seeded project");
+				const request = gitlab.openMr(project, repository.workBranch);
+				state = patchPublicationState(state, `jiraGitLabChange:${repository.key}`, {
+					headSha: request.sha,
+					prNumber: request.iid,
+					prUrl: request.web_url,
+					ciRecoveryCycles: repository.key === "repo_1" ? ciRecoveryCycles : 0,
+					delivery: { stage: "awaiting", issueLinked: true },
+				});
+				return request;
+			});
+			issue.fields.status = { name: "In Review", statusCategory: { key: "indeterminate" } };
+			const process = harness.ctx.deps.processes.create({
+				processId: launch.processId,
+				title: launch.title,
+				externalId: launch.externalId,
+				externalUrl: launch.externalUrl,
+				selectedTurnId: "deliver_change",
+				lifecycleStatus: "waiting",
+				paramsJson: JSON.stringify(launch.params),
+				stateJson: JSON.stringify(state),
+			});
+			for (const [index, project] of launch.projects.entries()) {
+				const request = requests[index];
+				harness.ctx.deps.projects.create({
+					...project,
+					instanceId: process.id,
+					externalId: String(request.iid),
+					externalUrl: request.web_url,
+					metadata: {
+						...project.metadata,
+						gitlab: { ...asUnknownRecord(project.metadata?.gitlab), iid: request.iid },
+					},
+				});
+			}
+			createAcceptedWorkerTurn(harness.ctx, {
+				id: `delivery_${process.id}`,
+				instanceId: process.id,
+				turnId: "deliver_change",
+				turnType: "automatic",
+				status: "succeeded",
+				startedAt: new Date(clock).toISOString(),
+				endedAt: new Date(clock).toISOString(),
+			});
+			await harness.ctx.listen({ host: "127.0.0.1", port: 0, useBoundAddressAsBaseUrl: true });
+			await poll();
+			await wait(process.id, "deliver_change");
+			return process.id;
 		},
 		async restart() {
 			await harness.ctx.app.close();
