@@ -12,6 +12,7 @@ import { createDefu } from "defu";
 import * as v from "valibot";
 import { parse as parseYaml } from "yaml";
 import { resolveApiTokenPolicy } from "../auth/api-token-policy.js";
+import { policyErrors } from "../auth/oidc-evidence.js";
 import { normalizeRepositoryLocator } from "../commit-message-policy.js";
 import { resolveDockerRegistryCredentials } from "../docker-registry-credentials.js";
 import { isValidStorageSize } from "../process-storage-size.js";
@@ -122,6 +123,20 @@ export function loadConfigFromFile(filePath: string): ConfigLoadResult | ConfigL
 			};
 		}
 		const config = applyConfigDefaults(parsedRecord.output);
+		for (const [index, provider] of (config.auth?.providers ?? []).entries()) {
+			if (provider.kind !== "oidc" || typeof provider.client_secret !== "string") continue;
+			provider.client_secret = provider.client_secret.replace(
+				/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g,
+				(_placeholder, variable: string) => {
+					const value = process.env[variable];
+					if (!value)
+						throw new Error(
+							`auth.providers[${index}].client_secret: environment variable ${variable} is missing or empty`,
+						);
+					return value;
+				},
+			);
+		}
 		const errors = validateResolvedConfig(config as unknown as Record<string, unknown>);
 		if (errors.length > 0) {
 			return { ok: false, error: `Config validation errors:\n${errors.join("\n")}` };
@@ -164,6 +179,16 @@ const authOidcProviderSchema = v.looseObject({
 	redirect_uri: v.optional(authNonEmptyString),
 	scopes: v.optional(v.pipe(stringArraySchema, v.nonEmpty())),
 	identity_claim: v.optional(authNonEmptyString),
+	access: v.optional(
+		v.strictObject({
+			mode: v.picklist(["all", "restricted"]),
+			match: v.optional(v.picklist(["all", "any"])),
+			users: v.optional(v.array(authNonEmptyString)),
+			groups: v.optional(v.array(authNonEmptyString)),
+			groups_claim: v.optional(authNonEmptyString),
+			email_domains: v.optional(v.array(authNonEmptyString)),
+		}),
+	),
 });
 
 const authGithubProviderSchema = v.looseObject({
@@ -821,6 +846,15 @@ function collectAuthConfigErrors(config: LeitwerkConfig): string[] {
 		resolveApiTokenPolicy(auth?.api_tokens);
 	} catch (error) {
 		errors.push(error instanceof Error ? error.message : "Invalid auth.api_tokens configuration");
+	}
+	for (const [index, provider] of (auth?.providers ?? []).entries()) {
+		if (provider.kind === "oidc" && provider.access) {
+			errors.push(
+				...policyErrors(provider.access, auth?.allowlist !== undefined).map(
+					(message) => `auth.providers[${index}].access: ${message}`,
+				),
+			);
+		}
 	}
 	if (!auth || auth.enabled !== true) {
 		return errors;

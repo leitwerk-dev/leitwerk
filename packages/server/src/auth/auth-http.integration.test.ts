@@ -7,7 +7,7 @@ import { createAllRepos, type RepositoryBundle } from "../db/repositories.js";
 import { type AppContext, getDefaultConfig } from "../index.js";
 import { createOwnedInMemoryDatabase as createInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
 import { createAuthService } from "./auth-service.js";
-import { setCookieValues, testAuthConfig } from "./auth-test-helpers.js";
+import { setCookieValues, testAuthConfig, testOidcEvidence } from "./auth-test-helpers.js";
 import { hashOpaqueToken } from "./auth-tokens.js";
 import type { OidcClient } from "./oidc-client.js";
 import { registerAuthRoutes } from "./routes.js";
@@ -38,7 +38,7 @@ function createOidcClient(options: {
 			if (!options.claims) {
 				throw new Error("not used");
 			}
-			return { claims: options.claims };
+			return { claims: options.claims, idTokenClaims: options.claims, userInfoClaims: null };
 		},
 	};
 }
@@ -70,6 +70,58 @@ describe("auth HTTP guard", () => {
 		authRouteApp = null;
 		await ctx?.close();
 		ctx = null;
+	});
+
+	it("serves claims only to the current OIDC session, never bearer tokens or bootstrap", async () => {
+		const { app, repos } = await createAuthRouteHarness({ oidcClient: createOidcClient({}) });
+		const evidence = testOidcEvidence("alice", {
+			name: "<script>not HTML</script>",
+			groups: ["operators"],
+		});
+		evidence.userInfoClaims = {
+			sub: evidence.subject,
+			email: "alice@example.com",
+			email_verified: true,
+		};
+		const actor: Actor = { id: "identity:alice", kind: "user", provider: "identity" };
+		repos.authSessions.create({
+			idHash: hashOpaqueToken("information-session"),
+			actor,
+			oidcEvidence: evidence,
+			expiresAt: new Date(Date.now() + 60000).toISOString(),
+		});
+		const headers = { cookie: "orch_test_session=information-session" };
+		const information = await app.inject({ url: "/api/auth/user-information", headers });
+		expect(information.statusCode).toBe(200);
+		expect(information.headers["cache-control"]).toBe("no-store");
+		expect(information.json()).toMatchObject({
+			idTokenClaims: evidence.idTokenClaims,
+			userInfoClaims: evidence.userInfoClaims,
+		});
+		const bootstrap = await app.inject({ url: "/api/auth/me", headers });
+		expect(bootstrap.json().actor).toEqual(actor);
+		expect(bootstrap.body).not.toContain("operators");
+		expect(bootstrap.body).not.toContain("idTokenClaims");
+		const auth = createAuthService({ config: testAuthConfig(), repos });
+		const { secret } = auth.apiTokens.create(
+			auth.apiTokens.ownerForActor(actor, evidence),
+			"test",
+			null,
+		);
+		for (const deniedHeaders of [
+			{},
+			{ authorization: `Bearer ${secret}` },
+			{ ...headers, authorization: `Bearer ${secret}` },
+			{ cookie: "orch_test_session=expired" },
+		]) {
+			const denied = await app.inject({
+				url: "/api/auth/user-information?user=bob",
+				headers: deniedHeaders,
+			});
+			expect(denied.statusCode).toBe(401);
+			expect(denied.headers["cache-control"]).toBe("no-store");
+			expect(denied.body).not.toContain("idTokenClaims");
+		}
 	});
 
 	it("returns the admin actor when auth is disabled", async () => {
@@ -155,7 +207,7 @@ describe("auth HTTP guard", () => {
 			config: testAuthConfig({ baseUrl: "https://leitwerk.example.test" }),
 			oidcClient: createOidcClient({
 				state: "state-2",
-				claims: { preferred_username: "alice", name: "Alice" },
+				claims: { sub: "subject-alice", preferred_username: "alice", name: "Alice" },
 			}),
 		});
 		const loginResponse = await app.inject({ method: "GET", url: "/auth/login" });
@@ -220,6 +272,7 @@ describe("auth HTTP guard", () => {
 			displayName: "Alice",
 		};
 		createAllRepos(ctx.db).authSessions.create({
+			oidcEvidence: testOidcEvidence(),
 			idHash: hashOpaqueToken(rawSession),
 			actor,
 			expiresAt: new Date(Date.now() + 60_000).toISOString(),
@@ -253,6 +306,7 @@ describe("auth HTTP guard", () => {
 			displayName: "Alice",
 		};
 		repos.authSessions.create({
+			oidcEvidence: testOidcEvidence(),
 			idHash: hashOpaqueToken(rawSession),
 			actor,
 			expiresAt: new Date(Date.now() + 60_000).toISOString(),

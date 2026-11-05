@@ -2,7 +2,7 @@ import type { AuthMeResponseBody } from "@leitwerk-dev/protocol/http-contracts";
 import type { FastifyInstance } from "fastify";
 import { registerApiTokenRoutes } from "./api-token-routes.js";
 import type { AuthService } from "./auth-service.js";
-import { authenticateRequest } from "./fastify-auth.js";
+import { authenticateRequest, hasAuthorization } from "./fastify-auth.js";
 
 function cookieMaxAgeSeconds(expiresAt: string): number {
 	return Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
@@ -20,6 +20,14 @@ function cookieOptions(input: { secure: boolean; maxAge: number }) {
 
 export function registerAuthRoutes(app: FastifyInstance, auth: AuthService): void {
 	registerApiTokenRoutes(app, auth);
+	app.get("/api/auth/user-information", async (request, reply) => {
+		reply.header("Cache-Control", "no-store");
+		if (hasAuthorization(request))
+			return reply.code(401).send({ error: "Session access required" });
+		const information = auth.userInformation(request.cookies?.[auth.config.sessionCookieName]);
+		if (!information) return reply.code(401).send({ error: "OIDC session required" });
+		return reply.send(information);
+	});
 	app.get("/api/auth/me", async (request, reply) => {
 		const actor = authenticateRequest(auth, request);
 		if (!actor) {
@@ -27,7 +35,15 @@ export function registerAuthRoutes(app: FastifyInstance, auth: AuthService): voi
 				.code(401)
 				.send({ authEnabled: auth.config.enabled, actor: null } satisfies AuthMeResponseBody);
 		}
-		return reply.send({ authEnabled: auth.config.enabled, actor } satisfies AuthMeResponseBody);
+		return reply.send({
+			authEnabled: auth.config.enabled,
+			actor,
+			userInformationAvailable:
+				!request.headers.authorization &&
+				auth.config.providers.some(
+					(provider) => provider.kind === "oidc" && provider.id === actor.provider,
+				),
+		} satisfies AuthMeResponseBody);
 	});
 
 	app.get("/auth/login", async (_request, reply) => {
@@ -45,8 +61,8 @@ export function registerAuthRoutes(app: FastifyInstance, auth: AuthService): voi
 				}),
 			);
 			return reply.redirect(login.redirectUrl);
-		} catch (error) {
-			app.log.warn({ err: error }, "Failed to start OIDC login");
+		} catch {
+			app.log.warn("Failed to start OIDC login");
 			return reply.code(503).send({ error: "Login is temporarily unavailable" });
 		}
 	});
@@ -74,8 +90,8 @@ export function registerAuthRoutes(app: FastifyInstance, auth: AuthService): voi
 				}),
 			);
 			return reply.redirect("/");
-		} catch (error) {
-			app.log.warn({ err: error }, "Failed to complete OIDC login");
+		} catch {
+			app.log.warn("Failed to complete OIDC login");
 			reply.clearCookie(auth.config.loginFlowCookieName, { path: "/" });
 			return reply.code(403).send({ error: "Login failed" });
 		}

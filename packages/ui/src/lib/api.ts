@@ -157,6 +157,16 @@ export async function resolveToolApproval(input: {
 	).request;
 }
 
+export async function fetchUserInformation(): Promise<
+	import("@leitwerk-dev/protocol/http-contracts").UserInformationResponseBody
+> {
+	const res = await getFetchImpl()(resolveApiUrl("/api/auth/user-information"), {
+		cache: "no-store",
+	});
+	if (!res.ok) throw new Error("Could not load user information. Try again or log in again.");
+	return readJsonObject(res, "Malformed user information response");
+}
+
 export async function fetchAuthMe(): Promise<AuthMeResponseBody> {
 	const res = await getFetchImpl()(resolveApiUrl("/api/auth/me"));
 	if (res.status === 401) {

@@ -14,6 +14,7 @@ import {
 	type ResolvedAuthProvider,
 } from "./auth-config.js";
 import { generateOpaqueToken, hashOpaqueToken } from "./auth-tokens.js";
+import type { OidcEvidence } from "./oidc-evidence.js";
 
 function binding(provider: ResolvedAuthProvider): TokenProviderBinding {
 	return provider.kind === "oidc"
@@ -46,12 +47,19 @@ export function createApiTokenService(input: {
 	if (auth.enabled) repo.revokeAnonymous(new Date().toISOString());
 	return {
 		policy,
-		ownerForActor(actor: Actor): ApiTokenOwner {
+		ownerForActor(actor: Actor, oidcEvidence?: OidcEvidence | null): ApiTokenOwner {
 			if (!auth.enabled)
 				return { kind: "anonymous", id: "anonymous", actor: ADMIN_ACTOR, providerBinding: null };
 			const provider = auth.providers.find((p) => p.id === actor.provider);
-			if (!provider || !isActorAllowedByConfig(actor, auth)) throw new Error("Invalid token owner");
-			return { kind: "user", id: actor.id, actor, providerBinding: binding(provider) };
+			if (!provider || !isActorAllowedByConfig(actor, auth, oidcEvidence))
+				throw new Error("Invalid token owner");
+			return {
+				kind: "user",
+				id: actor.id,
+				actor,
+				providerBinding: binding(provider),
+				oidcEvidence,
+			};
 		},
 		create(owner: ApiTokenOwner, name: unknown, expiresAt: unknown) {
 			if (!policy.enabled) throw new ApiTokenValidationError("API token issuance is disabled");
@@ -99,7 +107,11 @@ export function createApiTokenService(input: {
 			if (token.owner.kind === "anonymous") {
 				if (auth.enabled) return denied;
 			} else {
-				if (!auth.enabled || !isActorAllowedByConfig(token.owner.actor, auth)) return denied;
+				if (
+					!auth.enabled ||
+					!isActorAllowedByConfig(token.owner.actor, auth, token.owner.oidcEvidence)
+				)
+					return denied;
 				const provider = auth.providers.find((p) => p.id === token.owner.actor.provider);
 				if (
 					!provider ||

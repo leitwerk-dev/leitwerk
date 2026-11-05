@@ -9,7 +9,7 @@ import { createWorkerWebSocketIpcManager } from "../supervisor/worker-websocket-
 import { createOwnedInMemoryDatabase as createInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
 import { createBroadcaster } from "../ws/broadcast.js";
 import { createAuthService } from "./auth-service.js";
-import { testAuthConfig } from "./auth-test-helpers.js";
+import { testAuthConfig, testOidcEvidence } from "./auth-test-helpers.js";
 import { hashOpaqueToken } from "./auth-tokens.js";
 
 async function waitForMessage(ws: WebSocket): Promise<string> {
@@ -83,6 +83,7 @@ describe("auth WebSocket guard", () => {
 		const rawSession = "ws-session-token";
 		const actor: Actor = { id: "identity:alice", kind: "user", provider: "identity" };
 		repos.authSessions.create({
+			oidcEvidence: testOidcEvidence(),
 			idHash: hashOpaqueToken(rawSession),
 			actor,
 			expiresAt: new Date(Date.now() + 60_000).toISOString(),
@@ -119,7 +120,7 @@ describe("auth WebSocket guard", () => {
 			? { id: "identity:alice", kind: "user", provider: "identity" }
 			: ADMIN_ACTOR;
 		const { secret } = auth.apiTokens.create(
-			auth.apiTokens.ownerForActor(actor),
+			auth.apiTokens.ownerForActor(actor, testOidcEvidence()),
 			"ws-denial",
 			null,
 		);

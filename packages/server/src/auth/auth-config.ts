@@ -5,6 +5,7 @@ import type {
 	AuthOidcProviderConfig,
 	LeitwerkConfig,
 } from "../config/config-types.js";
+import { evidenceAllows, type OidcEvidence } from "./oidc-evidence.js";
 
 export interface ResolvedOidcProvider extends AuthOidcProviderConfig {
 	redirect_uri: string;
@@ -76,7 +77,11 @@ export function resolveAuthConfig(config: LeitwerkConfig): ResolvedAuthConfig {
 	};
 }
 
-export function isActorAllowedByConfig(actor: Actor, auth: ResolvedAuthConfig): boolean {
+export function isActorAllowedByConfig(
+	actor: Actor,
+	auth: ResolvedAuthConfig,
+	evidence?: OidcEvidence | null,
+): boolean {
 	if (!auth.enabled) {
 		return true;
 	}
@@ -89,5 +94,8 @@ export function isActorAllowedByConfig(actor: Actor, auth: ResolvedAuthConfig): 
 	const prefix = `${actor.provider}:`;
 	if (!actor.id.startsWith(prefix)) return false;
 	const provider = auth.providers.find((candidate) => candidate.id === actor.provider);
-	return provider?.kind === "oauth2" || auth.allowlist.has(actor.id.slice(prefix.length));
+	return (
+		provider?.kind === "oauth2" ||
+		(provider?.kind === "oidc" && evidenceAllows(actor, provider, evidence, auth.allowlist))
+	);
 }

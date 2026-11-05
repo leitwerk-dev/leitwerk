@@ -4,7 +4,7 @@ import { createAllRepos } from "../db/repositories.js";
 import { createOwnedInMemoryDatabase as createInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
 import { resolveApiTokenPolicy, tokenExpiry } from "./api-token-policy.js";
 import { createAuthService } from "./auth-service.js";
-import { testAuthConfig } from "./auth-test-helpers.js";
+import { testAuthConfig, testOidcEvidence } from "./auth-test-helpers.js";
 import { hashOpaqueToken } from "./auth-tokens.js";
 
 const alice: Actor = { id: "identity:alice", kind: "user", provider: "identity" };
@@ -46,7 +46,7 @@ describe("API token ownership and lifecycle", () => {
 	it.each([
 		"oidc",
 		"oauth2",
-	] as const)("issues from pre-upgrade %s sessions; logout does not revoke", (kind) => {
+	] as const)("issues from evidence-bearing %s sessions; logout does not revoke", (kind) => {
 		const config =
 			kind === "oidc"
 				? testAuthConfig()
@@ -66,13 +66,14 @@ describe("API token ownership and lifecycle", () => {
 		const actor = kind === "oidc" ? alice : { ...alice, id: "github:alice", provider: "github" };
 		const { auth, repos, service } = harness(config);
 		repos.authSessions.create({
+			oidcEvidence: kind === "oidc" ? testOidcEvidence() : null,
 			idHash: hashOpaqueToken("legacy-session"),
 			actor,
 			expiresAt: new Date(Date.now() + 60000).toISOString(),
 		});
 		const sessionActor = auth.resolveSession("legacy-session");
 		assert(sessionActor, "Expected the legacy session to resolve");
-		const owner = service.ownerForActor(sessionActor);
+		const owner = service.ownerForActor(sessionActor, auth.userInformation("legacy-session"));
 		const { token, secret } = service.create(owner, "automation", undefined);
 		expect(secret).toMatch(/^lwk_pat_[A-Za-z0-9_-]{43}$/);
 		expect(service.resolve(secret).actor).toEqual(actor);
@@ -87,7 +88,11 @@ describe("API token ownership and lifecycle", () => {
 	});
 	it("binds OIDC issuer, identity claim and provider, and checks the current allowlist", () => {
 		const { repos, service } = harness();
-		const { secret } = service.create(service.ownerForActor(alice), "test", null);
+		const { secret } = service.create(
+			service.ownerForActor(alice, testOidcEvidence()),
+			"test",
+			null,
+		);
 		for (const config of [
 			testAuthConfig({ provider: { issuer: "https://different.test" } }),
 			testAuthConfig({ provider: { identity_claim: "email" } }),
@@ -138,8 +143,8 @@ describe("API token ownership and lifecycle", () => {
 	});
 	it("isolates users and supports owner-wide revocation", () => {
 		const { service } = harness(testAuthConfig({ auth: { allowlist: ["alice", "bob"] } }));
-		const a = service.ownerForActor(alice),
-			b = service.ownerForActor({ ...alice, id: "identity:bob" });
+		const a = service.ownerForActor(alice, testOidcEvidence()),
+			b = service.ownerForActor({ ...alice, id: "identity:bob" }, testOidcEvidence("bob"));
 		const one = service.create(a, "one", null),
 			two = service.create(b, "two", null);
 		expect(service.list(b).map((t) => t.id)).toEqual([two.token.id]);

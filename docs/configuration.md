@@ -49,7 +49,7 @@ and StorageClasses apply only to new claims. Retention changes do not make backu
 | `server.websocket.toast_ttl` | Duration; `6s` | Notification display duration. |
 | `auth.enabled` | Boolean; `false` | Enables the application-wide login boundary. |
 | `auth.providers` | Provider list; none | Configure one OIDC or native GitHub provider. |
-| `auth.allowlist` | String list; none | Allowed OIDC identity-claim values; GitHub uses organization membership. |
+| `auth.allowlist` | String list; none | Deprecated OIDC identity admission; cannot combine with provider `access`. GitHub uses organization membership. |
 | `auth.session.cookie_name` | String; `leitwerk_session` | Browser session cookie name. |
 | `auth.session.ttl` | Duration; `7d` | Browser session lifetime. |
 | `internal_tls.enabled` | Boolean; `false` | Enables TLS for the server listener used by workers. |
@@ -60,14 +60,40 @@ links use `server.base_url`, not request `Host` or forwarding headers. Public
 HTTPS termination and worker trust configuration are separate concerns.
 
 OIDC provider fields are `id`, `kind: oidc`, `issuer`, `client_id`, `client_secret`,
-and optional `redirect_uri`, `scopes`, and `identity_claim`. Native GitHub fields
-are `id: github`, `kind: oauth2`, `client_id`, `client_secret`, `organization`, and
+and optional `redirect_uri`, `scopes`, `identity_claim`, and `access`. Native GitHub
+fields are `id: github`, `kind: oauth2`, `client_id`, `client_secret`, `organization`, and
 optional `redirect_uri`. Register `<server.base_url>/auth/callback` with GitHub;
 its `read:org` scope permits private organization membership checks.
 
 Worker CA trust belongs in `docker.server_ca_file` or
 `kubernetes.server_ca_file`, not `internal_tls`. Worker client certificates are not
 supported; `internal_tls.client_ca_file` is rejected. See [Security](security.md).
+
+### OIDC admission
+
+OIDC providers accept an `access` policy. Without it, `auth.allowlist` controls
+admission; an omitted or empty allowlist admits nobody. Configuring both is an error,
+even if the allowlist is empty. GitHub continues to use organization membership.
+
+| Key under OIDC `access` | Type / default | Contract |
+| --- | --- | --- |
+| `mode` | `all` or `restricted`; required | `all` admits any authenticated identity, not anonymous access. `restricted` requires at least one criterion. |
+| `match` | `all` or `any`; `all` | `all` requires every configured criterion; `any` requires one. |
+| `users` | Non-empty string list; none | Exact values of the configured `identity_claim`. |
+| `groups` | Non-empty string list; none | Exact, case-sensitive strings from the group claim. |
+| `groups_claim` | String; `groups` | Claim containing a string array. |
+| `email_domains` | Non-empty domain list; none | Exact, case-insensitive domains; requires Boolean `email_verified: true`. Subdomains are not included. |
+
+Within each list, any entry matches. Missing or malformed claims do not satisfy a
+criterion. Request scopes that supply the required claims. `mode: all` rejects
+criteria, `match`, and `groups_claim`. See [Security](security.md#oidc-authentication-information)
+for session and token enforcement.
+
+OIDC `client_secret` accepts literal secrets or `${VARIABLE_NAME}` placeholders.
+Variables resolve once at startup; rotation requires restart. Missing or empty
+variables fail startup. Errors name the field and variable, not the secret.
+Variable contents are not expanded recursively. Other fields do not support these
+placeholders.
 
 ### API token policy
 

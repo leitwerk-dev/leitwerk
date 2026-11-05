@@ -125,7 +125,8 @@ describe("auth service login flow", () => {
 				};
 			},
 			async exchangeCallback() {
-				return { claims: { preferred_username: "alice", name: "Alice" } };
+				const claims = { sub: "subject-alice", preferred_username: "alice", name: "Alice" };
+				return { claims, idTokenClaims: claims, userInfoClaims: null };
 			},
 		};
 		const repos = createAllRepos(createInMemoryDatabase());
@@ -193,7 +194,8 @@ describe("auth service login flow", () => {
 				};
 			},
 			async exchangeCallback() {
-				return { claims: { preferred_username: "mallory" } };
+				const claims = { sub: "subject-mallory", preferred_username: "mallory" };
+				return { claims, idTokenClaims: claims, userInfoClaims: null };
 			},
 		};
 		const service = createAuthService({

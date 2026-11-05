@@ -53,6 +53,9 @@ Extensions connect team tools through server-owned integration calls and polling
 Workers receive only the tools and credential material authorized for their work.
 Repository code and model output are not trusted server configuration.
 
+The server owns OIDC admission and retained authentication claims. Claims remain
+separate from actors and worker payloads. See [Security](security.md#oidc-authentication-information).
+
 ## 4 Solution strategy
 
 Keep decisions pure where possible: graph validation, transition rules, and read-model

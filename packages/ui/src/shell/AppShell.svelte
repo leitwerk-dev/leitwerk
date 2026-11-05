@@ -23,6 +23,7 @@ import Sidebar from "./Sidebar.svelte";
 interface Props {
 	route: Route;
 	authEnabled: boolean;
+	userInformationAvailable?: boolean;
 	actor: Actor;
 }
 
@@ -50,7 +51,7 @@ const processShortcutItems: readonly KeyboardShortcutItem[] = [
 	{ keys: ["?"], label: "Toggle shortcuts" },
 ];
 
-let { route, authEnabled, actor }: Props = $props();
+let { route, authEnabled, actor, userInformationAvailable = false }: Props = $props();
 
 const mobileSidebarQuery = "(max-width: 960px)";
 const homePath = buildHomePath();
@@ -104,6 +105,12 @@ $effect(() => {
 	const previousOverflow = document.body.style.overflow;
 	document.body.style.overflow = "hidden";
 	const handleKeydown = (event: KeyboardEvent) => {
+		// A native modal above the drawer owns Escape and focus navigation.
+		if (
+			event.defaultPrevented ||
+			(event.target instanceof Element && event.target.closest("dialog[open]"))
+		)
+			return;
 		if (event.key === "Escape") {
 			event.preventDefault();
 			closeMobileSidebar();
@@ -272,7 +279,7 @@ $effect(() => {
 				<path d="m6 6 12 12M18 6 6 18" />
 			</svg>
 		</button>
-		<Sidebar currentRoute={route} {authEnabled} {actor} />
+		<Sidebar currentRoute={route} {authEnabled} {actor} {userInformationAvailable} />
 	</div>
 	{#if $browserUiExtensionShellIndicators.length > 0}
 		<div class="browser-ui-extension-indicators" data-section="browser-ui-extension-indicators">

@@ -38,11 +38,19 @@ session_transfer:
 #       kind: oidc
 #       issuer: https://git.example.com
 #       client_id: "..."
-#       client_secret: "..."
+#       client_secret: "${LEITWERK_OIDC_CLIENT_SECRET}"
 #       redirect_uri: https://leitwerk.example.com/auth/callback
-#       scopes: [openid, profile, email]
+#       scopes: [openid, profile, email, groups]
 #       identity_claim: preferred_username
-#   allowlist: [alice, bob]
+#       access:
+#         mode: restricted # all permits any authenticated identity; omit restrictions below
+#         match: all # default; any accepts a match from any configured criterion
+#         users: [alice, bob]
+#         groups: [leitwerk-users]
+#         groups_claim: groups
+#         email_domains: [example.com] # exact domain; requires email_verified: true
+#   # Deprecated compatibility path: allowlist: [alice, bob]
+#   # Do not combine allowlist with provider access policies.
 
 components: {}
 

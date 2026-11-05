@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createAllRepos } from "../db/repositories.js";
 import { createOwnedInMemoryDatabase as createInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
 import { createAuthService } from "./auth-service.js";
-import { testAuthConfig } from "./auth-test-helpers.js";
+import { testAuthConfig, testOidcEvidence } from "./auth-test-helpers.js";
 import { hashOpaqueToken } from "./auth-tokens.js";
 import { authenticateBrowserRequest, requireApiActor } from "./fastify-auth.js";
 import { registerAuthRoutes } from "./routes.js";
@@ -39,6 +39,7 @@ async function harness(enabled: boolean) {
 	const session = (id: string) => {
 		const actor: Actor = { id: `identity:${id}`, provider: "identity", kind: "user" };
 		repos.authSessions.create({
+			oidcEvidence: testOidcEvidence(id),
 			idHash: hashOpaqueToken(id),
 			actor,
 			expiresAt: new Date(Date.now() + 60000).toISOString(),
@@ -115,7 +116,11 @@ describe.each([true, false])("API token HTTP with auth enabled=%s", (enabled) =>
 		const actor: Actor = enabled
 			? { id: "identity:alice", provider: "identity", kind: "user" }
 			: ADMIN_ACTOR;
-		const { secret } = auth.apiTokens.create(auth.apiTokens.ownerForActor(actor), "test", null);
+		const { secret } = auth.apiTokens.create(
+			auth.apiTokens.ownerForActor(actor, testOidcEvidence()),
+			"test",
+			null,
+		);
 		await expectStatus(401, {
 			url: "/api/read",
 			headers: { authorization: `Bearer ${secret}`, cookie: "orch_test_session=invalid" },

@@ -574,6 +574,7 @@ export const authSessions = sqliteTable(
 		displayName: text("display_name"),
 		createdAt: text("created_at").notNull(),
 		expiresAt: text("expires_at").notNull(),
+		oidcEvidenceJson: text("oidc_evidence_json"),
 	},
 	(t) => [
 		index("idx_auth_sessions_expires").on(t.expiresAt),
@@ -957,6 +958,7 @@ export const apiTokens = sqliteTable(
 		expiresAt: text("expires_at"),
 		revokedAt: text("revoked_at"),
 		lastUsedAt: text("last_used_at"),
+		oidcEvidenceJson: text("oidc_evidence_json"),
 	},
 	(t) => [
 		uniqueIndex("idx_api_tokens_secret_hash").on(t.secretHash),

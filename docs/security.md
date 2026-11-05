@@ -19,12 +19,29 @@ same-ID resurrection, not recall from already running model contexts or audit hi
 | Worker | Lease-scoped WebSocket connect token and snapshot bearer token. Both are hashed server-side and bound to the active lease. |
 | Local session transfer | Expiring, process-bound bearer grant and claim attempt, separate from browser cookies. |
 
-Authentication is disabled by default. Enabled OIDC uses PKCE and allowlisted
-identity claims; native GitHub OAuth requires active membership in one configured
-organization. See [configuration](configuration.md#server-authentication-and-transport).
+Authentication is disabled by default. OIDC uses PKCE and the configured admission
+policy. Native GitHub OAuth requires active membership in one configured organization.
+See [configuration](configuration.md#server-authentication-and-transport).
 
 Browser WebSockets require their own session/origin checks. Application API tokens,
 worker credentials, and transfer grants are not interchangeable.
+
+### OIDC authentication information
+
+OIDC login requires a valid ID-token subject. Received UserInfo must have the same
+subject. If UserInfo is unavailable, ID-token claims must still satisfy admission.
+Sessions and API tokens are checked against current policy using their retained
+last-login claims. Provider-side membership changes require reauthentication and
+replacement of tokens issued from older claims.
+
+SQLite retains claims and their sources separately from actors. Claims do not enter
+worker payloads, process attribution, application bootstrap, or ordinary logs. This
+feature retains no access tokens, refresh tokens, raw ID tokens, or client secrets.
+Protect SQLite files and backups as personal information.
+
+`GET /api/auth/user-information` requires an OIDC session cookie and returns only
+that session's information. It rejects bearer credentials and sends
+`Cache-Control: no-store`.
 
 ## Secrets and isolation {#2-secrets-container-isolation}
 
@@ -128,10 +145,12 @@ credentials remain separate flows.
 
 ### Ownership and provider changes
 
-With authentication enabled, a valid GitHub or OIDC session establishes ownership,
-including sessions created before upgrading. User tokens bind to the issuing provider
-ID/kind and OIDC issuer/identity claim or GitHub organization. Changing that identity
-configuration blocks the token. OIDC also checks the current allowlist.
+With authentication enabled, a valid GitHub or OIDC session establishes ownership.
+User tokens bind to the issuing provider ID/kind and OIDC issuer/identity claim or
+GitHub organization. Changing that identity configuration blocks the token.
+
+Legacy OIDC sessions and tokens without retained claims are rejected. Log in again
+and replace API tokens. Legacy GitHub sessions remain supported.
 
 GitHub membership is checked at login, matching session behavior. Token issuance and
 bearer requests make no additional membership requests. Provider secrets are not part

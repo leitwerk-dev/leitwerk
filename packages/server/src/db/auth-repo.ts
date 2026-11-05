@@ -1,5 +1,6 @@
 import type { Actor } from "@leitwerk-dev/domain";
 import { and, eq, gt, lt } from "drizzle-orm";
+import type { OidcEvidence } from "../auth/oidc-evidence.js";
 import type { LeitwerkDb } from "./database.js";
 import { now } from "./repo-helpers.js";
 import * as s from "./schema.js";
@@ -10,6 +11,8 @@ export interface AuthSessionRecord {
 	idHash: string;
 	/** @internal */
 	actor: Actor;
+	/** @internal */
+	oidcEvidence: OidcEvidence | null;
 	/** @internal */
 	createdAt: string;
 	/** @internal */
@@ -35,6 +38,7 @@ export interface AuthLoginFlowRecord {
 function sessionRowToRecord(row: typeof s.authSessions.$inferSelect): AuthSessionRecord {
 	return {
 		idHash: row.idHash,
+		oidcEvidence: row.oidcEvidenceJson ? JSON.parse(row.oidcEvidenceJson) : null,
 		actor: {
 			id: row.actorId,
 			kind: "user",
@@ -56,12 +60,15 @@ export function createAuthSessionRepo(db: LeitwerkDb) {
 			/** @internal */
 			actor: Actor;
 			/** @internal */
+			oidcEvidence?: OidcEvidence | null;
+			/** @internal */
 			expiresAt: string;
 		}): AuthSessionRecord {
 			const ts = now();
 			const values = {
 				idHash: input.idHash,
 				actorId: input.actor.id,
+				oidcEvidenceJson: input.oidcEvidence ? JSON.stringify(input.oidcEvidence) : null,
 				actorProvider: input.actor.provider,
 				displayName: input.actor.displayName ?? null,
 				createdAt: ts,
