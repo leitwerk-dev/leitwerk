@@ -5,9 +5,8 @@ import { createAllRepos } from "../db/repositories.js";
 import { createOwnedInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
 import { isActorAllowedByConfig, resolveAuthConfig } from "./auth-config.js";
 import { createAuthService } from "./auth-service.js";
-import { testAuthConfig, testOidcEvidence } from "./auth-test-helpers.js";
+import { createTestOidcLogin, testAuthConfig, testOidcEvidence } from "./auth-test-helpers.js";
 import { hashOpaqueToken } from "./auth-tokens.js";
-import type { OidcClient } from "./oidc-client.js";
 import { safeClaims } from "./oidc-evidence.js";
 
 const actor: Actor = { id: "identity:alice", kind: "user", provider: "identity" };
@@ -158,26 +157,10 @@ describe("OIDC admission", () => {
 		{ idTokenClaims: { sub: "" }, userInfoClaims: null },
 		{ idTokenClaims: { sub: "subject-alice" }, userInfoClaims: { sub: "other" } },
 	])("rejects invalid subject evidence during login: %j", async (evidence) => {
-		const oidcClient: OidcClient = {
-			async createAuthorizationRequest(provider) {
-				return { provider, state: "s", pkceVerifier: "v", redirectUrl: "https://identity.test" };
-			},
-			async exchangeCallback() {
-				return { claims: { preferred_username: "alice" }, ...evidence };
-			},
-		};
-		const auth = createAuthService({
-			config: config({ mode: "all" }),
-			repos: createAllRepos(createOwnedInMemoryDatabase()),
-			oidcClient,
+		const { completeLogin } = createTestOidcLogin(config({ mode: "all" }), {
+			result: { claims: { preferred_username: "alice" }, ...evidence },
 		});
-		const flow = await auth.startLogin();
-		await expect(
-			auth.completeLogin({
-				loginCookieValue: flow.cookieValue,
-				callbackUrl: new URL("https://leitwerk.example.test/auth/callback?state=s"),
-			}),
-		).rejects.toThrow("subject");
+		await expect(completeLogin()).rejects.toThrow("subject");
 	});
 	it("retains source-labeled safe login evidence and cannot bypass missing criteria on fallback", async () => {
 		const idTokenClaims = {
@@ -186,22 +169,11 @@ describe("OIDC admission", () => {
 			name: "Alice",
 			access_token: "must-not-retain",
 		};
-		const oidcClient: OidcClient = {
-			async createAuthorizationRequest(provider) {
-				return { provider, state: "s", pkceVerifier: "v", redirectUrl: "https://identity.test" };
-			},
-			async exchangeCallback() {
-				return { claims: idTokenClaims, idTokenClaims, userInfoClaims: null };
-			},
-		};
 		for (const match of ["all", "any"] as const) {
-			const repos = createAllRepos(createOwnedInMemoryDatabase());
-			const auth = createAuthService({ config: config({ ...policy, match }), repos, oidcClient });
-			const flow = await auth.startLogin();
-			const completion = auth.completeLogin({
-				loginCookieValue: flow.cookieValue,
-				callbackUrl: new URL("https://leitwerk.example.test/auth/callback?state=s"),
+			const { auth, completeLogin } = createTestOidcLogin(config({ ...policy, match }), {
+				claims: idTokenClaims,
 			});
+			const completion = completeLogin();
 			if (match === "all") await expect(completion).rejects.toThrow("admission policy");
 			else {
 				const login = await completion;

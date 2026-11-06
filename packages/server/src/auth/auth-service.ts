@@ -11,7 +11,7 @@ import {
 	resolveAuthConfig,
 } from "./auth-config.js";
 import { generateOpaqueToken, hashOpaqueToken, isoFromNow } from "./auth-tokens.js";
-import { createOpenIdClient, type OidcClient } from "./oidc-client.js";
+import type { OidcClient } from "./oidc-client.js";
 import { type OidcEvidence, safeClaims } from "./oidc-evidence.js";
 
 export interface CreatedLoginFlow {
@@ -91,16 +91,22 @@ export function createAuthService(input: {
 	authClient?: AuthClient;
 }): AuthService {
 	const auth = resolveAuthConfig(input.config);
-	const authClient =
-		input.authClient ??
-		createAuthClient({
-			oidc: input.oidcClient ?? createOpenIdClient(),
-		});
+	const authClient = input.authClient ?? createAuthClient({ oidc: input.oidcClient });
 	const sweepExpiredAuthState = (): AuthSweepResult => ({
 		sessions: input.repos.authSessions.deleteExpired(),
 		loginFlows: input.repos.authLoginFlows.deleteExpired(),
 	});
 	sweepExpiredAuthState();
+
+	function resolveSessionRecord(cookieValue: string | undefined) {
+		if (!auth.enabled || !cookieValue) return null;
+		const idHash = hashOpaqueToken(cookieValue);
+		const session = input.repos.authSessions.getValid(idHash);
+		if (!session) return null;
+		if (isActorAllowedByConfig(session.actor, auth, session.oidcEvidence)) return session;
+		input.repos.authSessions.delete(idHash);
+		return null;
+	}
 
 	return {
 		config: auth,
@@ -202,24 +208,11 @@ export function createAuthService(input: {
 		},
 
 		resolveSession(cookieValue) {
-			if (!auth.enabled || !cookieValue) {
-				return null;
-			}
-			const idHash = hashOpaqueToken(cookieValue);
-			const session = input.repos.authSessions.getValid(idHash);
-			if (!session) {
-				return null;
-			}
-			if (!isActorAllowedByConfig(session.actor, auth, session.oidcEvidence)) {
-				input.repos.authSessions.delete(idHash);
-				return null;
-			}
-			return session.actor;
+			return resolveSessionRecord(cookieValue)?.actor ?? null;
 		},
 
 		userInformation(cookieValue) {
-			if (!this.resolveSession(cookieValue) || !cookieValue) return null;
-			return input.repos.authSessions.getValid(hashOpaqueToken(cookieValue))?.oidcEvidence ?? null;
+			return resolveSessionRecord(cookieValue)?.oidcEvidence ?? null;
 		},
 
 		logout(cookieValue) {

@@ -5,9 +5,8 @@ import { createOwnedInMemoryDatabase as createInMemoryDatabase } from "../test-h
 import type { AuthClient } from "./auth-client.js";
 import { resolveAuthConfig } from "./auth-config.js";
 import { actorFromOidcClaims, createAuthService } from "./auth-service.js";
-import { testAuthConfig } from "./auth-test-helpers.js";
+import { createTestOidcLogin, testAuthConfig } from "./auth-test-helpers.js";
 import { hashOpaqueToken } from "./auth-tokens.js";
-import type { OidcClient } from "./oidc-client.js";
 
 describe("auth config resolution", () => {
 	it("keeps auth disabled when no provider is configured", () => {
@@ -113,35 +112,13 @@ describe("auth service login flow", () => {
 	});
 
 	it("creates a session for an allowlisted OIDC identity and resolves it from the opaque cookie", async () => {
-		let observedState = "";
-		const oidcClient: OidcClient = {
-			async createAuthorizationRequest(provider) {
-				observedState = "state-1";
-				return {
-					provider,
-					state: observedState,
-					pkceVerifier: "verifier-1",
-					redirectUrl: "https://identity.example.test/oauth/authorize",
-				};
-			},
-			async exchangeCallback() {
-				const claims = { sub: "subject-alice", preferred_username: "alice", name: "Alice" };
-				return { claims, idTokenClaims: claims, userInfoClaims: null };
-			},
-		};
-		const repos = createAllRepos(createInMemoryDatabase());
-		const service = createAuthService({ config: testAuthConfig(), repos, oidcClient });
-
-		const flow = await service.startLogin();
-		const completed = await service.completeLogin({
-			loginCookieValue: flow.cookieValue,
-			callbackUrl: new URL(
-				`https://leitwerk.example.test/auth/callback?code=c&state=${observedState}`,
-			),
+		const { auth, repos, completeLogin } = createTestOidcLogin(testAuthConfig(), {
+			claims: { sub: "subject-alice", preferred_username: "alice", name: "Alice" },
 		});
+		const completed = await completeLogin();
 
 		expect(completed.actor.id).toBe("identity:alice");
-		expect(service.resolveSession(completed.sessionCookieValue)).toMatchObject({
+		expect(auth.resolveSession(completed.sessionCookieValue)).toMatchObject({
 			id: "identity:alice",
 			displayName: "Alice",
 		});
@@ -184,31 +161,9 @@ describe("auth service login flow", () => {
 	});
 
 	it("rejects non-allowlisted identities", async () => {
-		const oidcClient: OidcClient = {
-			async createAuthorizationRequest(provider) {
-				return {
-					provider,
-					state: "s",
-					pkceVerifier: "v",
-					redirectUrl: "https://provider/authorize",
-				};
-			},
-			async exchangeCallback() {
-				const claims = { sub: "subject-mallory", preferred_username: "mallory" };
-				return { claims, idTokenClaims: claims, userInfoClaims: null };
-			},
-		};
-		const service = createAuthService({
-			config: testAuthConfig(),
-			repos: createAllRepos(createInMemoryDatabase()),
-			oidcClient,
+		const { completeLogin } = createTestOidcLogin(testAuthConfig(), {
+			claims: { sub: "subject-mallory", preferred_username: "mallory" },
 		});
-		const flow = await service.startLogin();
-		await expect(
-			service.completeLogin({
-				loginCookieValue: flow.cookieValue,
-				callbackUrl: new URL("https://leitwerk.example.test/auth/callback?code=c&state=s"),
-			}),
-		).rejects.toThrow();
+		await expect(completeLogin()).rejects.toThrow();
 	});
 });

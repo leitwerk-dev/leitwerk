@@ -4,7 +4,61 @@ import type {
 	AuthOidcProviderConfig,
 	AuthSessionConfig,
 } from "../config/config-types.js";
+import { createAllRepos } from "../db/repositories.js";
+import { createOwnedInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
+import { createAuthService } from "./auth-service.js";
+import type { OidcClient, OidcTokensAndClaims } from "./oidc-client.js";
 import type { OidcEvidence } from "./oidc-evidence.js";
+
+/** @internal */
+export function createTestOidcClient(options: {
+	state?: string;
+	claims?: Record<string, unknown>;
+	result?: OidcTokensAndClaims;
+	startError?: Error;
+	callbackError?: Error;
+}): OidcClient {
+	return {
+		async createAuthorizationRequest(provider) {
+			if (options.startError) throw options.startError;
+			const state = options.state ?? "state";
+			return {
+				provider,
+				state,
+				pkceVerifier: `verifier-${state}`,
+				redirectUrl: "https://identity.example.test/oauth/authorize",
+			};
+		},
+		async exchangeCallback() {
+			if (options.callbackError) throw options.callbackError;
+			if (options.result) return options.result;
+			if (!options.claims) throw new Error("not used");
+			return { claims: options.claims, idTokenClaims: options.claims, userInfoClaims: null };
+		},
+	};
+}
+
+/** @internal */
+export function createTestOidcLogin(
+	config: ReturnType<typeof testAuthConfig>,
+	options: Parameters<typeof createTestOidcClient>[0],
+) {
+	const repos = createAllRepos(createOwnedInMemoryDatabase());
+	const auth = createAuthService({ config, repos, oidcClient: createTestOidcClient(options) });
+	return {
+		auth,
+		repos,
+		async completeLogin() {
+			const flow = await auth.startLogin();
+			const callbackUrl = new URL("/auth/callback", config.server.base_url);
+			callbackUrl.search = new URLSearchParams({
+				code: "c",
+				state: options.state ?? "state",
+			}).toString();
+			return auth.completeLogin({ loginCookieValue: flow.cookieValue, callbackUrl });
+		},
+	};
+}
 
 export function testAuthConfig(overrides?: {
 	cookieName?: string;

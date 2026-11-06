@@ -1,7 +1,7 @@
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import type { ResolvedOidcProvider } from "./auth-config.js";
 import { createOpenIdClient } from "./oidc-client.js";
 
@@ -113,99 +113,53 @@ function providerWithIssuer(issuer: string): ResolvedOidcProvider {
 	};
 }
 
+async function exchange(options: Parameters<typeof startLocalOidcMetadataServer>[0]) {
+	const server = await startLocalOidcMetadataServer(options);
+	onTestFinished(server.close);
+	const client = createOpenIdClient();
+	const provider = providerWithIssuer(server.issuer);
+	const login = await client.createAuthorizationRequest(provider);
+	return client.exchangeCallback({
+		provider,
+		callbackUrl: new URL(`${provider.redirect_uri}?code=c&state=${login.state}`),
+		state: login.state,
+		pkceVerifier: login.pkceVerifier,
+	});
+}
+
 describe("OpenID client", () => {
 	it("retains distinct validated claim sources, never OAuth credentials", async () => {
-		const server = await startLocalOidcMetadataServer({
+		const exchanged = await exchange({
 			idClaims: { sub: "subject", preferred_username: "alice", name: "ID name" },
 			userInfo: { sub: "subject", name: "UserInfo name", groups: ["operators"] },
 		});
-		try {
-			const client = createOpenIdClient();
-			const provider = providerWithIssuer(server.issuer);
-			const login = await client.createAuthorizationRequest(provider);
-			const exchanged = await client.exchangeCallback({
-				provider,
-				callbackUrl: new URL(`${provider.redirect_uri}?code=c&state=${login.state}`),
-				state: login.state,
-				pkceVerifier: login.pkceVerifier,
-			});
-			expect(exchanged.idTokenClaims).toMatchObject({ sub: "subject", name: "ID name" });
-			expect(exchanged.userInfoClaims).toEqual({
-				sub: "subject",
-				name: "UserInfo name",
-				groups: ["operators"],
-			});
-			expect(exchanged.claims.name).toBe("UserInfo name");
-			expect(JSON.stringify(exchanged)).not.toContain("never-retain");
-			expect(exchanged).not.toHaveProperty("id_token");
-		} finally {
-			await server.close();
-		}
+		expect(exchanged.idTokenClaims).toMatchObject({ sub: "subject", name: "ID name" });
+		expect(exchanged.userInfoClaims).toEqual({
+			sub: "subject",
+			name: "UserInfo name",
+			groups: ["operators"],
+		});
+		expect(exchanged.claims.name).toBe("UserInfo name");
+		expect(JSON.stringify(exchanged)).not.toContain("never-retain");
+		expect(exchanged).not.toHaveProperty("id_token");
 	});
 	it.each([
-		{},
-		{ sub: "" },
-		{ sub: 123 },
-	])("requires valid ID-token subject: %j", async (idClaims) => {
-		const server = await startLocalOidcMetadataServer({ idClaims, userInfo: { sub: "subject" } });
-		try {
-			const client = createOpenIdClient();
-			const provider = providerWithIssuer(server.issuer);
-			const login = await client.createAuthorizationRequest(provider);
-			await expect(
-				client.exchangeCallback({
-					provider,
-					callbackUrl: new URL(`${provider.redirect_uri}?code=c&state=${login.state}`),
-					state: login.state,
-					pkceVerifier: login.pkceVerifier,
-				}),
-			).rejects.toThrow();
-		} finally {
-			await server.close();
-		}
-	});
-	it.each([
-		{},
-		{ sub: "other" },
-		{ sub: 123 },
-	])("rejects received UserInfo with invalid/mismatched subject: %j", async (userInfo) => {
-		const server = await startLocalOidcMetadataServer({ idClaims: { sub: "subject" }, userInfo });
-		try {
-			const client = createOpenIdClient();
-			const provider = providerWithIssuer(server.issuer);
-			const login = await client.createAuthorizationRequest(provider);
-			await expect(
-				client.exchangeCallback({
-					provider,
-					callbackUrl: new URL(`${provider.redirect_uri}?code=c&state=${login.state}`),
-					state: login.state,
-					pkceVerifier: login.pkceVerifier,
-				}),
-			).rejects.toThrow();
-		} finally {
-			await server.close();
-		}
+		{ idClaims: {}, userInfo: { sub: "subject" } },
+		{ idClaims: { sub: "" }, userInfo: { sub: "subject" } },
+		{ idClaims: { sub: 123 }, userInfo: { sub: "subject" } },
+		{ idClaims: { sub: "subject" }, userInfo: {} },
+		{ idClaims: { sub: "subject" }, userInfo: { sub: "other" } },
+		{ idClaims: { sub: "subject" }, userInfo: { sub: 123 } },
+	])("rejects invalid or mismatched subject evidence: %j", async (options) => {
+		await expect(exchange(options)).rejects.toThrow();
 	});
 	it("can fall back to ID-token claims when optional UserInfo is unavailable", async () => {
-		const server = await startLocalOidcMetadataServer({
+		const exchanged = await exchange({
 			idClaims: { sub: "subject", preferred_username: "alice" },
 			userInfoStatus: 503,
 		});
-		try {
-			const client = createOpenIdClient();
-			const provider = providerWithIssuer(server.issuer);
-			const login = await client.createAuthorizationRequest(provider);
-			const exchanged = await client.exchangeCallback({
-				provider,
-				callbackUrl: new URL(`${provider.redirect_uri}?code=c&state=${login.state}`),
-				state: login.state,
-				pkceVerifier: login.pkceVerifier,
-			});
-			expect(exchanged.userInfoClaims).toBeNull();
-			expect(exchanged.claims).toMatchObject({ sub: "subject", preferred_username: "alice" });
-		} finally {
-			await server.close();
-		}
+		expect(exchanged.userInfoClaims).toBeNull();
+		expect(exchanged.claims).toMatchObject({ sub: "subject", preferred_username: "alice" });
 	});
 	it("allows loopback HTTP issuer discovery for local auth development", async () => {
 		const oidcServer = await startLocalOidcMetadataServer();

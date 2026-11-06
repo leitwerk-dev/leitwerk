@@ -90,9 +90,9 @@ export function createOpenIdClient(): OidcClient {
 			if (!idClaims || typeof idClaims.sub !== "string" || !idClaims.sub.trim()) {
 				throw new Error("OIDC ID token requires a valid subject");
 			}
+			let userInfo: Record<string, unknown> | null = null;
 			if (tokens.access_token) {
 				// Fetch without suppressing subject mismatch errors as optional network failures.
-				let userInfo: Record<string, unknown> | null = null;
 				try {
 					userInfo = (await fetchUserInfo(config, tokens.access_token, idClaims.sub)) as Record<
 						string,
@@ -112,13 +112,12 @@ export function createOpenIdClient(): OidcClient {
 				}
 				if (userInfo && userInfo.sub !== idClaims.sub)
 					throw new Error("OIDC UserInfo subject mismatch");
-				return {
-					claims: { ...idClaims, ...userInfo },
-					idTokenClaims: idClaims,
-					userInfoClaims: userInfo,
-				};
 			}
-			return { claims: idClaims, idTokenClaims: idClaims, userInfoClaims: null };
+			return {
+				claims: userInfo ? { ...idClaims, ...userInfo } : idClaims,
+				idTokenClaims: idClaims,
+				userInfoClaims: userInfo,
+			};
 		},
 	};
 }

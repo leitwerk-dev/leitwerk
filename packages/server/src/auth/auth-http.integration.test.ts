@@ -7,41 +7,17 @@ import { createAllRepos, type RepositoryBundle } from "../db/repositories.js";
 import { type AppContext, getDefaultConfig } from "../index.js";
 import { createOwnedInMemoryDatabase as createInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
 import { createAuthService } from "./auth-service.js";
-import { setCookieValues, testAuthConfig, testOidcEvidence } from "./auth-test-helpers.js";
+import {
+	createTestOidcClient as createOidcClient,
+	setCookieValues,
+	testAuthConfig,
+	testOidcEvidence,
+} from "./auth-test-helpers.js";
 import { hashOpaqueToken } from "./auth-tokens.js";
 import type { OidcClient } from "./oidc-client.js";
 import { registerAuthRoutes } from "./routes.js";
 
 const PROVIDER_REDIRECT_URL = "https://identity.example.test/oauth/authorize";
-
-function createOidcClient(options: {
-	state?: string;
-	claims?: Record<string, unknown>;
-	startError?: Error;
-	callbackError?: Error;
-}): OidcClient {
-	return {
-		async createAuthorizationRequest(provider) {
-			if (options.startError) {
-				throw options.startError;
-			}
-			const state = options.state ?? "state";
-			return {
-				provider,
-				state,
-				pkceVerifier: `verifier-${state}`,
-				redirectUrl: PROVIDER_REDIRECT_URL,
-			};
-		},
-		async exchangeCallback() {
-			if (options.callbackError) throw options.callbackError;
-			if (!options.claims) {
-				throw new Error("not used");
-			}
-			return { claims: options.claims, idTokenClaims: options.claims, userInfoClaims: null };
-		},
-	};
-}
 
 describe("auth HTTP guard", () => {
 	let ctx: AppContext | null = null;

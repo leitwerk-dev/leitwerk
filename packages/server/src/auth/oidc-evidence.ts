@@ -1,34 +1,12 @@
 import type { Actor } from "@leitwerk-dev/domain";
+import type { UserInformationResponseBody } from "@leitwerk-dev/protocol/http-contracts";
 import type { OidcAccessPolicy } from "../config/config-types.js";
 import type { ResolvedOidcProvider } from "./auth-config.js";
 
 /** Session/token evidence, never attached to an Actor. @internal */
-export interface OidcEvidence {
-	/** @internal */
-	providerId: string;
-	/** @internal */
-	issuer: string;
+export interface OidcEvidence extends UserInformationResponseBody {
 	/** @internal */
 	identityClaim: string;
-	/** @internal */
-	subject: string;
-	/** @internal */
-	loginAt: string;
-	/** @internal */
-	idTokenClaims: Record<string, unknown>;
-	/** @internal */
-	userInfoClaims: Record<string, unknown> | null;
-	/** @internal */
-	facts: {
-		/** @internal */
-		identity: string;
-		/** @internal */
-		email: string | null;
-		/** @internal */
-		emailVerified: boolean;
-		/** @internal */
-		groups: string[];
-	};
 }
 
 /** Exclude credential-shaped claims even when returned by a custom provider. @internal */
