@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { createAuthService } from "../auth/auth-service.js";
-import { testAuthConfig } from "../auth/auth-test-helpers.js";
+import { testAuthConfig, testOidcEvidence } from "../auth/auth-test-helpers.js";
 import { hashOpaqueToken } from "../auth/auth-tokens.js";
 import { createOwnedDatabaseScope } from "../test-helpers/owned-test-deps.js";
 import { createAes256GcmCredentialCipher } from "./credential-cipher.js";
@@ -46,8 +46,8 @@ it("migrates legacy storage with sessions, processes and encrypted credentials; 
 		expect(repos.providerCredentials.get("example")?.payload).toBe("encrypted-provider-secret");
 		expect(repos.processes.getById("existing")?.id).toBe("existing");
 		const auth = createAuthService({ config, repos });
-		expect(auth.resolveSession("old-session")).toEqual(actor);
-		const owner = auth.apiTokens.ownerForActor(actor);
+		expect(auth.resolveSession("old-session")).toBeNull();
+		const owner = auth.apiTokens.ownerForActor(actor, testOidcEvidence());
 		const created = auth.apiTokens.create(owner, "restart", null);
 		expect(readFileSync(sqlitePath).includes(Buffer.from(created.secret))).toBe(false);
 		expect(JSON.stringify(db.$client.prepare("SELECT * FROM api_tokens").all())).not.toContain(
@@ -60,7 +60,7 @@ it("migrates legacy storage with sessions, processes and encrypted credentials; 
 			config,
 			repos: createAllRepos(db, { credentialCipher: cipher }),
 		});
-		expect(restarted.resolveSession("old-session")).toEqual(actor);
+		expect(restarted.resolveSession("old-session")).toBeNull();
 		expect(restarted.apiTokens.resolve(created.secret).actor).toBeNull();
 		expect(restarted.apiTokens.list(owner)[0].revokedAt).not.toBeNull();
 		closeDatabase(db);
@@ -73,10 +73,16 @@ it("the explicit operator migration matches the current schema", () => {
 	const sqlite = openOwnedSqlite(":memory:");
 	try {
 		initializeSchema(sqlite);
-		sqlite.exec("DROP TABLE api_tokens");
+		sqlite.exec("DROP TABLE api_tokens; ALTER TABLE auth_sessions DROP COLUMN oidc_evidence_json");
 		sqlite.exec(
 			readFileSync(
 				new URL("../../migrations/20260908_add_api_tokens.sql", import.meta.url),
+				"utf8",
+			),
+		);
+		sqlite.exec(
+			readFileSync(
+				new URL("../../migrations/20260909_add_oidc_evidence.sql", import.meta.url),
 				"utf8",
 			),
 		);

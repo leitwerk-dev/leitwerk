@@ -467,6 +467,20 @@ const KNOWN_MIGRATIONS: readonly KnownMigration[] = [
 			existingTableSql(sqlite, "api_tokens") === null,
 	),
 	{
+		id: "20260909_add_oidc_evidence",
+		tableNames: ["auth_sessions", "api_tokens"],
+		matches: (sqlite) =>
+			existingTableSql(sqlite, "auth_sessions") !== null &&
+			(!tableHasColumn(sqlite, "auth_sessions", "oidc_evidence_json") ||
+				!tableHasColumn(sqlite, "api_tokens", "oidc_evidence_json")),
+		apply(sqlite) {
+			for (const table of ["auth_sessions", "api_tokens"]) {
+				if (!tableHasColumn(sqlite, table, "oidc_evidence_json"))
+					sqlite.exec(`ALTER TABLE ${table} ADD COLUMN oidc_evidence_json text`);
+			}
+		},
+	},
+	{
 		id: "20260901_add_session_transfers",
 		tableNames: ["session_transfer_grants", "session_transfer_attempts"],
 		matches: (sqlite) =>

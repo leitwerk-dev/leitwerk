@@ -5,6 +5,7 @@ import type {
 	AuthOidcProviderConfig,
 	LeitwerkConfig,
 } from "../config/config-types.js";
+import { evidenceAllows, type OidcEvidence } from "./oidc-evidence.js";
 
 export interface ResolvedOidcProvider extends AuthOidcProviderConfig {
 	redirect_uri: string;
@@ -39,23 +40,18 @@ const DEFAULT_LOGIN_FLOW_TTL_MS = 10 * 60 * 1000;
 export function resolveAuthConfig(config: LeitwerkConfig): ResolvedAuthConfig {
 	const auth = config.auth;
 	const serverBaseUrl = new URL(config.server.base_url);
-	const providers: ResolvedAuthProvider[] = (auth?.providers ?? []).map((provider) =>
-		provider.kind === "oidc"
+	const providers: ResolvedAuthProvider[] = (auth?.providers ?? []).map((provider) => {
+		const redirect_uri =
+			provider.redirect_uri ?? new URL("/auth/callback", serverBaseUrl).toString();
+		return provider.kind === "oidc"
 			? {
 					...provider,
-					redirect_uri:
-						provider.redirect_uri ?? new URL("/auth/callback", serverBaseUrl).toString(),
+					redirect_uri,
 					scopes: provider.scopes ?? ["openid", "profile", "email"],
 					identity_claim: provider.identity_claim ?? "preferred_username",
 				}
-			: {
-					...provider,
-					redirect_uri:
-						provider.redirect_uri ?? new URL("/auth/callback", serverBaseUrl).toString(),
-					scopes: ["read:org"],
-					identity_claim: "login",
-				},
-	);
+			: { ...provider, redirect_uri, scopes: ["read:org"], identity_claim: "login" };
+	});
 	const sessionCookieName = auth?.session?.cookie_name ?? DEFAULT_SESSION_COOKIE_NAME;
 	return {
 		enabled: auth?.enabled === true && providers.length > 0,
@@ -76,18 +72,21 @@ export function resolveAuthConfig(config: LeitwerkConfig): ResolvedAuthConfig {
 	};
 }
 
-export function isActorAllowedByConfig(actor: Actor, auth: ResolvedAuthConfig): boolean {
+export function isActorAllowedByConfig(
+	actor: Actor,
+	auth: ResolvedAuthConfig,
+	evidence?: OidcEvidence | null,
+): boolean {
 	if (!auth.enabled) {
 		return true;
 	}
 	if (actor.kind !== "user" || actor.provider === null) {
 		return false;
 	}
-	if (!auth.providers.some((provider) => provider.id === actor.provider)) {
-		return false;
-	}
-	const prefix = `${actor.provider}:`;
-	if (!actor.id.startsWith(prefix)) return false;
 	const provider = auth.providers.find((candidate) => candidate.id === actor.provider);
-	return provider?.kind === "oauth2" || auth.allowlist.has(actor.id.slice(prefix.length));
+	if (!provider || !actor.id.startsWith(`${actor.provider}:`)) return false;
+	return (
+		provider.kind === "oauth2" ||
+		(provider.kind === "oidc" && evidenceAllows(actor, provider, evidence, auth.allowlist))
+	);
 }

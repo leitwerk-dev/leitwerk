@@ -1,6 +1,7 @@
 import type { Actor } from "@leitwerk-dev/domain";
 import type { ApiTokenMetadata } from "@leitwerk-dev/protocol/http-contracts";
 import { and, desc, eq, isNull } from "drizzle-orm";
+import type { OidcEvidence } from "../auth/oidc-evidence.js";
 import type { LeitwerkDb } from "./database.js";
 import { apiTokens } from "./schema.js";
 
@@ -34,6 +35,8 @@ export interface ApiTokenOwner {
 	actor: Actor;
 	/** @internal */
 	providerBinding: TokenProviderBinding | null;
+	/** @internal */
+	oidcEvidence?: OidcEvidence | null;
 }
 /** @internal */
 export interface ApiTokenRecord extends ApiTokenMetadata {
@@ -43,10 +46,11 @@ export interface ApiTokenRecord extends ApiTokenMetadata {
 	owner: ApiTokenOwner;
 }
 function record(row: typeof apiTokens.$inferSelect): ApiTokenRecord {
-	const { ownerKind, ownerId, actorJson, providerBindingJson, ...fields } = row;
+	const { ownerKind, ownerId, actorJson, providerBindingJson, oidcEvidenceJson, ...fields } = row;
 	return {
 		...fields,
 		owner: {
+			oidcEvidence: oidcEvidenceJson ? JSON.parse(oidcEvidenceJson) : null,
 			kind: ownerKind,
 			id: ownerId,
 			actor: JSON.parse(actorJson),
@@ -68,6 +72,7 @@ export function createApiTokenRepo(db: LeitwerkDb) {
 					ownerKind: owner.kind,
 					ownerId: owner.id,
 					actorJson: JSON.stringify(owner.actor),
+					oidcEvidenceJson: owner.oidcEvidence ? JSON.stringify(owner.oidcEvidence) : null,
 					providerBindingJson: owner.providerBinding ? JSON.stringify(owner.providerBinding) : null,
 				})
 				.run();

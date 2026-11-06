@@ -8,7 +8,10 @@ import { authenticateBrowserRequest } from "./fastify-auth.js";
 export function registerApiTokenRoutes(app: FastifyInstance, auth: AuthService): void {
 	const ownerForRequest = (request: FastifyRequest) => {
 		if (!request.actor) throw new Error("Browser authentication context is missing");
-		return auth.apiTokens.ownerForActor(request.actor);
+		return auth.apiTokens.ownerForActor(
+			request.actor,
+			auth.userInformation(request.cookies?.[auth.config.sessionCookieName]),
+		);
 	};
 	const csrfKey = generateOpaqueToken();
 	const anonymousCookie = `${auth.config.sessionCookieName}_token_csrf`;
@@ -30,7 +33,7 @@ export function registerApiTokenRoutes(app: FastifyInstance, auth: AuthService):
 				};
 			const actor = authenticateBrowserRequest(auth, request);
 			if (!actor) return reply.code(401).send({ error: "Browser access required" });
-			const owner = auth.apiTokens.ownerForActor(actor);
+			const owner = ownerForRequest(request);
 			if (request.tokenAudit) Object.assign(request.tokenAudit, { actor, ownerKind: owner.kind });
 			if (request.method === "GET") return;
 			const supplied = request.headers["x-csrf-token"];

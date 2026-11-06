@@ -1,6 +1,6 @@
 import type { ResolvedAuthProvider } from "./auth-config.js";
 import { createGithubOauthClient, type GithubOauthClient } from "./github-oauth-client.js";
-import { createOpenIdClient, type OidcClient } from "./oidc-client.js";
+import { createOpenIdClient, type OidcClient, type OidcTokensAndClaims } from "./oidc-client.js";
 
 export interface AuthAuthorizationRequest {
 	provider: ResolvedAuthProvider;
@@ -16,7 +16,7 @@ export interface AuthClient {
 		callbackUrl: URL;
 		state: string;
 		pkceVerifier: string;
-	}): Promise<{ claims: Record<string, unknown> }>;
+	}): Promise<OidcTokensAndClaims>;
 }
 
 export function createAuthClient(input?: {

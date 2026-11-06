@@ -1,6 +1,7 @@
 <script lang="ts">
 import type { Actor } from "@leitwerk-dev/domain";
 import type { Snippet } from "svelte";
+import UserInformationDialog from "../components/UserInformationDialog.svelte";
 import { type FutureActionSummary, type FutureExecutionSummary, logout } from "../lib/api.js";
 
 import {
@@ -33,6 +34,7 @@ import { wsStore } from "../lib/ws.svelte";
 interface Props {
 	currentRoute: Route;
 	authEnabled: boolean;
+	userInformationAvailable?: boolean;
 	actor: Actor;
 	onLoggedOut?: () => void;
 }
@@ -42,6 +44,7 @@ const collapseBreakpointPx = 960;
 let {
 	currentRoute,
 	authEnabled,
+	userInformationAvailable = false,
 	actor,
 	onLoggedOut = () => window.location.assign("/"),
 }: Props = $props();
@@ -74,6 +77,7 @@ let observedReconnectCount = $state<number | null>(null);
 let sidebarCollapsed = $state(false);
 type Popover = "current" | "future" | "user";
 let openPopover = $state<Popover | null>(null);
+let userInformationOpen = $state(false);
 let logoutPending = $state(false);
 let logoutError = $state<string | null>(null);
 let collapseSupported = $state(
@@ -730,6 +734,9 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 					aria-label={`User options for ${userName}`}
 					bind:this={userPopoverRef}
 				>
+					{#if authEnabled && userInformationAvailable}
+						<button type="button" class="user-popover-action" onclick={() => { openPopover = null; userInformationOpen = true; }}>User information</button>
+					{/if}
 					<a class="user-popover-action" href="/account/api-tokens" onclick={(event) => { openPopover = null; followLink(event, "/account/api-tokens"); }}>API tokens</a>
  <button type="button" class="user-popover-action" onclick={showHelp}>Show help</button>
  {#if authEnabled}
@@ -747,6 +754,10 @@ function openCurrentProcessRow(row: ProcessRowView, event: MouseEvent) {
 			{/if}
 	</div>
 </aside>
+
+{#if userInformationOpen}
+	<UserInformationDialog onClose={() => { userInformationOpen = false; }} />
+{/if}
 
 <style>
 	.sidebar {

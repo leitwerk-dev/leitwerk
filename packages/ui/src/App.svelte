@@ -98,7 +98,7 @@ $effect(() => {
 {:else if authState === "error"}
 	<div class="auth-gate" role="alert">{authError ?? "Could not load authentication status."}</div>
 {:else if authMe?.actor}
-	<AppShell route={$routeStore} authEnabled={authMe.authEnabled} actor={authMe.actor} />
+	<AppShell route={$routeStore} authEnabled={authMe.authEnabled} actor={authMe.actor} userInformationAvailable={authMe.userInformationAvailable ?? false} />
 {/if}
 
 <style>

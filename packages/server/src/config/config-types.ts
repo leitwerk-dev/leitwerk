@@ -46,6 +46,22 @@ export interface AuthSessionConfig {
 }
 
 /** @internal */
+export interface OidcAccessPolicy {
+	/** @internal */
+	mode: "all" | "restricted";
+	/** Defaults to all. @internal */
+	match?: "all" | "any";
+	/** @internal */
+	users?: string[];
+	/** @internal */
+	groups?: string[];
+	/** @internal */
+	groups_claim?: string;
+	/** @internal */
+	email_domains?: string[];
+}
+
+/** @internal */
 export interface AuthOidcProviderConfig {
 	/** @internal */
 	id: string;
@@ -63,6 +79,8 @@ export interface AuthOidcProviderConfig {
 	scopes?: string[];
 	/** @internal */
 	identity_claim?: string;
+	/** @internal */
+	access?: OidcAccessPolicy;
 }
 
 /** @internal */

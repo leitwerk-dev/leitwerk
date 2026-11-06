@@ -5,7 +5,7 @@ import { expect, it } from "vitest";
 import { createAllRepos } from "../db/repositories.js";
 import { createFixtureHumanTurn, createFixtureProcess } from "../test-helpers/process-fixtures.js";
 import { createAuthService } from "./auth-service.js";
-import { testAuthConfig } from "./auth-test-helpers.js";
+import { testAuthConfig, testOidcEvidence } from "./auth-test-helpers.js";
 
 it("preserves the token owner's durable attribution on accepted application mutations after revocation", async () => {
 	const config = testAuthConfig();
@@ -30,7 +30,7 @@ it("preserves the token owner's durable attribution on accepted application muta
 		const repos = createAllRepos(ctx.db);
 		const auth = createAuthService({ config, repos });
 		const actor: Actor = { id: "identity:alice", provider: "identity", kind: "user" };
-		const owner = auth.apiTokens.ownerForActor(actor);
+		const owner = auth.apiTokens.ownerForActor(actor, testOidcEvidence());
 		const { secret, token } = auth.apiTokens.create(owner, "application", null);
 		const headers = { authorization: `Bearer ${secret}` };
 		const instance = repos.processes.create({

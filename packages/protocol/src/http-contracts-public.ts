@@ -83,6 +83,7 @@ export type {
 	SubmitQuestionAnswersRequestBody,
 	TurnReasoningDetailResponseBody,
 	UiLauncherSummary,
+	UserInformationResponseBody,
 	WatcherLaunchModelSummary,
 	WatcherSummary,
 	WatchersResponseBody,

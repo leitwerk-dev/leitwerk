@@ -2,6 +2,7 @@ import {
 	allowInsecureRequests,
 	authorizationCodeGrant,
 	buildAuthorizationUrl,
+	ClientError,
 	ClientSecretPost,
 	type Configuration,
 	calculatePKCECodeChallenge,
@@ -9,7 +10,6 @@ import {
 	fetchUserInfo,
 	randomPKCECodeVerifier,
 	randomState,
-	skipSubjectCheck,
 } from "openid-client";
 import { isLoopbackHttpUrl } from "../config/url-policy.js";
 import type { ResolvedOidcProvider } from "./auth-config.js";
@@ -23,6 +23,8 @@ export interface OidcAuthorizationRequest {
 
 export interface OidcTokensAndClaims {
 	claims: Record<string, unknown>;
+	idTokenClaims?: Record<string, unknown>;
+	userInfoClaims?: Record<string, unknown> | null;
 }
 
 export interface OidcClient {
@@ -85,21 +87,37 @@ export function createOpenIdClient(): OidcClient {
 				{ redirect_uri: input.provider.redirect_uri },
 			);
 			const idClaims = tokens.claims() as Record<string, unknown> | undefined;
-			if (tokens.access_token) {
-				const expectedSubject = typeof idClaims?.sub === "string" ? idClaims.sub : skipSubjectCheck;
-				try {
-					const userInfo = (await fetchUserInfo(
-						config,
-						tokens.access_token,
-						expectedSubject,
-					)) as Record<string, unknown>;
-					return { claims: { ...(idClaims ?? {}), ...userInfo } };
-				} catch {
-					// best-effort: fall through to idClaims
-				}
+			if (!idClaims || typeof idClaims.sub !== "string" || !idClaims.sub.trim()) {
+				throw new Error("OIDC ID token requires a valid subject");
 			}
-			if (idClaims) return { claims: idClaims };
-			throw new Error("OIDC token response did not include an access token or id_token claims");
+			let userInfo: Record<string, unknown> | null = null;
+			if (tokens.access_token) {
+				// Fetch without suppressing subject mismatch errors as optional network failures.
+				try {
+					userInfo = (await fetchUserInfo(config, tokens.access_token, idClaims.sub)) as Record<
+						string,
+						unknown
+					>;
+				} catch (error) {
+					// Only availability failures are optional. Invalid responses fail closed.
+					if (
+						!(error instanceof TypeError) &&
+						!(
+							error instanceof ClientError &&
+							(error.code === "OAUTH_TIMEOUT" ||
+								(error.cause instanceof Response && error.cause.status >= 500))
+						)
+					)
+						throw new Error("OIDC UserInfo validation failed");
+				}
+				if (userInfo && userInfo.sub !== idClaims.sub)
+					throw new Error("OIDC UserInfo subject mismatch");
+			}
+			return {
+				claims: userInfo ? { ...idClaims, ...userInfo } : idClaims,
+				idTokenClaims: idClaims,
+				userInfoClaims: userInfo,
+			};
 		},
 	};
 }

@@ -11,7 +11,8 @@ import {
 	resolveAuthConfig,
 } from "./auth-config.js";
 import { generateOpaqueToken, hashOpaqueToken, isoFromNow } from "./auth-tokens.js";
-import { createOpenIdClient, type OidcClient } from "./oidc-client.js";
+import type { OidcClient } from "./oidc-client.js";
+import { type OidcEvidence, safeClaims } from "./oidc-evidence.js";
 
 export interface CreatedLoginFlow {
 	cookieValue: string;
@@ -36,6 +37,7 @@ export interface AuthService {
 	startLogin(): Promise<CreatedLoginFlow>;
 	completeLogin(input: { loginCookieValue: string; callbackUrl: URL }): Promise<CompletedLogin>;
 	resolveSession(cookieValue: string | undefined): Actor | null;
+	userInformation(cookieValue: string | undefined): OidcEvidence | null;
 	logout(cookieValue: string | undefined): void;
 	sweepExpiredAuthState(): AuthSweepResult;
 	startExpiredAuthStateSweep(intervalMs?: number): () => void;
@@ -89,16 +91,22 @@ export function createAuthService(input: {
 	authClient?: AuthClient;
 }): AuthService {
 	const auth = resolveAuthConfig(input.config);
-	const authClient =
-		input.authClient ??
-		createAuthClient({
-			oidc: input.oidcClient ?? createOpenIdClient(),
-		});
+	const authClient = input.authClient ?? createAuthClient({ oidc: input.oidcClient });
 	const sweepExpiredAuthState = (): AuthSweepResult => ({
 		sessions: input.repos.authSessions.deleteExpired(),
 		loginFlows: input.repos.authLoginFlows.deleteExpired(),
 	});
 	sweepExpiredAuthState();
+
+	function resolveSessionRecord(cookieValue: string | undefined) {
+		if (!auth.enabled || !cookieValue) return null;
+		const idHash = hashOpaqueToken(cookieValue);
+		const session = input.repos.authSessions.getValid(idHash);
+		if (!session) return null;
+		if (isActorAllowedByConfig(session.actor, auth, session.oidcEvidence)) return session;
+		input.repos.authSessions.delete(idHash);
+		return null;
+	}
 
 	return {
 		config: auth,
@@ -148,37 +156,63 @@ export function createAuthService(input: {
 				state: flow.state,
 				pkceVerifier: flow.pkceVerifier,
 			});
-			const actor = actorFromOidcClaims({ provider, claims: exchanged.claims });
+			const actor = actorFromOidcClaims({ provider, claims: safeClaims(exchanged.claims) });
 			if (!actor) {
 				throw new Error(`Authentication identity claim ${provider.identity_claim} was not present`);
 			}
-			if (!isActorAllowedByConfig(actor, auth)) {
-				throw new Error("Authenticated user is not allowlisted");
+			let oidcEvidence: OidcEvidence | null = null;
+			if (provider.kind === "oidc") {
+				const idTokenClaims = safeClaims(exchanged.idTokenClaims ?? {});
+				const userInfoClaims = exchanged.userInfoClaims
+					? safeClaims(exchanged.userInfoClaims)
+					: null;
+				if (
+					typeof idTokenClaims.sub !== "string" ||
+					!idTokenClaims.sub.trim() ||
+					(userInfoClaims && userInfoClaims.sub !== idTokenClaims.sub)
+				)
+					throw new Error("Invalid OIDC subject evidence");
+				const claims = { ...idTokenClaims, ...userInfoClaims };
+				const groups = claims[provider.access?.groups_claim ?? "groups"];
+				oidcEvidence = {
+					providerId: provider.id,
+					issuer: provider.issuer,
+					identityClaim: provider.identity_claim,
+					subject: idTokenClaims.sub,
+					loginAt: new Date().toISOString(),
+					idTokenClaims,
+					userInfoClaims,
+					facts: {
+						identity: actor.id.slice(provider.id.length + 1),
+						email: typeof claims.email === "string" ? claims.email : null,
+						emailVerified: claims.email_verified === true,
+						groups:
+							Array.isArray(groups) && groups.every((group) => typeof group === "string")
+								? groups
+								: [],
+					},
+				};
+			}
+			if (!isActorAllowedByConfig(actor, auth, oidcEvidence)) {
+				throw new Error("Authenticated user does not satisfy admission policy");
 			}
 			const sessionCookieValue = generateOpaqueToken();
 			const expiresAt = isoFromNow(auth.sessionTtlMs);
 			input.repos.authSessions.create({
 				idHash: hashOpaqueToken(sessionCookieValue),
 				actor,
+				oidcEvidence,
 				expiresAt,
 			});
 			return { sessionCookieValue, actor, expiresAt };
 		},
 
 		resolveSession(cookieValue) {
-			if (!auth.enabled || !cookieValue) {
-				return null;
-			}
-			const idHash = hashOpaqueToken(cookieValue);
-			const session = input.repos.authSessions.getValid(idHash);
-			if (!session) {
-				return null;
-			}
-			if (!isActorAllowedByConfig(session.actor, auth)) {
-				input.repos.authSessions.delete(idHash);
-				return null;
-			}
-			return session.actor;
+			return resolveSessionRecord(cookieValue)?.actor ?? null;
+		},
+
+		userInformation(cookieValue) {
+			return resolveSessionRecord(cookieValue)?.oidcEvidence ?? null;
 		},
 
 		logout(cookieValue) {

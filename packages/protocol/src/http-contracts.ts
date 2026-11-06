@@ -76,10 +76,39 @@ export interface ProcessLaunchRunsResponseBody {
 	launchRuns: LaunchRun[];
 }
 
+/** Current session only; excluded from bootstrap and worker contracts. @internal */
+export interface UserInformationResponseBody {
+	/** @internal */
+	providerId: string;
+	/** @internal */
+	issuer: string;
+	/** @internal */
+	subject: string;
+	/** @internal */
+	loginAt: string;
+	/** @internal */
+	idTokenClaims: Record<string, unknown>;
+	/** @internal */
+	userInfoClaims: Record<string, unknown> | null;
+	/** @internal */
+	facts: {
+		/** @internal */
+		identity: string;
+		/** @internal */
+		email: string | null;
+		/** @internal */
+		emailVerified: boolean;
+		/** @internal */
+		groups: string[];
+	};
+}
+
 /** @internal */
 export interface AuthMeResponseBody {
 	/** @internal */
 	authEnabled: boolean;
+	/** OIDC session information is available separately, never embedded here. @internal */
+	userInformationAvailable?: boolean;
 	/** @internal */
 	actor: Actor | null;
 }

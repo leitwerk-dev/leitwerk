@@ -5,6 +5,17 @@ establish durable state; WebSocket frames update live activity or invalidate tho
 snapshots. This page defines interaction and rendering behavior for contributors.
 For everyday use, see [Operate a process](operator-guide.md).
 
+## User information
+
+The OIDC account menu offers **User information**: name, username, email and
+verification status, provider, subject, groups, and login time. **Provider claims**
+expands to show escaped structured values, labeled by ID-token or UserInfo source.
+Information reflects the last login, not live provider state.
+
+The dialog keeps keyboard focus inside, closes on Escape, and restores focus to the
+account trigger. Content scrolls on narrow screens. Failed loads offer **Try again**.
+GitHub and anonymous account menus do not offer this view.
+
 ## Dashboard
 
 The root route `/` opens the dashboard. **Start a process** opens the launcher at
