@@ -9,7 +9,7 @@ import { createWorkerWebSocketIpcManager } from "../supervisor/worker-websocket-
 import { createOwnedInMemoryDatabase as createInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
 import { createBroadcaster } from "../ws/broadcast.js";
 import { createAuthService } from "./auth-service.js";
-import { testAuthConfig, testOidcEvidence } from "./auth-test-helpers.js";
+import { createTestSessionOwner, testAuthConfig, testOidcEvidence } from "./auth-test-helpers.js";
 import { hashOpaqueToken } from "./auth-tokens.js";
 
 async function waitForMessage(ws: WebSocket): Promise<string> {
@@ -115,12 +115,13 @@ describe("auth WebSocket guard", () => {
 		false,
 	])("rejects API tokens at the actual WebSocket upgrade with auth enabled=%s", async (enabled) => {
 		const config = testAuthConfig({ auth: { enabled } });
-		const auth = createAuthService({ config, repos: createAllRepos(createInMemoryDatabase()) });
+		const repos = createAllRepos(createInMemoryDatabase());
+		const auth = createAuthService({ config, repos });
 		const actor: Actor = enabled
 			? { id: "identity:alice", kind: "user", provider: "identity" }
 			: ADMIN_ACTOR;
 		const { secret } = auth.apiTokens.create(
-			auth.apiTokens.ownerForActor(actor, testOidcEvidence()),
+			createTestSessionOwner(auth, repos, actor, testOidcEvidence()),
 			"ws-denial",
 			null,
 		);

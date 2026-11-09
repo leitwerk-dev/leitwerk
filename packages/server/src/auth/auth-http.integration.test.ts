@@ -9,6 +9,7 @@ import { createOwnedInMemoryDatabase as createInMemoryDatabase } from "../test-h
 import { createAuthService } from "./auth-service.js";
 import {
 	createTestOidcClient as createOidcClient,
+	createTestSessionOwner,
 	setCookieValues,
 	testAuthConfig,
 	testOidcEvidence,
@@ -80,7 +81,7 @@ describe("auth HTTP guard", () => {
 		expect(bootstrap.body).not.toContain("idTokenClaims");
 		const auth = createAuthService({ config: testAuthConfig(), repos });
 		const { secret } = auth.apiTokens.create(
-			auth.apiTokens.ownerForActor(actor, evidence),
+			createTestSessionOwner(auth, repos, actor, evidence),
 			"test",
 			null,
 		);

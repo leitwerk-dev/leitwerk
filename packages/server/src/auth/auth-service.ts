@@ -1,8 +1,12 @@
-import type { Actor } from "@leitwerk-dev/domain";
+import { type Actor, ADMIN_ACTOR } from "@leitwerk-dev/domain";
 import type { LeitwerkConfig } from "../config/config-types.js";
-import type { AuthLoginFlowRecord, RepositoryBundle } from "../db/repositories.js";
+import type { ApiTokenOwner, AuthLoginFlowRecord, RepositoryBundle } from "../db/repositories.js";
 import { resolveApiTokenPolicy } from "./api-token-policy.js";
-import { type ApiTokenService, createApiTokenService } from "./api-token-service.js";
+import {
+	type ApiTokenService,
+	createApiTokenService,
+	tokenProviderBinding,
+} from "./api-token-service.js";
 import { type AuthClient, createAuthClient } from "./auth-client.js";
 import {
 	isActorAllowedByConfig,
@@ -37,6 +41,8 @@ export interface AuthService {
 	startLogin(): Promise<CreatedLoginFlow>;
 	completeLogin(input: { loginCookieValue: string; callbackUrl: URL }): Promise<CompletedLogin>;
 	resolveSession(cookieValue: string | undefined): Actor | null;
+	/** @internal */
+	tokenOwnerForSession(cookieValue: string | undefined): ApiTokenOwner | null;
 	userInformation(cookieValue: string | undefined): OidcEvidence | null;
 	logout(cookieValue: string | undefined): void;
 	sweepExpiredAuthState(): AuthSweepResult;
@@ -209,6 +215,22 @@ export function createAuthService(input: {
 
 		resolveSession(cookieValue) {
 			return resolveSessionRecord(cookieValue)?.actor ?? null;
+		},
+
+		tokenOwnerForSession(cookieValue) {
+			if (!auth.enabled)
+				return { kind: "anonymous", id: "anonymous", actor: ADMIN_ACTOR, providerBinding: null };
+			const session = resolveSessionRecord(cookieValue);
+			if (!session) return null;
+			const provider = auth.providers.find((p) => p.id === session.actor.provider);
+			if (!provider) return null;
+			return {
+				kind: "user",
+				id: session.actor.id,
+				actor: session.actor,
+				providerBinding: tokenProviderBinding(provider),
+				oidcEvidence: session.oidcEvidence,
+			};
 		},
 
 		userInformation(cookieValue) {

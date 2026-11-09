@@ -5,7 +5,12 @@ import { createAllRepos } from "../db/repositories.js";
 import { createOwnedInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
 import { isActorAllowedByConfig, resolveAuthConfig } from "./auth-config.js";
 import { createAuthService } from "./auth-service.js";
-import { createTestOidcLogin, testAuthConfig, testOidcEvidence } from "./auth-test-helpers.js";
+import {
+	createTestOidcLogin,
+	createTestSessionOwner,
+	testAuthConfig,
+	testOidcEvidence,
+} from "./auth-test-helpers.js";
 import { hashOpaqueToken } from "./auth-tokens.js";
 import { safeClaims } from "./oidc-evidence.js";
 
@@ -108,7 +113,7 @@ describe("OIDC admission", () => {
 			expiresAt: new Date(Date.now() + 60000).toISOString(),
 		});
 		const { secret } = initial.apiTokens.create(
-			initial.apiTokens.ownerForActor(actor, evidence),
+			createTestSessionOwner(initial, repos, actor, evidence),
 			"test",
 			null,
 		);
@@ -137,7 +142,7 @@ describe("OIDC admission", () => {
 		});
 		expect(auth.resolveSession("old")).toBeNull();
 		const issued = auth.apiTokens.create(
-			auth.apiTokens.ownerForActor(actor, testOidcEvidence()),
+			createTestSessionOwner(auth, repos, actor, testOidcEvidence()),
 			"test",
 			null,
 		);

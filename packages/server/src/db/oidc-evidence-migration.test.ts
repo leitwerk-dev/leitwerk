@@ -3,7 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { createAuthService } from "../auth/auth-service.js";
-import { testAuthConfig, testOidcEvidence } from "../auth/auth-test-helpers.js";
+import {
+	createTestSessionOwner,
+	testAuthConfig,
+	testOidcEvidence,
+} from "../auth/auth-test-helpers.js";
 import { hashOpaqueToken } from "../auth/auth-tokens.js";
 import { createOwnedDatabaseScope } from "../test-helpers/owned-test-deps.js";
 import { closeDatabase, initializeSchema } from "./database.js";
@@ -21,7 +25,7 @@ it("migrates file-backed sessions and tokens without evidence, preserves data an
 		const actor = { id: "identity:alice", kind: "user" as const, provider: "identity" };
 		const auth = createAuthService({ config, repos });
 		const token = auth.apiTokens.create(
-			auth.apiTokens.ownerForActor(actor, testOidcEvidence()),
+			createTestSessionOwner(auth, repos, actor, testOidcEvidence()),
 			"legacy token",
 			null,
 		);

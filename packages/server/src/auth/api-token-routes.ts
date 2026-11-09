@@ -1,17 +1,17 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { ApiTokenOwner } from "../db/repositories.js";
 import { ApiTokenValidationError } from "./api-token-policy.js";
 import type { AuthService } from "./auth-service.js";
 import { generateOpaqueToken } from "./auth-tokens.js";
-import { authenticateBrowserRequest } from "./fastify-auth.js";
+import { hasAuthorization } from "./fastify-auth.js";
 
 export function registerApiTokenRoutes(app: FastifyInstance, auth: AuthService): void {
+	const owners = new WeakMap<FastifyRequest, ApiTokenOwner>();
 	const ownerForRequest = (request: FastifyRequest) => {
-		if (!request.actor) throw new Error("Browser authentication context is missing");
-		return auth.apiTokens.ownerForActor(
-			request.actor,
-			auth.userInformation(request.cookies?.[auth.config.sessionCookieName]),
-		);
+		const owner = owners.get(request);
+		if (!owner) throw new Error("Browser token owner is missing");
+		return owner;
 	};
 	const csrfKey = generateOpaqueToken();
 	const anonymousCookie = `${auth.config.sessionCookieName}_token_csrf`;
@@ -31,10 +31,14 @@ export function registerApiTokenRoutes(app: FastifyInstance, auth: AuthService):
 								? "token_revocation"
 								: "token_revoke_all",
 				};
-			const actor = authenticateBrowserRequest(auth, request);
-			if (!actor) return reply.code(401).send({ error: "Browser access required" });
-			const owner = ownerForRequest(request);
-			if (request.tokenAudit) Object.assign(request.tokenAudit, { actor, ownerKind: owner.kind });
+			const owner = hasAuthorization(request)
+				? null
+				: auth.tokenOwnerForSession(request.cookies?.[auth.config.sessionCookieName]);
+			if (!owner) return reply.code(401).send({ error: "Browser access required" });
+			owners.set(request, owner);
+			request.actor = owner.actor;
+			if (request.tokenAudit)
+				Object.assign(request.tokenAudit, { actor: owner.actor, ownerKind: owner.kind });
 			if (request.method === "GET") return;
 			const supplied = request.headers["x-csrf-token"];
 			const credential = credentialFor(request);

@@ -1,12 +1,15 @@
+import { randomUUID } from "node:crypto";
+import type { Actor } from "@leitwerk-dev/domain";
 import { getDefaultConfig } from "../config/config-loader.js";
 import type {
 	AuthConfig,
 	AuthOidcProviderConfig,
 	AuthSessionConfig,
 } from "../config/config-types.js";
-import { createAllRepos } from "../db/repositories.js";
+import { createAllRepos, type RepositoryBundle } from "../db/repositories.js";
 import { createOwnedInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
-import { createAuthService } from "./auth-service.js";
+import { type AuthService, createAuthService } from "./auth-service.js";
+import { hashOpaqueToken } from "./auth-tokens.js";
 import type { OidcClient, OidcTokensAndClaims } from "./oidc-client.js";
 import type { OidcEvidence } from "./oidc-evidence.js";
 
@@ -106,6 +109,25 @@ export function testOidcEvidence(
 		userInfoClaims: null,
 		facts: { identity, email: null, emailVerified: false, groups: [] },
 	};
+}
+
+/** @internal */
+export function createTestSessionOwner(
+	auth: AuthService,
+	repos: Pick<RepositoryBundle, "authSessions">,
+	actor: Actor,
+	oidcEvidence: OidcEvidence | null = null,
+) {
+	const cookie = randomUUID();
+	repos.authSessions.create({
+		idHash: hashOpaqueToken(cookie),
+		actor,
+		oidcEvidence,
+		expiresAt: new Date(Date.now() + 60000).toISOString(),
+	});
+	const owner = auth.tokenOwnerForSession(cookie);
+	if (!owner) throw new Error("Expected session token owner");
+	return owner;
 }
 
 export function setCookieValues(headers: string | string[] | undefined): string[] {
