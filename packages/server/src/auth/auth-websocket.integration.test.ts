@@ -9,8 +9,12 @@ import { createWorkerWebSocketIpcManager } from "../supervisor/worker-websocket-
 import { createOwnedInMemoryDatabase as createInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
 import { createBroadcaster } from "../ws/broadcast.js";
 import { createAuthService } from "./auth-service.js";
-import { createTestSessionOwner, testAuthConfig, testOidcEvidence } from "./auth-test-helpers.js";
-import { hashOpaqueToken } from "./auth-tokens.js";
+import {
+	createTestSession,
+	createTestSessionOwner,
+	testAuthConfig,
+	testOidcEvidence,
+} from "./auth-test-helpers.js";
 
 async function waitForMessage(ws: WebSocket): Promise<string> {
 	return await new Promise<string>((resolve, reject) => {
@@ -80,14 +84,8 @@ describe("auth WebSocket guard", () => {
 
 		await expectRejectedWebsocket(wsUrl);
 
-		const rawSession = "ws-session-token";
 		const actor: Actor = { id: "identity:alice", kind: "user", provider: "identity" };
-		repos.authSessions.create({
-			oidcEvidence: testOidcEvidence(),
-			idHash: hashOpaqueToken(rawSession),
-			actor,
-			expiresAt: new Date(Date.now() + 60_000).toISOString(),
-		});
+		const rawSession = createTestSession(repos, actor, testOidcEvidence());
 		await expectRejectedWebsocketWithHeaders(wsUrl, {
 			cookie: `orch_ws_session=${rawSession}`,
 			origin: "https://evil.example.test",

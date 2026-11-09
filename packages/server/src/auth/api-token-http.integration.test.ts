@@ -4,14 +4,13 @@ import Fastify, { type FastifyInstance, type InjectOptions } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { createAllRepos } from "../db/repositories.js";
 import { createOwnedInMemoryDatabase as createInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
-import { type AuthService, createAuthService } from "./auth-service.js";
+import { createAuthService } from "./auth-service.js";
 import {
-	createTestOidcLogin,
+	createTestSession,
 	createTestSessionOwner,
 	testAuthConfig,
 	testOidcEvidence,
 } from "./auth-test-helpers.js";
-import { hashOpaqueToken } from "./auth-tokens.js";
 import { authenticateBrowserRequest, requireApiActor } from "./fastify-auth.js";
 import { registerAuthRoutes } from "./routes.js";
 
@@ -21,14 +20,13 @@ afterEach(async () => {
 });
 async function harness(
 	enabled: boolean,
-	existing?: { auth: AuthService; repos: ReturnType<typeof createAllRepos> },
+	config = testAuthConfig({ auth: { enabled, allowlist: ["alice", "bob"] } }),
+	repos = createAllRepos(createInMemoryDatabase()),
 ) {
 	const app = Fastify();
 	apps.push(app);
 	await app.register(cookie);
-	const config = testAuthConfig({ auth: { enabled, allowlist: ["alice", "bob"] } });
-	const repos = existing?.repos ?? createAllRepos(createInMemoryDatabase());
-	const auth = existing?.auth ?? createAuthService({ config, repos });
+	const auth = createAuthService({ config, repos });
 	registerAuthRoutes(app, auth);
 	app.get(
 		"/api/read",
@@ -46,16 +44,9 @@ async function harness(
 	}
 	const session = (id: string) => {
 		const actor: Actor = { id: `identity:${id}`, provider: "identity", kind: "user" };
-		repos.authSessions.create({
-			oidcEvidence: testOidcEvidence(id),
-			idHash: hashOpaqueToken(id),
-			actor,
-			expiresAt: new Date(Date.now() + 60000).toISOString(),
-		});
-		return `orch_test_session=${id}`;
+		return `${auth.config.sessionCookieName}=${createTestSession(repos, actor, testOidcEvidence(id))}`;
 	};
-	const initialCookie = enabled && !existing ? session("alice") : undefined;
-	async function browser(cookieValue = initialCookie) {
+	async function browser(cookieValue = auth.config.enabled ? session("alice") : undefined) {
 		const response = await expectStatus(200, {
 			url: "/api/auth/tokens",
 			headers: cookieValue ? { cookie: cookieValue } : {},
@@ -66,7 +57,7 @@ async function harness(
 		return {
 			cookie: browserCookie,
 			"x-csrf-token": response.json().csrfToken as string,
-			origin: config.server.base_url,
+			origin: auth.config.appBaseOrigin,
 		};
 	}
 	return { auth, repos, browser, session, expectStatus };
@@ -76,12 +67,9 @@ it("reevaluates session management and bearer access under a stricter admission 
 		auth: { allowlist: undefined },
 		provider: { access: { mode: "all" } },
 	});
-	const login = createTestOidcLogin(config, {
-		claims: { sub: "subject-alice", preferred_username: "alice", groups: ["users"] },
-	});
-	const { sessionCookieValue } = await login.completeLogin();
-	const first = await harness(true, login);
-	const headers = await first.browser(`orch_test_session=${sessionCookieValue}`);
+	const repos = createAllRepos(createInMemoryDatabase());
+	const first = await harness(true, config, repos);
+	const headers = await first.browser(first.session("alice"));
 	const issued = await first.expectStatus(201, {
 		method: "POST",
 		url: "/api/auth/tokens",
@@ -95,10 +83,7 @@ it("reevaluates session management and bearer access under a stricter admission 
 		auth: { allowlist: undefined },
 		provider: { access: { mode: "restricted", groups: ["operators"] } },
 	});
-	const second = await harness(true, {
-		repos: login.repos,
-		auth: createAuthService({ config: stricter, repos: login.repos }),
-	});
+	const second = await harness(true, stricter, repos);
 	// Bearer denial must not depend on a prior session request deleting the session.
 	await second.expectStatus(401, { url: "/api/read", headers: bearer });
 	for (const [method, url] of [

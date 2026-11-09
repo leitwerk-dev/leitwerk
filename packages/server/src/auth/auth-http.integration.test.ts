@@ -9,12 +9,11 @@ import { createOwnedInMemoryDatabase as createInMemoryDatabase } from "../test-h
 import { createAuthService } from "./auth-service.js";
 import {
 	createTestOidcClient as createOidcClient,
-	createTestSessionOwner,
+	createTestSession,
 	setCookieValues,
 	testAuthConfig,
 	testOidcEvidence,
 } from "./auth-test-helpers.js";
-import { hashOpaqueToken } from "./auth-tokens.js";
 import type { OidcClient } from "./oidc-client.js";
 import { registerAuthRoutes } from "./routes.js";
 
@@ -61,13 +60,8 @@ describe("auth HTTP guard", () => {
 			email_verified: true,
 		};
 		const actor: Actor = { id: "identity:alice", kind: "user", provider: "identity" };
-		repos.authSessions.create({
-			idHash: hashOpaqueToken("information-session"),
-			actor,
-			oidcEvidence: evidence,
-			expiresAt: new Date(Date.now() + 60000).toISOString(),
-		});
-		const headers = { cookie: "orch_test_session=information-session" };
+		const session = createTestSession(repos, actor, evidence);
+		const headers = { cookie: `orch_test_session=${session}` };
 		const information = await app.inject({ url: "/api/auth/user-information", headers });
 		expect(information.statusCode).toBe(200);
 		expect(information.headers["cache-control"]).toBe("no-store");
@@ -80,11 +74,9 @@ describe("auth HTTP guard", () => {
 		expect(bootstrap.body).not.toContain("operators");
 		expect(bootstrap.body).not.toContain("idTokenClaims");
 		const auth = createAuthService({ config: testAuthConfig(), repos });
-		const { secret } = auth.apiTokens.create(
-			createTestSessionOwner(auth, repos, actor, evidence),
-			"test",
-			null,
-		);
+		const owner = auth.tokenOwnerForSession(session);
+		if (!owner) throw new Error("Expected session token owner");
+		const { secret } = auth.apiTokens.create(owner, "test", null);
 		for (const deniedHeaders of [
 			{},
 			{ authorization: `Bearer ${secret}` },
@@ -241,19 +233,13 @@ describe("auth HTTP guard", () => {
 	it("attaches the session actor to authenticated API requests", async () => {
 		const config = testAuthConfig();
 		ctx = await createTestAppContext({ logger: false, config });
-		const rawSession = "raw-session-token";
 		const actor: Actor = {
 			id: "identity:alice",
 			kind: "user",
 			provider: "identity",
 			displayName: "Alice",
 		};
-		createAllRepos(ctx.db).authSessions.create({
-			oidcEvidence: testOidcEvidence(),
-			idHash: hashOpaqueToken(rawSession),
-			actor,
-			expiresAt: new Date(Date.now() + 60_000).toISOString(),
-		});
+		const rawSession = createTestSession(createAllRepos(ctx.db), actor, testOidcEvidence());
 
 		const response = await ctx.app.inject({
 			method: "GET",
@@ -275,19 +261,13 @@ describe("auth HTTP guard", () => {
 		const config = testAuthConfig();
 		ctx = await createTestAppContext({ logger: false, config });
 		const repos = createAllRepos(ctx.db);
-		const rawSession = "mutating-route-session";
 		const actor: Actor = {
 			id: "identity:alice",
 			kind: "user",
 			provider: "identity",
 			displayName: "Alice",
 		};
-		repos.authSessions.create({
-			oidcEvidence: testOidcEvidence(),
-			idHash: hashOpaqueToken(rawSession),
-			actor,
-			expiresAt: new Date(Date.now() + 60_000).toISOString(),
-		});
+		const rawSession = createTestSession(repos, actor, testOidcEvidence());
 		const process = repos.processes.create({
 			processId: "ticket_issue_process",
 			selectedTurnId: null,

@@ -5,7 +5,7 @@ import { createOwnedInMemoryDatabase as createInMemoryDatabase } from "../test-h
 import type { AuthClient } from "./auth-client.js";
 import { resolveAuthConfig } from "./auth-config.js";
 import { actorFromOidcClaims, createAuthService } from "./auth-service.js";
-import { createTestOidcLogin, testAuthConfig } from "./auth-test-helpers.js";
+import { createTestOidcLogin, createTestSession, testAuthConfig } from "./auth-test-helpers.js";
 import { hashOpaqueToken } from "./auth-tokens.js";
 
 describe("auth config resolution", () => {
@@ -128,11 +128,10 @@ describe("auth service login flow", () => {
 	it("rejects sessions for providers that are no longer configured", () => {
 		const repos = createAllRepos(createInMemoryDatabase());
 		const service = createAuthService({ config: testAuthConfig(), repos });
-		const rawSession = "provider-mismatch-session";
-		repos.authSessions.create({
-			idHash: hashOpaqueToken(rawSession),
-			actor: { id: "codehost:alice", kind: "user", provider: "codehost" },
-			expiresAt: new Date(Date.now() + 60_000).toISOString(),
+		const rawSession = createTestSession(repos, {
+			id: "codehost:alice",
+			kind: "user",
+			provider: "codehost",
 		});
 
 		expect(service.resolveSession(rawSession)).toBeNull();

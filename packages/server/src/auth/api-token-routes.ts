@@ -87,11 +87,7 @@ export function registerApiTokenRoutes(app: FastifyInstance, auth: AuthService):
 			try {
 				const input = body as { name?: unknown; expiresAt?: unknown };
 				const result = auth.apiTokens.create(ownerForRequest(request), input.name, input.expiresAt);
-				request.tokenAudit = {
-					...request.tokenAudit,
-					operation: "token_issuance",
-					tokenId: result.token.id,
-				};
+				if (request.tokenAudit) request.tokenAudit.tokenId = result.token.id;
 				return reply.code(201).send(result);
 			} catch (error) {
 				if (!(error instanceof ApiTokenValidationError)) throw error;
@@ -103,17 +99,13 @@ export function registerApiTokenRoutes(app: FastifyInstance, auth: AuthService):
 			async (request, reply) => {
 				if (!auth.apiTokens.revoke(ownerForRequest(request), request.params.id))
 					return reply.code(404).send({ error: "Token not found" });
-				request.tokenAudit = {
-					...request.tokenAudit,
-					operation: "token_revocation",
-					tokenId: request.params.id,
-				};
+				if (request.tokenAudit) request.tokenAudit.tokenId = request.params.id;
 				return { ok: true };
 			},
 		);
 		management.delete("/api/auth/tokens", async (request) => {
 			const count = auth.apiTokens.revokeAll(ownerForRequest(request));
-			request.tokenAudit = { ...request.tokenAudit, operation: "token_revoke_all", count };
+			if (request.tokenAudit) request.tokenAudit.count = count;
 			return { ok: true, count };
 		});
 	});

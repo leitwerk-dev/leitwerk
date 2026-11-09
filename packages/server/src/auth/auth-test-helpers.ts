@@ -112,8 +112,7 @@ export function testOidcEvidence(
 }
 
 /** @internal */
-export function createTestSessionOwner(
-	auth: AuthService,
+export function createTestSession(
 	repos: Pick<RepositoryBundle, "authSessions">,
 	actor: Actor,
 	oidcEvidence: OidcEvidence | null = null,
@@ -125,7 +124,15 @@ export function createTestSessionOwner(
 		oidcEvidence,
 		expiresAt: new Date(Date.now() + 60000).toISOString(),
 	});
-	const owner = auth.tokenOwnerForSession(cookie);
+	return cookie;
+}
+
+/** @internal */
+export function createTestSessionOwner(
+	auth: AuthService,
+	...session: Parameters<typeof createTestSession>
+) {
+	const owner = auth.tokenOwnerForSession(createTestSession(...session));
 	if (!owner) throw new Error("Expected session token owner");
 	return owner;
 }
