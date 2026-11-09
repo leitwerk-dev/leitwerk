@@ -5,8 +5,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createAllRepos } from "../db/repositories.js";
 import { createOwnedInMemoryDatabase as createInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
 import { createAuthService } from "./auth-service.js";
-import { testAuthConfig, testOidcEvidence } from "./auth-test-helpers.js";
-import { hashOpaqueToken } from "./auth-tokens.js";
+import {
+	createTestSession,
+	createTestSessionOwner,
+	testAuthConfig,
+	testOidcEvidence,
+} from "./auth-test-helpers.js";
 import { authenticateBrowserRequest, requireApiActor } from "./fastify-auth.js";
 import { registerAuthRoutes } from "./routes.js";
 
@@ -14,12 +18,14 @@ const apps: FastifyInstance[] = [];
 afterEach(async () => {
 	await Promise.all(apps.splice(0).map((app) => app.close()));
 });
-async function harness(enabled: boolean) {
+async function harness(
+	enabled: boolean,
+	config = testAuthConfig({ auth: { enabled, allowlist: ["alice", "bob"] } }),
+	repos = createAllRepos(createInMemoryDatabase()),
+) {
 	const app = Fastify();
 	apps.push(app);
 	await app.register(cookie);
-	const config = testAuthConfig({ auth: { enabled, allowlist: ["alice", "bob"] } });
-	const repos = createAllRepos(createInMemoryDatabase());
 	const auth = createAuthService({ config, repos });
 	registerAuthRoutes(app, auth);
 	app.get(
@@ -38,16 +44,9 @@ async function harness(enabled: boolean) {
 	}
 	const session = (id: string) => {
 		const actor: Actor = { id: `identity:${id}`, provider: "identity", kind: "user" };
-		repos.authSessions.create({
-			oidcEvidence: testOidcEvidence(id),
-			idHash: hashOpaqueToken(id),
-			actor,
-			expiresAt: new Date(Date.now() + 60000).toISOString(),
-		});
-		return `orch_test_session=${id}`;
+		return `${auth.config.sessionCookieName}=${createTestSession(repos, actor, testOidcEvidence(id))}`;
 	};
-	const initialCookie = enabled ? session("alice") : undefined;
-	async function browser(cookieValue = initialCookie) {
+	async function browser(cookieValue = auth.config.enabled ? session("alice") : undefined) {
 		const response = await expectStatus(200, {
 			url: "/api/auth/tokens",
 			headers: cookieValue ? { cookie: cookieValue } : {},
@@ -58,11 +57,45 @@ async function harness(enabled: boolean) {
 		return {
 			cookie: browserCookie,
 			"x-csrf-token": response.json().csrfToken as string,
-			origin: config.server.base_url,
+			origin: auth.config.appBaseOrigin,
 		};
 	}
-	return { auth, browser, session, expectStatus };
+	return { auth, repos, browser, session, expectStatus };
 }
+it("reevaluates session management and bearer access under a stricter admission policy", async () => {
+	const config = testAuthConfig({
+		auth: { allowlist: undefined },
+		provider: { access: { mode: "all" } },
+	});
+	const repos = createAllRepos(createInMemoryDatabase());
+	const first = await harness(true, config, repos);
+	const headers = await first.browser(first.session("alice"));
+	const issued = await first.expectStatus(201, {
+		method: "POST",
+		url: "/api/auth/tokens",
+		headers,
+		payload: { name: "policy-change", expiresAt: null },
+	});
+	const { secret, token } = issued.json();
+	const bearer = { authorization: `Bearer ${secret}` };
+	await first.expectStatus(200, { url: "/api/read", headers: bearer });
+	const stricter = testAuthConfig({
+		auth: { allowlist: undefined },
+		provider: { access: { mode: "restricted", groups: ["operators"] } },
+	});
+	const second = await harness(true, stricter, repos);
+	// Bearer denial must not depend on a prior session request deleting the session.
+	await second.expectStatus(401, { url: "/api/read", headers: bearer });
+	for (const [method, url] of [
+		["GET", "/api/auth/tokens"],
+		["POST", "/api/auth/tokens"],
+		["DELETE", `/api/auth/tokens/${token.id}`],
+		["DELETE", "/api/auth/tokens"],
+	] as const) {
+		await second.expectStatus(401, { method, url, headers });
+	}
+});
+
 describe.each([true, false])("API token HTTP with auth enabled=%s", (enabled) => {
 	it("creates a secret once, authenticates HTTP, denies browser and management access, then revokes", async () => {
 		const { browser, expectStatus } = await harness(enabled);
@@ -100,7 +133,7 @@ describe.each([true, false])("API token HTTP with auth enabled=%s", (enabled) =>
 		await expectStatus(401, { url: "/api/read", headers: bearer });
 	});
 	it("rejects malformed, duplicate, unknown and ambiguous credentials without fallback", async () => {
-		const { auth, expectStatus } = await harness(enabled);
+		const { auth, repos, expectStatus } = await harness(enabled);
 		for (const authorization of [
 			"Basic abc",
 			"Bearer",
@@ -117,7 +150,7 @@ describe.each([true, false])("API token HTTP with auth enabled=%s", (enabled) =>
 			? { id: "identity:alice", provider: "identity", kind: "user" }
 			: ADMIN_ACTOR;
 		const { secret } = auth.apiTokens.create(
-			auth.apiTokens.ownerForActor(actor, testOidcEvidence()),
+			createTestSessionOwner(auth, repos, actor, testOidcEvidence()),
 			"test",
 			null,
 		);

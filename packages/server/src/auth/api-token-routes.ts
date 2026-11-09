@@ -1,17 +1,17 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import type { ApiTokenOwner } from "../db/repositories.js";
 import { ApiTokenValidationError } from "./api-token-policy.js";
 import type { AuthService } from "./auth-service.js";
 import { generateOpaqueToken } from "./auth-tokens.js";
-import { authenticateBrowserRequest } from "./fastify-auth.js";
+import { hasAuthorization } from "./fastify-auth.js";
 
 export function registerApiTokenRoutes(app: FastifyInstance, auth: AuthService): void {
+	const owners = new WeakMap<FastifyRequest, ApiTokenOwner>();
 	const ownerForRequest = (request: FastifyRequest) => {
-		if (!request.actor) throw new Error("Browser authentication context is missing");
-		return auth.apiTokens.ownerForActor(
-			request.actor,
-			auth.userInformation(request.cookies?.[auth.config.sessionCookieName]),
-		);
+		const owner = owners.get(request);
+		if (!owner) throw new Error("Browser token owner is missing");
+		return owner;
 	};
 	const csrfKey = generateOpaqueToken();
 	const anonymousCookie = `${auth.config.sessionCookieName}_token_csrf`;
@@ -31,10 +31,14 @@ export function registerApiTokenRoutes(app: FastifyInstance, auth: AuthService):
 								? "token_revocation"
 								: "token_revoke_all",
 				};
-			const actor = authenticateBrowserRequest(auth, request);
-			if (!actor) return reply.code(401).send({ error: "Browser access required" });
-			const owner = ownerForRequest(request);
-			if (request.tokenAudit) Object.assign(request.tokenAudit, { actor, ownerKind: owner.kind });
+			const owner = hasAuthorization(request)
+				? null
+				: auth.tokenOwnerForSession(request.cookies?.[auth.config.sessionCookieName]);
+			if (!owner) return reply.code(401).send({ error: "Browser access required" });
+			owners.set(request, owner);
+			request.actor = owner.actor;
+			if (request.tokenAudit)
+				Object.assign(request.tokenAudit, { actor: owner.actor, ownerKind: owner.kind });
 			if (request.method === "GET") return;
 			const supplied = request.headers["x-csrf-token"];
 			const credential = credentialFor(request);
@@ -83,11 +87,7 @@ export function registerApiTokenRoutes(app: FastifyInstance, auth: AuthService):
 			try {
 				const input = body as { name?: unknown; expiresAt?: unknown };
 				const result = auth.apiTokens.create(ownerForRequest(request), input.name, input.expiresAt);
-				request.tokenAudit = {
-					...request.tokenAudit,
-					operation: "token_issuance",
-					tokenId: result.token.id,
-				};
+				if (request.tokenAudit) request.tokenAudit.tokenId = result.token.id;
 				return reply.code(201).send(result);
 			} catch (error) {
 				if (!(error instanceof ApiTokenValidationError)) throw error;
@@ -99,17 +99,13 @@ export function registerApiTokenRoutes(app: FastifyInstance, auth: AuthService):
 			async (request, reply) => {
 				if (!auth.apiTokens.revoke(ownerForRequest(request), request.params.id))
 					return reply.code(404).send({ error: "Token not found" });
-				request.tokenAudit = {
-					...request.tokenAudit,
-					operation: "token_revocation",
-					tokenId: request.params.id,
-				};
+				if (request.tokenAudit) request.tokenAudit.tokenId = request.params.id;
 				return { ok: true };
 			},
 		);
 		management.delete("/api/auth/tokens", async (request) => {
 			const count = auth.apiTokens.revokeAll(ownerForRequest(request));
-			request.tokenAudit = { ...request.tokenAudit, operation: "token_revoke_all", count };
+			if (request.tokenAudit) request.tokenAudit.count = count;
 			return { ok: true, count };
 		});
 	});

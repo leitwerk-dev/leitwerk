@@ -4,10 +4,22 @@ import { createAllRepos } from "../db/repositories.js";
 import { createOwnedInMemoryDatabase as createInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
 import { resolveApiTokenPolicy, tokenExpiry } from "./api-token-policy.js";
 import { createAuthService } from "./auth-service.js";
-import { testAuthConfig, testOidcEvidence } from "./auth-test-helpers.js";
+import {
+	createTestSession,
+	createTestSessionOwner,
+	testAuthConfig,
+	testOidcEvidence,
+} from "./auth-test-helpers.js";
 import { hashOpaqueToken } from "./auth-tokens.js";
 
 const alice: Actor = { id: "identity:alice", kind: "user", provider: "identity" };
+const githubProvider = {
+	id: "github",
+	kind: "oauth2" as const,
+	organization: "org",
+	client_id: "client",
+	client_secret: "secret",
+};
 function harness(config = testAuthConfig(), repos = createAllRepos(createInMemoryDatabase())) {
 	const auth = createAuthService({ config, repos });
 	return { auth, repos, service: auth.apiTokens };
@@ -50,35 +62,17 @@ describe("API token ownership and lifecycle", () => {
 		const config =
 			kind === "oidc"
 				? testAuthConfig()
-				: testAuthConfig({
-						auth: {
-							providers: [
-								{
-									id: "github",
-									kind: "oauth2",
-									organization: "org",
-									client_id: "client",
-									client_secret: "secret",
-								},
-							],
-						},
-					});
+				: testAuthConfig({ auth: { providers: [githubProvider] } });
 		const actor = kind === "oidc" ? alice : { ...alice, id: "github:alice", provider: "github" };
 		const { auth, repos, service } = harness(config);
-		repos.authSessions.create({
-			oidcEvidence: kind === "oidc" ? testOidcEvidence() : null,
-			idHash: hashOpaqueToken("legacy-session"),
-			actor,
-			expiresAt: new Date(Date.now() + 60000).toISOString(),
-		});
-		const sessionActor = auth.resolveSession("legacy-session");
-		assert(sessionActor, "Expected the legacy session to resolve");
-		const owner = service.ownerForActor(sessionActor, auth.userInformation("legacy-session"));
+		const session = createTestSession(repos, actor, kind === "oidc" ? testOidcEvidence() : null);
+		const owner = auth.tokenOwnerForSession(session);
+		assert(owner, "Expected the session token owner");
 		const { token, secret } = service.create(owner, "automation", undefined);
 		expect(secret).toMatch(/^lwk_pat_[A-Za-z0-9_-]{43}$/);
 		expect(service.resolve(secret).actor).toEqual(actor);
-		auth.logout("legacy-session");
-		expect(auth.resolveSession("legacy-session")).toBeNull();
+		auth.logout(session);
+		expect(auth.resolveSession(session)).toBeNull();
 		expect(service.resolve(secret).actor).toEqual(actor);
 		expect(service.list(owner)[0].lastUsedAt).not.toBeNull();
 		expect(JSON.stringify(service.list(owner))).not.toContain(secret);
@@ -87,9 +81,9 @@ describe("API token ownership and lifecycle", () => {
 		expect(service.resolve(secret).actor).toBeNull();
 	});
 	it("binds OIDC issuer, identity claim and provider, and checks the current allowlist", () => {
-		const { repos, service } = harness();
+		const { auth, repos, service } = harness();
 		const { secret } = service.create(
-			service.ownerForActor(alice, testOidcEvidence()),
+			createTestSessionOwner(auth, repos, alice, testOidcEvidence()),
 			"test",
 			null,
 		);
@@ -110,41 +104,28 @@ describe("API token ownership and lifecycle", () => {
 		).toEqual(alice);
 	});
 	it("binds GitHub organization without adding membership requests", () => {
-		const config = testAuthConfig({
-			auth: {
-				providers: [
-					{
-						id: "github",
-						kind: "oauth2",
-						organization: "org",
-						client_id: "client",
-						client_secret: "secret",
-					},
-				],
-			},
-		});
-		const { service, repos } = harness(config);
+		const config = testAuthConfig({ auth: { providers: [githubProvider] } });
+		const { auth, service, repos } = harness(config);
 		const { secret } = service.create(
-			service.ownerForActor({ ...alice, id: "github:alice", provider: "github" }),
+			createTestSessionOwner(auth, repos, { ...alice, id: "github:alice", provider: "github" }),
 			"test",
 			null,
 		);
 		assert(config.auth, "Expected configured authentication");
-		config.auth.providers = [
-			{
-				id: "github",
-				kind: "oauth2",
-				organization: "other",
-				client_id: "client",
-				client_secret: "secret",
-			},
-		];
+		config.auth.providers = [{ ...githubProvider, organization: "other" }];
 		expect(harness(config, repos).service.resolve(secret).actor).toBeNull();
 	});
 	it("isolates users and supports owner-wide revocation", () => {
-		const { service } = harness(testAuthConfig({ auth: { allowlist: ["alice", "bob"] } }));
-		const a = service.ownerForActor(alice, testOidcEvidence()),
-			b = service.ownerForActor({ ...alice, id: "identity:bob" }, testOidcEvidence("bob"));
+		const { auth, repos, service } = harness(
+			testAuthConfig({ auth: { allowlist: ["alice", "bob"] } }),
+		);
+		const a = createTestSessionOwner(auth, repos, alice, testOidcEvidence()),
+			b = createTestSessionOwner(
+				auth,
+				repos,
+				{ ...alice, id: "identity:bob" },
+				testOidcEvidence("bob"),
+			);
 		const one = service.create(a, "one", null),
 			two = service.create(b, "two", null);
 		expect(service.list(b).map((t) => t.id)).toEqual([two.token.id]);
@@ -158,8 +139,9 @@ describe("API token ownership and lifecycle", () => {
 		vi.setSystemTime(new Date("2026-01-01T00:00:00.000Z"));
 		onTestFinished(() => vi.useRealTimers());
 		const config = testAuthConfig({ auth: { enabled: false } });
-		const { service, repos } = harness(config);
-		const owner = service.ownerForActor(ADMIN_ACTOR);
+		const { auth, service, repos } = harness(config);
+		const owner = auth.tokenOwnerForSession(undefined);
+		assert(owner, "Expected anonymous token owner");
 		const { secret } = service.create(owner, "anonymous", null);
 		expect(owner.kind).toBe("anonymous");
 		expect(service.resolve(secret).actor).toEqual(ADMIN_ACTOR);

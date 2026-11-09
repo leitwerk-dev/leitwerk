@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
 import { createAuthService } from "../auth/auth-service.js";
-import { testAuthConfig, testOidcEvidence } from "../auth/auth-test-helpers.js";
+import {
+	createTestSessionOwner,
+	testAuthConfig,
+	testOidcEvidence,
+} from "../auth/auth-test-helpers.js";
 import { hashOpaqueToken } from "../auth/auth-tokens.js";
 import { createOwnedDatabaseScope } from "../test-helpers/owned-test-deps.js";
 import { createAes256GcmCredentialCipher } from "./credential-cipher.js";
@@ -47,7 +51,7 @@ it("migrates legacy storage with sessions, processes and encrypted credentials; 
 		expect(repos.processes.getById("existing")?.id).toBe("existing");
 		const auth = createAuthService({ config, repos });
 		expect(auth.resolveSession("old-session")).toBeNull();
-		const owner = auth.apiTokens.ownerForActor(actor, testOidcEvidence());
+		const owner = createTestSessionOwner(auth, repos, actor, testOidcEvidence());
 		const created = auth.apiTokens.create(owner, "restart", null);
 		expect(readFileSync(sqlitePath).includes(Buffer.from(created.secret))).toBe(false);
 		expect(JSON.stringify(db.$client.prepare("SELECT * FROM api_tokens").all())).not.toContain(

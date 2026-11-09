@@ -5,7 +5,13 @@ import { createAllRepos } from "../db/repositories.js";
 import { createOwnedInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
 import { isActorAllowedByConfig, resolveAuthConfig } from "./auth-config.js";
 import { createAuthService } from "./auth-service.js";
-import { createTestOidcLogin, testAuthConfig, testOidcEvidence } from "./auth-test-helpers.js";
+import {
+	createTestOidcLogin,
+	createTestSession,
+	createTestSessionOwner,
+	testAuthConfig,
+	testOidcEvidence,
+} from "./auth-test-helpers.js";
 import { hashOpaqueToken } from "./auth-tokens.js";
 import { safeClaims } from "./oidc-evidence.js";
 
@@ -101,30 +107,23 @@ describe("OIDC admission", () => {
 		const repos = createAllRepos(createOwnedInMemoryDatabase());
 		const evidence = testOidcEvidence("alice", claims);
 		const initial = createAuthService({ config: config(policy), repos });
-		repos.authSessions.create({
-			idHash: hashOpaqueToken("session"),
-			actor,
-			oidcEvidence: evidence,
-			expiresAt: new Date(Date.now() + 60000).toISOString(),
-		});
-		const { secret } = initial.apiTokens.create(
-			initial.apiTokens.ownerForActor(actor, evidence),
-			"test",
-			null,
-		);
-		expect(initial.resolveSession("session")).toEqual(actor);
+		const session = createTestSession(repos, actor, evidence);
+		const owner = initial.tokenOwnerForSession(session);
+		if (!owner) throw new Error("Expected session token owner");
+		const { secret } = initial.apiTokens.create(owner, "test", null);
+		expect(initial.resolveSession(session)).toEqual(actor);
 		expect(initial.apiTokens.resolve(secret).actor).toEqual(actor);
 		const any = createAuthService({
 			config: config({ ...policy, groups: ["missing"], match: "any" }),
 			repos,
 		});
-		expect(any.resolveSession("session")).toEqual(actor);
+		expect(any.resolveSession(session)).toEqual(actor);
 		expect(any.apiTokens.resolve(secret).actor).toEqual(actor);
 		const all = createAuthService({
 			config: config({ ...policy, groups: ["missing"], match: "all" }),
 			repos,
 		});
-		expect(all.resolveSession("session")).toBeNull();
+		expect(all.resolveSession(session)).toBeNull();
 		expect(all.apiTokens.resolve(secret).actor).toBeNull();
 	});
 	it("fails closed for existing tokens and sessions without evidence", () => {
@@ -137,7 +136,7 @@ describe("OIDC admission", () => {
 		});
 		expect(auth.resolveSession("old")).toBeNull();
 		const issued = auth.apiTokens.create(
-			auth.apiTokens.ownerForActor(actor, testOidcEvidence()),
+			createTestSessionOwner(auth, repos, actor, testOidcEvidence()),
 			"test",
 			null,
 		);
