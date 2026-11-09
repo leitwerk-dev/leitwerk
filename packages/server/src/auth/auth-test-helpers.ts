@@ -10,23 +10,22 @@ import { createAllRepos, type RepositoryBundle } from "../db/repositories.js";
 import { createOwnedInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
 import { type AuthService, createAuthService } from "./auth-service.js";
 import { hashOpaqueToken } from "./auth-tokens.js";
-import type { OidcClient, OidcTokensAndClaims } from "./oidc-client.js";
+import type { OidcClient } from "./oidc-client.js";
 import type { OidcEvidence } from "./oidc-evidence.js";
 
 /** @internal */
 export function createTestOidcClient(options: {
 	state?: string;
-	claims?: Record<string, unknown>;
-	result?: OidcTokensAndClaims;
+	idTokenClaims?: Record<string, unknown>;
+	userInfoClaims?: Record<string, unknown> | null;
 	startError?: Error;
 	callbackError?: Error;
 }): OidcClient {
 	return {
-		async createAuthorizationRequest(provider) {
+		async createAuthorizationRequest() {
 			if (options.startError) throw options.startError;
 			const state = options.state ?? "state";
 			return {
-				provider,
 				state,
 				pkceVerifier: `verifier-${state}`,
 				redirectUrl: "https://identity.example.test/oauth/authorize",
@@ -34,9 +33,11 @@ export function createTestOidcClient(options: {
 		},
 		async exchangeCallback() {
 			if (options.callbackError) throw options.callbackError;
-			if (options.result) return options.result;
-			if (!options.claims) throw new Error("not used");
-			return { claims: options.claims, idTokenClaims: options.claims, userInfoClaims: null };
+			if (!options.idTokenClaims) throw new Error("not used");
+			return {
+				idTokenClaims: options.idTokenClaims,
+				userInfoClaims: options.userInfoClaims ?? null,
+			};
 		},
 	};
 }

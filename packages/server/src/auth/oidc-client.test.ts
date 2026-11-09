@@ -139,7 +139,6 @@ describe("OpenID client", () => {
 			name: "UserInfo name",
 			groups: ["operators"],
 		});
-		expect(exchanged.claims.name).toBe("UserInfo name");
 		expect(JSON.stringify(exchanged)).not.toContain("never-retain");
 		expect(exchanged).not.toHaveProperty("id_token");
 	});
@@ -159,7 +158,7 @@ describe("OpenID client", () => {
 			userInfoStatus: 503,
 		});
 		expect(exchanged.userInfoClaims).toBeNull();
-		expect(exchanged.claims).toMatchObject({ sub: "subject", preferred_username: "alice" });
+		expect(exchanged.idTokenClaims).toMatchObject({ sub: "subject", preferred_username: "alice" });
 	});
 	it("allows loopback HTTP issuer discovery for local auth development", async () => {
 		const oidcServer = await startLocalOidcMetadataServer();

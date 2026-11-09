@@ -12,29 +12,18 @@ import {
 	randomState,
 } from "openid-client";
 import { isLoopbackHttpUrl } from "../config/url-policy.js";
+import type { AuthAuthorizationRequest, AuthCallbackRequest } from "./auth-client.js";
 import type { ResolvedOidcProvider } from "./auth-config.js";
 
-export interface OidcAuthorizationRequest {
-	provider: ResolvedOidcProvider;
-	state: string;
-	pkceVerifier: string;
-	redirectUrl: string;
-}
-
+/** @internal */
 export interface OidcTokensAndClaims {
-	claims: Record<string, unknown>;
-	idTokenClaims?: Record<string, unknown>;
-	userInfoClaims?: Record<string, unknown> | null;
+	idTokenClaims: Record<string, unknown>;
+	userInfoClaims: Record<string, unknown> | null;
 }
 
 export interface OidcClient {
-	createAuthorizationRequest(provider: ResolvedOidcProvider): Promise<OidcAuthorizationRequest>;
-	exchangeCallback(input: {
-		provider: ResolvedOidcProvider;
-		callbackUrl: URL;
-		state: string;
-		pkceVerifier: string;
-	}): Promise<OidcTokensAndClaims>;
+	createAuthorizationRequest(provider: ResolvedOidcProvider): Promise<AuthAuthorizationRequest>;
+	exchangeCallback(input: AuthCallbackRequest<ResolvedOidcProvider>): Promise<OidcTokensAndClaims>;
 }
 
 export function createOpenIdClient(): OidcClient {
@@ -72,7 +61,7 @@ export function createOpenIdClient(): OidcClient {
 				code_challenge: codeChallenge,
 				code_challenge_method: "S256",
 			}).toString();
-			return { provider, state, pkceVerifier, redirectUrl };
+			return { state, pkceVerifier, redirectUrl };
 		},
 
 		async exchangeCallback(input) {
@@ -114,7 +103,6 @@ export function createOpenIdClient(): OidcClient {
 					throw new Error("OIDC UserInfo subject mismatch");
 			}
 			return {
-				claims: userInfo ? { ...idClaims, ...userInfo } : idClaims,
 				idTokenClaims: idClaims,
 				userInfoClaims: userInfo,
 			};

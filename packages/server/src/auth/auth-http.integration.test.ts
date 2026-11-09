@@ -176,7 +176,7 @@ describe("auth HTTP guard", () => {
 			config: testAuthConfig({ baseUrl: "https://leitwerk.example.test" }),
 			oidcClient: createOidcClient({
 				state: "state-2",
-				claims: { sub: "subject-alice", preferred_username: "alice", name: "Alice" },
+				idTokenClaims: { sub: "subject-alice", preferred_username: "alice", name: "Alice" },
 			}),
 		});
 		const loginResponse = await app.inject({ method: "GET", url: "/auth/login" });
