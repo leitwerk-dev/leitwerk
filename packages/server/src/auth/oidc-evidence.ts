@@ -2,7 +2,6 @@ import type { Actor } from "@leitwerk-dev/domain";
 import type { UserInformationResponseBody } from "@leitwerk-dev/protocol/http-contracts";
 import type { OidcAccessPolicy } from "../config/config-types.js";
 import type { ResolvedAuthProvider, ResolvedOidcProvider } from "./auth-config.js";
-import type { GithubOauthClient } from "./github-oauth-client.js";
 import type { OidcTokensAndClaims } from "./oidc-client.js";
 
 /** Session/token evidence, never attached to an Actor. @internal */
@@ -22,13 +21,11 @@ function safeClaims(claims: Record<string, unknown>): Record<string, unknown> {
 	);
 }
 
-function mergedClaims(
-	evidence: Pick<OidcEvidence, "idTokenClaims" | "userInfoClaims">,
-): Record<string, unknown> {
-	return { ...evidence.idTokenClaims, ...evidence.userInfoClaims };
-}
-
-function actorFromClaims(provider: ResolvedAuthProvider, claims: Record<string, unknown>): Actor {
+/** @internal */
+export function actorFromClaims(
+	provider: ResolvedAuthProvider,
+	claims: Record<string, unknown>,
+): Actor {
 	const rawIdentity = claims[provider.identity_claim];
 	const identity = typeof rawIdentity === "string" ? rawIdentity.trim() : "";
 	if (!identity) {
@@ -47,23 +44,10 @@ function actorFromClaims(provider: ResolvedAuthProvider, claims: Record<string, 
 }
 
 /** @internal */
-export function interpretLogin(
+export function interpretOidcLogin(
 	provider: ResolvedOidcProvider,
 	exchange: OidcTokensAndClaims,
-): { actor: Actor; oidcEvidence: OidcEvidence };
-/** @internal */
-export function interpretLogin(
-	provider: Exclude<ResolvedAuthProvider, ResolvedOidcProvider>,
-	exchange: Awaited<ReturnType<GithubOauthClient["exchangeCallback"]>>,
-): { actor: Actor; oidcEvidence: null };
-export function interpretLogin(
-	provider: ResolvedAuthProvider,
-	exchange: OidcTokensAndClaims | Awaited<ReturnType<GithubOauthClient["exchangeCallback"]>>,
-): { actor: Actor; oidcEvidence: OidcEvidence | null } {
-	if ("claims" in exchange) {
-		return { actor: actorFromClaims(provider, exchange.claims), oidcEvidence: null };
-	}
-	if (provider.kind !== "oidc") throw new Error("Invalid OIDC provider");
+): { actor: Actor; oidcEvidence: OidcEvidence } {
 	const idTokenClaims = safeClaims(exchange.idTokenClaims);
 	const userInfoClaims = exchange.userInfoClaims ? safeClaims(exchange.userInfoClaims) : null;
 	if (
@@ -72,7 +56,7 @@ export function interpretLogin(
 		(userInfoClaims && userInfoClaims.sub !== idTokenClaims.sub)
 	)
 		throw new Error("Invalid OIDC subject evidence");
-	const claims = mergedClaims({ idTokenClaims, userInfoClaims });
+	const claims = { ...idTokenClaims, ...userInfoClaims };
 	const actor = actorFromClaims(provider, claims);
 	const groups = claims[provider.access?.groups_claim ?? "groups"];
 	return {
@@ -146,7 +130,7 @@ export function evidenceAllows(
 		(evidence.userInfoClaims !== null && evidence.userInfoClaims.sub !== evidence.subject)
 	)
 		return false;
-	const claims = mergedClaims(evidence);
+	const claims = { ...evidence.idTokenClaims, ...evidence.userInfoClaims };
 	const identity =
 		typeof claims[provider.identity_claim] === "string"
 			? (claims[provider.identity_claim] as string).trim()

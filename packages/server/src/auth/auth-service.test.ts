@@ -87,9 +87,8 @@ describe("auth service login flow", () => {
 			],
 		};
 		const githubClient: GithubOauthClient = {
-			async createAuthorizationRequest(provider) {
+			async createAuthorizationRequest() {
 				return {
-					provider,
 					state: "github-state",
 					pkceVerifier: "unused",
 					redirectUrl: "https://github.com/login/oauth/authorize",

@@ -1,6 +1,6 @@
 import { type Actor, ADMIN_ACTOR } from "@leitwerk-dev/domain";
 import type { LeitwerkConfig } from "../config/config-types.js";
-import type { ApiTokenOwner, AuthLoginFlowRecord, RepositoryBundle } from "../db/repositories.js";
+import type { ApiTokenOwner, RepositoryBundle } from "../db/repositories.js";
 import { resolveApiTokenPolicy } from "./api-token-policy.js";
 import {
 	type ApiTokenService,
@@ -50,18 +50,6 @@ export interface AuthService {
 }
 
 const DEFAULT_AUTH_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
-
-function consumeValidFlow(
-	repos: Pick<RepositoryBundle, "authLoginFlows">,
-	cookieValue: string,
-): AuthLoginFlowRecord | null {
-	const idHash = hashOpaqueToken(cookieValue);
-	const flow = repos.authLoginFlows.getValid(idHash);
-	if (flow) {
-		repos.authLoginFlows.delete(idHash);
-	}
-	return flow;
-}
 
 export function createAuthService(input: {
 	config: LeitwerkConfig;
@@ -118,10 +106,12 @@ export function createAuthService(input: {
 			if (!auth.enabled) {
 				throw new Error("Authentication is not enabled");
 			}
-			const flow = consumeValidFlow(input.repos, loginCookieValue);
+			const flowHash = hashOpaqueToken(loginCookieValue);
+			const flow = input.repos.authLoginFlows.getValid(flowHash);
 			if (!flow) {
 				throw new Error("Login flow expired or was not found");
 			}
+			input.repos.authLoginFlows.delete(flowHash);
 			const provider = auth.providers.find((p) => p.id === flow.providerId) ?? null;
 			if (!provider) {
 				throw new Error("Login provider is no longer configured");

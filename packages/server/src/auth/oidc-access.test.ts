@@ -25,6 +25,15 @@ function config(access: OidcAccessPolicy) {
 	return testAuthConfig({ auth: { allowlist: undefined }, provider: { access } });
 }
 const claims = { groups: ["other", "operators"], email: "alice@EXAMPLE.COM", email_verified: true };
+const conflictingClaims = {
+	idTokenClaims: { sub: "subject", preferred_username: "alice-id", groups: ["a"], name: "ID name" },
+	userInfoClaims: {
+		sub: "subject",
+		preferred_username: "alice",
+		groups: ["b"],
+		name: "UserInfo name",
+	},
+};
 
 describe("OIDC admission", () => {
 	it.each([
@@ -155,9 +164,7 @@ describe("OIDC admission", () => {
 		{ idTokenClaims: { sub: "" }, userInfoClaims: null },
 		{ idTokenClaims: { sub: "subject-alice" }, userInfoClaims: { sub: "other" } },
 	])("rejects invalid subject evidence during login: %j", async (evidence) => {
-		const { completeLogin } = createTestOidcLogin(config({ mode: "all" }), {
-			result: evidence,
-		});
+		const { completeLogin } = createTestOidcLogin(config({ mode: "all" }), evidence);
 		await expect(completeLogin()).rejects.toThrow("subject");
 	});
 	it("retains source-labeled safe login evidence and cannot bypass missing criteria on fallback", async () => {
@@ -196,29 +203,22 @@ describe("OIDC admission", () => {
 		}
 	});
 	it.each([
-		{ users: ["alice"] },
-		{ groups: ["b"] },
-		{ users: ["alice"], groups: ["b"] },
-	])("uses UserInfo precedence for actor, facts, and admission: %j", async (criteria) => {
+		{ users: ["alice"], allowed: true },
+		{ groups: ["b"], allowed: true },
+		{ users: ["alice"], groups: ["b"], allowed: true },
+		{ users: ["alice-id"], allowed: false },
+		{ groups: ["a"], allowed: false },
+	])("uses UserInfo precedence: %j", async ({ allowed, ...criteria }) => {
 		const { auth, completeLogin } = createTestOidcLogin(
 			config({ mode: "restricted", ...criteria }),
-			{
-				result: {
-					idTokenClaims: {
-						sub: "subject",
-						preferred_username: "alice-id",
-						name: "ID name",
-						groups: ["a"],
-					},
-					userInfoClaims: {
-						sub: "subject",
-						preferred_username: "alice",
-						name: "UserInfo name",
-						groups: ["b"],
-					},
-				},
-			},
+			conflictingClaims,
 		);
+		if (!allowed) {
+			await expect(completeLogin()).rejects.toThrow(
+				"Authenticated user does not satisfy admission policy",
+			);
+			return;
+		}
 		const login = await completeLogin();
 		expect(login.actor).toEqual({ ...actor, displayName: "UserInfo name" });
 		expect(auth.userInformation(login.sessionCookieValue)).toMatchObject({
@@ -229,28 +229,12 @@ describe("OIDC admission", () => {
 		expect(auth.resolveSession(login.sessionCookieValue)).toEqual(login.actor);
 	});
 	it.each([
-		{ users: ["alice-id"] },
-		{ groups: ["a"] },
-	])("rejects admission based only on overridden ID-token claims: %j", async (criteria) => {
-		const { completeLogin } = createTestOidcLogin(config({ mode: "restricted", ...criteria }), {
-			result: {
-				idTokenClaims: { sub: "subject", preferred_username: "alice-id", groups: ["a"] },
-				userInfoClaims: { sub: "subject", preferred_username: "alice", groups: ["b"] },
-			},
-		});
-		await expect(completeLogin()).rejects.toThrow(
-			"Authenticated user does not satisfy admission policy",
-		);
-	});
-	it.each([
 		"",
 		42,
 	])("does not fall back to ID-token identity when UserInfo overrides it with %j", async (identity) => {
 		const { completeLogin } = createTestOidcLogin(config({ mode: "all" }), {
-			result: {
-				idTokenClaims: { sub: "subject", preferred_username: "alice" },
-				userInfoClaims: { sub: "subject", preferred_username: identity },
-			},
+			idTokenClaims: { sub: "subject", preferred_username: "alice" },
+			userInfoClaims: { sub: "subject", preferred_username: identity },
 		});
 		await expect(completeLogin()).rejects.toThrow(
 			"Authentication identity claim preferred_username was not present",
@@ -258,10 +242,8 @@ describe("OIDC admission", () => {
 	});
 	it("lets an empty UserInfo name hide the ID-token name", async () => {
 		const { auth, completeLogin } = createTestOidcLogin(testAuthConfig(), {
-			result: {
-				idTokenClaims: { sub: "subject", preferred_username: "alice", name: "ID name" },
-				userInfoClaims: { sub: "subject", name: "" },
-			},
+			idTokenClaims: { sub: "subject", preferred_username: "alice", name: "ID name" },
+			userInfoClaims: { sub: "subject", name: "" },
 		});
 		const login = await completeLogin();
 		expect(login.actor.displayName).toBe("alice");

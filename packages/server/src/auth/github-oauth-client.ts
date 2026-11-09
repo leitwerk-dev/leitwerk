@@ -1,30 +1,17 @@
-import { randomBytes } from "node:crypto";
+import type { AuthAuthorizationRequest, AuthCallbackRequest } from "./auth-client.js";
 import type { ResolvedGithubProvider } from "./auth-config.js";
+import { generateOpaqueToken } from "./auth-tokens.js";
 
 const GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize";
 const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
 const GITHUB_API_URL = "https://api.github.com";
 const GITHUB_API_VERSION = "2022-11-28";
 
-export interface GithubAuthorizationRequest {
-	provider: ResolvedGithubProvider;
-	state: string;
-	pkceVerifier: string;
-	redirectUrl: string;
-}
-
 export interface GithubOauthClient {
-	createAuthorizationRequest(provider: ResolvedGithubProvider): Promise<GithubAuthorizationRequest>;
-	exchangeCallback(input: {
-		provider: ResolvedGithubProvider;
-		callbackUrl: URL;
-		state: string;
-		pkceVerifier: string;
-	}): Promise<{ claims: Record<string, unknown> }>;
-}
-
-function opaqueValue(): string {
-	return randomBytes(32).toString("base64url");
+	createAuthorizationRequest(provider: ResolvedGithubProvider): Promise<AuthAuthorizationRequest>;
+	exchangeCallback(
+		input: AuthCallbackRequest<ResolvedGithubProvider>,
+	): Promise<{ claims: Record<string, unknown> }>;
 }
 
 function githubHeaders(accessToken?: string): HeadersInit {
@@ -51,18 +38,17 @@ async function jsonObject(
 export function createGithubOauthClient(fetchImpl: typeof fetch = fetch): GithubOauthClient {
 	return {
 		async createAuthorizationRequest(provider) {
-			const state = opaqueValue();
+			const state = generateOpaqueToken();
 			const redirectUrl = new URL(GITHUB_AUTHORIZE_URL);
 			redirectUrl.searchParams.set("client_id", provider.client_id);
 			redirectUrl.searchParams.set("redirect_uri", provider.redirect_uri);
 			redirectUrl.searchParams.set("scope", provider.scopes.join(" "));
 			redirectUrl.searchParams.set("state", state);
 			return {
-				provider,
 				state,
 				// The persisted login-flow schema requires a verifier. GitHub OAuth Apps
 				// authenticate this confidential client with its secret instead of PKCE.
-				pkceVerifier: opaqueValue(),
+				pkceVerifier: generateOpaqueToken(),
 				redirectUrl: redirectUrl.toString(),
 			};
 		},
