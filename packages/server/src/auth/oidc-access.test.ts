@@ -13,7 +13,6 @@ import {
 	testOidcEvidence,
 } from "./auth-test-helpers.js";
 import { hashOpaqueToken } from "./auth-tokens.js";
-import { safeClaims } from "./oidc-evidence.js";
 
 const actor: Actor = { id: "identity:alice", kind: "user", provider: "identity" };
 const policy: OidcAccessPolicy = {
@@ -157,7 +156,7 @@ describe("OIDC admission", () => {
 		{ idTokenClaims: { sub: "subject-alice" }, userInfoClaims: { sub: "other" } },
 	])("rejects invalid subject evidence during login: %j", async (evidence) => {
 		const { completeLogin } = createTestOidcLogin(config({ mode: "all" }), {
-			result: { claims: { preferred_username: "alice" }, ...evidence },
+			result: evidence,
 		});
 		await expect(completeLogin()).rejects.toThrow("subject");
 	});
@@ -167,10 +166,17 @@ describe("OIDC admission", () => {
 			preferred_username: "alice",
 			name: "Alice",
 			access_token: "must-not-retain",
+			nested: {
+				refresh_token: "must-not-retain",
+				id_token: "must-not-retain",
+				client_secret: "must-not-retain",
+				Authorization: "must-not-retain",
+				roles: ["a"],
+			},
 		};
 		for (const match of ["all", "any"] as const) {
 			const { auth, completeLogin } = createTestOidcLogin(config({ ...policy, match }), {
-				claims: idTokenClaims,
+				idTokenClaims,
 			});
 			const completion = completeLogin();
 			if (match === "all") await expect(completion).rejects.toThrow("admission policy");
@@ -179,7 +185,7 @@ describe("OIDC admission", () => {
 				expect(login.actor).toEqual({ ...actor, displayName: "Alice" });
 				const information = auth.userInformation(login.sessionCookieValue);
 				expect(information).toMatchObject({
-					idTokenClaims: { sub: "subject-alice" },
+					idTokenClaims: { sub: "subject-alice", nested: { roles: ["a"] } },
 					userInfoClaims: null,
 					facts: { identity: "alice", groups: [], email: null, emailVerified: false },
 				});
@@ -189,18 +195,76 @@ describe("OIDC admission", () => {
 			}
 		}
 	});
-	it("removes credential-shaped claims recursively", () => {
-		expect(
-			safeClaims({
-				sub: "alice",
-				access_token: "secret",
-				nested: {
-					refresh_token: "secret",
-					id_token: "secret",
-					client_secret: "secret",
-					roles: ["a"],
+	it.each([
+		{ users: ["alice"] },
+		{ groups: ["b"] },
+		{ users: ["alice"], groups: ["b"] },
+	])("uses UserInfo precedence for actor, facts, and admission: %j", async (criteria) => {
+		const { auth, completeLogin } = createTestOidcLogin(
+			config({ mode: "restricted", ...criteria }),
+			{
+				result: {
+					idTokenClaims: {
+						sub: "subject",
+						preferred_username: "alice-id",
+						name: "ID name",
+						groups: ["a"],
+					},
+					userInfoClaims: {
+						sub: "subject",
+						preferred_username: "alice",
+						name: "UserInfo name",
+						groups: ["b"],
+					},
 				},
-			}),
-		).toEqual({ sub: "alice", nested: { roles: ["a"] } });
+			},
+		);
+		const login = await completeLogin();
+		expect(login.actor).toEqual({ ...actor, displayName: "UserInfo name" });
+		expect(auth.userInformation(login.sessionCookieValue)).toMatchObject({
+			idTokenClaims: { preferred_username: "alice-id", groups: ["a"] },
+			userInfoClaims: { preferred_username: "alice", groups: ["b"] },
+			facts: { identity: "alice", groups: ["b"] },
+		});
+		expect(auth.resolveSession(login.sessionCookieValue)).toEqual(login.actor);
+	});
+	it.each([
+		{ users: ["alice-id"] },
+		{ groups: ["a"] },
+	])("rejects admission based only on overridden ID-token claims: %j", async (criteria) => {
+		const { completeLogin } = createTestOidcLogin(config({ mode: "restricted", ...criteria }), {
+			result: {
+				idTokenClaims: { sub: "subject", preferred_username: "alice-id", groups: ["a"] },
+				userInfoClaims: { sub: "subject", preferred_username: "alice", groups: ["b"] },
+			},
+		});
+		await expect(completeLogin()).rejects.toThrow(
+			"Authenticated user does not satisfy admission policy",
+		);
+	});
+	it.each([
+		"",
+		42,
+	])("does not fall back to ID-token identity when UserInfo overrides it with %j", async (identity) => {
+		const { completeLogin } = createTestOidcLogin(config({ mode: "all" }), {
+			result: {
+				idTokenClaims: { sub: "subject", preferred_username: "alice" },
+				userInfoClaims: { sub: "subject", preferred_username: identity },
+			},
+		});
+		await expect(completeLogin()).rejects.toThrow(
+			"Authentication identity claim preferred_username was not present",
+		);
+	});
+	it("lets an empty UserInfo name hide the ID-token name", async () => {
+		const { auth, completeLogin } = createTestOidcLogin(testAuthConfig(), {
+			result: {
+				idTokenClaims: { sub: "subject", preferred_username: "alice", name: "ID name" },
+				userInfoClaims: { sub: "subject", name: "" },
+			},
+		});
+		const login = await completeLogin();
+		expect(login.actor.displayName).toBe("alice");
+		expect(auth.resolveSession(login.sessionCookieValue)).toEqual(login.actor);
 	});
 });

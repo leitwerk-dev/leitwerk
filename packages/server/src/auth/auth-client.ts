@@ -1,6 +1,8 @@
+import type { Actor } from "@leitwerk-dev/domain";
 import type { ResolvedAuthProvider } from "./auth-config.js";
 import { createGithubOauthClient, type GithubOauthClient } from "./github-oauth-client.js";
-import { createOpenIdClient, type OidcClient, type OidcTokensAndClaims } from "./oidc-client.js";
+import { createOpenIdClient, type OidcClient } from "./oidc-client.js";
+import { interpretLogin, type OidcEvidence } from "./oidc-evidence.js";
 
 export interface AuthAuthorizationRequest {
 	provider: ResolvedAuthProvider;
@@ -16,7 +18,7 @@ export interface AuthClient {
 		callbackUrl: URL;
 		state: string;
 		pkceVerifier: string;
-	}): Promise<OidcTokensAndClaims>;
+	}): Promise<{ actor: Actor; oidcEvidence: OidcEvidence | null }>;
 }
 
 export function createAuthClient(input?: {
@@ -31,10 +33,16 @@ export function createAuthClient(input?: {
 				? oidc.createAuthorizationRequest(provider)
 				: github.createAuthorizationRequest(provider);
 		},
-		exchangeCallback(request) {
+		async exchangeCallback(request) {
 			return request.provider.kind === "oidc"
-				? oidc.exchangeCallback({ ...request, provider: request.provider })
-				: github.exchangeCallback({ ...request, provider: request.provider });
+				? interpretLogin(
+						request.provider,
+						await oidc.exchangeCallback({ ...request, provider: request.provider }),
+					)
+				: interpretLogin(
+						request.provider,
+						await github.exchangeCallback({ ...request, provider: request.provider }),
+					);
 		},
 	};
 }

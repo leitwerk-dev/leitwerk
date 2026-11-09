@@ -6,6 +6,7 @@ import { createAllRepos } from "../db/repositories.js";
 import { createOwnedInMemoryDatabase as createInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
 import { createAuthService } from "./auth-service.js";
 import {
+	createTestOidcLogin,
 	createTestSession,
 	createTestSessionOwner,
 	testAuthConfig,
@@ -67,9 +68,12 @@ it("reevaluates session management and bearer access under a stricter admission 
 		auth: { allowlist: undefined },
 		provider: { access: { mode: "all" } },
 	});
-	const repos = createAllRepos(createInMemoryDatabase());
-	const first = await harness(true, config, repos);
-	const headers = await first.browser(first.session("alice"));
+	const login = createTestOidcLogin(config, {
+		idTokenClaims: { sub: "subject-alice", preferred_username: "alice", groups: ["users"] },
+	});
+	const { sessionCookieValue } = await login.completeLogin();
+	const first = await harness(true, config, login.repos);
+	const headers = await first.browser(`orch_test_session=${sessionCookieValue}`);
 	const issued = await first.expectStatus(201, {
 		method: "POST",
 		url: "/api/auth/tokens",

@@ -7,16 +7,16 @@ import {
 	createApiTokenService,
 	tokenProviderBinding,
 } from "./api-token-service.js";
-import { type AuthClient, createAuthClient } from "./auth-client.js";
+import { createAuthClient } from "./auth-client.js";
 import {
 	isActorAllowedByConfig,
 	type ResolvedAuthConfig,
-	type ResolvedAuthProvider,
 	resolveAuthConfig,
 } from "./auth-config.js";
 import { generateOpaqueToken, hashOpaqueToken, isoFromNow } from "./auth-tokens.js";
+import type { GithubOauthClient } from "./github-oauth-client.js";
 import type { OidcClient } from "./oidc-client.js";
-import { type OidcEvidence, safeClaims } from "./oidc-evidence.js";
+import type { OidcEvidence } from "./oidc-evidence.js";
 
 export interface CreatedLoginFlow {
 	cookieValue: string;
@@ -49,33 +49,6 @@ export interface AuthService {
 	startExpiredAuthStateSweep(intervalMs?: number): () => void;
 }
 
-function pickDisplayName(claims: Record<string, unknown>, identity: string): string | undefined {
-	for (const key of ["name", "preferred_username", "email"] as const) {
-		const value = claims[key];
-		if (typeof value === "string" && value.trim() !== "") {
-			return value;
-		}
-	}
-	return identity;
-}
-
-export function actorFromOidcClaims(input: {
-	provider: ResolvedAuthProvider;
-	claims: Record<string, unknown>;
-}): Actor | null {
-	const rawIdentity = input.claims[input.provider.identity_claim];
-	const identity = typeof rawIdentity === "string" ? rawIdentity.trim() : "";
-	if (identity === "") {
-		return null;
-	}
-	return {
-		id: `${input.provider.id}:${identity}`,
-		kind: "user",
-		provider: input.provider.id,
-		displayName: pickDisplayName(input.claims, identity),
-	};
-}
-
 const DEFAULT_AUTH_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
 function consumeValidFlow(
@@ -94,10 +67,10 @@ export function createAuthService(input: {
 	config: LeitwerkConfig;
 	repos: Pick<RepositoryBundle, "authSessions" | "authLoginFlows" | "apiTokens">;
 	oidcClient?: OidcClient;
-	authClient?: AuthClient;
+	githubClient?: GithubOauthClient;
 }): AuthService {
 	const auth = resolveAuthConfig(input.config);
-	const authClient = input.authClient ?? createAuthClient({ oidc: input.oidcClient });
+	const authClient = createAuthClient({ oidc: input.oidcClient, github: input.githubClient });
 	const sweepExpiredAuthState = (): AuthSweepResult => ({
 		sessions: input.repos.authSessions.deleteExpired(),
 		loginFlows: input.repos.authLoginFlows.deleteExpired(),
@@ -156,49 +129,12 @@ export function createAuthService(input: {
 			if (callbackUrl.searchParams.get("state") !== flow.state) {
 				throw new Error("Invalid authentication state");
 			}
-			const exchanged = await authClient.exchangeCallback({
+			const { actor, oidcEvidence } = await authClient.exchangeCallback({
 				provider,
 				callbackUrl,
 				state: flow.state,
 				pkceVerifier: flow.pkceVerifier,
 			});
-			const actor = actorFromOidcClaims({ provider, claims: safeClaims(exchanged.claims) });
-			if (!actor) {
-				throw new Error(`Authentication identity claim ${provider.identity_claim} was not present`);
-			}
-			let oidcEvidence: OidcEvidence | null = null;
-			if (provider.kind === "oidc") {
-				const idTokenClaims = safeClaims(exchanged.idTokenClaims ?? {});
-				const userInfoClaims = exchanged.userInfoClaims
-					? safeClaims(exchanged.userInfoClaims)
-					: null;
-				if (
-					typeof idTokenClaims.sub !== "string" ||
-					!idTokenClaims.sub.trim() ||
-					(userInfoClaims && userInfoClaims.sub !== idTokenClaims.sub)
-				)
-					throw new Error("Invalid OIDC subject evidence");
-				const claims = { ...idTokenClaims, ...userInfoClaims };
-				const groups = claims[provider.access?.groups_claim ?? "groups"];
-				oidcEvidence = {
-					providerId: provider.id,
-					issuer: provider.issuer,
-					identityClaim: provider.identity_claim,
-					subject: idTokenClaims.sub,
-					loginAt: new Date().toISOString(),
-					idTokenClaims,
-					userInfoClaims,
-					facts: {
-						identity: actor.id.slice(provider.id.length + 1),
-						email: typeof claims.email === "string" ? claims.email : null,
-						emailVerified: claims.email_verified === true,
-						groups:
-							Array.isArray(groups) && groups.every((group) => typeof group === "string")
-								? groups
-								: [],
-					},
-				};
-			}
 			if (!isActorAllowedByConfig(actor, auth, oidcEvidence)) {
 				throw new Error("Authenticated user does not satisfy admission policy");
 			}

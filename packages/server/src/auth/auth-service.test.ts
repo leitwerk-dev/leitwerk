@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { getDefaultConfig } from "../config/config-loader.js";
 import { createAllRepos } from "../db/repositories.js";
 import { createOwnedInMemoryDatabase as createInMemoryDatabase } from "../test-helpers/owned-test-deps.js";
-import type { AuthClient } from "./auth-client.js";
 import { resolveAuthConfig } from "./auth-config.js";
-import { actorFromOidcClaims, createAuthService } from "./auth-service.js";
+import { createAuthService } from "./auth-service.js";
 import { createTestOidcLogin, createTestSession, testAuthConfig } from "./auth-test-helpers.js";
 import { hashOpaqueToken } from "./auth-tokens.js";
+import type { GithubOauthClient } from "./github-oauth-client.js";
 
 describe("auth config resolution", () => {
 	it("keeps auth disabled when no provider is configured", () => {
@@ -39,18 +39,19 @@ describe("auth config resolution", () => {
 });
 
 describe("OIDC actor derivation", () => {
-	it("uses the configured identity claim and namespaces the actor by provider", () => {
-		const provider = resolveAuthConfig(testAuthConfig({ provider: { identity_claim: "email" } }))
-			.providers[0];
-		const actor = actorFromOidcClaims({
-			provider,
-			claims: {
-				email: "alice",
-				preferred_username: "wrong-default",
-				sub: "wrong-sub",
-				name: "Alice A.",
+	it("uses the configured identity claim and namespaces the actor by provider", async () => {
+		const { completeLogin } = createTestOidcLogin(
+			testAuthConfig({ provider: { identity_claim: "email" } }),
+			{
+				idTokenClaims: {
+					email: "alice",
+					preferred_username: "wrong-default",
+					sub: "wrong-sub",
+					name: "Alice A.",
+				},
 			},
-		});
+		);
+		const { actor } = await completeLogin();
 		expect(actor).toEqual({
 			id: "identity:alice",
 			kind: "user",
@@ -59,9 +60,13 @@ describe("OIDC actor derivation", () => {
 		});
 	});
 
-	it("returns null when the identity claim is missing", () => {
-		const provider = resolveAuthConfig(testAuthConfig()).providers[0];
-		expect(actorFromOidcClaims({ provider, claims: { sub: "123" } })).toBeNull();
+	it("rejects login when the identity claim is missing", async () => {
+		const { completeLogin } = createTestOidcLogin(testAuthConfig(), {
+			idTokenClaims: { sub: "123" },
+		});
+		await expect(completeLogin()).rejects.toThrow(
+			"Authentication identity claim preferred_username was not present",
+		);
 	});
 });
 
@@ -81,7 +86,7 @@ describe("auth service login flow", () => {
 				},
 			],
 		};
-		const authClient: AuthClient = {
+		const githubClient: GithubOauthClient = {
 			async createAuthorizationRequest(provider) {
 				return {
 					provider,
@@ -95,7 +100,7 @@ describe("auth service login flow", () => {
 			},
 		};
 		const repos = createAllRepos(createInMemoryDatabase());
-		const service = createAuthService({ config, repos, authClient });
+		const service = createAuthService({ config, repos, githubClient });
 		const flow = await service.startLogin();
 
 		const completed = await service.completeLogin({
@@ -109,11 +114,12 @@ describe("auth service login flow", () => {
 			displayName: "Alice",
 		});
 		expect(service.resolveSession(completed.sessionCookieValue)).toEqual(completed.actor);
+		expect(service.userInformation(completed.sessionCookieValue)).toBeNull();
 	});
 
 	it("creates a session for an allowlisted OIDC identity and resolves it from the opaque cookie", async () => {
 		const { auth, repos, completeLogin } = createTestOidcLogin(testAuthConfig(), {
-			claims: { sub: "subject-alice", preferred_username: "alice", name: "Alice" },
+			idTokenClaims: { sub: "subject-alice", preferred_username: "alice", name: "Alice" },
 		});
 		const completed = await completeLogin();
 
@@ -161,7 +167,7 @@ describe("auth service login flow", () => {
 
 	it("rejects non-allowlisted identities", async () => {
 		const { completeLogin } = createTestOidcLogin(testAuthConfig(), {
-			claims: { sub: "subject-mallory", preferred_username: "mallory" },
+			idTokenClaims: { sub: "subject-mallory", preferred_username: "mallory" },
 		});
 		await expect(completeLogin()).rejects.toThrow();
 	});

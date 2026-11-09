@@ -21,10 +21,10 @@ export interface OidcAuthorizationRequest {
 	redirectUrl: string;
 }
 
+/** @internal */
 export interface OidcTokensAndClaims {
-	claims: Record<string, unknown>;
-	idTokenClaims?: Record<string, unknown>;
-	userInfoClaims?: Record<string, unknown> | null;
+	idTokenClaims: Record<string, unknown>;
+	userInfoClaims: Record<string, unknown> | null;
 }
 
 export interface OidcClient {
@@ -114,7 +114,6 @@ export function createOpenIdClient(): OidcClient {
 					throw new Error("OIDC UserInfo subject mismatch");
 			}
 			return {
-				claims: userInfo ? { ...idClaims, ...userInfo } : idClaims,
 				idTokenClaims: idClaims,
 				userInfoClaims: userInfo,
 			};

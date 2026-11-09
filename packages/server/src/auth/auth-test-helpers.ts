@@ -16,7 +16,7 @@ import type { OidcEvidence } from "./oidc-evidence.js";
 /** @internal */
 export function createTestOidcClient(options: {
 	state?: string;
-	claims?: Record<string, unknown>;
+	idTokenClaims?: Record<string, unknown>;
 	result?: OidcTokensAndClaims;
 	startError?: Error;
 	callbackError?: Error;
@@ -35,8 +35,8 @@ export function createTestOidcClient(options: {
 		async exchangeCallback() {
 			if (options.callbackError) throw options.callbackError;
 			if (options.result) return options.result;
-			if (!options.claims) throw new Error("not used");
-			return { claims: options.claims, idTokenClaims: options.claims, userInfoClaims: null };
+			if (!options.idTokenClaims) throw new Error("not used");
+			return { idTokenClaims: options.idTokenClaims, userInfoClaims: null };
 		},
 	};
 }
