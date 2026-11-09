@@ -87,7 +87,7 @@ it("reevaluates session management and bearer access under a stricter admission 
 		auth: { allowlist: undefined },
 		provider: { access: { mode: "restricted", groups: ["operators"] } },
 	});
-	const second = await harness(true, stricter, repos);
+	const second = await harness(true, stricter, login.repos);
 	// Bearer denial must not depend on a prior session request deleting the session.
 	await second.expectStatus(401, { url: "/api/read", headers: bearer });
 	for (const [method, url] of [
