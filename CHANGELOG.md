@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.4.4 (2026-11-10)
+
+feat(launchers): expose configuration readiness before launch (#229)
+
+Source: 0b162a3acf667dbbcbe5311e504256897f581f67
+Previous release: v0.4.3
+
+## 0.4.3 (2026-11-06)
+
+feat(auth): add OIDC admission policies and user information (#224)
+
+Source: a17461738062f486a020daadd68676a881ef8e36
+Previous release: v0.4.2
+
+## 0.4.2 (2026-11-03)
+
+fix(gitlab): support globally labeled merge request discovery (#222)
+
+Source: 6720e88b8d8ebcd79d2caca0b679744c95b0938d
+Previous release: v0.4.1
+
+## 0.4.1 (2026-11-02)
+
+fix(kubernetes): reclaim terminal process storage safely (#217)
+
+Source: c8ed293c3df904b554d9304959c5cc8fae9c80c8
+Previous release: v0.4.0
+
 ## [0.4.0](https://github.com/leitwerk-dev/leitwerk/compare/v0.3.1...v0.4.0) (2026-10-13)
 
 
