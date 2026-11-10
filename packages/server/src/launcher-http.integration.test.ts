@@ -542,6 +542,12 @@ async function createTitleTestHarness(
 	};
 }
 
+const json = (value: unknown) => ({
+	method: "POST",
+	headers: { "content-type": "application/json" },
+	body: JSON.stringify(value),
+});
+
 beforeAll(async () => {
 	harness = await createIntegrationHarness({
 		extensionCatalog: buildExtensionCatalogFromModules([launcherTestExtension]),
@@ -573,11 +579,6 @@ describe("launcher HTTP routes", () => {
 			skillIds: [],
 			schedule: { mode: "once", runAt: futureIso() },
 		};
-		const json = (value: unknown) => ({
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify(value),
-		});
 		const response = await fetch(`${base}/future-launches`, json(body));
 		expect(response.status, await response.clone().text()).toBe(201);
 		const [execution] = deps.futureExecutions.listAll();
@@ -812,38 +813,28 @@ describe("launcher HTTP routes", () => {
 			["missing", "blocked"],
 			["usable", "ready"],
 		]) {
-			const response = await fetch(`${base}/readiness`, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ launcherInput: { prompt } }),
-			});
+			const response = await fetch(`${base}/readiness`, json({ launcherInput: { prompt } }));
 			expect(response.status).toBe(200);
 			const body = await response.json();
 			expect(body.readiness.status).toBe(status);
 			if (status === "blocked") expect(body.readiness.issues).toEqual(launcher.readiness.issues);
 		}
-		const response = await submitImmediateLaunch(`${base}/launch-runs`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ launcherInput: { prompt: "missing" }, schedule: { mode: "now" } }),
-		});
+		const response = await submitImmediateLaunch(
+			`${base}/launch-runs`,
+			json({ launcherInput: { prompt: "missing" }, schedule: { mode: "now" } }),
+		);
 		const run = await readLaunchRun(response, "failed");
 		expect(run.instanceId).toBeNull();
 		expect(JSON.stringify(run)).toContain(
 			"Required profile is missing. Configure the profile and restart.",
 		);
-		const validResponse = await submitImmediateLaunch(`${base}/launch-runs`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ launcherInput: { prompt: "usable" }, schedule: { mode: "now" } }),
-		});
+		const validResponse = await submitImmediateLaunch(
+			`${base}/launch-runs`,
+			json({ launcherInput: { prompt: "usable" }, schedule: { mode: "now" } }),
+		);
 		const validRun = await readLaunchRun(validResponse, "completed");
 		expect(validRun.instanceId).not.toBeNull();
-		const unknown = await fetch(`${harness.address}/api/launchers/missing/readiness`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: "{}",
-		});
+		const unknown = await fetch(`${harness.address}/api/launchers/missing/readiness`, json({}));
 		expect(unknown.status).toBe(404);
 	});
 

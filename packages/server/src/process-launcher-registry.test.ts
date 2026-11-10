@@ -1,4 +1,9 @@
-import { defineProcess, type ExtensionProcessDefinition, llmTurn } from "@leitwerk-dev/process-sdk";
+import {
+	defineProcess,
+	type ExtensionProcessDefinition,
+	llmTurn,
+	type UiLauncherDefinition,
+} from "@leitwerk-dev/process-sdk";
 import { describe, expect, it } from "vitest";
 import { buildProcessLauncherRegistry } from "./process-launcher-registry.js";
 
@@ -73,40 +78,51 @@ function buildRegistry(
 	);
 }
 
+function makeUiProcess(
+	id: string,
+	ui: Partial<UiLauncherDefinition<TestParams>>,
+	processId = "test_process",
+) {
+	return makeProcess({
+		id: processId,
+		launchers(api) {
+			api.launcher({
+				id,
+				label: `Launcher ${id}`,
+				description: "Test",
+				visibility: "ui",
+				ui: {
+					card: {},
+					launchConfigSchema: { id, title: id, fields: [] },
+					resolveLaunchConfig: () => ({
+						ok: true,
+						launchConfig: { processId, params: { repoPath: "usable" } },
+					}),
+					...ui,
+				},
+			});
+		},
+	});
+}
+
 describe("buildProcessLauncherRegistry", () => {
 	it("shares overview and selected readiness and rechecks at preparation time", async () => {
 		let configured = true;
 		const registry = buildRegistry([
-			makeProcess({
-				launchers(api) {
-					api.launcher({
-						id: "readiness",
-						label: "Readiness",
-						description: "Test",
-						visibility: "ui",
-						ui: {
-							card: {},
-							launchConfigSchema: { id: "readiness", title: "Test", fields: [] },
-							readiness(input) {
-								return configured && input.repoPath === "usable"
-									? { status: "ready", issues: [] }
-									: {
-											status: configured && !input.repoPath ? "partial" : "blocked",
-											issues: [
-												{
-													code: "missing_profile",
-													summary: "Profile missing.",
-													remediation: "Configure profile.",
-												},
-											],
-										};
-							},
-							resolveLaunchConfig: () => ({
-								ok: true,
-								launchConfig: { processId: "test_process", params: { repoPath: "usable" } },
-							}),
-						},
-					});
+			makeUiProcess("readiness", {
+				readiness(input) {
+					return configured && input.repoPath === "usable"
+						? { status: "ready", issues: [] }
+						: {
+								status: configured && !input.repoPath ? "partial" : "blocked",
+								issues: [
+									{
+										code: "missing_profile",
+										summary: "Profile missing.",
+										remediation: "Configure profile.",
+									},
+								],
+							};
 				},
 			}),
 		]);
@@ -132,25 +148,9 @@ describe("buildProcessLauncherRegistry", () => {
 		const logs: string[] = [];
 		const registry = buildRegistry(
 			[
-				makeProcess({
-					launchers(api) {
-						api.launcher({
-							id: "broken",
-							label: "Broken",
-							description: "Test",
-							visibility: "ui",
-							ui: {
-								card: {},
-								launchConfigSchema: { id: "broken", title: "Broken", fields: [] },
-								readiness() {
-									throw new Error("token=secret-canary");
-								},
-								resolveLaunchConfig: () => ({
-									ok: true,
-									launchConfig: { processId: "test_process", params: { repoPath: "" } },
-								}),
-							},
-						});
+				makeUiProcess("broken", {
+					readiness() {
+						throw new Error("token=secret-canary");
 					},
 				}),
 			],
@@ -165,54 +165,19 @@ describe("buildProcessLauncherRegistry", () => {
 	});
 	it("lists UI launchers and resolves defaults/options", async () => {
 		const registry = buildRegistry([
-			makeProcess({
-				launchers(api) {
-					api.launcher({
-						id: "local_repo_ui",
-						label: "Local Repo",
-						description: "Run against a local repository",
-						visibility: "ui",
-						ui: {
-							card: {},
-							launchConfigSchema: {
-								id: "local_repo_form",
-								title: "Local Repo",
-								fields: [{ id: "repoPath", label: "Repo", kind: "text", required: true }],
-								submitLabel: "Launch",
+			makeUiProcess("local_repo_ui", {
+				resolveDefaults() {
+					return { repoPath: "/tmp/project" };
+				},
+				resolveOptions(input) {
+					return {
+						repoPath: [
+							{
+								value: typeof input.repoPath === "string" ? input.repoPath : "/tmp/project",
+								label: "Suggested repo",
 							},
-							resolveDefaults() {
-								return { repoPath: "/tmp/project" };
-							},
-							resolveOptions(input) {
-								return {
-									repoPath: [
-										{
-											value: typeof input.repoPath === "string" ? input.repoPath : "/tmp/project",
-											label: "Suggested repo",
-										},
-									],
-								};
-							},
-							async resolveLaunchConfig(input) {
-								return {
-									ok: true,
-									launchConfig: {
-										processId: "test_process",
-										params: { repoPath: String(input.repoPath ?? "") },
-										startTurnId: "test_turn",
-										projects: [
-											{
-												key: "repo",
-												repoLocator: String(input.repoPath ?? ""),
-												baseBranch: "main",
-												workBranch: "feature/test",
-											},
-										],
-									},
-								};
-							},
-						},
-					});
+						],
+					};
 				},
 			}),
 		]);
@@ -222,7 +187,7 @@ describe("buildProcessLauncherRegistry", () => {
 			expect.objectContaining({
 				id: "local_repo_ui",
 				processId: "test_process",
-				label: "Local Repo",
+				label: "Launcher local_repo_ui",
 			}),
 		]);
 		expect(await registry.resolveUiDefaults("local_repo_ui")).toEqual({ repoPath: "/tmp/project" });
@@ -234,42 +199,17 @@ describe("buildProcessLauncherRegistry", () => {
 	it("passes configured model profiles into launcher context for defaults and options", async () => {
 		const registry = buildRegistry(
 			[
-				makeProcess({
-					launchers(api) {
-						api.launcher({
-							id: "single_prompt_ui",
-							label: "Single Prompt",
-							description: "Run a single prompt",
-							visibility: "ui",
-							ui: {
-								card: {},
-								launchConfigSchema: {
-									id: "single_prompt_form",
-									title: "Single Prompt",
-									fields: [{ id: "modelProfileId", label: "Model", kind: "select" }],
-								},
-								resolveDefaults(ctx) {
-									return { modelProfileId: ctx.modelProfiles?.[0]?.id ?? "" };
-								},
-								resolveOptions(_input, ctx) {
-									return {
-										modelProfileId: (ctx.modelProfiles ?? []).map((profile) => ({
-											value: profile.id,
-											label: `${profile.id} → ${profile.provider}/${profile.modelId}`,
-										})),
-									};
-								},
-								resolveLaunchConfig(input) {
-									return {
-										ok: true,
-										launchConfig: {
-											processId: "test_process",
-											params: { repoPath: String(input.modelProfileId ?? "") },
-										},
-									};
-								},
-							},
-						});
+				makeUiProcess("single_prompt_ui", {
+					resolveDefaults(ctx) {
+						return { modelProfileId: ctx.modelProfiles?.[0]?.id ?? "" };
+					},
+					resolveOptions(_input, ctx) {
+						return {
+							modelProfileId: (ctx.modelProfiles ?? []).map((profile) => ({
+								value: profile.id,
+								label: `${profile.id} → ${profile.provider}/${profile.modelId}`,
+							})),
+						};
 					},
 				}),
 			],
@@ -299,103 +239,42 @@ describe("buildProcessLauncherRegistry", () => {
 	});
 
 	it("filters launcher model profiles per process when a process-specific callback is provided", async () => {
-		const registry = buildRegistry(
-			[
-				makeProcess({
-					id: "process_a",
-					launchers(api) {
-						api.launcher({
-							id: "process_a_launcher",
-							label: "Process A",
-							description: "A",
-							visibility: "ui",
-							ui: {
-								card: {},
-								launchConfigSchema: {
-									id: "process_a_form",
-									title: "Process A",
-									fields: [],
-								},
-								resolveDefaults(ctx) {
-									return {
-										modelProfileId: ctx.modelProfiles?.map((profile) => profile.id) ?? [],
-									};
-								},
-								resolveLaunchConfig() {
-									return {
-										ok: true,
-										launchConfig: { processId: "process_a", params: { repoPath: "/tmp/a" } },
-									};
-								},
-							},
-						});
-					},
-				}),
-				makeProcess({
-					id: "process_b",
-					launchers(api) {
-						api.launcher({
-							id: "process_b_launcher",
-							label: "Process B",
-							description: "B",
-							visibility: "ui",
-							ui: {
-								card: {},
-								launchConfigSchema: {
-									id: "process_b_form",
-									title: "Process B",
-									fields: [],
-								},
-								resolveDefaults(ctx) {
-									return {
-										modelProfileId: ctx.modelProfiles?.map((profile) => profile.id) ?? [],
-									};
-								},
-								resolveLaunchConfig() {
-									return {
-										ok: true,
-										launchConfig: { processId: "process_b", params: { repoPath: "/tmp/b" } },
-									};
-								},
-							},
-						});
-					},
-				}),
-			],
+		const cases = [
 			{
-				modelProfiles: [
-					{
-						id: "claude_fast",
-						provider: "anthropic",
-						modelId: "claude-sonnet-4-20250514",
-						thinkingLevel: "medium",
-					},
-					{
-						id: "local_qwen",
-						provider: "ollama",
-						modelId: "qwen2.5-coder:14b",
-						thinkingLevel: "low",
-					},
-				],
-				getModelProfilesForProcess(processId) {
-					return processId === "process_a"
-						? [
-								{
-									id: "local_qwen",
-									provider: "ollama",
-									modelId: "qwen2.5-coder:14b",
-									thinkingLevel: "low",
-								},
-							]
-						: [
-								{
-									id: "claude_fast",
-									provider: "anthropic",
-									modelId: "claude-sonnet-4-20250514",
-									thinkingLevel: "medium",
-								},
-							];
+				processId: "process_a",
+				profile: {
+					id: "local_qwen",
+					provider: "ollama",
+					modelId: "qwen2.5-coder:14b",
+					thinkingLevel: "low" as const,
 				},
+			},
+			{
+				processId: "process_b",
+				profile: {
+					id: "claude_fast",
+					provider: "anthropic",
+					modelId: "claude-sonnet-4-20250514",
+					thinkingLevel: "medium" as const,
+				},
+			},
+		];
+		const registry = buildRegistry(
+			cases.map(({ processId }) =>
+				makeUiProcess(
+					`${processId}_launcher`,
+					{
+						resolveDefaults(ctx) {
+							return { modelProfileId: ctx.modelProfiles?.map((profile) => profile.id) ?? [] };
+						},
+					},
+					processId,
+				),
+			),
+			{
+				modelProfiles: cases.map(({ profile }) => profile),
+				getModelProfilesForProcess: (processId) =>
+					cases.filter((item) => item.processId === processId).map(({ profile }) => profile),
 			},
 		);
 
@@ -409,43 +288,27 @@ describe("buildProcessLauncherRegistry", () => {
 
 	it("returns structured validation errors for invalid UI input", async () => {
 		const registry = buildRegistry([
-			makeProcess({
-				launchers(api) {
-					api.launcher({
-						id: "local_repo_ui",
-						label: "Local Repo",
-						description: "Run against a local repository",
-						visibility: "ui",
-						ui: {
-							card: {},
-							launchConfigSchema: {
-								id: "local_repo_form",
-								title: "Local Repo",
-								fields: [{ id: "repoPath", label: "Repo", kind: "text", required: true }],
-							},
-							resolveLaunchConfig(input) {
-								if (typeof input.repoPath !== "string" || !input.repoPath.trim()) {
-									return {
-										ok: false,
-										errors: [
-											{
-												code: "required",
-												fieldId: "repoPath",
-												message: "repoPath is required",
-											},
-										],
-									};
-								}
-								return {
-									ok: true,
-									launchConfig: {
-										processId: "test_process",
-										params: { repoPath: input.repoPath },
-									},
-								};
-							},
+			makeUiProcess("local_repo_ui", {
+				resolveLaunchConfig(input) {
+					if (typeof input.repoPath !== "string" || !input.repoPath.trim()) {
+						return {
+							ok: false,
+							errors: [
+								{
+									code: "required",
+									fieldId: "repoPath",
+									message: "repoPath is required",
+								},
+							],
+						};
+					}
+					return {
+						ok: true,
+						launchConfig: {
+							processId: "test_process",
+							params: { repoPath: input.repoPath },
 						},
-					});
+					};
 				},
 			}),
 		]);
@@ -458,33 +321,17 @@ describe("buildProcessLauncherRegistry", () => {
 
 	it("resolves UI launchers into normalized launch plans", async () => {
 		const registry = buildRegistry([
-			makeProcess({
-				launchers(api) {
-					api.launcher({
-						id: "local_repo_ui",
-						label: "Local Repo",
-						description: "Run against a local repository",
-						visibility: "ui",
-						ui: {
-							card: {},
-							launchConfigSchema: {
-								id: "local_repo_form",
-								title: "Local Repo",
-								fields: [{ id: "repoPath", label: "Repo", kind: "text", required: true }],
-							},
-							resolveLaunchConfig(input) {
-								return {
-									ok: true,
-									launchConfig: {
-										processId: "test_process",
-										params: { repoPath: String(input.repoPath) },
-										startTurnId: "test_turn",
-										metadata: { requestedBy: "tester" },
-									},
-								};
-							},
+			makeUiProcess("local_repo_ui", {
+				resolveLaunchConfig(input) {
+					return {
+						ok: true,
+						launchConfig: {
+							processId: "test_process",
+							params: { repoPath: String(input.repoPath) },
+							startTurnId: "test_turn",
+							metadata: { requestedBy: "tester" },
 						},
-					});
+					};
 				},
 			}),
 		]);
@@ -498,10 +345,6 @@ describe("buildProcessLauncherRegistry", () => {
 		if (!resolved.ok || !preview.ok) throw new Error("Expected launcher resolution");
 		expect(preview.launcher.launchPlan).toEqual({ ...resolved.launcher.launchPlan, preview: true });
 		expect(resolved.launcher.launchPlan.preview).toBeUndefined();
-		expect(resolved.ok).toBe(true);
-		if (!resolved.ok) {
-			throw new Error("expected a resolved launcher");
-		}
 		expect(resolved.launcher.launchConfig).toMatchObject({
 			processId: "test_process",
 			params: { repoPath: "/tmp/project" },
@@ -525,35 +368,19 @@ describe("buildProcessLauncherRegistry", () => {
 
 	it("canonicalizes explicit title metadata into the launch plan", async () => {
 		const registry = buildRegistry([
-			makeProcess({
-				launchers(api) {
-					api.launcher({
-						id: "title_ui",
-						label: "Title UI",
-						description: "Launch with an explicit title",
-						visibility: "ui",
-						ui: {
-							card: {},
-							launchConfigSchema: {
-								id: "title_form",
-								title: "Title Form",
-								fields: [{ id: "repoPath", label: "Repo", kind: "text", required: true }],
-							},
-							resolveLaunchConfig(input) {
-								return {
-									ok: true,
-									launchConfig: {
-										processId: "test_process",
-										params: { repoPath: String(input.repoPath ?? "") },
-										title: "  Human-readable\n title  ",
-										titleSourceFields: [
-											{ label: "Prompt", value: "Implement the requested repo change" },
-										],
-									},
-								};
-							},
+			makeUiProcess("title_ui", {
+				resolveLaunchConfig(input) {
+					return {
+						ok: true,
+						launchConfig: {
+							processId: "test_process",
+							params: { repoPath: String(input.repoPath ?? "") },
+							title: "  Human-readable\n title  ",
+							titleSourceFields: [
+								{ label: "Prompt", value: "Implement the requested repo change" },
+							],
 						},
-					});
+					};
 				},
 			}),
 		]);

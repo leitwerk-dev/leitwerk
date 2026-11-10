@@ -196,48 +196,41 @@ export function registerLauncherRoutes(
 		},
 	);
 
-	app.post<{ Params: { launcherId: string }; Body: unknown }>(
-		"/api/launchers/:launcherId/readiness",
-		async (req, reply) => {
-			const normalized = normalizeLauncherRequest(req.body);
-			if (!normalized.ok) return sendLauncherRequestNormalizationError(reply, normalized.error);
-			if (
-				!deps.launcherService
-					.listUiLaunchers()
-					.some((launcher) => launcher.id === req.params.launcherId)
-			) {
-				return reply.code(404).send({ error: "Launcher not found" });
-			}
-			return {
-				readiness: deps.launcherService.resolveUiReadiness?.(
-					req.params.launcherId,
-					normalized.request.launcherInput,
-				) ?? { status: "ready", issues: [] },
-			} satisfies LauncherReadinessResponseBody;
-		},
-	);
-
-	app.post<{ Params: { launcherId: string }; Body: unknown }>(
-		"/api/launchers/:launcherId/options",
-		async (req, reply) => {
-			const normalized = normalizeLauncherRequest(req.body);
-			if (!normalized.ok) {
-				return sendLauncherRequestNormalizationError(reply, normalized.error);
-			}
-			try {
-				const options = await deps.launcherService.resolveUiOptions(
-					req.params.launcherId,
-					normalized.request.launcherInput,
-				);
-				const body = { options } satisfies LauncherOptionsResponseBody;
-				return body;
-			} catch (error) {
-				if (sendLauncherLookupFailure(reply, error)) {
-					return;
+	function postLauncherInput(
+		path: string,
+		resolve: (launcherId: string, input: Record<string, unknown>) => unknown,
+	) {
+		app.post<{ Params: { launcherId: string }; Body: unknown }>(
+			`/api/launchers/:launcherId/${path}`,
+			async (req, reply) => {
+				const normalized = normalizeLauncherRequest(req.body);
+				if (!normalized.ok) return sendLauncherRequestNormalizationError(reply, normalized.error);
+				try {
+					return await resolve(req.params.launcherId, normalized.request.launcherInput);
+				} catch (error) {
+					if (sendLauncherLookupFailure(reply, error)) return;
+					throw error;
 				}
-				throw error;
-			}
-		},
+			},
+		);
+	}
+
+	postLauncherInput(
+		"readiness",
+		(launcherId, input) =>
+			({
+				readiness: deps.launcherService.resolveUiReadiness?.(launcherId, input) ?? {
+					status: "ready",
+					issues: [],
+				},
+			}) satisfies LauncherReadinessResponseBody,
+	);
+	postLauncherInput(
+		"options",
+		async (launcherId, input) =>
+			({
+				options: await deps.launcherService.resolveUiOptions(launcherId, input),
+			}) satisfies LauncherOptionsResponseBody,
 	);
 
 	app.post<{ Params: { launcherId: string }; Body: unknown }>(

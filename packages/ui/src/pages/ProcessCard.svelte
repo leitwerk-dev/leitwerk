@@ -23,7 +23,6 @@ const description = $derived(launcher.card.description ?? launcher.description);
 	data-launcher-id={launcher.id}
 	data-pressable="true"
 	tabindex={tabindexValue}
-	aria-label={`${title}. ${description}${launcher.readiness && launcher.readiness.status !== "ready" ? `. Configuration needs attention. ${launcher.readiness.issues.map((issue) => `${issue.summary} ${issue.remediation}`).join(" ")} Connectivity has not been tested.` : ""}`}
 	onclick={() => onSelect(launcher.id)}
 	onkeydown={onKeydown}
 >
@@ -34,7 +33,7 @@ const description = $derived(launcher.card.description ?? launcher.description);
 			<LauncherReadinessNotice readiness={launcher.readiness} />
 		{/if}
 	</span>
-	<span class="card-flow">
+	<span class="card-flow" aria-hidden="true">
 		<ProcessFlowDiagram {launcher} compact={true} />
 	</span>
 </button>

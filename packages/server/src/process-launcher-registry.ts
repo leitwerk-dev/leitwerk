@@ -193,32 +193,26 @@ export function buildProcessLauncherRegistry(
 
 		resolvePreparationChecks(launcherId, input, launchConfig) {
 			const { ui } = requireUiLauncher(launcherId);
-			return validateLaunchPreparationChecks(
-				[
-					...(ui.readiness
-						? [
-								{
-									id: "launcher-readiness",
-									label: "Check launcher configuration",
-									async run() {
-										const readiness = resolveUiReadiness(launcherId, input);
-										if (readiness.status !== "ready") {
-											const summary = readiness.issues
-												.map((issue) => `${issue.summary} ${issue.remediation}`)
-												.join(" ");
-											throw new SafeLaunchPreparationError(
-												"Launcher configuration is incomplete",
-												summary || "Complete launcher configuration before launching.",
-											);
-										}
-									},
-								},
-							]
-						: []),
-					...(ui.preparationChecks?.(input, launchConfig) ?? []),
-				],
-				`Launcher '${launcherId}'`,
-			);
+			const checks = [...(ui.preparationChecks?.(input, launchConfig) ?? [])];
+			if (ui.readiness) {
+				checks.unshift({
+					id: "launcher-readiness",
+					label: "Check launcher configuration",
+					async run() {
+						const readiness = resolveUiReadiness(launcherId, input);
+						if (readiness.status !== "ready") {
+							const summary = readiness.issues
+								.map((issue) => `${issue.summary} ${issue.remediation}`)
+								.join(" ");
+							throw new SafeLaunchPreparationError(
+								"Launcher configuration is incomplete",
+								summary || "Complete launcher configuration before launching.",
+							);
+						}
+					},
+				});
+			}
+			return validateLaunchPreparationChecks(checks, `Launcher '${launcherId}'`);
 		},
 
 		async resolveUiLauncher(launcherId, input, ctx = {}) {
