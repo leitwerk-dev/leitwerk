@@ -564,6 +564,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 				);
 		};
 		const launcherService = buildProcessLauncherRegistry(extensionCatalog, {
+			logger: { warn: (message) => app.log.warn(message) },
 			modelProfiles: launcherModelProfiles,
 			commitMessages: config.commit_messages,
 			getModelProfilesForProcess,

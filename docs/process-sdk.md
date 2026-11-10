@@ -372,6 +372,22 @@ A process's `.launcher(...)` declares a UI card, input schema, and
 errors. The launch configuration identifies the process, validated params, optional
 projects, and initial turn. See the [complete example](first-process.md).
 
+An optional synchronous `ui.readiness(input)` returns `LauncherReadiness`:
+`status` (`ready`, `partial`, or `blocked`) and `issues`, each with a stable `code`,
+operator-safe `summary`, and `remediation`. It must be fast, read-only and local:
+no network calls, client initialization with side effects, or credential output.
+Empty input requests an installation overview. `partial` means some selections
+remain usable; concrete selections return `ready` or `blocked` and check only
+their required configuration. Launchers without this hook keep their existing behavior.
+
+The process gallery and launcher form use this same contract before process
+creation. Server launch preparation rechecks the submitted selection for immediate,
+programmatic and scheduled execution; only `ready` passes. A readiness result is
+not a connection test. External tests must be explicit, separate operations and
+distinguish authentication, authorization, connectivity and timeout failures.
+Unexpected readiness errors return generic safe remediation with a correlation ID;
+logs contain the ID, not raw exception messages or credentials.
+
 An optional `ui.resolvePreviewConfig(input, context)` handles form validation,
 defaults and model preview without preparing execution resources. It returns the
 same result shape and codec-valid params, preserving the settings context, model

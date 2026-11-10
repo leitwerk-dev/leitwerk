@@ -118,6 +118,37 @@ const launcherTestProcess = defineProcess<LauncherTestParams, LauncherTestState>
 	},
 	launchers(api) {
 		api.launcher({
+			id: "launcher_test_process.readiness_ui",
+			label: "Readiness",
+			description: "Local readiness test",
+			visibility: "ui",
+			ui: {
+				card: {},
+				launchConfigSchema: { id: "readiness", title: "Readiness", fields: [] },
+				readiness(input) {
+					return input.prompt === "usable"
+						? { status: "ready", issues: [] }
+						: {
+								status: input.prompt ? "blocked" : "partial",
+								issues: [
+									{
+										code: "profile_missing",
+										summary: "Required profile is missing.",
+										remediation: "Configure the profile and restart.",
+									},
+								],
+							};
+				},
+				resolveLaunchConfig: () => ({
+					ok: true,
+					launchConfig: {
+						processId: "launcher_test_process",
+						params: { repoPath: "", baseBranch: "main", prompt: "test" },
+					},
+				}),
+			},
+		});
+		api.launcher({
 			id: "launcher_test_process.local_repo_ui",
 			label: "Local Repo Flow",
 			description: "Launch from a local repository",
@@ -511,6 +542,12 @@ async function createTitleTestHarness(
 	};
 }
 
+const json = (value: unknown) => ({
+	method: "POST",
+	headers: { "content-type": "application/json" },
+	body: JSON.stringify(value),
+});
+
 beforeAll(async () => {
 	harness = await createIntegrationHarness({
 		extensionCatalog: buildExtensionCatalogFromModules([launcherTestExtension]),
@@ -542,11 +579,6 @@ describe("launcher HTTP routes", () => {
 			skillIds: [],
 			schedule: { mode: "once", runAt: futureIso() },
 		};
-		const json = (value: unknown) => ({
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify(value),
-		});
 		const response = await fetch(`${base}/future-launches`, json(body));
 		expect(response.status, await response.clone().text()).toBe(201);
 		const [execution] = deps.futureExecutions.listAll();
@@ -768,6 +800,42 @@ describe("launcher HTTP routes", () => {
 				}),
 			]),
 		);
+	});
+
+	it("shares local readiness between the gallery, selected input endpoint and launch admission", async () => {
+		const base = `${harness.address}/api/launchers/launcher_test_process.readiness_ui`;
+		const overview = await (await fetch(`${harness.address}/api/launchers`)).json();
+		const launcher = overview.launchers.find(
+			(item: { id: string }) => item.id === "launcher_test_process.readiness_ui",
+		);
+		expect(launcher.readiness.status).toBe("partial");
+		for (const [prompt, status] of [
+			["missing", "blocked"],
+			["usable", "ready"],
+		]) {
+			const response = await fetch(`${base}/readiness`, json({ launcherInput: { prompt } }));
+			expect(response.status).toBe(200);
+			const body = await response.json();
+			expect(body.readiness.status).toBe(status);
+			if (status === "blocked") expect(body.readiness.issues).toEqual(launcher.readiness.issues);
+		}
+		const response = await submitImmediateLaunch(
+			`${base}/launch-runs`,
+			json({ launcherInput: { prompt: "missing" }, schedule: { mode: "now" } }),
+		);
+		const run = await readLaunchRun(response, "failed");
+		expect(run.instanceId).toBeNull();
+		expect(JSON.stringify(run)).toContain(
+			"Required profile is missing. Configure the profile and restart.",
+		);
+		const validResponse = await submitImmediateLaunch(
+			`${base}/launch-runs`,
+			json({ launcherInput: { prompt: "usable" }, schedule: { mode: "now" } }),
+		);
+		const validRun = await readLaunchRun(validResponse, "completed");
+		expect(validRun.instanceId).not.toBeNull();
+		const unknown = await fetch(`${harness.address}/api/launchers/missing/readiness`, json({}));
+		expect(unknown.status).toBe(404);
 	});
 
 	it("resolves launcher defaults and options", async () => {

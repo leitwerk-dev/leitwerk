@@ -11,12 +11,14 @@ import type {
 import type {
 	LauncherFieldDefinition,
 	LauncherFieldOptionDefinition,
+	LauncherReadiness,
 	LauncherValidationError,
 } from "@leitwerk-dev/protocol/launcher-contract";
 import {
 	fetchLauncherDefaults,
 	fetchLauncherModelConfigPreview,
 	fetchLauncherOptions,
+	fetchLauncherReadiness,
 	fetchLauncherRecentValues,
 	launchLauncher,
 	previewCronExpression,
@@ -33,6 +35,7 @@ import {
 import { onSettingsChanged } from "../lib/settings.js";
 import FormFieldRenderer from "./FormFieldRenderer.svelte";
 import LaunchChecklist from "./LaunchChecklist.svelte";
+import LauncherReadinessNotice from "./LauncherReadinessNotice.svelte";
 import {
 	buildLauncherDefaultsNotice,
 	getFirstLauncherFieldIdWithErrors,
@@ -69,19 +72,26 @@ type LauncherFieldInputValue = boolean | string;
 class LatestRequest {
 	loading = $state(false);
 	error = $state<string | null>(null);
+	key = $state<string | null>(null);
 	private generation = 0;
 	private fallback: string;
+	private safeError: boolean;
 
-	constructor(fallback: string, loading = false) {
+	constructor(fallback: string, loading = false, safeError = false) {
 		this.fallback = fallback;
 		this.loading = loading;
+		this.safeError = safeError;
 	}
 
 	invalidate() {
 		this.generation++;
 	}
 
-	async run(work: (isCurrent: () => boolean) => Promise<void>, loading = true) {
+	async run(
+		work: (isCurrent: () => boolean) => Promise<void>,
+		loading = true,
+		key: string | null = null,
+	) {
 		const generation = ++this.generation;
 		this.loading = loading;
 		this.error = null;
@@ -89,10 +99,31 @@ class LatestRequest {
 			await work(() => generation === this.generation);
 		} catch (error) {
 			if (generation === this.generation)
-				this.error = error instanceof Error ? error.message : this.fallback;
+				this.error = !this.safeError && error instanceof Error ? error.message : this.fallback;
 		} finally {
-			if (generation === this.generation) this.loading = false;
+			if (generation === this.generation) {
+				this.loading = false;
+				this.key = key;
+			}
 		}
+	}
+
+	schedule(
+		key: string,
+		work: (isCurrent: () => boolean, signal: AbortSignal) => Promise<void>,
+		delay = 0,
+	) {
+		const controller = new AbortController();
+		this.loading = true;
+		this.error = null;
+		const run = () => void this.run((isCurrent) => work(isCurrent, controller.signal), true, key);
+		const timer = delay > 0 ? setTimeout(run, delay) : null;
+		if (timer === null) run();
+		return () => {
+			if (timer !== null) clearTimeout(timer);
+			controller.abort();
+			this.invalidate();
+		};
 	}
 }
 
@@ -141,6 +172,32 @@ let recommendedDefaultModelPreview = $state<LauncherModelConfigPreview["defaultM
 	null,
 );
 const modelPreviewRequest = new LatestRequest("We couldn't refresh the model preview");
+let readiness = $state<LauncherReadiness | null>(null);
+const readinessRequest = new LatestRequest("Couldn't check configuration", false, true);
+const readinessError = $derived(readinessRequest.error !== null);
+let readinessRevision = $state(0);
+const readinessKey = $derived(
+	JSON.stringify({ launcherId: launcher.id, input: buildLaunchInput() }),
+);
+const readinessPending = $derived(
+	Boolean(launcher.readiness) && readinessRequest.key !== readinessKey,
+);
+
+$effect(() => {
+	if (!launcher.readiness || defaultsRequest.loading) return;
+	const key = readinessKey;
+	readinessRevision;
+	const input = buildLaunchInput();
+	return readinessRequest.schedule(
+		key,
+		async (isCurrent) => {
+			const result = await fetchLauncherReadiness(launcher.id, input);
+			if (isCurrent()) readiness = result;
+		},
+		150,
+	);
+});
+
 let submitBusy = $state(false);
 let activeLaunchRunId = $state<string | null>(null);
 let submitError = $state<string | null>(null);
@@ -150,9 +207,7 @@ let fieldErrors = $state<Record<string, string[]>>({});
 let touchedFields = $state<Record<string, boolean>>({});
 let revealedFields = $state<Record<string, boolean>>({});
 let revealAllErrors = $state(false);
-let validatedKey = $state<string | null>(null);
-let validationLoading = $state(false);
-let validationError = $state<string | null>(null);
+const validationCheck = new LatestRequest("Couldn't validate the launch values. Try again.");
 let validationRevision = $state(0);
 let settingsRevision = $state(0);
 let validationDelay = 0;
@@ -238,14 +293,17 @@ const validationKey = $derived(
 const validationPending = $derived(
 	defaultsRequest.loading ||
 		optionsRequest.loading ||
-		validationLoading ||
-		validatedKey !== validationKey,
+		validationCheck.loading ||
+		validationCheck.key !== validationKey,
 );
 const submitDisabled = $derived(
 	submitBusy ||
+		readinessPending ||
+		readinessError ||
+		(Boolean(launcher.readiness) && readiness?.status !== "ready") ||
 		activeLaunchRunId !== null ||
 		validationPending ||
-		validationError !== null ||
+		validationCheck.error !== null ||
 		fieldErrorCount > 0 ||
 		formErrors.length > 0,
 );
@@ -261,13 +319,13 @@ function touchField(fieldId: string, delay = 0) {
 function blurField(fieldId: string) {
 	touchField(fieldId);
 	flushDeferredDependentRefresh();
-	if (validatedKey !== validationKey) validationRevision += 1;
+	if (validationCheck.key !== validationKey) validationRevision += 1;
 	else revealedFields = { ...revealedFields, [fieldId]: true };
 }
 
 function retryValidation() {
 	validationDelay = 0;
-	validatedKey = null;
+	validationCheck.key = null;
 	validationRevision += 1;
 }
 
@@ -277,31 +335,14 @@ $effect(() => {
 	const launcherId = launcher.id;
 	validationRevision;
 	if (defaultsRequest.loading || defaultsRequest.error || optionsRequest.loading) return;
-	const controller = new AbortController();
-	validationLoading = true;
-	validationError = null;
-	async function validate() {
-		try {
-			const errors = await validateLauncher(launcherId, request, controller.signal);
-			if (controller.signal.aborted || key !== validationKey) return;
-			applyValidationErrors(errors);
-		} catch (error) {
-			if (controller.signal.aborted || key !== validationKey) return;
-			validationError =
-				error instanceof Error ? error.message : "Couldn't validate the launch values. Try again.";
-		} finally {
-			if (!controller.signal.aborted && key === validationKey) {
-				validatedKey = key;
-				validationLoading = false;
-			}
-		}
-	}
-	const timer = validationDelay > 0 ? setTimeout(() => void validate(), validationDelay) : null;
-	if (timer === null) void validate();
-	return () => {
-		if (timer !== null) clearTimeout(timer);
-		controller.abort();
-	};
+	return validationCheck.schedule(
+		key,
+		async (isCurrent, signal) => {
+			const errors = await validateLauncher(launcherId, request, signal);
+			if (isCurrent() && key === validationKey) applyValidationErrors(errors);
+		},
+		validationDelay,
+	);
 });
 
 const cronExamples = [
@@ -648,8 +689,8 @@ function scheduleDependentLauncherRefresh(
 async function loadDefaults() {
 	clearDeferredDependentRefresh();
 	optionsRequest.loading = false;
-	validatedKey = null;
-	validationError = null;
+	validationCheck.key = null;
+	validationCheck.error = null;
 	validationDelay = 0;
 	touchedFields = {};
 	revealedFields = {};
@@ -1156,6 +1197,22 @@ async function handleSubmit(event: SubmitEvent) {
 {/snippet}
 
 <div class="launcher-form" data-launcher-id={launcher.id} aria-busy={submitBusy || defaultsRequest.loading}>
+	{#if launcher.readiness}
+		{#if readinessError}
+			<div role="status">
+				<p>Configuration readiness could not be checked. Your input has been preserved.</p>
+				<button type="button" onclick={() => { readinessRequest.key = null; readinessRevision += 1; }}>Retry configuration check</button>
+			</div>
+		{:else if readinessPending}
+			{#if defaultsRequest.loading}
+				<LauncherReadinessNotice readiness={launcher.readiness} />
+			{:else}
+				<p role="status">Checking launcher configuration…</p>
+			{/if}
+		{:else if readiness}
+			<LauncherReadinessNotice {readiness} />
+		{/if}
+	{/if}
 	{#if defaultsRequest.loading}
 		<p class="state-msg">Loading the starter values for this process…</p>
 	{:else if defaultsRequest.error}
@@ -1592,9 +1649,12 @@ async function handleSubmit(event: SubmitEvent) {
 					</div>
 				{:else}
 				<div class="validation-status" id={`${launcher.launchConfigSchema.id}-validation-status`} role="status" aria-live="polite">
-					{#if validationPending}Checking values…
-					{:else if validationError}
-						<span class="schedule-error">{validationError}</span>
+					{#if readinessPending}Checking launcher configuration…
+					{:else if readinessError}Retry the configuration check above to continue.
+					{:else if launcher.readiness && readiness?.status !== "ready"}Resolve the configuration issues above or change your selection.
+					{:else if validationPending}Checking values…
+					{:else if validationCheck.error}
+						<span class="schedule-error">{validationCheck.error}</span>
 						<button type="button" class="secondary-button" onclick={retryValidation}>Retry validation</button>
 					{:else if invalidFieldLabels.length > 0}Check: {invalidFieldLabels.join(", ")}.
 					{:else if formErrors.length > 0}Resolve the validation errors above to continue.

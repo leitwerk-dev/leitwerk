@@ -29,6 +29,24 @@ export interface LauncherValidationError {
 	fieldId?: string;
 }
 
+/** Local configuration readiness only; never implies successful external access. @public */
+export interface LauncherReadiness {
+	/** `partial` is an overview state: some selections remain usable. @public */
+	status: "ready" | "partial" | "blocked";
+	/** Operator-safe text only. Never include credentials, URLs or raw exceptions. @public */
+	issues: readonly LauncherReadinessIssue[];
+}
+
+/** @public */
+export interface LauncherReadinessIssue {
+	/** Stable machine-readable identifier. @public */
+	code: string;
+	/** Operator-safe explanation. @public */
+	summary: string;
+	/** Operator-safe corrective action. @public */
+	remediation: string;
+}
+
 /** @internal */
 export interface SkillOptionSummary {
 	/** @internal */
@@ -63,6 +81,8 @@ export interface UiLauncherSummaryBase {
 	card: LauncherCardMetadata;
 	/** @internal */
 	launchConfigSchema: LauncherSchemaDefinition;
+	/** Local configuration readiness across available selections. @internal */
+	readiness?: LauncherReadiness;
 	/** Safe summaries of currently available opt-in skills. @internal */
 	skills?: readonly SkillOptionSummary[];
 }
