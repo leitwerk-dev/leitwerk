@@ -74,6 +74,95 @@ function buildRegistry(
 }
 
 describe("buildProcessLauncherRegistry", () => {
+	it("shares overview and selected readiness and rechecks at preparation time", async () => {
+		let configured = true;
+		const registry = buildRegistry([
+			makeProcess({
+				launchers(api) {
+					api.launcher({
+						id: "readiness",
+						label: "Readiness",
+						description: "Test",
+						visibility: "ui",
+						ui: {
+							card: {},
+							launchConfigSchema: { id: "readiness", title: "Test", fields: [] },
+							readiness(input) {
+								return configured && input.repoPath === "usable"
+									? { status: "ready", issues: [] }
+									: {
+											status: configured && !input.repoPath ? "partial" : "blocked",
+											issues: [
+												{
+													code: "missing_profile",
+													summary: "Profile missing.",
+													remediation: "Configure profile.",
+												},
+											],
+										};
+							},
+							resolveLaunchConfig: () => ({
+								ok: true,
+								launchConfig: { processId: "test_process", params: { repoPath: "usable" } },
+							}),
+						},
+					});
+				},
+			}),
+		]);
+		expect(registry.listUiLaunchers()[0]?.readiness?.status).toBe("partial");
+		expect(registry.resolveUiReadiness?.("readiness", { repoPath: "usable" }).status).toBe("ready");
+		expect(registry.resolveUiReadiness?.("readiness", { repoPath: "missing" }).status).toBe(
+			"blocked",
+		);
+		const checks = registry.resolvePreparationChecks?.(
+			"readiness",
+			{ repoPath: "usable" },
+			{ processId: "test_process", params: { repoPath: "usable" } },
+		);
+		const check = checks?.[0];
+		if (!check) throw new Error("Expected configuration check");
+		configured = false;
+		await expect(check.run({} as never)).rejects.toMatchObject({
+			safeSummary: "Profile missing. Configure profile.",
+		});
+	});
+
+	it("contains unexpected readiness errors without logging or returning exception secrets", () => {
+		const logs: string[] = [];
+		const registry = buildRegistry(
+			[
+				makeProcess({
+					launchers(api) {
+						api.launcher({
+							id: "broken",
+							label: "Broken",
+							description: "Test",
+							visibility: "ui",
+							ui: {
+								card: {},
+								launchConfigSchema: { id: "broken", title: "Broken", fields: [] },
+								readiness() {
+									throw new Error("token=secret-canary");
+								},
+								resolveLaunchConfig: () => ({
+									ok: true,
+									launchConfig: { processId: "test_process", params: { repoPath: "" } },
+								}),
+							},
+						});
+					},
+				}),
+			],
+			{ logger: { warn: (message) => logs.push(message) } },
+		);
+		const result = registry.resolveUiReadiness?.("broken", {});
+		expect(result?.status).toBe("blocked");
+		expect(result?.issues[0]?.code).toBe("launcher_readiness_failed");
+		expect(logs).toHaveLength(1);
+		expect(JSON.stringify({ result, logs })).not.toContain("secret-canary");
+		expect(result?.issues[0]?.remediation).toContain(logs[0]?.split("correlationId=")[1]);
+	});
 	it("lists UI launchers and resolves defaults/options", async () => {
 		const registry = buildRegistry([
 			makeProcess({

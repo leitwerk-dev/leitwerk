@@ -3,7 +3,7 @@ import { closeDatabase, createInMemoryDatabase } from "./db/database.js";
 import { createAllRepos } from "./db/repositories.js";
 import { createLaunchPipeline, failLaunchRun, initialLaunchSteps } from "./launch-pipeline.js";
 
-function fixture() {
+function fixture(logger?: { info(message: string): void; warn(message: string): void }) {
 	const db = createInMemoryDatabase();
 	onTestFinished(() => closeDatabase(db));
 	const repos = createAllRepos(db);
@@ -11,7 +11,7 @@ function fixture() {
 	return {
 		repos,
 		broadcaster,
-		pipeline: createLaunchPipeline({ launchRuns: repos.launchRuns, broadcaster }),
+		pipeline: createLaunchPipeline({ launchRuns: repos.launchRuns, broadcaster, logger }),
 	};
 }
 
@@ -149,6 +149,36 @@ describe("LaunchPipeline", () => {
 				}),
 			]),
 		});
+	});
+
+	it("logs unexpected preparation failures with a correlation id, not exception secrets", async () => {
+		const logs: string[] = [];
+		const { pipeline, repos } = fixture({ info() {}, warn: (message) => logs.push(message) });
+		const opened = pipeline.open({ launcherId: "demo.ui", origin: "ui" });
+		const prepare = vi.fn();
+		const commit = vi.fn();
+		await pipeline.run(opened.launchRunId, {
+			async resolve() {
+				return { kind: "resolved" as const, value: {} };
+			},
+			preparationChecks: () => [
+				{
+					id: "access",
+					label: "Verify access",
+					async run() {
+						throw new Error("token=secret-canary");
+					},
+				},
+			],
+			prepare,
+			commit,
+		});
+		const run = repos.launchRuns.getById(opened.launchRunId);
+		expect(run).toMatchObject({ status: "failed", instanceId: null });
+		expect(logs).toEqual([expect.stringContaining(`correlationId=${opened.launchRunId}`)]);
+		expect(JSON.stringify({ run, logs })).not.toContain("secret-canary");
+		expect(prepare).not.toHaveBeenCalled();
+		expect(commit).not.toHaveBeenCalled();
 	});
 
 	it("maps an unexpected stage exception to the active checklist step", async () => {

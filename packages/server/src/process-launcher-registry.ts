@@ -1,15 +1,17 @@
+import { randomUUID } from "node:crypto";
 import type { ExtensionCatalog } from "@leitwerk-dev/extension-runtime";
 import type {
 	ExtensionProcessDefinition,
 	LauncherContext,
 	LauncherModelProfileSummary,
+	LauncherReadiness,
 	ProcessLaunchConfig,
 	ProcessLauncherDefinition,
 	ProcessLauncherService,
 	ResolvedProcessLauncher,
 	UiLauncherSummary,
 } from "@leitwerk-dev/process-sdk";
-import { buildProcessLaunchers } from "@leitwerk-dev/process-sdk";
+import { buildProcessLaunchers, SafeLaunchPreparationError } from "@leitwerk-dev/process-sdk";
 import type { CommitMessageConfig } from "./config/config-types.js";
 import { buildProcessLaunchPlan, validateLaunchPreparationChecks } from "./process-launch-plan.js";
 
@@ -24,6 +26,7 @@ interface ProcessLauncherRegistryOptions {
 	modelProfiles?: readonly LauncherModelProfileSummary[];
 	getModelProfilesForProcess?: (processId: string) => readonly LauncherModelProfileSummary[];
 	commitMessages?: CommitMessageConfig;
+	logger?: { warn(message: string): void };
 }
 
 function buildResolvedProcessLauncher(
@@ -112,6 +115,30 @@ export function buildProcessLauncherRegistry(
 		};
 	}
 
+	function resolveUiReadiness(
+		launcherId: string,
+		input: Record<string, unknown>,
+	): LauncherReadiness {
+		const { ui } = requireUiLauncher(launcherId);
+		try {
+			return ui.readiness?.(input) ?? { status: "ready", issues: [] };
+		} catch {
+			const correlationId = randomUUID();
+			// Do not log exception messages: integration errors may contain credentials.
+			options.logger?.warn(`Launcher readiness failed; correlationId=${correlationId}`);
+			return {
+				status: "blocked",
+				issues: [
+					{
+						code: "launcher_readiness_failed",
+						summary: "Configuration readiness could not be checked.",
+						remediation: `Ask an operator to inspect the server logs. Reference: ${correlationId}`,
+					},
+				],
+			};
+		}
+	}
+
 	const uiLaunchers = [...launchers.values()]
 		.filter((launcher) => launcher.definition.ui)
 		.map(
@@ -133,8 +160,15 @@ export function buildProcessLauncherRegistry(
 
 	return {
 		listUiLaunchers() {
-			return uiLaunchers;
+			return uiLaunchers.map((launcher) => ({
+				...launcher,
+				...(requireUiLauncher(launcher.id).ui.readiness
+					? { readiness: resolveUiReadiness(launcher.id, {}) }
+					: {}),
+			}));
 		},
+
+		resolveUiReadiness,
 
 		async resolveUiDefaults(launcherId, ctx = {}) {
 			const { launcher, ui } = requireUiLauncher(launcherId);
@@ -160,7 +194,29 @@ export function buildProcessLauncherRegistry(
 		resolvePreparationChecks(launcherId, input, launchConfig) {
 			const { ui } = requireUiLauncher(launcherId);
 			return validateLaunchPreparationChecks(
-				ui.preparationChecks?.(input, launchConfig),
+				[
+					...(ui.readiness
+						? [
+								{
+									id: "launcher-readiness",
+									label: "Check launcher configuration",
+									async run() {
+										const readiness = resolveUiReadiness(launcherId, input);
+										if (readiness.status !== "ready") {
+											const summary = readiness.issues
+												.map((issue) => `${issue.summary} ${issue.remediation}`)
+												.join(" ");
+											throw new SafeLaunchPreparationError(
+												"Launcher configuration is incomplete",
+												summary || "Complete launcher configuration before launching.",
+											);
+										}
+									},
+								},
+							]
+						: []),
+					...(ui.preparationChecks?.(input, launchConfig) ?? []),
+				],
 				`Launcher '${launcherId}'`,
 			);
 		},

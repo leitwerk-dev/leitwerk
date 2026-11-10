@@ -13,6 +13,7 @@ import {
 	fetchLauncherDefaults,
 	fetchLauncherModelConfigPreview,
 	fetchLauncherOptions,
+	fetchLauncherReadiness,
 	fetchLauncherRecentValues,
 	launchLauncher,
 	previewCronExpression,
@@ -118,6 +119,7 @@ vi.mock("../lib/api.js", () => ({
 	fetchLauncherModelConfigPreview: vi.fn(),
 	fetchLauncherOptions: vi.fn(),
 	fetchLauncherRecentValues: vi.fn(),
+	fetchLauncherReadiness: vi.fn(),
 	launchLauncher: vi.fn(),
 	previewCronExpression: vi.fn(),
 	updateScheduledLaunch: vi.fn(),
@@ -126,6 +128,7 @@ vi.mock("../lib/api.js", () => ({
 
 function resetDefaultMocks() {
 	vi.mocked(validateLauncher).mockResolvedValue([]);
+	vi.mocked(fetchLauncherReadiness).mockReset().mockResolvedValue({ status: "ready", issues: [] });
 	vi.mocked(fetchLauncherDefaults).mockResolvedValue({
 		title: null,
 		defaults: {
@@ -263,6 +266,98 @@ afterEach(async () => {
 });
 
 describe("GenericLauncher", () => {
+	it("shows local blockers above the form and keeps valid selections usable", async () => {
+		const blocked = {
+			status: "blocked" as const,
+			issues: [
+				{
+					code: "missing_profile",
+					summary: "Selected profile is missing.",
+					remediation: "Configure the profile and restart.",
+				},
+			],
+		};
+		const launcher = { ...createLauncher(), readiness: { ...blocked, status: "partial" as const } };
+		vi.mocked(fetchLauncherReadiness).mockImplementation(async (_id, input) =>
+			input.repoPath === "usable" ? { status: "ready", issues: [] } : blocked,
+		);
+		const { target } = mountSubject({ launcher });
+		await vi.waitFor(() => expect(target.textContent).toContain("Selected profile is missing."));
+		const submit = (await waitForSelector(target, 'button[type="submit"]')) as HTMLButtonElement;
+		expect(submit.disabled).toBe(true);
+		await vi.waitFor(() => {
+			expect(fetchLauncherReadiness).toHaveBeenCalled();
+			expect(target.textContent).toContain("Configure the profile and restart.");
+		});
+		expect(target.textContent).toContain("Connectivity has not been tested.");
+		const notice = target.querySelector('[data-section="launcher-readiness"]');
+		const form = target.querySelector("form");
+		expect(
+			notice &&
+				form &&
+				Boolean(notice.compareDocumentPosition(form) & Node.DOCUMENT_POSITION_FOLLOWING),
+		).toBe(true);
+		const input = target.querySelector<HTMLInputElement>("#test-launcher-form-repoPath");
+		if (!input) throw new Error("Missing input");
+		setControlValue(input, "usable");
+		await flush();
+		expect(submit?.disabled).toBe(true);
+		await vi.waitFor(() => expect(target.textContent).toContain("Configuration ready"));
+		await vi.waitFor(() => expect(submit?.disabled).toBe(false));
+		expect(launchLauncher).not.toHaveBeenCalled();
+	});
+
+	it("ignores a stale ready result after the selection changes", async () => {
+		const stale = Promise.withResolvers<Awaited<ReturnType<typeof fetchLauncherReadiness>>>();
+		const current = Promise.withResolvers<Awaited<ReturnType<typeof fetchLauncherReadiness>>>();
+		vi.mocked(fetchLauncherReadiness)
+			.mockReturnValueOnce(stale.promise)
+			.mockReturnValueOnce(current.promise);
+		const { target } = mountSubject({
+			launcher: { ...createLauncher(), readiness: { status: "ready", issues: [] } },
+		});
+		await vi.waitFor(() => expect(fetchLauncherReadiness).toHaveBeenCalledTimes(1));
+		const input = target.querySelector<HTMLInputElement>("#test-launcher-form-repoPath");
+		if (!input) throw new Error("Missing input");
+		setControlValue(input, "missing");
+		await vi.waitFor(() => expect(fetchLauncherReadiness).toHaveBeenCalledTimes(2));
+		stale.resolve({ status: "ready", issues: [] });
+		await flush();
+		expect(target.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled).toBe(true);
+		expect(target.textContent).not.toContain("Configuration ready");
+		current.resolve({
+			status: "blocked",
+			issues: [
+				{
+					code: "missing_profile",
+					summary: "Current profile is missing.",
+					remediation: "Configure it.",
+				},
+			],
+		});
+		await vi.waitFor(() => expect(target.textContent).toContain("Current profile is missing."));
+		expect(target.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled).toBe(true);
+	});
+
+	it("fails closed on readiness transport errors and retries without losing input", async () => {
+		vi.mocked(fetchLauncherReadiness).mockRejectedValueOnce(new Error("private transport details"));
+		const { target } = mountSubject({
+			launcher: { ...createLauncher(), readiness: { status: "ready", issues: [] } },
+		});
+		await vi.waitFor(() =>
+			expect(target.textContent).toContain("Configuration readiness could not be checked"),
+		);
+		expect(target.textContent).not.toContain("private transport details");
+		expect(target.querySelector<HTMLButtonElement>('button[type="submit"]')?.disabled).toBe(true);
+		const retry = [...target.querySelectorAll("button")].find((button) =>
+			button.textContent?.includes("Retry configuration check"),
+		);
+		retry?.click();
+		await vi.waitFor(() => expect(target.textContent).toContain("Configuration ready"));
+		expect(target.querySelector<HTMLInputElement>("#test-launcher-form-repoPath")?.value).toBe(
+			"/tmp/default-repo",
+		);
+	});
 	it("shows the current summary mode and all effective turn models from the preview", async () => {
 		const { target } = mountSubject();
 		await flush();

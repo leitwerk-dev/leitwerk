@@ -3,6 +3,7 @@ import type {
 	LauncherDefaultsResponseBody,
 	LauncherModelConfigPreviewResponseBody,
 	LauncherOptionsResponseBody,
+	LauncherReadinessResponseBody,
 	LauncherRecentValuesResponseBody,
 	LaunchersResponseBody,
 	LauncherValidationResponseBody,
@@ -192,6 +193,27 @@ export function registerLauncherRoutes(
 				preview: previewResult.preview,
 			} satisfies LauncherModelConfigPreviewResponseBody;
 			return body;
+		},
+	);
+
+	app.post<{ Params: { launcherId: string }; Body: unknown }>(
+		"/api/launchers/:launcherId/readiness",
+		async (req, reply) => {
+			const normalized = normalizeLauncherRequest(req.body);
+			if (!normalized.ok) return sendLauncherRequestNormalizationError(reply, normalized.error);
+			if (
+				!deps.launcherService
+					.listUiLaunchers()
+					.some((launcher) => launcher.id === req.params.launcherId)
+			) {
+				return reply.code(404).send({ error: "Launcher not found" });
+			}
+			return {
+				readiness: deps.launcherService.resolveUiReadiness?.(
+					req.params.launcherId,
+					normalized.request.launcherInput,
+				) ?? { status: "ready", issues: [] },
+			} satisfies LauncherReadinessResponseBody;
 		},
 	);
 

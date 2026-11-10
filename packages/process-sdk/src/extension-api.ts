@@ -30,6 +30,7 @@ import type {
 import type {
 	LauncherCardMetadata,
 	LauncherFieldOptionDefinition,
+	LauncherReadiness,
 	LauncherSchemaDefinition,
 	LauncherValidationError,
 	UiLauncherSummaryBase,
@@ -216,6 +217,14 @@ export class SafeLaunchPreparationError extends Error {
 
 /** @public */
 export interface UiLauncherDefinition<TParams = unknown> {
+	/**
+	 * Fast, synchronous, read-only configuration check. No external I/O or mutations.
+	 * Empty input requests an overview; partial means some selections are usable.
+	 * Concrete selections must return ready or blocked. Return only operator-safe text.
+	 * External connection tests are separate explicit operations, never readiness checks.
+	 * @public
+	 */
+	readiness?(input: Record<string, unknown>): LauncherReadiness;
 	/** @public */
 	card: LauncherCardMetadata;
 	/** @public */
@@ -404,6 +413,8 @@ export interface UiLauncherSummary extends UiLauncherSummaryBase {}
 export interface ProcessLauncherService {
 	/** @internal */
 	listUiLaunchers(): readonly UiLauncherSummary[];
+	/** Same local check used by the gallery, form and launch preparation. @internal */
+	resolveUiReadiness?(launcherId: string, input: Record<string, unknown>): LauncherReadiness;
 	/** @internal */
 	resolveUiDefaults(launcherId: string, ctx?: LauncherContext): Promise<Record<string, unknown>>;
 	/** @internal */

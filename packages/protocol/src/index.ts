@@ -94,6 +94,8 @@ export {
 	projectFutureExecutionOverview,
 } from "./initial-prompt.js";
 export type {
+	LauncherReadiness,
+	LauncherReadinessIssue,
 	LauncherValidationError,
 	SkillOptionSummary,
 	SkillSelection,

@@ -11,12 +11,14 @@ import type {
 import type {
 	LauncherFieldDefinition,
 	LauncherFieldOptionDefinition,
+	LauncherReadiness,
 	LauncherValidationError,
 } from "@leitwerk-dev/protocol/launcher-contract";
 import {
 	fetchLauncherDefaults,
 	fetchLauncherModelConfigPreview,
 	fetchLauncherOptions,
+	fetchLauncherReadiness,
 	fetchLauncherRecentValues,
 	launchLauncher,
 	previewCronExpression,
@@ -33,6 +35,7 @@ import {
 import { onSettingsChanged } from "../lib/settings.js";
 import FormFieldRenderer from "./FormFieldRenderer.svelte";
 import LaunchChecklist from "./LaunchChecklist.svelte";
+import LauncherReadinessNotice from "./LauncherReadinessNotice.svelte";
 import {
 	buildLauncherDefaultsNotice,
 	getFirstLauncherFieldIdWithErrors,
@@ -141,6 +144,43 @@ let recommendedDefaultModelPreview = $state<LauncherModelConfigPreview["defaultM
 	null,
 );
 const modelPreviewRequest = new LatestRequest("We couldn't refresh the model preview");
+let readiness = $state<LauncherReadiness | null>(null);
+let readinessCheckedKey = $state<string | null>(null);
+let readinessError = $state(false);
+let readinessRevision = $state(0);
+const readinessKey = $derived(
+	JSON.stringify({ launcherId: launcher.id, input: buildLaunchInput() }),
+);
+const readinessPending = $derived(
+	Boolean(launcher.readiness) && readinessCheckedKey !== readinessKey,
+);
+
+$effect(() => {
+	if (!launcher.readiness || defaultsRequest.loading) return;
+	const key = readinessKey;
+	readinessRevision;
+	const input = buildLaunchInput();
+	let cancelled = false;
+	readinessError = false;
+	const timer = setTimeout(() => {
+		void fetchLauncherReadiness(launcher.id, input)
+			.then((result) => {
+				if (cancelled) return;
+				readiness = result;
+				readinessCheckedKey = key;
+			})
+			.catch(() => {
+				if (cancelled) return;
+				readinessError = true;
+				readinessCheckedKey = key;
+			});
+	}, 150);
+	return () => {
+		cancelled = true;
+		clearTimeout(timer);
+	};
+});
+
 let submitBusy = $state(false);
 let activeLaunchRunId = $state<string | null>(null);
 let submitError = $state<string | null>(null);
@@ -243,6 +283,9 @@ const validationPending = $derived(
 );
 const submitDisabled = $derived(
 	submitBusy ||
+		readinessPending ||
+		readinessError ||
+		(Boolean(launcher.readiness) && readiness?.status !== "ready") ||
 		activeLaunchRunId !== null ||
 		validationPending ||
 		validationError !== null ||
@@ -1156,6 +1199,22 @@ async function handleSubmit(event: SubmitEvent) {
 {/snippet}
 
 <div class="launcher-form" data-launcher-id={launcher.id} aria-busy={submitBusy || defaultsRequest.loading}>
+	{#if launcher.readiness}
+		{#if readinessError}
+			<div role="status">
+				<p>Configuration readiness could not be checked. Your input has been preserved.</p>
+				<button type="button" onclick={() => { readinessCheckedKey = null; readinessRevision += 1; }}>Retry configuration check</button>
+			</div>
+		{:else if readinessPending}
+			{#if defaultsRequest.loading}
+				<LauncherReadinessNotice readiness={launcher.readiness} />
+			{:else}
+				<p role="status">Checking launcher configuration…</p>
+			{/if}
+		{:else if readiness}
+			<LauncherReadinessNotice {readiness} />
+		{/if}
+	{/if}
 	{#if defaultsRequest.loading}
 		<p class="state-msg">Loading the starter values for this process…</p>
 	{:else if defaultsRequest.error}
@@ -1592,7 +1651,10 @@ async function handleSubmit(event: SubmitEvent) {
 					</div>
 				{:else}
 				<div class="validation-status" id={`${launcher.launchConfigSchema.id}-validation-status`} role="status" aria-live="polite">
-					{#if validationPending}Checking values…
+					{#if readinessPending}Checking launcher configuration…
+					{:else if readinessError}Retry the configuration check above to continue.
+					{:else if launcher.readiness && readiness?.status !== "ready"}Resolve the configuration issues above or change your selection.
+					{:else if validationPending}Checking values…
 					{:else if validationError}
 						<span class="schedule-error">{validationError}</span>
 						<button type="button" class="secondary-button" onclick={retryValidation}>Retry validation</button>

@@ -217,6 +217,29 @@ afterEach(async () => {
 });
 
 describe("HomePage", () => {
+	it("surfaces configuration blockers in the gallery before a process exists", async () => {
+		vi.mocked(fetchLaunchers).mockResolvedValueOnce([
+			{
+				...launchers[0],
+				readiness: {
+					status: "partial",
+					issues: [
+						{
+							code: "missing_profile",
+							summary: "One installation is not configured.",
+							remediation: "Configure its profile and restart the server.",
+						},
+					],
+				},
+			},
+		]);
+		const { target } = mountTest(HomePage, { launcherId: null });
+		await flush();
+		expect(target.textContent).toContain("Some selections need configuration");
+		expect(target.textContent).toContain("Configure its profile and restart the server.");
+		expect(target.querySelector<HTMLButtonElement>("[data-process-card-id]")?.disabled).toBe(false);
+		expect(launchLauncher).not.toHaveBeenCalled();
+	});
 	it("renders the process gallery at the root start route", async () => {
 		const { target } = mountTest(HomePage, { launcherId: null });
 		await flush();

@@ -1,5 +1,6 @@
 <script lang="ts">
 import type { UiLauncherSummary } from "@leitwerk-dev/protocol/http-contracts";
+import LauncherReadinessNotice from "../components/LauncherReadinessNotice.svelte";
 import ProcessFlowDiagram from "./ProcessFlowDiagram.svelte";
 
 interface Props {
@@ -22,13 +23,16 @@ const description = $derived(launcher.card.description ?? launcher.description);
 	data-launcher-id={launcher.id}
 	data-pressable="true"
 	tabindex={tabindexValue}
-	aria-label={`${title}. ${description}`}
+	aria-label={`${title}. ${description}${launcher.readiness && launcher.readiness.status !== "ready" ? `. Configuration needs attention. ${launcher.readiness.issues.map((issue) => `${issue.summary} ${issue.remediation}`).join(" ")} Connectivity has not been tested.` : ""}`}
 	onclick={() => onSelect(launcher.id)}
 	onkeydown={onKeydown}
 >
 	<span class="card-main">
 		<span class="card-title">{title}</span>
 		<span class="card-description">{description}</span>
+		{#if launcher.readiness && launcher.readiness.status !== "ready"}
+			<LauncherReadinessNotice readiness={launcher.readiness} />
+		{/if}
 	</span>
 	<span class="card-flow">
 		<ProcessFlowDiagram {launcher} compact={true} />

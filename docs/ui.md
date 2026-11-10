@@ -41,6 +41,20 @@ produces a partial estimate or an unavailable state, never an assumed zero. See
 entry, reconnect, return to the tab, manual refresh, and every 30 seconds while
 visible. Refresh failures retain the last snapshot and offer Retry.
 
+## Launcher configuration readiness
+
+The Start a process gallery surfaces launcher configuration issues independently of
+process instances. Cards remain openable, including blocked and partially available
+launchers, so operators can inspect remediation and choose a valid installation.
+Partial availability does not disable the entire launcher.
+
+The launcher shows selected-input readiness above the form, with safe explanations
+and corrective actions. Submission is disabled while checking, on check failure,
+or until the selection is ready. Changing input invalidates stale results; failed
+requests preserve the draft and offer a retry. Configuration readiness never claims
+external connectivity or credential validity: connectivity remains explicitly untested.
+The server repeats the same configuration check during launch preparation.
+
 ## Skills
 
 The Skills page includes extension-provided skills in the Installed view with a

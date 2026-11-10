@@ -34,7 +34,11 @@ import type {
 	ActionFormFieldDefinition,
 	FormFieldOptionDefinition,
 } from "./form-contract.js";
-import type { LauncherValidationError, UiLauncherSummaryBase } from "./launcher-contract.js";
+import type {
+	LauncherReadiness,
+	LauncherValidationError,
+	UiLauncherSummaryBase,
+} from "./launcher-contract.js";
 import type {
 	PrimaryPathSnapshot,
 	PrimaryPathStreamingAssistantSnapshot,
@@ -1783,6 +1787,12 @@ export interface LauncherDefaultsResponseBody {
 	/** @internal */
 	warnings?: LauncherValidationError[];
 }
+
+/** @internal */
+export type LauncherReadinessResponseBody = {
+	/** @internal */
+	readiness: LauncherReadiness;
+};
 
 /** @internal */
 export type LauncherOptionsResponseBody = {

@@ -424,6 +424,21 @@ export async function fetchLauncherRecentValues(
 	return body.values;
 }
 
+export async function fetchLauncherReadiness(
+	launcherId: string,
+	launcherInput: Record<string, unknown>,
+): Promise<import("@leitwerk-dev/protocol/launcher-contract").LauncherReadiness> {
+	const body = await requestStatusJson<
+		import("@leitwerk-dev/protocol/http-contracts").LauncherReadinessResponseBody
+	>(
+		`/api/launchers/${encodeURIComponent(launcherId)}/readiness`,
+		"Couldn't check launcher configuration",
+		"Malformed launcher readiness response",
+		jsonRequestInit("POST", { launcherInput }),
+	);
+	return body.readiness;
+}
+
 export async function fetchLauncherOptions(
 	launcherId: string,
 	launcherInput: Record<string, unknown>,

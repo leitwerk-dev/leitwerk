@@ -400,6 +400,11 @@ export function createLaunchPipeline(deps: {
 						mutate(launchRunId, (run) => transitionLaunchStep(run, id, "completed"));
 					} catch (error) {
 						controller.abort();
+						if (!(error instanceof SafeLaunchPreparationError)) {
+							logger.warn(
+								`Launch preparation failed; correlationId=${launchRunId}; check=${check.id}`,
+							);
+						}
 						const safeSummary =
 							error instanceof SafeLaunchPreparationError
 								? error.safeSummary
@@ -442,6 +447,7 @@ export function createLaunchPipeline(deps: {
 					reused: committed.kind === "committed" ? committed.reused : false,
 				};
 			} catch (error) {
+				logger.warn(`Unexpected launch failure; correlationId=${launchRunId}`);
 				const run = deps.launchRuns.getById(launchRunId);
 				const failure = adapter.unexpectedFailure?.(error) ?? {
 					safeSummary: "The launch could not be completed. Try again.",
