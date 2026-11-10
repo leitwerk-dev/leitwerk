@@ -44,16 +44,17 @@ RUN apt-get update \
 	&& apt-get install -y --no-install-recommends git openssh-client ca-certificates \
 	&& rm -rf /var/lib/apt/lists/*
 
-COPY --from=build /app/node_modules ./node_modules
+# Application compilation must not influence the dependency-layer cache key.
+COPY --link --from=dependencies /app/node_modules ./node_modules
 # Copy stable dependencies and manifests before frequently changing application code.
-COPY --from=build --parents \
+COPY --link --from=build --parents \
 	/app/./package.json \
 	/app/./LICENSE \
 	/app/./packages/*/package.json \
 	/app/./extensions/*/package.json \
 	/app/./extensions/*/README.md \
 	./
-COPY --from=build --parents \
+COPY --link --from=build --parents \
 	/app/./packages/*/dist \
 	/app/./extensions/*/dist \
 	/app/./extensions/*/skills \

@@ -37,21 +37,39 @@ COPY turbo.json tsconfig.json biome.json ./
 RUN npm run build
 
 FROM node:26-bookworm-slim@sha256:367679cf9792759492a486e4aa4b421764d71a9546a6dae8aab81a99eb797b3e AS runtime
-ARG TARGETARCH
-ARG MISE_VERSION=2026.8.14
-ARG DOCKER_IO_VERSION=20.10.24+dfsg1-1+deb12u1+b6
 WORKDIR /app
 ENV NODE_ENV=production \
 	PI_CODING_AGENT_DIR=/state/pi-agent \
 	PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
+# Keep independently changing tool families in separate reusable/pushable layers.
+# In particular, a mise or Docker version change must not reinstall Chromium.
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends \
-		git openssh-client bash ca-certificates chromium curl python3 make g++ jq \
-		tar gzip xz-utils unzip zstd "docker.io=${DOCKER_IO_VERSION}" \
-	&& docker --version \
-	&& dockerd --version \
-	&& case "$TARGETARCH" in \
+		git openssh-client bash ca-certificates curl python3 make g++ jq \
+		tar gzip xz-utils unzip zstd \
+	&& rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends chromium \
+	&& rm -rf /var/lib/apt/lists/*
+
+# Specialized images can supply their own Docker distribution without retaining
+# a second daemon/containerd in an inherited layer. The generic default is unchanged.
+ARG INSTALL_DOCKER_IO=true
+ARG DOCKER_IO_VERSION=20.10.24+dfsg1-1+deb12u1+b6
+RUN case "$INSTALL_DOCKER_IO" in \
+		true) apt-get update \
+			&& apt-get install -y --no-install-recommends "docker.io=${DOCKER_IO_VERSION}" \
+			&& docker --version && dockerd --version ;; \
+		false) ;; \
+		*) echo "INSTALL_DOCKER_IO must be true or false" >&2; exit 1 ;; \
+	esac \
+	&& rm -rf /var/lib/apt/lists/*
+
+ARG TARGETARCH
+ARG MISE_VERSION=2026.8.14
+RUN case "$TARGETARCH" in \
 		amd64) mise_arch=x64; mise_sha=80b49fa2dff282d3346524aec4466bbab536296ed5ba4d8c3b1b451022e94f56 ;; \
 		arm64) mise_arch=arm64; mise_sha=81e1c5fa79c3d46cf93aac0ef9a5540bce9856634901a0db8301a656c370eb58 ;; \
 		*) echo "unsupported worker architecture: $TARGETARCH" >&2; exit 1 ;; \
@@ -65,7 +83,8 @@ RUN apt-get update \
 	&& rm -rf "/tmp/$archive" /tmp/mise \
 	&& rm -rf /var/lib/apt/lists/*
 
-COPY --from=build /app/node_modules ./node_modules
+# Application compilation must not influence the dependency-layer cache key.
+COPY --link --from=dependencies /app/node_modules ./node_modules
 # The generic validation worker runs the repository's complete test:full gate,
 # including Playwright browser tests. Link Debian Chromium at the revisioned
 # Playwright path without downloading and unpacking a second browser archive.
@@ -73,14 +92,14 @@ RUN browser_path="$(node -e "const {registry:{registry}}=require('playwright-cor
 	&& mkdir -p "$(dirname "$browser_path")" \
 	&& ln -s /usr/bin/chromium "$browser_path"
 # Copy stable dependencies and manifests before frequently changing application code.
-COPY --from=build --parents \
+COPY --link --from=build --parents \
 	/app/./package.json \
 	/app/./LICENSE \
 	/app/./packages/*/package.json \
 	/app/./extensions/*/package.json \
 	/app/./extensions/*/README.md \
 	./
-COPY --from=build --parents \
+COPY --link --from=build --parents \
 	/app/./packages/*/dist \
 	/app/./extensions/*/dist \
 	/app/./extensions/*/skills \
