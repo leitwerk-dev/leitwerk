@@ -1,6 +1,11 @@
 node_modules
 **/node_modules
 **/dist
+**/.turbo
+**/*.tsbuildinfo
+**/__pycache__
+**/*.pyc
+**/coverage
 .leitwerk
 .worktrees
 test-results

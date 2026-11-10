@@ -56,7 +56,9 @@ coincide.
 - `Caddyfile` — public HTTPS termination and reverse proxy to the server.
 - `config/leitwerk.example.yaml` — sample server config for this topology.
 
-Image builds require BuildKit and the `docker/dockerfile:1` frontend. `COPY --parents` keeps workspace manifests in the dependency layer, so source changes reuse installed dependencies.
+Image builds require BuildKit and the `docker/dockerfile:1` frontend. `COPY --parents` keeps workspace manifests in the dependency layer. Runtime dependency copies come from the dependency stage, not the application build. Linked payload layers let source changes reuse dependencies when the parent image changes. Generated host caches are excluded from the context.
+
+The generic worker installs common tools, Chromium, Docker and mise in separate layers. Docker and mise version arguments are declared after Chromium so changing those pins does not reinstall the browser. Specialized workers that supply another Docker distribution can build with `--build-arg INSTALL_DOCKER_IO=false`; the generic default remains `true`.
 
 Named-volume session transfers require Docker Engine 26.0 or newer (API 1.45+).
 Export helpers mount only the retained `workspace/` and `tree/` subdirectories read-only.

@@ -4,7 +4,7 @@ This directory contains the Kubernetes packaging:
 
 - `../images/Dockerfile.server` builds the singleton server image.
 - `../images/Dockerfile.worker-generic` builds the generic worker runtime profile image.
-- Both runtime images use Jib-style layers: dependencies first, workspace manifests and documentation next, then compiled code and migrations. Source-only changes therefore replace only the final application layer.
+- Both runtime images separate installed dependencies, workspace metadata and compiled application payloads with linked copy layers. Source-only changes reuse dependency layers; worker compile-cache output is refreshed separately. The generic worker keeps Chromium, Docker and mise in separate tool layers.
 - `Dockerfile.server` and `Dockerfile.worker-generic` are compatibility symlinks to the shared image definitions.
 - `Dockerfile.worker-specialized-smoke` extends the generic image with a deterministic tool used by the optional Kind process-level suite to validate specialized runtime-profile images.
 - `helm/leitwerk` is the Helm chart for the server Deployment, Service, PVC, RBAC, optional internal TLS Secret mount, and rendered leitwerk config.
