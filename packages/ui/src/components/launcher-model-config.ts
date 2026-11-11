@@ -97,7 +97,7 @@ export function getDefaultModelBlankOptionLabel(
 	recommendedProfile: ModelProfileOptionSummary | null | undefined,
 ): string {
 	const modelName = getModelDisplayName(recommendedProfile);
-	return modelName ? `Recommended (${modelName})` : "Recommended";
+	return modelName ? `Automatic (${modelName})` : "Automatic";
 }
 
 export function getDefaultModelSelectableProfiles(input: {
@@ -108,7 +108,7 @@ export function getDefaultModelSelectableProfiles(input: {
 }
 
 export function getTurnModelBlankOptionLabel(): string {
-	return "Use inherited value";
+	return "Use automatic selection";
 }
 
 function getModelDisplayName(profile: ModelProfileOptionSummary | null | undefined): string | null {
@@ -131,12 +131,15 @@ function isRecommendedTurnSource(source: LauncherModelLineSource): boolean {
 	return (
 		source === "process_config_turn" ||
 		source === "catalog_default" ||
-		source === "scoped_purpose_default"
+		source === "scoped_purpose_default" ||
+		source === "marked_default" ||
+		source === "automatic" ||
+		source === "fixed_purpose"
 	);
 }
 
 export function formatLauncherModelSummaryStatus(mode: LauncherModelSummaryMode): string {
-	return mode === "adjusted" ? "Uses adjusted models" : "Use recommended models";
+	return mode === "adjusted" ? "Uses adjusted models" : "Use automatic selection";
 }
 
 export function formatLauncherModelDisplayValue(line: LauncherModelDisplayLine): string {
@@ -162,7 +165,10 @@ export function formatLauncherModelDisplayValue(line: LauncherModelDisplayLine):
 		case "scoped_purpose_default":
 		case "process_config_turn":
 		case "catalog_default":
-			return `Recommended (${line.modelName ?? "unknown model"})`;
+		case "marked_default":
+		case "automatic":
+		case "fixed_purpose":
+			return `Automatic (${line.modelName ?? "unknown model"})`;
 		default:
 			return "No model available";
 	}

@@ -1,4 +1,5 @@
 import { trimToNull } from "@leitwerk-dev/domain";
+import { compareModelProfileIds, modelCostRank } from "@leitwerk-dev/protocol";
 import { presentProcessModelPolicyFailure } from "../process-model-policy-presenter.js";
 import { resolveDefault, resolveTurn } from "./evaluate.js";
 import {
@@ -6,6 +7,7 @@ import {
 	modelConfigurationFromLaunchInput,
 	modelConfigurationFromProcess,
 } from "./input.js";
+import { profileRejections } from "./requirements.js";
 import type {
 	PolicySnapshot,
 	ProcessModelAvailabilitySnapshot,
@@ -23,17 +25,37 @@ function projectProfiles(
 	snapshot: PolicySnapshot,
 	processId: string,
 	availability?: ProcessModelAvailabilitySnapshot,
+	turnId?: string,
+	excluded = false,
 ): readonly ProjectedModelProfile[] {
 	const process = snapshot.processesById.get(processId);
 	return snapshot.profiles
-		.filter((profile) => !process?.allowedProfileIds || process.allowedProfileIds.has(profile.id))
+		.filter(
+			(profile) =>
+				Boolean(process && profileRejections(process, profile, turnId).length) === excluded,
+		)
+		.sort(
+			(a, b) =>
+				modelCostRank(a.labels) - modelCostRank(b.labels) || compareModelProfileIds(a.id, b.id),
+		)
 		.map((profile) => {
 			const status = availability?.profiles.find((candidate) => candidate.profileId === profile.id);
 			return {
 				id: profile.id,
+				...(excluded && process
+					? {
+							policyReason: profileRejections(process, profile, turnId)
+								.map(
+									(reason) => `${reason.code} (${reason.values.join(", ")}) from ${reason.origin}`,
+								)
+								.join("; "),
+						}
+					: {}),
 				providerId: profile.provider,
 				modelId: profile.modelId,
 				thinkingLevel: profile.thinkingLevel,
+				labels: profile.labels ?? [],
+				default: profile.default ?? false,
 				availability: status?.availability ?? "stale",
 				safeReason: status?.safeReason ?? null,
 				checkedAt: status?.checkedAt ?? null,
@@ -80,6 +102,7 @@ export function projectPolicy(
 		snapshot,
 		processId,
 		"availability" in request ? request.availability : undefined,
+		"target" in request && request.target?.kind === "turn" ? request.target.turnId : undefined,
 	);
 
 	if (request.kind === "profile_options") return profiles;
@@ -97,8 +120,22 @@ export function projectPolicy(
 	}
 
 	const policy = snapshot.processesById.get(processId);
+	const profilesByTurn = Object.fromEntries(
+		[...(policy?.llmTurnIds ?? [])].map((turnId) => [
+			turnId,
+			projectProfiles(snapshot, processId, request.availability, turnId),
+		]),
+	);
+	const excludedProfiles = Object.fromEntries(
+		["", ...(policy?.llmTurnIds ?? [])].map((turnId) => [
+			turnId,
+			projectProfiles(snapshot, processId, request.availability, turnId || undefined, true),
+		]),
+	);
 	if (request.kind === "launcher_schema") {
 		return {
+			excludedProfiles,
+			profilesByTurn,
 			profiles,
 			turns: [...(policy?.llmTurnIds ?? [])].map((turnId) => ({
 				turnId,
@@ -141,6 +178,10 @@ export function projectPolicy(
 		);
 		return {
 			turnId,
+			explanation: resolved.skippedPreferences?.length
+				? `Automatic — skipped ${resolved.skippedPreferences.map((preference) => `${preference.profileId}: ${preference.rejections.map((r) => `${r.code} (${r.values.join(", ")}) from ${r.origin}`).join("; ")}`).join("; ")}`
+				: undefined,
+			ranking: resolved.ranking,
 			effectiveModelProfileId: resolved.selection?.modelProfileId ?? null,
 			effectiveSource: resolved.selection?.provenance.source ?? ("none" as const),
 			...(!resolved.ok ? { effectiveError: presentProcessModelPolicyFailure(resolved) } : {}),
@@ -162,7 +203,9 @@ export function projectPolicy(
 	});
 
 	if (request.kind === "launcher_preview") {
-		const profilesById = new Map(profiles.map((profile) => [profile.id, profile]));
+		const profilesById = new Map(
+			projectProfiles(snapshot, "", request.availability).map((profile) => [profile.id, profile]),
+		);
 		return {
 			defaultModel: {
 				source: defaultModel.source,
@@ -172,6 +215,8 @@ export function projectPolicy(
 				turnId: turn.turnId,
 				description: turn.description,
 				effective: {
+					explanation: turn.explanation,
+					ranking: turn.ranking,
 					source: sourceForPreview(turn.effectiveSource),
 					...(turn.effectiveError ? { error: turn.effectiveError } : {}),
 					profile: profilesById.get(turn.effectiveModelProfileId ?? "") ?? null,
@@ -183,6 +228,8 @@ export function projectPolicy(
 	const selectedTurn = existingTurnSelectionFromProcess(request.process);
 	return {
 		state: { kind: "ready" },
+		excludedProfiles,
+		profilesByTurn,
 		profiles,
 		defaultModel,
 		turns,

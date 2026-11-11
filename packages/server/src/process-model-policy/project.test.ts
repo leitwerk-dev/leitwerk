@@ -44,6 +44,7 @@ describe("server process model policy projection", () => {
 
 		const profiles = policy.project({
 			kind: "profile_options",
+			target: { kind: "process_default" },
 			processId: "policy",
 			availability: createModelAvailabilitySnapshot(),
 		});
@@ -54,6 +55,8 @@ describe("server process model policy projection", () => {
 			providerId: "test",
 			modelId: "one",
 			thinkingLevel: "off",
+			labels: [],
+			default: false,
 			availability: "available",
 			safeReason: null,
 			checkedAt: null,
@@ -95,6 +98,7 @@ describe("server process model policy projection", () => {
 		);
 		const failure = policy.evaluate({
 			kind: "runtime_selection",
+			target: { kind: "process_default" },
 			processId: "policy",
 			selection: {
 				modelProfileId: "missing",

@@ -250,6 +250,7 @@ async function validateScheduledActionRequest(
 	if (typeof nextTurnModelProfileId === "string") {
 		const result = deps.processModelPolicy.evaluate({
 			kind: "runtime_selection",
+			target: { kind: "turn", turnId: validation.candidateSelectedTurnId! },
 			availability: deps.modelStatusCache.snapshot(),
 			processId: process.processId,
 			selection: {

@@ -122,6 +122,10 @@ export type ModelOverride =
 /** @internal */
 type ProcessModelPolicyFailureBase = {
 	/** @internal */
+	readonly ranking?: ModelRankingEvidence;
+	/** @internal */
+	readonly skippedPreferences?: readonly SkippedModelPreference[];
+	/** @internal */
 	readonly ok: false;
 	/** @internal */
 	readonly selection: DurableModelSelection | null;
@@ -135,6 +139,8 @@ export type ProcessModelPolicyFailure = ProcessModelPolicyFailureBase &
 		| {
 				/** @internal */
 				readonly code: "model_required";
+				/** Effective hard constraints when no eligible model exists. @internal */
+				readonly requirements?: readonly PolicyRequirementLayer[];
 		  }
 		| {
 				/** @internal */
@@ -149,6 +155,8 @@ export type ProcessModelPolicyFailure = ProcessModelPolicyFailureBase &
 				readonly modelProfileId: string;
 				/** @internal */
 				readonly processId: string;
+				/** @internal */
+				readonly rejections?: readonly ModelRequirementRejection[];
 		  }
 		| {
 				/** @internal */
@@ -177,6 +185,10 @@ export type ProcessModelPolicyFailure = ProcessModelPolicyFailureBase &
 /** @internal */
 export interface ProcessModelPolicyResolution {
 	/** @internal */
+	readonly ranking?: ModelRankingEvidence;
+	/** @internal */
+	readonly skippedPreferences?: readonly SkippedModelPreference[];
+	/** @internal */
 	readonly ok: true;
 	/** @internal */
 	readonly selection: DurableModelSelection | null;
@@ -188,6 +200,8 @@ export type ProcessModelPolicyEvaluation = ProcessModelPolicyResolution | Proces
 
 /** @internal */
 export interface ProjectedModelProfile {
+	/** Independent of cached availability. @internal */
+	readonly policyReason?: string;
 	/** @internal */
 	readonly id: string;
 	/** @internal */
@@ -196,6 +210,10 @@ export interface ProjectedModelProfile {
 	readonly modelId: string;
 	/** @internal */
 	readonly thinkingLevel: string;
+	/** @internal */
+	readonly labels?: readonly string[];
+	/** @internal */
+	readonly default?: boolean;
 	/** @internal */
 	readonly availability: "available" | "unavailable" | "stale";
 	/** @internal */
@@ -221,6 +239,10 @@ export type ProjectedModelResolutionSource = ProcessSelectedTurnModelSource | "n
 
 /** @internal */
 export interface ProjectedLauncherModelSchema {
+	/** Excluded candidates with policy origins, keyed by turn; empty key denotes the process preference. @internal */
+	readonly excludedProfiles?: Readonly<Record<string, readonly ProjectedModelProfile[]>>;
+	/** @internal */
+	readonly profilesByTurn?: Readonly<Record<string, readonly ProjectedModelProfile[]>>;
 	/** @internal */
 	readonly profiles: readonly ProjectedModelProfile[];
 	/** @internal */
@@ -250,6 +272,10 @@ export interface ProjectedLauncherModelPreview {
 		/** @internal */
 		readonly effective: {
 			/** @internal */
+			readonly explanation?: string;
+			/** @internal */
+			readonly ranking?: ModelRankingEvidence;
+			/** @internal */
 			readonly error?: string;
 			/** @internal */
 			readonly source: ProjectedModelResolutionSource;
@@ -261,6 +287,10 @@ export interface ProjectedLauncherModelPreview {
 
 /** @internal */
 export type ProjectedProcessModelConfiguration = {
+	/** @internal */
+	readonly excludedProfiles?: Readonly<Record<string, readonly ProjectedModelProfile[]>>;
+	/** @internal */
+	readonly profilesByTurn?: Readonly<Record<string, readonly ProjectedModelProfile[]>>;
 	/** @internal */
 	readonly state:
 		| {
@@ -360,6 +390,8 @@ export type ProcessModelPolicyEvaluationSubject =
 	| {
 			/** @internal */
 			readonly kind: "runtime_selection";
+			/** Explicit validation scope. @internal */
+			readonly target: ModelPolicyTarget;
 			/** @internal */
 			readonly processId: string;
 			/** @internal */
@@ -386,6 +418,8 @@ export type ProcessModelPolicyProjectionSubject =
 			/** @internal */
 			readonly kind: "profile_options";
 			/** @internal */
+			readonly target: ModelPolicyTarget;
+			/** @internal */
 			readonly processId: string;
 			/** @internal */
 			readonly availability: ProcessModelAvailabilitySnapshot;
@@ -393,6 +427,8 @@ export type ProcessModelPolicyProjectionSubject =
 	| {
 			/** @internal */
 			readonly kind: "compatible_profiles";
+			/** @internal */
+			readonly target: ModelPolicyTarget;
 			/** @internal */
 			readonly processId: string;
 			/** @internal */
@@ -458,7 +494,7 @@ export interface PrepareLaunchPlanOptions {
 	/** @internal */
 	readonly replaceModelConfig?: boolean;
 	/** @internal */
-	readonly invalidModelConfig?: "reject" | "omit";
+	readonly invalidModelConfig?: "reject" | "omit" | "retain";
 }
 
 /** @internal */
@@ -479,14 +515,60 @@ export interface ServerProcessModelPolicy {
 	/** @internal */
 	fingerprint(request: ProcessModelPolicyFingerprintSubject): string;
 }
+/** @internal */
+export type ModelPolicyTarget =
+	| {
+			/** @internal */
+			readonly kind: "process_default";
+	  }
+	| {
+			/** @internal */
+			readonly kind: "turn";
+			/** @internal */
+			readonly turnId: string;
+	  };
+/** @internal */
+export interface ModelRankingEvidence {
+	/** @internal */
+	readonly kind: "marked_defaults" | "cost_id";
+	/** Equal-specificity marked defaults; ordered by the actual cost/ID tie-break. @internal */
+	readonly tiedProfileIds: readonly string[];
+}
+/** @internal */
+export interface SkippedModelPreference {
+	/** @internal */
+	readonly profileId: string;
+	/** @internal */
+	readonly source: ProcessSelectedTurnModelSource;
+	/** @internal */
+	readonly rejections: readonly ModelRequirementRejection[];
+}
+/** @internal */
+export interface ModelRequirementRejection {
+	/** @internal */ readonly origin: string;
+	/** @internal */ readonly code: string;
+	/** @internal */ readonly values: readonly string[];
+}
 export interface PolicyProfile {
+	readonly labels?: readonly string[];
+	readonly default?: boolean;
+	readonly capabilities?: Readonly<Record<string, boolean | "unknown">>;
 	readonly id: string;
 	readonly provider: string;
 	readonly modelId: string;
 	readonly thinkingLevel: string;
 	readonly providerOptions: Readonly<Record<string, unknown>>;
 }
+/** @internal */
+export interface PolicyRequirementLayer {
+	/** @internal */
+	readonly origin: string;
+	/** @internal */
+	readonly requirements: import("@leitwerk-dev/protocol").ModelRequirements;
+}
 export interface PolicyProcess {
+	readonly requirements?: readonly PolicyRequirementLayer[];
+	readonly turnRequirements?: Readonly<Record<string, readonly PolicyRequirementLayer[]>>;
 	readonly id: string;
 	readonly allowedProfileIds: ReadonlySet<string> | null;
 	readonly defaultProfileId: string | null;

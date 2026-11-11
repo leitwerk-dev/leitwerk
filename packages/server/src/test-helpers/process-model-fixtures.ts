@@ -118,6 +118,8 @@ export function createTestModelPolicy(
 		profiles?: readonly {
 			id: string;
 			model_id?: string;
+			labels?: string[];
+			default?: boolean;
 			provider_options?: Record<string, unknown>;
 		}[];
 		processDefaultProfileId?: string;
@@ -125,6 +127,13 @@ export function createTestModelPolicy(
 		modelPurpose?: boolean;
 		purposeProfileId?: string;
 		allowedProfileIds?: readonly string[];
+		processRequirements?: import("@leitwerk-dev/protocol").ModelRequirements;
+		turnRequirements?: import("@leitwerk-dev/protocol").ModelRequirements;
+		operatorTurnRequirements?: import("@leitwerk-dev/protocol").ModelRequirements;
+		capabilities?: (
+			providerId: string,
+			modelId: string,
+		) => Readonly<Record<string, boolean | "unknown">>;
 	} = {},
 ): {
 	config: LeitwerkConfig;
@@ -143,26 +152,33 @@ export function createTestModelPolicy(
 		id: profile.id,
 		provider: "test",
 		model_id: profile.model_id ?? profile.id,
+		labels: profile.labels,
+		default: profile.default,
 		...(profile.provider_options ? { provider_options: profile.provider_options as never } : {}),
 	}));
 	config.pi.process_title_generation.model_profile = input.purposeProfileId ?? null;
 	config.process_configs = {
 		policy: {
+			model_requirements: input.processRequirements,
 			allowed_model_profiles: [
 				...(input.allowedProfileIds ?? config.pi.model_profiles.map((profile) => profile.id)),
 			],
 			...(input.processDefaultProfileId
 				? { default_model_profile: input.processDefaultProfileId }
 				: {}),
-			turn_configs: input.processTurnProfileId
-				? { run: { model_profile: input.processTurnProfileId } }
-				: {},
+			turn_configs: {
+				run: {
+					model_profile: input.processTurnProfileId,
+					model_requirements: input.operatorTurnRequirements,
+				},
+			},
 		},
 	};
 	const turn = createTestLlmTurn<string, Record<string, never>, Record<string, never>>(
 		"run",
 		{},
 		{
+			modelRequirements: input.turnRequirements,
 			...(input.modelPurpose || input.purposeProfileId !== undefined
 				? { modelPurpose: "process_title_generation" as const }
 				: {}),
@@ -176,7 +192,12 @@ export function createTestModelPolicy(
 		config,
 		graph,
 		processActionRegistry,
-		policy: createServerProcessModelPolicy({ config, processGraphs: graph, processActionRegistry }),
+		policy: createServerProcessModelPolicy({
+			config,
+			processGraphs: graph,
+			processActionRegistry,
+			capabilities: input.capabilities,
+		}),
 	};
 }
 

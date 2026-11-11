@@ -6,6 +6,23 @@ import {
 } from "../test-helpers/process-model-fixtures.js";
 
 describe("server process model policy fingerprint", () => {
+	it("ignores classification metadata, restriction ordering and catalog presentation order", () => {
+		const process = createTestProcessInstance();
+		const currentStart = createTestTurnStart();
+		const fingerprint = (reverse: boolean) =>
+			createTestModelPolicy({
+				profiles: reverse
+					? [
+							{ id: "second", labels: ["premium"], default: true },
+							{ id: "first", labels: ["economy", "coding", "coding"] },
+						]
+					: [{ id: "first", labels: ["coding", "economy"], default: true }, { id: "second" }],
+				turnRequirements: {
+					labels: { any_of: reverse ? ["coding", "writing"] : ["writing", "coding"] },
+				},
+			}).policy.fingerprint({ process, currentStart });
+		expect(fingerprint(true)).toBe(fingerprint(false));
+	});
 	it("includes start identity and excludes only the prepared availability revision", () => {
 		const { policy } = createTestModelPolicy({ profiles: [{ id: "first", model_id: "one" }] });
 		const process = createTestProcessInstance({

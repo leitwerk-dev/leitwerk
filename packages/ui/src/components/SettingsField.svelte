@@ -7,6 +7,7 @@ import type {
 } from "@leitwerk-dev/protocol/http-contracts";
 import { type NamedSelection, settingSelectionValues } from "@leitwerk-dev/protocol/http-contracts";
 import { tick, untrack } from "svelte";
+import ModelProfileOptions from "../chronicle/components/ModelProfileOptions.svelte";
 import {
 	changeSettings,
 	fetchSettingsChoices,
@@ -259,9 +260,13 @@ async function useLatestRevision() {
 				</div>
 			{:else if field.form.control === "model" || field.form.control === "select"}
 				<select id={inputId} value={String(value ?? "")} onchange={(event) => { value = event.currentTarget.value || (field.form.control === "model" ? null : ""); }} disabled={busy}>
-					{#if field.form.control === "model"}<option value="">Use YAML / catalog default</option>{/if}
-					{#if typeof value === "string" && !choices.some((choice) => choice.value === value)}<option value={value}>{value} (unavailable)</option>{/if}
-					{#each choices as choice (choice.value)}<option value={choice.value} disabled={Boolean(choice.disabledReason)}>{choice.label}{choice.disabledReason ? ` — ${choice.disabledReason}` : ""}</option>{/each}
+					{#if field.form.control === "model"}<option value="">Use automatic selection</option>{/if}
+					{#if field.form.control !== "model" && typeof value === "string" && !choices.some((choice) => choice.value === value)}<option value={value}>{value} (unavailable)</option>{/if}
+					{#if field.form.control === "model"}
+						<ModelProfileOptions profiles={choices.map((choice) => ({ id: choice.value, label: choice.label, labels: choice.labels, description: "", availability: choice.disabledReason ? "unavailable" as const : "available" as const, safeReason: choice.disabledReason }))} selectedId={String(value ?? "")} />
+					{:else}
+						{#each choices as choice (choice.value)}<option value={choice.value} disabled={Boolean(choice.disabledReason)}>{choice.label}{choice.disabledReason ? ` — ${choice.disabledReason}` : ""}</option>{/each}
+					{/if}
 				</select>
 			{:else if field.form.control === "textarea"}
 				<textarea id={inputId} rows="6" value={String(value ?? "")} oninput={(event) => { value = event.currentTarget.value; }} disabled={busy}></textarea>

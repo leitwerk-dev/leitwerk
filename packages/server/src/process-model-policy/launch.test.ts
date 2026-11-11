@@ -52,7 +52,7 @@ describe("server process model policy launch preparation", () => {
 		});
 	});
 
-	it("rejects unknown and disallowed profiles and omits them in omit mode", () => {
+	it("rejects invalid choices at admission and retains them for deferred watcher validation", () => {
 		const plan = launch();
 		const policy = createTestModelPolicy({ allowedProfileIds: ["first"] }).policy;
 		for (const [profileId, code] of [
@@ -74,7 +74,9 @@ describe("server process model policy launch preparation", () => {
 			expect(omitted.ok).toBe(true);
 			if (!omitted.ok) continue;
 			expect(omitted.warnings).toMatchObject([{ code }]);
-			expect(omitted.launchPlan.processInput.turnConfigsJson).toBeNull();
+			expect(JSON.parse(omitted.launchPlan.processInput.turnConfigsJson ?? "{}")).toEqual({
+				run: { modelProfileId: profileId },
+			});
 		}
 	});
 
@@ -141,14 +143,14 @@ describe("server process model policy launch preparation", () => {
 		});
 	});
 
-	it("strictly rejects embedded JSON and drops it in omit mode", () => {
+	it("strictly rejects malformed embedded JSON even for deferred admission", () => {
 		const policy = createTestModelPolicy().policy;
 		const plan = launch({ turnConfigsJson: "not-json" });
 		expect(policy.prepareLaunchPlan(plan).ok).toBe(false);
 		const omitted = policy.prepareLaunchPlan(plan, { invalidModelConfig: "omit" });
-		expect(omitted.ok).toBe(true);
-		if (!omitted.ok) return;
-		expect(omitted.warnings).toMatchObject([
+		expect(omitted.ok).toBe(false);
+		if (omitted.ok) return;
+		expect(omitted.errors).toMatchObject([
 			{
 				code: "invalid_turn_configs_json",
 				message: "turnConfigsJson must be valid JSON",

@@ -27,11 +27,11 @@ export function presentLaunchPlanPreparationIssues(
 export function presentProcessModelPolicyFailure(failure: ProcessModelPolicyFailure): string {
 	switch (failure.code) {
 		case "model_required":
-			return "Choose a model before starting this turn";
+			return `No model satisfies this turn's requirements${failure.requirements?.length ? `: ${failure.requirements.map((layer) => `${layer.origin} ${JSON.stringify(layer.requirements)}`).join("; ")}` : ""}`;
 		case "unknown_model_profile":
 			return `Unknown model profile '${failure.modelProfileId}'`;
 		case "model_profile_not_allowed":
-			return `Model profile '${failure.modelProfileId}' is not allowed for process '${failure.processId}'`;
+			return `Model profile '${failure.modelProfileId}' is not allowed for process '${failure.processId}'${failure.rejections?.length ? `: ${failure.rejections.map((r) => `${r.code} (${r.values.join(", ")}) from ${r.origin}`).join("; ")}` : ""}`;
 		case "model_stale":
 			return failure.reason ?? "Model status has not been refreshed";
 		case "model_unavailable":
@@ -54,6 +54,9 @@ export function presentModelProfileOption(
 	const thinkingLevel = profile.thinkingLevel.trim();
 	return {
 		id: profile.id,
+		...(profile.policyReason ? { policyReason: profile.policyReason } : {}),
+		labels: profile.labels ?? [],
+		default: profile.default ?? false,
 		label: `${profile.id} — ${profile.providerId}/${profile.modelId}`,
 		description:
 			thinkingLevel && thinkingLevel.toLowerCase() !== "off"
@@ -70,6 +73,18 @@ export function presentLauncherModelConfigSchema(
 ): LauncherModelConfigSchema {
 	return {
 		availableProfiles: projection.profiles.map(presentModelProfileOption),
+		profilesByTurn: Object.fromEntries(
+			Object.entries(projection.profilesByTurn ?? {}).map(([id, profiles]) => [
+				id,
+				profiles.map(presentModelProfileOption),
+			]),
+		),
+		excludedProfiles: Object.fromEntries(
+			Object.entries(projection.excludedProfiles ?? {}).map(([id, profiles]) => [
+				id,
+				profiles.map(presentModelProfileOption),
+			]),
+		),
 		llmTurns: projection.turns.map((turn) => ({ ...turn })),
 	};
 }
@@ -93,6 +108,7 @@ export function presentLauncherModelConfigPreview(
 			turnId: turn.turnId,
 			description: turn.description,
 			effective: {
+				...(turn.effective.explanation ? { explanation: turn.effective.explanation } : {}),
 				...(turn.effective.error ? { error: turn.effective.error } : {}),
 				source: turn.effective.source,
 				profile: turn.effective.profile ? presentModelProfileOption(turn.effective.profile) : null,
@@ -106,6 +122,18 @@ export function presentProcessModelConfiguration(
 ): ProcessModelConfigurationView {
 	return {
 		state: projection.state,
+		excludedProfiles: Object.fromEntries(
+			Object.entries(projection.excludedProfiles ?? {}).map(([id, profiles]) => [
+				id,
+				profiles.map(presentModelProfileOption),
+			]),
+		),
+		profilesByTurn: Object.fromEntries(
+			Object.entries(projection.profilesByTurn ?? {}).map(([id, profiles]) => [
+				id,
+				profiles.map(presentModelProfileOption),
+			]),
+		),
 		availableProfiles: projection.profiles.map(presentModelProfileOption),
 		effectiveSelectedTurn: projection.effectiveSelectedTurn,
 		defaultModel: projection.defaultModel,

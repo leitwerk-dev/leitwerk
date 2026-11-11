@@ -9,6 +9,9 @@ const labels: Record<string, string> = {
 	process_config: "Configured step model",
 	default: "Inherits the default",
 	catalog_default: "Catalog default",
+	marked_default: "Automatic · default candidate",
+	automatic: "Automatic · cost and profile ID",
+	fixed_purpose: "Fixed system model",
 };
 
 /** @internal */
