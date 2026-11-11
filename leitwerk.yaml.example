@@ -246,6 +246,10 @@ pi:
       provider: deepseek
       model_id: deepseek-v4-flash
       thinking_level: low
+      # Policy labels are operator assertions, not inferred from provider pricing.
+      labels: [coding, economy]
+      # Multiple profiles may be automatic default candidates.
+      default: true
   #     provider_options:
   #       preferred_account: team-default
   #   - id: deepseek-v4-pro
@@ -261,6 +265,18 @@ process_configs:
     # Omit to use the extension's resolveStorageSize(), then the global size.
     # Local/Docker runners ignore this setting.
     storage_size: 128Mi
+    # model_requirements:
+    #   profiles: [deepseek-v4-flash] # Nonempty allowlist; intersects legacy allowed_model_profiles.
+    #   capabilities: [reasoning] # Unknown provider support fails eligibility.
+    #   labels:
+    #     all_of: [writing]
+    #     any_of: [free, economy, standard] # Nonempty; each layer must match independently.
+    #     none_of: [restricted]
+    # turn_configs:
+    #   draft:
+    #     model_requirements:
+    #       labels:
+    #         all_of: [writing]
     watchers:
       create_poem:
         enabled: true

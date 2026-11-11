@@ -189,7 +189,7 @@ async function executeScheduledLaunch(
 		async prepare(payload) {
 			const prepared = await deps.launchPlans.prepare(payload.launchPlan, {
 				modelConfig: payload.modelConfig,
-				invalidModelConfig: "reject",
+				invalidModelConfig: "retain",
 			});
 			if (!prepared.ok) {
 				return {
@@ -348,6 +348,7 @@ export function createFutureExecutionExecutor(deps: FutureExecutionExecutorDeps)
 		const snapshot = deps.modelStatusCache.snapshot();
 		const result = deps.processModelPolicy.evaluate({
 			kind: "runtime_selection",
+			target: { kind: "process_default" },
 			availability: snapshot,
 			processId: execution.processId,
 			selection: execution.modelSelection,
@@ -445,13 +446,7 @@ export function createFutureExecutionExecutor(deps: FutureExecutionExecutorDeps)
 				if (!latest || latest.nextRunAt > asOf) {
 					return;
 				}
-				if (
-					(!latest.modelSelection ||
-						(latest.kind === "action" && !isPinnedModelSelection(latest.modelSelection))) &&
-					deps.processGraphs &&
-					deps.processActionRegistry &&
-					deps.turnRecords
-				) {
+				if (deps.processGraphs && deps.processActionRegistry && deps.turnRecords) {
 					const projected = await projectFutureExecutionModelState(
 						{
 							processes: deps.processes,

@@ -443,6 +443,7 @@ class DefaultProcessTitleGenerator implements ProcessTitleGenerator {
 		private readonly extensionHost?: ExtensionHost,
 		private readonly futureExecutionTitleApplier?: FutureExecutionTitleApplier,
 		private readonly getLaunchCoordinator?: () => LaunchCoordinator | undefined,
+		private readonly modelPolicyError?: (processId: string, profileId: string) => string | null,
 	) {
 		this.configuredProfileId = trimToNull(config.pi.process_title_generation.model_profile);
 		this.retryPolicy = buildProcessTitleRetryPolicy(config);
@@ -536,6 +537,7 @@ class DefaultProcessTitleGenerator implements ProcessTitleGenerator {
 			return null;
 		}
 		if (
+			this.modelPolicyError?.(normalizedLaunchPlan.processId, this.configuredProfileId) ||
 			!isTitleModelAllowedForProcess(
 				this.config,
 				normalizedLaunchPlan.processId,
@@ -780,6 +782,8 @@ class DefaultProcessTitleGenerator implements ProcessTitleGenerator {
 	}
 
 	private async generateTitle(job: ProcessTitleJob): Promise<GeneratedTitleAttemptResult> {
+		const policyError = this.modelPolicyError?.(job.processDefinitionId, job.modelProfileId);
+		if (policyError) return { ok: false, error: policyError };
 		const configuredProfile = this.config.pi.model_profiles.find(
 			(profile) => profile.id === job.modelProfileId,
 		);
@@ -909,6 +913,8 @@ export function createProcessTitleGenerator(options: {
 	futureExecutionTitleApplier?: FutureExecutionTitleApplier;
 	/** @internal */
 	getLaunchCoordinator?: () => LaunchCoordinator | undefined;
+	/** Fixed title profile validation at queue and dispatch. @internal */
+	modelPolicyError?: (processId: string, profileId: string) => string | null;
 }): ProcessTitleGenerator {
 	const runtime = { ...createDefaultRuntimeDeps(), ...options.runtime };
 	return new DefaultProcessTitleGenerator(
@@ -920,5 +926,6 @@ export function createProcessTitleGenerator(options: {
 		options.extensionHost,
 		options.futureExecutionTitleApplier,
 		options.getLaunchCoordinator,
+		options.modelPolicyError,
 	);
 }

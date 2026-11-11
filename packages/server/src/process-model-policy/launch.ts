@@ -121,7 +121,7 @@ export function prepareLaunchPlan(
 				: parsed.error.reason === "not_object"
 					? "turnConfigsJson must be an object"
 					: `turnConfigsJson.${parsed.error.turnId ?? "<unknown>"} must be an object`;
-		report(issue(parsed.error.code, message));
+		errors.push(issue(parsed.error.code, message));
 	}
 	const baseConfig: LaunchModelConfigInput = {
 		defaultModelProfileId: launchPlan.processInput.defaultModelProfileId ?? null,
@@ -136,16 +136,22 @@ export function prepareLaunchPlan(
 	const policy = snapshot.processesById.get(launchPlan.processId);
 	const llmTurns = policy?.llmTurnIds ?? new Set<string>();
 	const validTurns: Record<string, { modelProfileId: string }> = {};
-	let defaultModelProfileId = normalized.defaultModelProfileId ?? null;
+	const defaultModelProfileId = normalized.defaultModelProfileId ?? null;
 	const modelIssue = (
 		profileId: string | null,
 		modelTarget: ModelTarget,
 	): LaunchPlanPreparationIssue | null => {
 		if (!profileId) return null;
-		const result = validateSelection(snapshot, launchPlan.processId, {
-			modelProfileId: profileId,
-			provenance: { kind: "explicit", source: "instance_default" },
-		});
+		const result = validateSelection(
+			snapshot,
+			launchPlan.processId,
+			{
+				modelProfileId: profileId,
+				provenance: { kind: "explicit", source: "instance_default" },
+			},
+			undefined,
+			modelTarget.kind === "default_model" ? undefined : (modelTarget.turnId ?? undefined),
+		);
 		return result.ok ? null : issueForPolicy(result, launchPlan.processId, modelTarget);
 	};
 	const validate = (profileId: string | null, modelTarget: ModelTarget): boolean => {
@@ -154,11 +160,11 @@ export function prepareLaunchPlan(
 		report(issue);
 		return false;
 	};
-	if (!validate(defaultModelProfileId, target("default_model"))) defaultModelProfileId = null;
+	validate(defaultModelProfileId, target("default_model"));
 	for (const [turnId, config] of Object.entries(normalized.turnConfigs ?? {})) {
 		const profileId = config.modelProfileId?.trim() || null;
 		if (!llmTurns.has(turnId)) {
-			report(
+			errors.push(
 				issue(
 					"unknown_llm_turn",
 					`Turn '${turnId}' is not a known LLM turn for process '${launchPlan.processId}'`,
@@ -166,14 +172,15 @@ export function prepareLaunchPlan(
 			);
 			continue;
 		}
-		if (profileId && validate(profileId, target("turn_model", turnId))) {
+		if (profileId) {
+			validate(profileId, target("turn_model", turnId));
 			validTurns[turnId] = { modelProfileId: profileId };
 		}
 	}
 
 	const selectedTurnId = launchPlan.startTurnId ?? launchPlan.processInput.selectedTurnId;
 	const selectedProfileId = launchPlan.processInput.selectedTurnModelProfileId?.trim() || null;
-	let selectedModelProfileId = selectedProfileId;
+	const selectedModelProfileId = selectedProfileId;
 	const selectedTurnIssue: LaunchPlanPreparationIssue | null = !selectedProfileId
 		? null
 		: !selectedTurnId
@@ -189,7 +196,6 @@ export function prepareLaunchPlan(
 				: modelIssue(selectedProfileId, target("selected_turn_model", selectedTurnId));
 	if (selectedTurnIssue) {
 		report(selectedTurnIssue);
-		if (invalidMode !== "reject") selectedModelProfileId = null;
 	}
 
 	const modelConfig = { defaultModelProfileId, turnConfigs: validTurns };
@@ -198,7 +204,7 @@ export function prepareLaunchPlan(
 	const defaultResult = resolveDefault(snapshot, configuration);
 	if (defaultResult.ok)
 		initialDefaultModelProfileId = defaultResult.selection?.modelProfileId ?? null;
-	if (selectedTurnId && !selectedModelProfileId) {
+	if (selectedTurnId && !selectedModelProfileId && errors.length === 0 && warnings.length === 0) {
 		const turnResult = resolveTurn(
 			snapshot,
 			configuration,
@@ -207,7 +213,7 @@ export function prepareLaunchPlan(
 			{ kind: "none" },
 			{ kind: "inherit" },
 		);
-		if (!turnResult.ok && turnResult.code === "model_required") {
+		if (!turnResult.ok) {
 			report(
 				issueForPolicy(
 					turnResult,

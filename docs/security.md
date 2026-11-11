@@ -10,6 +10,12 @@ Agent tools use server-pinned topic bindings; browser users can browse and delet
 entries. Evidence and agent-authored guidance are untrusted. Tombstones prevent
 same-ID resurrection, not recall from already running model contexts or audit history.
 
+Model-profile requirements constrain managed LLM calls, including optional title
+generation. They are not tenant isolation, a network sandbox, or a restriction on
+arbitrary networking by trusted extensions and tools. Operators own classification
+labels; provider capability metadata is a stable catalog assertion, not a security
+certification.
+
 ## Authentication models {#1-authentication-models}
 
 | Boundary | Credential and scope |

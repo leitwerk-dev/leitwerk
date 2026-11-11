@@ -164,8 +164,21 @@ const stringArraySchema = v.array(v.string());
 const skillIdsSchema = v.array(
 	v.pipe(v.string(), v.regex(SAFE_SKILL_ID_PATTERN, "Invalid skill ID")),
 );
+const policyIdentifiersSchema = v.array(v.pipe(v.string(), v.regex(/^[a-z][a-z0-9_.-]*$/)));
+const modelRequirementsSchema = v.strictObject({
+	profiles: v.optional(v.pipe(v.array(v.pipe(v.string(), v.nonEmpty())), v.nonEmpty())),
+	capabilities: v.optional(policyIdentifiersSchema),
+	labels: v.optional(
+		v.strictObject({
+			all_of: v.optional(policyIdentifiersSchema),
+			any_of: v.optional(v.pipe(policyIdentifiersSchema, v.nonEmpty())),
+			none_of: v.optional(policyIdentifiersSchema),
+		}),
+	),
+});
 const modelTurnConfigSchema = v.looseObject({
 	model_profile: v.optional(v.string()),
+	model_requirements: v.optional(modelRequirementsSchema),
 });
 
 const authNonEmptyString = v.pipe(v.string(), v.nonEmpty());
@@ -330,6 +343,8 @@ const configSchema = v.looseObject({
 				provider: v.string(),
 				model_id: v.string(),
 				thinking_level: v.optional(v.string()),
+				labels: v.optional(policyIdentifiersSchema),
+				default: v.optional(v.boolean()),
 				provider_options: v.optional(v.record(v.string(), v.string())),
 			}),
 		),
@@ -359,6 +374,7 @@ const configSchema = v.looseObject({
 			v.looseObject({
 				default_skills: v.optional(skillIdsSchema),
 				default_model_profile: v.optional(v.string()),
+				model_requirements: v.optional(modelRequirementsSchema),
 				allowed_model_profiles: v.optional(v.pipe(stringArraySchema, v.nonEmpty())),
 				worker_runtime_profile: v.optional(v.string()),
 				storage_size: v.optional(storageSizeSchema),

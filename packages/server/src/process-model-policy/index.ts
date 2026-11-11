@@ -99,7 +99,13 @@ function evaluateSubject(
 		);
 	}
 	if (request.kind === "runtime_selection") {
-		return validateSelection(snapshot, request.processId, request.selection, request.availability);
+		return validateSelection(
+			snapshot,
+			request.processId,
+			request.selection,
+			request.availability,
+			request.target.kind === "turn" ? request.target.turnId : undefined,
+		);
 	}
 	return recoverPreparation(
 		snapshot,
@@ -116,6 +122,10 @@ export function createServerProcessModelPolicy(input: {
 	config: LeitwerkConfig;
 	processGraphs: ProcessGraphRegistry;
 	processActionRegistry: Pick<ProcessActionRegistry, "getTurnDefinition">;
+	capabilities?: (
+		providerId: string,
+		modelId: string,
+	) => Readonly<Record<string, boolean | "unknown">>;
 	scopedSettings?: Pick<ScopedSettingsService, "modelDefault">;
 }): ServerProcessModelPolicy {
 	const snapshot = constructPolicySnapshot(input);

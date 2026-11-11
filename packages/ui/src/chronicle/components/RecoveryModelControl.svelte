@@ -44,7 +44,7 @@ $effect(() => {
 });
 </script>
 
-{#if modelProfiles.length > 0}
+{#if modelProfiles.length > 0 || defaultModelProfileId}
 	<label class="model-label" for={selectId}>{selectLabel}</label>
 	<select
 		id={selectId}
@@ -54,8 +54,8 @@ $effect(() => {
 		{disabled}
 	>
 		<option value="">Use current model policy{defaultModelProfileId ? ` (${defaultModelProfileId})` : ""}</option>
-		<option value="__inherit">Use inherited value{inheritedModelProfileId ? ` (${inheritedModelProfileId})` : ""}</option>
-		<ModelProfileOptions profiles={modelProfiles} />
+		<option value="__inherit">Use automatic selection{inheritedModelProfileId ? ` (${inheritedModelProfileId})` : ""}</option>
+		<ModelProfileOptions profiles={modelProfiles} selectedId={modelProfileDraft === "__inherit" ? "" : modelProfileDraft} />
 	</select>
 	{#if selection.profile?.safeReason && !selection.usable}
 		<p class="model-reason">{selection.profile.safeReason}</p>

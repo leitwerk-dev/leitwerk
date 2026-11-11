@@ -57,7 +57,9 @@ Removing an extension retains its subjects and overrides. The Settings page show
 unregistered fields as inactive. Reinstallation restores compatible fields. A
 schema-version mismatch or invalid stored value blocks affected preparation with
 the setting key and correction instructions. Explicit model selections still pass
-the process allowlist and model-availability checks.
+the destination turn's effective model requirements and availability checks.
+An incompatible inherited purpose default may be skipped; unknown profiles and
+malformed settings remain errors. Availability never selects a replacement.
 
 ## Operator API
 

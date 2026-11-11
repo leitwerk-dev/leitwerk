@@ -14,6 +14,7 @@ import { formatLocalDateTime, formatRelativeTime } from "../../lib/format.js";
 import type { ActionSectionController } from "../lib/action-bindings.js";
 import { buildActionModelDisplay } from "../lib/action-model-display.js";
 import { describeActionPreview as describeSharedActionPreview } from "../lib/action-preview.js";
+import ModelPolicyDetails from "./ModelPolicyDetails.svelte";
 import ModelProfileOptions from "./ModelProfileOptions.svelte";
 
 interface Props {
@@ -488,8 +489,9 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 							<option value="">
 								{actionModelDisplay?.blankOptionLabel ?? "Use selected/default model"}
 							</option>
-							<ModelProfileOptions profiles={modelConfiguration.availableProfiles} />
+							<ModelProfileOptions profiles={modelConfiguration.profilesByTurn?.[actionBindings.openActionModelPreview?.turnId ?? ""] ?? modelConfiguration.availableProfiles} selectedId={actionBindings.getActionModelOverrideValue(openAction.id)} />
 						</select>
+						<ModelPolicyDetails profiles={modelConfiguration.profilesByTurn?.[actionBindings.openActionModelPreview?.turnId ?? ""] ?? modelConfiguration.availableProfiles} excluded={modelConfiguration.excludedProfiles?.[actionBindings.openActionModelPreview?.turnId ?? ""]} selectedId={actionBindings.getActionModelOverrideValue(openAction.id)} />
 						{#if actionBindings.openActionModelPreviewLoading && !actionModelDisplay?.helperText}
 							<p class="field-note" data-section="action-model-loading">
 								Loading the resolved model preview…

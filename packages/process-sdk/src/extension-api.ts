@@ -62,6 +62,10 @@ export interface Codec<T> {
 /** @internal */
 export interface LauncherModelProfileSummary {
 	/** @internal */
+	readonly labels?: readonly string[];
+	/** @internal */
+	readonly default?: boolean;
+	/** @internal */
 	readonly id: string;
 	/** @internal */
 	readonly provider: string;
@@ -948,6 +952,8 @@ export interface ProcessRuntimeCapabilities {
 
 /** @public */
 export interface ExtensionProcessDefinition<TParams = unknown, TState = unknown> {
+	/** Static model restrictions for all managed calls belonging to this process. @public */
+	modelRequirements?: import("@leitwerk-dev/protocol").ModelRequirements;
 	/** @public */
 	id: string;
 	/** @public */

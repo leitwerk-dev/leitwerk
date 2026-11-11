@@ -70,9 +70,9 @@ describe("launcher model config helpers", () => {
 
 	describe("blank option labels", () => {
 		it("shows the recommended model name in the default-model blank option", () => {
-			expect(getDefaultModelBlankOptionLabel(recommendedProfile)).toBe("Recommended (claude_fast)");
-			expect(getDefaultModelBlankOptionLabel(null)).toBe("Recommended");
-			expect(getTurnModelBlankOptionLabel()).toBe("Use inherited value");
+			expect(getDefaultModelBlankOptionLabel(recommendedProfile)).toBe("Automatic (claude_fast)");
+			expect(getDefaultModelBlankOptionLabel(null)).toBe("Automatic");
+			expect(getTurnModelBlankOptionLabel()).toBe("Use automatic selection");
 		});
 
 		it("keeps inheritance separate from an explicit choice of the recommended model", () => {
@@ -232,7 +232,7 @@ describe("launcher model config helpers", () => {
 
 	describe("summary status copy", () => {
 		it("maps summary modes to stable sentences", () => {
-			expect(formatLauncherModelSummaryStatus("recommended")).toBe("Use recommended models");
+			expect(formatLauncherModelSummaryStatus("recommended")).toBe("Use automatic selection");
 			expect(formatLauncherModelSummaryStatus("adjusted")).toBe("Uses adjusted models");
 		});
 	});

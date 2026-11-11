@@ -19,5 +19,9 @@ commitment. Promote a capability only with an explicit contract and implementati
   execution. Export from Leitwerk to local Pi is already supported.
 - **Action queueing:** Queuing future business actions on an existing process.
 - **Quotas:** Rate, request, and storage quotas without a concrete deployment need.
+- **Dynamic model classification:** Repository- or instance-derived classifications,
+  dynamic requirements, availability-based substitution, provider failover, learned
+  routing and cost-budget enforcement. Current model policy uses static code and
+  startup configuration; scoped preferences do not relax requirements.
 
 Per-user settings and arbitrary YAML editing are outside this version.

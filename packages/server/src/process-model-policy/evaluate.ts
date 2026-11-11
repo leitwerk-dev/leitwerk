@@ -1,5 +1,6 @@
 import type { DurableModelSelection, TurnStartRecord } from "@leitwerk-dev/domain";
 import { trimToNull } from "@leitwerk-dev/domain";
+import { profileRejections, rankedProfiles, requirementLayers } from "./requirements.js";
 import type {
 	ExistingTurnSelection,
 	ModelConfiguration,
@@ -8,6 +9,7 @@ import type {
 	PolicySnapshot,
 	ProcessModelAvailabilitySnapshot,
 	ProcessModelPolicyEvaluation,
+	SkippedModelPreference,
 	ValidModelConfiguration,
 } from "./types.js";
 import { isPinnedModelSelection, provenanceKindForSource } from "./types.js";
@@ -32,6 +34,7 @@ export function validateSelection(
 	processId: string,
 	selection: DurableModelSelection | null,
 	availability?: ProcessModelAvailabilitySnapshot,
+	turnId?: string,
 ): ProcessModelPolicyEvaluation {
 	if (!selection)
 		return {
@@ -50,12 +53,14 @@ export function validateSelection(
 			...(availability ? { availabilityRevision: availability.revision } : {}),
 		};
 	const policy = processPolicy(snapshot, processId);
-	if (policy.allowedProfileIds && !policy.allowedProfileIds.has(profile.id))
+	const rejections = profileRejections(policy, profile, turnId);
+	if (rejections.length)
 		return {
 			ok: false,
 			code: "model_profile_not_allowed",
 			modelProfileId: profile.id,
 			processId,
+			rejections,
 			selection,
 			...(availability ? { availabilityRevision: availability.revision } : {}),
 		};
@@ -87,7 +92,10 @@ function candidate(
 		| "instance_default"
 		| "process_config_default"
 		| "catalog_default"
-		| "scoped_purpose_default",
+		| "scoped_purpose_default"
+		| "marked_default"
+		| "automatic"
+		| "fixed_purpose",
 ): DurableModelSelection | null {
 	const id = trimToNull(modelProfileId);
 	return id
@@ -120,26 +128,6 @@ export function resolveDefault(
 	);
 }
 
-function resolveInherited(
-	snapshot: PolicySnapshot,
-	configuration: ValidModelConfiguration,
-	turnId: string,
-): DurableModelSelection | null {
-	const policy = processPolicy(snapshot, configuration.processId);
-	const instanceTurn = candidate(configuration.turnProfileIds.get(turnId), "instance_turn_config");
-	if (instanceTurn) return instanceTurn;
-	const instanceDefault = candidate(configuration.defaultProfileId, "instance_default");
-	if (instanceDefault) return instanceDefault;
-	const scopedDefault = candidate(
-		policy.scopedProfileIdForTurn?.(turnId),
-		"scoped_purpose_default",
-	);
-	if (scopedDefault) return scopedDefault;
-	const processTurn = candidate(policy.turnProfileIds[turnId], "process_config_turn");
-	if (processTurn) return processTurn;
-	return resolvedDefault(snapshot, configuration);
-}
-
 function invalidConfiguration(
 	configuration: Extract<ModelConfiguration, { kind: "invalid" }>,
 ): ProcessModelPolicyEvaluation {
@@ -170,8 +158,9 @@ export function resolveTurn(
 		return validateSelection(
 			snapshot,
 			configuration.processId,
-			candidate(purposeProfileId, "process_config_default"),
+			candidate(purposeProfileId, "fixed_purpose"),
 			availability,
+			turnId,
 		);
 	if (existingSelection.kind === "invalid" && existingSelection.turnId === turnId)
 		return {
@@ -194,6 +183,7 @@ export function resolveTurn(
 				provenance: { kind: "explicit", source: override.source },
 			},
 			availability,
+			turnId,
 		);
 	if (
 		existingSelection.kind === "selected" &&
@@ -206,14 +196,74 @@ export function resolveTurn(
 			configuration.processId,
 			existingSelection.selection,
 			availability,
+			turnId,
 		);
 	try {
-		return validateSelection(
-			snapshot,
-			configuration.processId,
-			resolveInherited(snapshot, configuration, turnId),
-			availability,
-		);
+		const skippedPreferences: SkippedModelPreference[] = [];
+		const explain = (result: ProcessModelPolicyEvaluation): ProcessModelPolicyEvaluation => ({
+			...result,
+			skippedPreferences,
+		});
+		const preferences = [
+			() => candidate(configuration.turnProfileIds.get(turnId), "instance_turn_config"),
+			() => candidate(configuration.defaultProfileId, "instance_default"),
+			() => candidate(policy.scopedProfileIdForTurn?.(turnId), "scoped_purpose_default"),
+			() => candidate(policy.turnProfileIds[turnId], "process_config_turn"),
+			() => candidate(policy.defaultProfileId, "process_config_default"),
+			() => candidate(snapshot.defaultProfileId, "catalog_default"),
+		];
+		for (const getPreference of preferences) {
+			const preference = getPreference();
+			if (!preference) continue;
+			const eligibility = validateSelection(
+				snapshot,
+				configuration.processId,
+				preference,
+				undefined,
+				turnId,
+			);
+			if (
+				!eligibility.ok &&
+				eligibility.code === "model_profile_not_allowed" &&
+				preference.provenance.source !== "instance_turn_config"
+			) {
+				skippedPreferences.push({
+					profileId: preference.modelProfileId,
+					source: preference.provenance.source,
+					rejections: eligibility.rejections ?? [],
+				});
+				continue;
+			}
+			if (!eligibility.ok) return explain(eligibility);
+			return explain(
+				validateSelection(snapshot, configuration.processId, preference, availability, turnId),
+			);
+		}
+		const ranked = rankedProfiles(policy, snapshot.profiles, turnId);
+		if (!ranked.profiles.length)
+			return {
+				ok: false,
+				code: "model_required",
+				selection: null,
+				skippedPreferences,
+				...(availability ? { availabilityRevision: availability.revision } : {}),
+				requirements: requirementLayers(policy, turnId),
+			};
+		return {
+			...explain(
+				validateSelection(
+					snapshot,
+					configuration.processId,
+					candidate(ranked.profiles[0]?.id, ranked.marked ? "marked_default" : "automatic"),
+					availability,
+					turnId,
+				),
+			),
+			ranking: {
+				kind: ranked.marked ? "marked_defaults" : "cost_id",
+				tiedProfileIds: ranked.tiedProfileIds,
+			},
+		};
 	} catch (error) {
 		return {
 			ok: false,
@@ -230,7 +280,7 @@ export function recoverPreparation(
 	snapshot: PolicySnapshot,
 	cause: "availability_transition" | "startup_reconciliation",
 	configuration: ModelConfiguration,
-	existingSelection: ExistingTurnSelection,
+	_existingSelection: ExistingTurnSelection,
 	currentStart: TurnStartRecord,
 	availability: ProcessModelAvailabilitySnapshot,
 ): ProcessModelPolicyEvaluation {
@@ -250,21 +300,11 @@ export function recoverPreparation(
 		};
 	const profileId = trimToNull(state.requestedModelProfileId);
 	const provenance = state.modelSelectionProvenance;
-	if (provenance?.kind === "inherited") {
-		return resolveTurn(
-			snapshot,
-			configuration,
-			currentStart.turnId,
-			"retry",
-			existingSelection,
-			{ kind: "inherit" },
-			availability,
-		);
-	}
 	return validateSelection(
 		snapshot,
 		configuration.processId,
 		profileId && provenance ? { modelProfileId: profileId, provenance } : null,
 		availability,
+		currentStart.turnId,
 	);
 }

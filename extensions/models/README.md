@@ -66,6 +66,14 @@ to zero, so configure actual rates for paid custom deployments.
 
 Custom gateways support `openai-completions`, `openai-responses`, `anthropic-messages`, and `google-generative-ai`. They support worker LLM turns. Because they do not declare a server adapter, they cannot be selected for process-title generation.
 
+## Capability metadata
+
+The startup policy catalog exposes `image-input` and `reasoning` from the configured
+model definition or Pi's built-in catalog. Missing metadata remains unknown and does
+not satisfy a required capability. This projection does not inspect credentials or
+live provider status. Tool-use support is not inferred from provider registration.
+Cost and suitability labels belong to configured profiles, never provider prices.
+
 ## API support
 
 The following exported declarations are `@public`:

@@ -212,6 +212,7 @@ export const ExecuteAction = defineOperation<
 			if (input.opts.nextTurnModelProfileId !== null) {
 				const evaluation = ctx.deps.processModelPolicy.evaluate({
 					kind: "runtime_selection",
+					target: { kind: "turn", turnId: candidateSelectedTurnId! },
 					availability: ctx.deps.getModelAvailabilitySnapshot(),
 					processId: ctx.process.processId,
 					selection: {

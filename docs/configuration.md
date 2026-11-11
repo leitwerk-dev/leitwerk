@@ -389,10 +389,16 @@ delivery, not registry-side permissions. See [credential security](security.md#d
 | `extensions.<extensionId>` | Empty map | Owner-parsed extension configuration; see that extension's README. |
 
 `process_configs.<processId>` may set `default_model_profile`, nonempty
-`allowed_model_profiles`, per-turn `turn_configs.<turnId>.model_profile`,
+`allowed_model_profiles`, `model_requirements`, per-turn
+`turn_configs.<turnId>.model_profile` and `turn_configs.<turnId>.model_requirements`,
 `worker_runtime_profile`, `storage_size`, and extension-owned `watchers` blocks.
 Its `pi` block may set `system_prompt_template` and `append_system_prompt_template`.
-Profile references must exist, and restrictions apply to defaults and overrides.
+Requirements support `profiles`, `capabilities`, and `labels` predicates (`all_of`,
+`any_of`, `none_of`). Operator layers only narrow code-defined restrictions.
+Profile `labels` and `default` metadata control deterministic automatic selection;
+they are server-owned startup configuration, not UI-editable settings. See
+[classification and requirements](models.md#classification-and-requirements) for
+identifier syntax, intersections and cost-label semantics.
 See [selection order](models.md#profile-resolution) and [Watchers](watchers.md).
 
 ## Repository and skill catalogs

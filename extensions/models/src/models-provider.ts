@@ -361,6 +361,15 @@ export function createStandardModelProvider(
 			providers: config.baseUrl || config.models ? { [providerId]: { ...config } } : {},
 		})),
 		server: reference,
+		capabilities: ({ config, modelId }) => {
+			const model =
+				config.models?.find((entry) => entry.id === modelId) ??
+				getBuiltinModels(providerId as never).find((entry) => entry.id === modelId);
+			return {
+				"image-input": model?.input ? model.input.includes("image") : "unknown",
+				reasoning: model?.reasoning ?? "unknown",
+			};
+		},
 		models: (ctx) => evaluateStandardModelStatuses(providerId, ctx),
 		credential: { parse: (value) => parseApiKeyCredential(value, providerId) },
 		secrets: ({ credential }) => apiKeySecrets(credential),
@@ -404,6 +413,13 @@ export function createCustomGatewayProvider(
 	return defineModelProvider({
 		id: providerId,
 		parseConfig: (raw) => parseCustomGatewayConfig(providerId, raw),
+		capabilities: ({ config, modelId }) => {
+			const model = config.models.find((entry) => entry.id === modelId);
+			return {
+				"image-input": model?.input ? model.input.includes("image") : "unknown",
+				reasoning: model?.reasoning ?? "unknown",
+			};
+		},
 		worker: configuredPiProvider(providerId, ({ config }) => ({
 			providers: {
 				[config.providerId]: {

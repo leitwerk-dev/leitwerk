@@ -489,6 +489,13 @@ export interface ModelProviderDefinition<
 	readonly worker: ModelProviderWorker<TConfig, TWorkerConfig>;
 	/** @public */
 	readonly server?: ModelProviderServer;
+	/** Stable catalog metadata only. Must not probe availability or credentials; omitted support is unknown. @public */
+	capabilities?(input: {
+		/** @public */
+		config: TConfig;
+		/** @public */
+		modelId: string;
+	}): Readonly<Record<string, boolean | "unknown">>;
 	/** @public */
 	models(
 		ctx: ModelProviderModelsContext<TConfig>,

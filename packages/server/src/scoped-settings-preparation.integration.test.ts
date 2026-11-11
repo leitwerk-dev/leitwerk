@@ -372,6 +372,54 @@ describe("scoped settings at the turn preparation boundary", () => {
 		).toBe("When dispatched");
 	});
 
+	it("keeps the captured model through automatic readiness recovery after a settings edit", async () => {
+		const { repos, deps, write } = await setup();
+		const process = repos.processes.create({
+			processId: "settings_process",
+			selectedTurnId: "run",
+		});
+		write(model.key, "second");
+		for (const automatic of [true, false]) {
+			const writes = createWrites({
+				turnStartWrites: [
+					{
+						kind: "create",
+						input: createTestTurnStart({
+							instanceId: process.id,
+							startKind: "startup_retry",
+							state: {
+								kind: "preparation_failed",
+								requestedModelProfileId: "first",
+								modelSelectionProvenance: { kind: "inherited", source: "catalog_default" },
+								providerOptions: {},
+								code: "model_required",
+								safeSummary: "Retry preparation",
+								...(automatic
+									? {
+											automaticRetry: {
+												episodeStartRecordId: "previous",
+												starts: 2,
+												nextRetryAt: null,
+											},
+										}
+									: {}),
+							},
+						}),
+					},
+				],
+			});
+			expect(await prepareCreatedTurnStarts(deps, process, writes)).toEqual({ ok: true });
+			expect(writes.turnStartWrites[0]).toMatchObject({
+				input: {
+					state: {
+						kind: "starting",
+						start: { model: { profileId: automatic ? "first" : "second" } },
+					},
+				},
+			});
+		}
+	});
+
 	it("allows explicit models to supersede an incompatible unused scoped model default", async () => {
 		const { repos, prepare } = await setup();
 		const process = repos.processes.create({
