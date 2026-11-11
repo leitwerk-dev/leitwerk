@@ -58,9 +58,33 @@ describe("pre-1.0 Conventional Commit versioning", () => {
 		["chore: replace an API\n\nBREAKING-CHANGE: old API removed", "0.3.0"],
 		["docs: explain releases", null],
 		["test: cover release workflow", null],
-		["ci: pin action", null],
+		["ci: pin action", "0.2.4"],
 	])("calculates %j as %s", (commit, expected) => {
 		expect(calculateConventionalVersion("0.2.3", commit)).toBe(expected);
+	});
+
+	it.each([
+		"fix",
+		"ci",
+		"build",
+		"chore",
+		"refactor",
+		"perf",
+		"revert",
+	])("releases a patch for %s with or without a scope", (type) => {
+		for (const scope of ["", "(deps)"]) {
+			const commit = `${type}${scope}: update dependencies`;
+			expect(calculateConventionalVersion("0.4.0", commit)).toBe("0.4.1");
+			expect(calculateConventionalVersion("1.2.3", commit)).toBe("1.2.4");
+		}
+	});
+
+	it.each(["docs", "test"])("does not release for ordinary %s changes", (type) => {
+		for (const scope of ["", "(release)"]) {
+			const commit = `${type}${scope}: clarify release behavior`;
+			expect(calculateConventionalVersion("0.4.0", commit)).toBeNull();
+			expect(calculateConventionalVersion("1.2.3", commit)).toBeNull();
+		}
 	});
 
 	it("returns to standard SemVer at 1.0", () => {

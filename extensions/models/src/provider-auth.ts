@@ -1,7 +1,7 @@
 const STANDARD_PROVIDER_ENV_KEYS: Readonly<Record<string, readonly string[]>> = {
 	"ant-ling": ["ANT_LING_API_KEY"],
 	anthropic: ["ANTHROPIC_OAUTH_TOKEN", "ANTHROPIC_API_KEY"],
-	"azure-openai-responses": ["AZURE_OPENAI_API_KEY"],
+	azure: ["AZURE_OPENAI_API_KEY"],
 	cerebras: ["CEREBRAS_API_KEY"],
 	"cloudflare-ai-gateway": ["CLOUDFLARE_API_KEY"],
 	"cloudflare-workers-ai": ["CLOUDFLARE_API_KEY"],

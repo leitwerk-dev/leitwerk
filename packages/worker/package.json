@@ -23,8 +23,8 @@
 		"build": "tsup --silent"
 	},
 	"dependencies": {
-		"@earendil-works/pi-ai": "^0.87.0",
-		"@earendil-works/pi-coding-agent": "^0.87.0",
+		"@earendil-works/pi-ai": "^1.5.2",
+		"@earendil-works/pi-coding-agent": "^1.5.2",
 		"@leitwerk-dev/domain": "0.4.0",
 		"@leitwerk-dev/extension-runtime": "0.4.0",
 		"@leitwerk-dev/process-sdk": "0.4.0",

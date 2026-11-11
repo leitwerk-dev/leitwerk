@@ -15,7 +15,7 @@ extensions:
       api_key: env:OPENAI_API_KEY
     anthropic:
       api_key: env:ANTHROPIC_API_KEY
-    azure-openai-responses:
+    azure:
       api_key: env:AZURE_OPENAI_API_KEY
       base_url: https://my-resource.openai.azure.com
       models: # Optional deployments absent from Pi's built-in catalog.
@@ -49,6 +49,8 @@ pi:
 ```
 
 `api_key` accepts a literal value or `env:VARIABLE`. It only initializes an empty durable credential store; a stored revision wins on restart. Standard providers also accept an optional non-secret `base_url`, which is projected through managed `models.json` and used for server-side model calls. Set a custom gateway's `api_key` to `false` only for an endpoint that intentionally accepts unauthenticated requests.
+
+Pi 1.5 uses `azure` as the Azure provider ID. When upgrading, rename `extensions.models.azure-openai-responses` to `extensions.models.azure` and set Azure model profiles' `provider` to `azure`. The underlying API is still `azure-openai-responses`.
 
 The extension uses a code-defined standard-provider list with explicit environment-variable mappings. Pi upgrades do not implicitly enable new providers. Providers with ambient or OAuth-only authentication, including Bedrock and OpenAI Codex, require dedicated extensions.
 

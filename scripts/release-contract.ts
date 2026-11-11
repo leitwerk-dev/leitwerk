@@ -109,6 +109,7 @@ export function validateReleaseContract(rootDir: string): string[] {
 export function calculateConventionalVersion(
 	currentVersion: string,
 	commit: string,
+	releaseAllTypes = true,
 ): string | null {
 	const [major, minor, patch] = stableVersionParts(currentVersion);
 	const releaseAs = /^Release-As:[ \t]*(\S+)[ \t]*$/imu.exec(commit)?.[1];
@@ -124,7 +125,11 @@ export function calculateConventionalVersion(
 	if (/^feat(?:\([^\r\n()]+\))?:/u.test(commit)) {
 		return major === 0 ? `0.${minor}.${patch + 1}` : `${major}.${minor + 1}.0`;
 	}
-	if (/^fix(?:\([^\r\n()]+\))?:/u.test(commit)) {
+	if (
+		/^fix(?:\([^\r\n()]+\))?:/u.test(commit) ||
+		(releaseAllTypes &&
+			/^(?:ci|build|chore|refactor|perf|revert)(?:\([^\r\n()]+\))?:/u.test(commit))
+	) {
 		return `${major}.${minor}.${patch + 1}`;
 	}
 	return null;
