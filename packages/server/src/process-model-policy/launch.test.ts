@@ -67,14 +67,14 @@ describe("server process model policy launch preparation", () => {
 				errors: [{ code, message: expect.any(String) }],
 			});
 
-			const omitted = policy.prepareLaunchPlan(plan, {
+			const retained = policy.prepareLaunchPlan(plan, {
 				modelConfig: { turnConfigs: { run: { modelProfileId: profileId } } },
-				invalidModelConfig: "omit",
+				invalidModelConfig: "retain",
 			});
-			expect(omitted.ok).toBe(true);
-			if (!omitted.ok) continue;
-			expect(omitted.warnings).toMatchObject([{ code }]);
-			expect(JSON.parse(omitted.launchPlan.processInput.turnConfigsJson ?? "{}")).toEqual({
+			expect(retained.ok).toBe(true);
+			if (!retained.ok) continue;
+			expect(retained.warnings).toMatchObject([{ code }]);
+			expect(JSON.parse(retained.launchPlan.processInput.turnConfigsJson ?? "{}")).toEqual({
 				run: { modelProfileId: profileId },
 			});
 		}
@@ -147,10 +147,10 @@ describe("server process model policy launch preparation", () => {
 		const policy = createTestModelPolicy().policy;
 		const plan = launch({ turnConfigsJson: "not-json" });
 		expect(policy.prepareLaunchPlan(plan).ok).toBe(false);
-		const omitted = policy.prepareLaunchPlan(plan, { invalidModelConfig: "omit" });
-		expect(omitted.ok).toBe(false);
-		if (omitted.ok) return;
-		expect(omitted.errors).toMatchObject([
+		const retained = policy.prepareLaunchPlan(plan, { invalidModelConfig: "retain" });
+		expect(retained.ok).toBe(false);
+		if (retained.ok) return;
+		expect(retained.errors).toMatchObject([
 			{
 				code: "invalid_turn_configs_json",
 				message: "turnConfigsJson must be valid JSON",

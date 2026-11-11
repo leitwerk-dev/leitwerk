@@ -48,9 +48,7 @@ import {
 	describeDefaultModelDisplayLine,
 	describeTurnModelDisplayLine,
 	getDefaultModelBlankOptionLabel,
-	getDefaultModelSelectableProfiles,
 	getLauncherModelCustomizationState,
-	getTurnModelBlankOptionLabel,
 } from "./launcher-model-config.js";
 import {
 	buildLauncherScheduleTimeString,
@@ -258,10 +256,7 @@ const defaultModelBlankOptionLabel = $derived(
 	getDefaultModelBlankOptionLabel(recommendedDefaultModelProfile),
 );
 const defaultModelSelectableProfiles = $derived(
-	getDefaultModelSelectableProfiles({
-		availableProfiles: launcher.modelConfigSchema?.availableProfiles ?? [],
-		recommendedProfile: recommendedDefaultModelProfile,
-	}),
+	launcher.modelConfigSchema?.availableProfiles ?? [],
 );
 const defaultsNotice = $derived(
 	buildLauncherDefaultsNotice({
@@ -1502,7 +1497,7 @@ async function handleSubmit(event: SubmitEvent) {
 																(event.currentTarget as HTMLSelectElement).value,
 															)}
 													>
-														<option value="">{getTurnModelBlankOptionLabel()}</option>
+														<option value="">Use automatic selection</option>
 												<ModelProfileOptions profiles={launcher.modelConfigSchema?.profilesByTurn?.[turn.turnId] ?? launcher.modelConfigSchema?.availableProfiles ?? []} selectedId={turnModelProfileIds[turn.turnId] ?? ""} />
 													</select>
 													<ModelPolicyDetails profiles={launcher.modelConfigSchema?.profilesByTurn?.[turn.turnId] ?? launcher.modelConfigSchema?.availableProfiles ?? []} excluded={launcher.modelConfigSchema?.excludedProfiles?.[turn.turnId]} selectedId={turnModelProfileIds[turn.turnId] ?? ""} />

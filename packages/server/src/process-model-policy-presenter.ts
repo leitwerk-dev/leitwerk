@@ -68,23 +68,21 @@ export function presentModelProfileOption(
 	};
 }
 
+function presentProfileMap(
+	profiles: Readonly<Record<string, readonly ProjectedModelProfile[]>> = {},
+) {
+	return Object.fromEntries(
+		Object.entries(profiles).map(([id, options]) => [id, options.map(presentModelProfileOption)]),
+	);
+}
+
 export function presentLauncherModelConfigSchema(
 	projection: ProjectedLauncherModelSchema,
 ): LauncherModelConfigSchema {
 	return {
 		availableProfiles: projection.profiles.map(presentModelProfileOption),
-		profilesByTurn: Object.fromEntries(
-			Object.entries(projection.profilesByTurn ?? {}).map(([id, profiles]) => [
-				id,
-				profiles.map(presentModelProfileOption),
-			]),
-		),
-		excludedProfiles: Object.fromEntries(
-			Object.entries(projection.excludedProfiles ?? {}).map(([id, profiles]) => [
-				id,
-				profiles.map(presentModelProfileOption),
-			]),
-		),
+		profilesByTurn: presentProfileMap(projection.profilesByTurn),
+		excludedProfiles: presentProfileMap(projection.excludedProfiles),
 		llmTurns: projection.turns.map((turn) => ({ ...turn })),
 	};
 }
@@ -122,18 +120,8 @@ export function presentProcessModelConfiguration(
 ): ProcessModelConfigurationView {
 	return {
 		state: projection.state,
-		excludedProfiles: Object.fromEntries(
-			Object.entries(projection.excludedProfiles ?? {}).map(([id, profiles]) => [
-				id,
-				profiles.map(presentModelProfileOption),
-			]),
-		),
-		profilesByTurn: Object.fromEntries(
-			Object.entries(projection.profilesByTurn ?? {}).map(([id, profiles]) => [
-				id,
-				profiles.map(presentModelProfileOption),
-			]),
-		),
+		excludedProfiles: presentProfileMap(projection.excludedProfiles),
+		profilesByTurn: presentProfileMap(projection.profilesByTurn),
 		availableProfiles: projection.profiles.map(presentModelProfileOption),
 		effectiveSelectedTurn: projection.effectiveSelectedTurn,
 		defaultModel: projection.defaultModel,

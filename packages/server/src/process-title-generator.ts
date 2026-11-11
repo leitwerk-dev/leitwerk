@@ -263,15 +263,6 @@ function normalizeLaunchPlanTitle(launchPlan: ProcessLaunchPlan): ProcessLaunchP
 	);
 }
 
-function isTitleModelAllowedForProcess(
-	config: LeitwerkConfig,
-	processId: string,
-	modelProfileId: string,
-): boolean {
-	const allowedProfiles = config.process_configs?.[processId]?.allowed_model_profiles;
-	return !allowedProfiles || allowedProfiles.includes(modelProfileId);
-}
-
 function collectProcessTitleRuntimeDiagnostics(
 	services: AgentSessionServices,
 ): ProcessTitleRuntimeDiagnosticSummary[] {
@@ -536,14 +527,12 @@ class DefaultProcessTitleGenerator implements ProcessTitleGenerator {
 		if (normalizedLaunchPlan.processInput.title || !this.configuredProfileId) {
 			return null;
 		}
-		if (
-			this.modelPolicyError?.(normalizedLaunchPlan.processId, this.configuredProfileId) ||
-			!isTitleModelAllowedForProcess(
-				this.config,
-				normalizedLaunchPlan.processId,
-				this.configuredProfileId,
-			)
-		) {
+		const policyError = this.modelPolicyError
+			? this.modelPolicyError(normalizedLaunchPlan.processId, this.configuredProfileId)
+			: this.config.process_configs?.[
+					normalizedLaunchPlan.processId
+				]?.allowed_model_profiles?.includes(this.configuredProfileId) === false;
+		if (policyError) {
 			this.logger?.warn(
 				"Skipping process title generation because the configured model profile is not allowed for this process",
 				{

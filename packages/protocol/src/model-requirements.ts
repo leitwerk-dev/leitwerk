@@ -1,3 +1,5 @@
+import * as v from "valibot";
+
 /** Static model restrictions. Every layer is conjunctive; unknown capability support fails closed. @public */
 export interface ModelRequirements {
 	/** Installation-specific profile allowlist. Empty lists are invalid. @public */
@@ -18,39 +20,43 @@ export interface ModelRequirements {
 /** Policy label and capability identifiers are lowercase ASCII, with optional hyphens, underscores, and dots. @public */
 export const MODEL_POLICY_IDENTIFIER = /^[a-z][a-z0-9_.-]*$/;
 
+/** @internal */
+export const modelPolicyIdentifiersSchema = v.array(
+	v.pipe(v.string(), v.regex(MODEL_POLICY_IDENTIFIER)),
+);
+
+/** @internal */
+export const modelRequirementsSchema = v.strictObject({
+	/** @internal */
+	profiles: v.optional(
+		v.pipe(
+			v.array(
+				v.pipe(
+					v.string(),
+					v.check((value) => !!value.trim() && value === value.trim()),
+				),
+			),
+			v.nonEmpty(),
+		),
+	),
+	/** @internal */
+	capabilities: v.optional(modelPolicyIdentifiersSchema),
+	/** @internal */
+	labels: v.optional(
+		v.strictObject({
+			/** @internal */
+			all_of: v.optional(modelPolicyIdentifiersSchema),
+			/** @internal */
+			any_of: v.optional(v.pipe(modelPolicyIdentifiersSchema, v.nonEmpty())),
+			/** @internal */
+			none_of: v.optional(modelPolicyIdentifiersSchema),
+		}),
+	),
+});
+
 /** Reject invalid declarations at definition/configuration time. @internal */
 export function assertValidModelRequirements(requirements: ModelRequirements): void {
-	const object = (value: unknown, keys: readonly string[]): value is Record<string, unknown> =>
-		typeof value === "object" &&
-		value !== null &&
-		!Array.isArray(value) &&
-		Object.keys(value).every((key) => keys.includes(key));
-	if (
-		!object(requirements, ["profiles", "capabilities", "labels"]) ||
-		(requirements.labels !== undefined &&
-			!object(requirements.labels, ["all_of", "any_of", "none_of"]))
-	)
-		throw new Error("Invalid model requirements object");
-	for (const [key, values] of Object.entries({
-		profiles: requirements.profiles,
-		capabilities: requirements.capabilities,
-		all_of: requirements.labels?.all_of,
-		any_of: requirements.labels?.any_of,
-		none_of: requirements.labels?.none_of,
-	})) {
-		if (values === undefined) continue;
-		if (!Array.isArray(values) || ((key === "profiles" || key === "any_of") && !values.length))
-			throw new Error(`Invalid model requirements: ${key} must be a non-empty array`);
-		for (const value of values) {
-			if (
-				typeof value !== "string" ||
-				(key === "profiles"
-					? !value.trim() || value !== value.trim()
-					: !MODEL_POLICY_IDENTIFIER.test(value))
-			)
-				throw new Error(`Invalid model requirements: ${key} identifier '${value}'`);
-		}
-	}
+	v.parse(modelRequirementsSchema, requirements, { message: "Invalid model requirements" });
 }
 
 /** Fixed presentation and deterministic tie-break order; never inferred from prices. @internal */

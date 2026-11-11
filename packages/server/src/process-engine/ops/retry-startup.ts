@@ -44,29 +44,25 @@ export const RetryStartup = defineOperation<
 			return reject("retry_target_missing", "Startup retry requires a failed current start");
 		}
 		const id = generateId("tsr");
+		// Operator retries validate current inputs; the old failure stays on its record.
+		const preparation = {
+			code: "model_required" as const,
+			safeSummary: "LLM start requires retry preparation",
+		};
 		const state: TurnStartRecordState =
-			input.automaticRetry && failed.state.kind === "bootstrap_failed"
-				? { kind: "starting", start: failed.state.start }
-				: failed.state.kind === "preparation_failed"
-					? {
-							...failed.state,
-							// A new operator retry must validate current inputs; the previous
-							// failure remains on its original start record.
-							code: "model_required" as const,
-							safeSummary: "LLM start requires retry preparation",
-						}
-					: failed.state.start.kind === "automatic"
-						? { kind: "starting" as const, start: failed.state.start }
-						: {
-								kind: "preparation_failed" as const,
-								requestedModelProfileId: failed.state.start.model.profileId,
-								providerOptions: { ...failed.state.start.providerOptions },
-								code: "model_required" as const,
-								safeSummary: "LLM start requires retry preparation",
-								...(failed.state.start.modelSelectionProvenance
-									? { modelSelectionProvenance: failed.state.start.modelSelectionProvenance }
-									: {}),
-							};
+			failed.state.kind === "preparation_failed"
+				? { ...failed.state, ...preparation }
+				: input.automaticRetry || failed.state.start.kind === "automatic"
+					? { kind: "starting", start: failed.state.start }
+					: {
+							kind: "preparation_failed",
+							requestedModelProfileId: failed.state.start.model.profileId,
+							providerOptions: { ...failed.state.start.providerOptions },
+							...(failed.state.start.modelSelectionProvenance
+								? { modelSelectionProvenance: failed.state.start.modelSelectionProvenance }
+								: {}),
+							...preparation,
+						};
 		state.automaticRetry = input.automaticRetry;
 		const writes = createWrites({
 			workerIntent: state.kind === "starting" ? { kind: "restart_worker" } : undefined,

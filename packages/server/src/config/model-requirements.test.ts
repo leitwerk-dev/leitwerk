@@ -26,6 +26,8 @@ describe("model policy configuration", () => {
 	});
 	it.each([
 		{ profiles: [] },
+		{ profiles: [""] },
+		{ profiles: [" general "] },
 		{ labels: { any_of: [] } },
 		{ labels: { all_of: ["Coding"] } },
 		{ capabilities: ["image input"] },

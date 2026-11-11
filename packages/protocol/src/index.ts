@@ -114,6 +114,8 @@ export {
 	MODEL_POLICY_IDENTIFIER,
 	type ModelRequirements,
 	modelCostRank,
+	modelPolicyIdentifiersSchema,
+	modelRequirementsSchema,
 } from "./model-requirements.js";
 export {
 	extractPiSessionMessageText,

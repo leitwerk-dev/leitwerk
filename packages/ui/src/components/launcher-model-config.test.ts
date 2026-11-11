@@ -6,9 +6,7 @@ import {
 	describeTurnModelDisplayLine,
 	formatLauncherModelSummaryStatus,
 	getDefaultModelBlankOptionLabel,
-	getDefaultModelSelectableProfiles,
 	getLauncherModelCustomizationState,
-	getTurnModelBlankOptionLabel,
 } from "./launcher-model-config.js";
 
 const recommendedProfile = {
@@ -72,16 +70,6 @@ describe("launcher model config helpers", () => {
 		it("shows the recommended model name in the default-model blank option", () => {
 			expect(getDefaultModelBlankOptionLabel(recommendedProfile)).toBe("Automatic (claude_fast)");
 			expect(getDefaultModelBlankOptionLabel(null)).toBe("Automatic");
-			expect(getTurnModelBlankOptionLabel()).toBe("Use automatic selection");
-		});
-
-		it("keeps inheritance separate from an explicit choice of the recommended model", () => {
-			expect(
-				getDefaultModelSelectableProfiles({
-					availableProfiles: [recommendedProfile, customProfile],
-					recommendedProfile,
-				}),
-			).toEqual([recommendedProfile, customProfile]);
 		});
 	});
 

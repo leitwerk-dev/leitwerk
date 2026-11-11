@@ -3,10 +3,7 @@ import type { PolicyProcess, PolicyProfile } from "./types.js";
 
 /** @internal */
 export function requirementLayers(policy: PolicyProcess, turnId?: string) {
-	return [
-		...(policy.requirements ?? []),
-		...(turnId ? (policy.turnRequirements?.[turnId] ?? []) : []),
-	];
+	return policy.requirements.concat(turnId ? (policy.turnRequirements[turnId] ?? []) : []);
 }
 
 /** Stable policy evidence; availability never participates. @internal */
@@ -18,7 +15,7 @@ export function profileRejections(policy: PolicyProcess, profile: PolicyProfile,
 			code: "profile_not_allowed",
 			values: [profile.id],
 		});
-	const labels = new Set(profile.labels ?? []);
+	const labels = new Set(profile.labels);
 	for (const { origin, requirements: r } of requirementLayers(policy, turnId)) {
 		if (r.profiles && !r.profiles.includes(profile.id))
 			rejections.push({ origin, code: "profile_not_allowed", values: r.profiles });
@@ -29,11 +26,11 @@ export function profileRejections(policy: PolicyProcess, profile: PolicyProfile,
 		const forbidden = r.labels?.none_of?.filter((label) => labels.has(label)) ?? [];
 		if (forbidden.length) rejections.push({ origin, code: "forbidden_labels", values: forbidden });
 		for (const capability of r.capabilities ?? []) {
-			if (profile.capabilities?.[capability] !== true)
+			if (profile.capabilities[capability] !== true)
 				rejections.push({
 					origin,
 					code:
-						profile.capabilities?.[capability] === false
+						profile.capabilities[capability] === false
 							? "unsupported_capability"
 							: "unknown_capability",
 					values: [capability],
@@ -58,23 +55,19 @@ export function rankedProfiles(
 		]),
 	);
 	const unrelated = (profile: PolicyProfile) =>
-		new Set(profile.labels?.filter((label) => !relevant.has(label))).size;
+		new Set(profile.labels.filter((label) => !relevant.has(label))).size;
+	const ranked = (marked.length ? marked : eligible).sort(
+		(a, b) =>
+			(marked.length ? unrelated(a) - unrelated(b) : 0) ||
+			modelCostRank(a.labels) - modelCostRank(b.labels) ||
+			compareModelProfileIds(a.id, b.id),
+	);
 	const minUnrelated = Math.min(...marked.map(unrelated));
 	return {
 		tiedProfileIds: marked
 			.filter((profile) => unrelated(profile) === minUnrelated)
-			.map((profile) => profile.id)
-			.sort(
-				(a, b) =>
-					modelCostRank(profiles.find((p) => p.id === a)?.labels) -
-						modelCostRank(profiles.find((p) => p.id === b)?.labels) || compareModelProfileIds(a, b),
-			),
+			.map((profile) => profile.id),
 		marked: marked.length > 0,
-		profiles: (marked.length ? marked : eligible).sort(
-			(a, b) =>
-				(marked.length ? unrelated(a) - unrelated(b) : 0) ||
-				modelCostRank(a.labels) - modelCostRank(b.labels) ||
-				compareModelProfileIds(a.id, b.id),
-		),
+		profiles: ranked,
 	};
 }

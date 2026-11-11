@@ -100,17 +100,6 @@ export function getDefaultModelBlankOptionLabel(
 	return modelName ? `Automatic (${modelName})` : "Automatic";
 }
 
-export function getDefaultModelSelectableProfiles(input: {
-	availableProfiles: readonly ModelProfileOptionSummary[];
-	recommendedProfile: ModelProfileOptionSummary | null | undefined;
-}): readonly ModelProfileOptionSummary[] {
-	return input.availableProfiles;
-}
-
-export function getTurnModelBlankOptionLabel(): string {
-	return "Use automatic selection";
-}
-
 function getModelDisplayName(profile: ModelProfileOptionSummary | null | undefined): string | null {
 	if (!profile) {
 		return null;
