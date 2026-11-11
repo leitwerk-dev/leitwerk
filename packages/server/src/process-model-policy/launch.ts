@@ -106,7 +106,8 @@ export function prepareLaunchPlan(
 	const invalidMode = opts.invalidModelConfig ?? "reject";
 	const warnings: LaunchPlanPreparationIssue[] = [];
 	const errors: LaunchPlanPreparationIssue[] = [];
-	const report = (issue: LaunchPlanPreparationIssue): void => {
+	const report = (issue: LaunchPlanPreparationIssue | null): void => {
+		if (!issue) return;
 		if (invalidMode === "reject") errors.push(issue);
 		else warnings.push(issue);
 	};
@@ -154,13 +155,7 @@ export function prepareLaunchPlan(
 		);
 		return result.ok ? null : issueForPolicy(result, launchPlan.processId, modelTarget);
 	};
-	const validate = (profileId: string | null, modelTarget: ModelTarget): boolean => {
-		const issue = modelIssue(profileId, modelTarget);
-		if (!issue) return true;
-		report(issue);
-		return false;
-	};
-	validate(defaultModelProfileId, target("default_model"));
+	report(modelIssue(defaultModelProfileId, target("default_model")));
 	for (const [turnId, config] of Object.entries(normalized.turnConfigs ?? {})) {
 		const profileId = config.modelProfileId?.trim() || null;
 		if (!llmTurns.has(turnId)) {
@@ -173,30 +168,27 @@ export function prepareLaunchPlan(
 			continue;
 		}
 		if (profileId) {
-			validate(profileId, target("turn_model", turnId));
+			report(modelIssue(profileId, target("turn_model", turnId)));
 			validTurns[turnId] = { modelProfileId: profileId };
 		}
 	}
 
 	const selectedTurnId = launchPlan.startTurnId ?? launchPlan.processInput.selectedTurnId;
-	const selectedProfileId = launchPlan.processInput.selectedTurnModelProfileId?.trim() || null;
-	const selectedModelProfileId = selectedProfileId;
-	const selectedTurnIssue: LaunchPlanPreparationIssue | null = !selectedProfileId
+	const selectedModelProfileId = launchPlan.processInput.selectedTurnModelProfileId?.trim() || null;
+	const selectedTurnIssue: LaunchPlanPreparationIssue | null = !selectedModelProfileId
 		? null
 		: !selectedTurnId
 			? issue(
 					"selected_turn_model_requires_selected_turn",
-					`Selected turn model profile '${selectedProfileId}' requires a selected turn`,
+					`Selected turn model profile '${selectedModelProfileId}' requires a selected turn`,
 				)
 			: !llmTurns.has(selectedTurnId)
 				? issue(
 						"selected_turn_model_requires_llm_turn",
-						`Selected turn model profile '${selectedProfileId}' requires selected turn '${selectedTurnId}' to be an LLM turn`,
+						`Selected turn model profile '${selectedModelProfileId}' requires selected turn '${selectedTurnId}' to be an LLM turn`,
 					)
-				: modelIssue(selectedProfileId, target("selected_turn_model", selectedTurnId));
-	if (selectedTurnIssue) {
-		report(selectedTurnIssue);
-	}
+				: modelIssue(selectedModelProfileId, target("selected_turn_model", selectedTurnId));
+	report(selectedTurnIssue);
 
 	const modelConfig = { defaultModelProfileId, turnConfigs: validTurns };
 	let initialDefaultModelProfileId = null;
@@ -209,7 +201,7 @@ export function prepareLaunchPlan(
 			snapshot,
 			configuration,
 			selectedTurnId,
-			"resolve",
+			false,
 			{ kind: "none" },
 			{ kind: "inherit" },
 		);

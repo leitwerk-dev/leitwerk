@@ -244,7 +244,7 @@ export interface ProcessLaunchPlanServiceLike {
 			/** @internal */
 			replaceModelConfig?: boolean;
 			/** @internal */
-			invalidModelConfig?: "reject" | "omit" | "retain";
+			invalidModelConfig?: "reject" | "retain";
 		},
 	): Promise<LaunchPlanPreparationResultLike>;
 }

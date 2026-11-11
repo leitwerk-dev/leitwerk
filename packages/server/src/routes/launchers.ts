@@ -67,7 +67,7 @@ export function registerLauncherRoutes(
 						title = resolved.launcher.launchPlan.processInput.title ?? null;
 						const preparedLaunchPlan = await deps.launchPlans.prepare(
 							resolved.launcher.launchPlan,
-							{ invalidModelConfig: "omit" },
+							{ invalidModelConfig: "retain" },
 						);
 						if (!preparedLaunchPlan.ok) {
 							warnings.push(...presentLaunchPlanPreparationIssues(preparedLaunchPlan.errors));

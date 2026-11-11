@@ -8,20 +8,19 @@ import type {
 	TurnStartRecord,
 } from "@leitwerk-dev/domain";
 import type { LaunchPlanPreparationResultLike, ProcessLaunchPlan } from "@leitwerk-dev/process-sdk";
+import type {
+	LauncherModelConfigSchema,
+	ProcessModelConfigurationView,
+} from "@leitwerk-dev/protocol/http-contracts";
 import type { ModelStatusCacheSnapshot } from "../model-providers/model-status-cache.js";
 
 /** @internal */
 export type ProcessModelAvailabilitySnapshot = ModelStatusCacheSnapshot;
 
 /** @internal */
-export type PersistedModelConfigurationIssue = {
-	/** @internal */
-	readonly code: "invalid_turn_configs_json";
-	/** @internal */
-	readonly reason: "invalid_json" | "not_object" | "turn_config_not_object";
-	/** @internal */
-	readonly turnId?: string;
-};
+export type PersistedModelConfigurationIssue = Readonly<
+	Extract<ProcessModelConfigurationView["state"], { kind: "blocked" }>["issues"][number]
+>;
 
 export interface ValidModelConfiguration {
 	readonly kind: "valid";
@@ -223,16 +222,7 @@ export interface ProjectedModelProfile {
 }
 
 /** @internal */
-export interface ProjectedModelDefault {
-	/** @internal */
-	readonly processConfigModelProfileId: string | null;
-	/** @internal */
-	readonly instanceModelProfileId: string | null;
-	/** @internal */
-	readonly effectiveModelProfileId: string | null;
-	/** @internal */
-	readonly source: "instance" | "process_config" | "catalog_default" | "none";
-}
+export type ProjectedModelDefault = Readonly<ProcessModelConfigurationView["defaultModel"]>;
 
 /** @internal */
 export type ProjectedModelResolutionSource = ProcessSelectedTurnModelSource | "none";
@@ -246,12 +236,7 @@ export interface ProjectedLauncherModelSchema {
 	/** @internal */
 	readonly profiles: readonly ProjectedModelProfile[];
 	/** @internal */
-	readonly turns: readonly {
-		/** @internal */
-		readonly turnId: string;
-		/** @internal */
-		readonly description: string;
-	}[];
+	readonly turns: LauncherModelConfigSchema["llmTurns"];
 }
 
 /** @internal */
@@ -286,64 +271,27 @@ export interface ProjectedLauncherModelPreview {
 }
 
 /** @internal */
-export type ProjectedProcessModelConfiguration = {
-	/** @internal */
-	readonly excludedProfiles?: Readonly<Record<string, readonly ProjectedModelProfile[]>>;
-	/** @internal */
-	readonly profilesByTurn?: Readonly<Record<string, readonly ProjectedModelProfile[]>>;
-	/** @internal */
-	readonly state:
-		| {
-				/** @internal */
-				readonly kind: "ready";
-		  }
-		| {
-				/** @internal */
-				readonly kind: "blocked";
-				/** @internal */
-				readonly issues: readonly PersistedModelConfigurationIssue[];
-		  };
-	/** @internal */
-	readonly profiles: readonly ProjectedModelProfile[];
-	/** @internal */
-	readonly effectiveSelectedTurn: {
+type ProjectedTurnModelConfiguration = Readonly<ProcessModelConfigurationView["turns"][number]>;
+
+/** @internal */
+export type ProjectedProcessModelConfiguration = Readonly<
+	Omit<
+		ProcessModelConfigurationView,
+		"availableProfiles" | "profilesByTurn" | "excludedProfiles" | "turns"
+	>
+> &
+	Pick<ProjectedLauncherModelSchema, "profiles" | "profilesByTurn" | "excludedProfiles"> & {
 		/** @internal */
-		readonly turnId: string;
-		/** @internal */
-		readonly description: string;
-		/** @internal */
-		readonly modelProfileId: string;
-		/** @internal */
-		readonly source: ProcessSelectedTurnModelSource;
-	} | null;
-	/** @internal */
-	readonly defaultModel: ProjectedModelDefault;
-	/** @internal */
-	readonly turns: readonly {
-		/** @internal */
-		readonly turnId: string;
-		/** @internal */
-		readonly description: string;
-		/** @internal */
-		readonly pathType: string;
-		/** @internal */
-		readonly processConfigModelProfileId: string | null;
-		/** @internal */
-		readonly instanceModelProfileId: string | null;
-		/** @internal */
-		readonly effectiveConfiguredModelProfileId: string | null;
-		/** @internal */
-		readonly fixedModelProfileId: string | null;
-		/** @internal */
-		readonly effectiveModelProfileId: string | null;
-		/** @internal */
-		readonly effectiveSource: ProcessSelectedTurnModelSource | "none";
-		/** @internal */
-		readonly effectiveError?: string;
-		/** @internal */
-		readonly source: "instance" | "process_config" | "default";
-	}[];
-};
+		readonly turns: readonly Readonly<
+			ProjectedTurnModelConfiguration &
+				Required<
+					Pick<
+						ProjectedTurnModelConfiguration,
+						"fixedModelProfileId" | "effectiveModelProfileId" | "effectiveSource"
+					>
+				>
+		>[];
+	};
 
 /** @internal */
 export interface ProcessModelPolicyProjectionByKind {
@@ -494,7 +442,7 @@ export interface PrepareLaunchPlanOptions {
 	/** @internal */
 	readonly replaceModelConfig?: boolean;
 	/** @internal */
-	readonly invalidModelConfig?: "reject" | "omit" | "retain";
+	readonly invalidModelConfig?: "reject" | "retain";
 }
 
 /** @internal */
@@ -550,9 +498,9 @@ export interface ModelRequirementRejection {
 	/** @internal */ readonly values: readonly string[];
 }
 export interface PolicyProfile {
-	readonly labels?: readonly string[];
-	readonly default?: boolean;
-	readonly capabilities?: Readonly<Record<string, boolean | "unknown">>;
+	readonly labels: readonly string[];
+	readonly default: boolean;
+	readonly capabilities: Readonly<Record<string, boolean | "unknown">>;
 	readonly id: string;
 	readonly provider: string;
 	readonly modelId: string;
@@ -567,8 +515,8 @@ export interface PolicyRequirementLayer {
 	readonly requirements: import("@leitwerk-dev/protocol").ModelRequirements;
 }
 export interface PolicyProcess {
-	readonly requirements?: readonly PolicyRequirementLayer[];
-	readonly turnRequirements?: Readonly<Record<string, readonly PolicyRequirementLayer[]>>;
+	readonly requirements: readonly PolicyRequirementLayer[];
+	readonly turnRequirements: Readonly<Record<string, readonly PolicyRequirementLayer[]>>;
 	readonly id: string;
 	readonly allowedProfileIds: ReadonlySet<string> | null;
 	readonly defaultProfileId: string | null;

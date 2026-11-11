@@ -18,6 +18,8 @@ function processPolicy(snapshot: PolicySnapshot, processId: string): PolicyProce
 	return (
 		snapshot.processesById.get(processId) ?? {
 			id: processId,
+			requirements: [],
+			turnRequirements: {},
 			allowedProfileIds: null,
 			defaultProfileId: null,
 			turnProfileIds: {},
@@ -144,7 +146,7 @@ export function resolveTurn(
 	snapshot: PolicySnapshot,
 	configuration: ModelConfiguration,
 	turnId: string,
-	mode: "resolve" | "initial" | "retry" | "continue",
+	preservePinnedSelection: boolean,
 	existingSelection: ExistingTurnSelection,
 	override: ModelOverride,
 	availability?: ProcessModelAvailabilitySnapshot,
@@ -152,16 +154,11 @@ export function resolveTurn(
 	const policy = processPolicy(snapshot, configuration.processId);
 	if (!policy.llmTurnIds.has(turnId)) return { ok: true, selection: null };
 	if (configuration.kind === "invalid") return invalidConfiguration(configuration);
+	const validate = (selection: DurableModelSelection | null) =>
+		validateSelection(snapshot, configuration.processId, selection, availability, turnId);
 	// A configured code-defined purpose is authoritative over launch/action overrides.
 	const purposeProfileId = policy.purposeProfileIdsByTurn[turnId];
-	if (purposeProfileId)
-		return validateSelection(
-			snapshot,
-			configuration.processId,
-			candidate(purposeProfileId, "fixed_purpose"),
-			availability,
-			turnId,
-		);
+	if (purposeProfileId) return validate(candidate(purposeProfileId, "fixed_purpose"));
 	if (existingSelection.kind === "invalid" && existingSelection.turnId === turnId)
 		return {
 			ok: false,
@@ -175,29 +172,17 @@ export function resolveTurn(
 		existingSelection = { kind: "none" };
 	}
 	if (override.kind === "profile")
-		return validateSelection(
-			snapshot,
-			configuration.processId,
-			{
-				modelProfileId: override.profileId,
-				provenance: { kind: "explicit", source: override.source },
-			},
-			availability,
-			turnId,
-		);
+		return validate({
+			modelProfileId: override.profileId,
+			provenance: { kind: "explicit", source: override.source },
+		});
 	if (
 		existingSelection.kind === "selected" &&
-		(mode === "initial" || mode === "retry" || mode === "continue") &&
+		preservePinnedSelection &&
 		existingSelection.turnId === turnId &&
 		isPinnedModelSelection(existingSelection.selection)
 	)
-		return validateSelection(
-			snapshot,
-			configuration.processId,
-			existingSelection.selection,
-			availability,
-			turnId,
-		);
+		return validate(existingSelection.selection);
 	try {
 		const skippedPreferences: SkippedModelPreference[] = [];
 		const explain = (result: ProcessModelPolicyEvaluation): ProcessModelPolicyEvaluation => ({
@@ -215,29 +200,20 @@ export function resolveTurn(
 		for (const getPreference of preferences) {
 			const preference = getPreference();
 			if (!preference) continue;
-			const eligibility = validateSelection(
-				snapshot,
-				configuration.processId,
-				preference,
-				undefined,
-				turnId,
-			);
+			const result = validate(preference);
 			if (
-				!eligibility.ok &&
-				eligibility.code === "model_profile_not_allowed" &&
+				!result.ok &&
+				result.code === "model_profile_not_allowed" &&
 				preference.provenance.source !== "instance_turn_config"
 			) {
 				skippedPreferences.push({
 					profileId: preference.modelProfileId,
 					source: preference.provenance.source,
-					rejections: eligibility.rejections ?? [],
+					rejections: result.rejections ?? [],
 				});
 				continue;
 			}
-			if (!eligibility.ok) return explain(eligibility);
-			return explain(
-				validateSelection(snapshot, configuration.processId, preference, availability, turnId),
-			);
+			return explain(result);
 		}
 		const ranked = rankedProfiles(policy, snapshot.profiles, turnId);
 		if (!ranked.profiles.length)
@@ -251,13 +227,7 @@ export function resolveTurn(
 			};
 		return {
 			...explain(
-				validateSelection(
-					snapshot,
-					configuration.processId,
-					candidate(ranked.profiles[0]?.id, ranked.marked ? "marked_default" : "automatic"),
-					availability,
-					turnId,
-				),
+				validate(candidate(ranked.profiles[0]?.id, ranked.marked ? "marked_default" : "automatic")),
 			),
 			ranking: {
 				kind: ranked.marked ? "marked_defaults" : "cost_id",
@@ -280,7 +250,6 @@ export function recoverPreparation(
 	snapshot: PolicySnapshot,
 	cause: "availability_transition" | "startup_reconciliation",
 	configuration: ModelConfiguration,
-	_existingSelection: ExistingTurnSelection,
 	currentStart: TurnStartRecord,
 	availability: ProcessModelAvailabilitySnapshot,
 ): ProcessModelPolicyEvaluation {

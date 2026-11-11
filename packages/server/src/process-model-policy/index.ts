@@ -53,16 +53,6 @@ export type {
 export { isPinnedModelSelection } from "./types.js";
 export { ProcessModelPolicyConfigurationError };
 
-function resolutionMode(
-	startKind: Extract<ProcessModelPolicyEvaluationSubject, { kind: "process_turn" }>["startKind"],
-	initialSelection: boolean | undefined,
-): "resolve" | "initial" | "retry" | "continue" {
-	if (startKind === "retry" || startKind === "startup_retry") return "retry";
-	if (startKind === "continue") return "continue";
-	if (initialSelection) return "initial";
-	return "resolve";
-}
-
 function evaluateSubject(
 	snapshot: PolicySnapshot,
 	request: ProcessModelPolicyEvaluationSubject,
@@ -72,7 +62,10 @@ function evaluateSubject(
 			snapshot,
 			modelConfigurationFromProcess(request.process),
 			request.turnId,
-			resolutionMode(request.startKind, request.initialSelection),
+			request.initialSelection === true ||
+				request.startKind === "retry" ||
+				request.startKind === "startup_retry" ||
+				request.startKind === "continue",
 			existingTurnSelectionFromProcess(request.process),
 			modelOverride(
 				request.modelOverride,
@@ -92,7 +85,7 @@ function evaluateSubject(
 				turnConfigsJson: request.plan.processInput.turnConfigsJson,
 			}),
 			request.turnId,
-			"resolve",
+			false,
 			{ kind: "none" },
 			modelOverride(selected, selected !== null, "launch_override"),
 			request.availability,
@@ -111,7 +104,6 @@ function evaluateSubject(
 		snapshot,
 		request.cause,
 		modelConfigurationFromProcess(request.process),
-		existingTurnSelectionFromProcess(request.process),
 		request.currentStart,
 		request.availability,
 	);
