@@ -29,7 +29,7 @@ server:
     key: LEITWERK_CREDENTIAL_ENCRYPTION_KEY
   image:
     repository: ghcr.io/leitwerk-dev/leitwerk-server
-    tag: "0.4.0"
+    tag: "0.5.0"
     digest: ""
     pullPolicy: IfNotPresent
   service:
@@ -206,7 +206,7 @@ kubernetes:
 
 workerRuntimeProfiles:
   generic:
-    image: ghcr.io/leitwerk-dev/leitwerk-worker-generic:0.4.0
+    image: ghcr.io/leitwerk-dev/leitwerk-worker-generic:0.5.0
     image_pull_policy: IfNotPresent
     resources:
       limits:
