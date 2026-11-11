@@ -182,7 +182,13 @@ function* releaseSequence(root: string, main: string, baselineTag: string): Gene
 	let previousTag = baselineTag;
 	for (let index = 0; index < commits.length - 1; index += 2) {
 		const source = commits[index].trim();
-		const version = calculateConventionalVersion(previousTag.slice(1), commits[index + 1]);
+		// Read the policy at the source commit so upgrades never renumber historical releases.
+		const sourcePolicy = JSON.parse(git(root, ["show", `${source}:${policyPath}`]));
+		const version = calculateConventionalVersion(
+			previousTag.slice(1),
+			commits[index + 1],
+			sourcePolicy.releaseAllTypes === true,
+		);
 		if (!version) continue;
 		const tag = `v${version}`;
 		yield { source, tag, version, previousTag };

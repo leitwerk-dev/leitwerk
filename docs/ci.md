@@ -85,11 +85,15 @@ GitHub squash-merges PRs using their titles as commit titles. Each qualifying ma
 
 | Title | Release effect before 1.0 | Release effect at 1.0 and later |
 |---|---:|---:|
-| `fix(scope): description` | patch | patch |
+| `fix`, `ci`, `build`, `chore`, `refactor`, `perf`, `revert` | patch | patch |
 | `feat(scope): description` | patch | minor |
 | `fix(scope)!: description` | minor | major |
 | `feat(scope): description` with a `BREAKING CHANGE:` footer | minor | major |
-| `docs`, `test`, `ci`, `build`, `chore`, `refactor`, `perf` | none | none |
+| `docs`, `test` | none | none |
+
+Scopes are optional and do not affect version selection. All supported types except `docs` and `test` request a release by default.
+
+`release-policy.json` enables this policy with `releaseAllTypes: true`. Release selection reads the policy at each source commit: before this flag was enabled, only `feat`, `fix`, breaking changes, and explicit overrides requested releases. Historical commits keep their original version selection; enabling the flag does not backfill releases or renumber existing tags.
 
 An explicit `Release-As: X.Y.Z` footer overrides version selection. It must specify a stable version greater than the previous release. A breaking marker on any supported commit type requests a release. Commit sign-off requirements are documented in [Contributing](https://github.com/leitwerk-dev/leitwerk/blob/main/CONTRIBUTING.md).
 

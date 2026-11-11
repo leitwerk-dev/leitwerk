@@ -57,7 +57,7 @@ Pull request titles use Conventional Commits syntax because GitHub uses the titl
     feat(protocol)!: remove a frame
     docs: explain worker leases
 
-`feat` and `fix` contribute release notes. Add `!` or a `BREAKING CHANGE:` footer for a breaking change. `docs`, `test`, `ci`, `build`, and `chore` do not request a release by themselves.
+All supported types except `docs` and `test` request a release and contribute release notes. `fix`, `ci`, `build`, `chore`, `refactor`, `perf`, and `revert` request a patch. `feat` requests a patch before 1.0 and a minor from 1.0 onward. Add `!` or a `BREAKING CHANGE:` footer for a breaking change; this requests a minor before 1.0 or a major from 1.0 onward on any supported type, including `docs` and `test`. An explicit `Release-As: X.Y.Z` footer overrides version selection.
 
 Every merge to `main` that increments the version automatically publishes a stable release. Non-release changes do not publish. Versions are generated in release commits attached to tags, not pushed back to `main`. Before merging new package names, complete npm registration as described in [docs/ci.md](docs/ci.md), which also covers version rules, artifact coordinates, and publication retries.
 

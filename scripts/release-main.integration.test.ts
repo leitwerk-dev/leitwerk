@@ -100,8 +100,8 @@ function createBaseline(directory: string) {
 	git(root, "tag", "v0.4.0");
 	git(root, "push", "origin", "--tags");
 	commit("feat: historical change that must not be backfilled");
-	writeJson("release-policy.json", { baselineTag: "v0.4.0" });
-	commit("ci: enable main releases");
+	writeJson("release-policy.json", { baselineTag: "v0.4.0", releaseAllTypes: true });
+	commit("test: enable main releases in fixture");
 }
 
 function fixture() {
@@ -182,6 +182,27 @@ describe("main release queue (real git, local registry boundary)", () => {
 		expect(git(f.root, "tag", "--list")).toBe("v0.4.0");
 	});
 
+	it("applies expanded release types only after the policy cutover", () => {
+		const f = fixture();
+		f.writeJson("release-policy.json", { baselineTag: "v0.4.0" });
+		f.commit("test: use legacy release policy");
+		f.commit("ci: historical tooling change");
+		f.commit("chore(deps): historical dependency update");
+		const firstSource = f.commit("fix: historical correction");
+		const first = f.requireRelease();
+		expect(first).toMatchObject({ tag: "v0.4.1", source: firstSource });
+		f.publish();
+		f.writeJson("release-policy.json", { baselineTag: "v0.4.0", releaseAllTypes: true });
+		const cutover = f.commit("ci: release all types except docs and test");
+		expect(f.requireRelease()).toMatchObject({ tag: "v0.4.2", source: cutover });
+		f.publish();
+		const dependencyUpdate = f.commit("chore(deps): update dependencies");
+		expect(f.requireRelease()).toMatchObject({ tag: "v0.4.3", source: dependencyUpdate });
+		f.publish();
+		expect(f.resolve()).toBeNull();
+		expect(git(f.root, "rev-parse", first.tag)).toBe(first.sha);
+	});
+
 	it("versions all workspaces, local dependencies, lock records and chart in a detached signed-off commit", () => {
 		const f = fixture();
 		f.write("application.txt", "new application\n");
@@ -242,7 +263,7 @@ describe("main release queue (real git, local registry boundary)", () => {
 	it("honors overrides and drains rapid merges numerically, resuming unfinished releases first", () => {
 		const f = fixture();
 		const first = f.commit("fix: first queued merge\n\nRelease-As: 0.4.9");
-		f.commit("ci: non-release merge");
+		f.commit("test: non-release merge");
 		const second = f.commit("feat: second queued merge");
 		const third = f.commit("feat!: third queued merge");
 		const initial = f.requireRelease();
