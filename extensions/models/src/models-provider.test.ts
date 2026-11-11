@@ -158,10 +158,7 @@ describe("models extension", () => {
 	] as const)("normalizes standard-provider base URL %j", (baseUrl, environmentUrl, expected) => {
 		if (environmentUrl) vi.stubEnv("AZURE_OPENAI_ENDPOINT", environmentUrl);
 		expect(
-			parseStandardProviderConfig(
-				{ api_key: "sk-azure", base_url: baseUrl },
-				"azure-openai-responses",
-			),
+			parseStandardProviderConfig({ api_key: "sk-azure", base_url: baseUrl }, "azure"),
 		).toEqual({ config: { baseUrl: expected }, credential: { apiKey: "sk-azure" } });
 	});
 
@@ -316,14 +313,14 @@ describe("models extension", () => {
 	});
 
 	it("registers explicit standard-provider models alongside the built-in catalog", () => {
-		const provider = createStandardModelProvider("azure-openai-responses");
+		const provider = createStandardModelProvider("azure");
 		const parsed = parseStandardProviderConfig(
 			{
 				api_key: "fixture-secret",
 				base_url: "https://azure.example/openai/v1",
 				models: [{ id: "new-deployment", reasoning: true, thinking_level_map: { xhigh: "xhigh" } }],
 			},
-			"azure-openai-responses",
+			"azure",
 		);
 		const configuredModels = [
 			{ profileId: "new", modelId: "new-deployment" },
@@ -349,12 +346,12 @@ describe("models extension", () => {
 		);
 		const projected = resolveModels(provider.worker, parsed.config);
 		expect(projected).toHaveProperty(
-			["providers", "azure-openai-responses", "models"],
+			["providers", "azure", "models"],
 			[
 				expect.objectContaining({
 					id: "new-deployment",
 					api: "azure-openai-responses",
-					provider: "azure-openai-responses",
+					provider: "azure",
 					baseUrl: "https://azure.example/openai/v1",
 					reasoning: true,
 					thinkingLevelMap: { xhigh: "xhigh" },

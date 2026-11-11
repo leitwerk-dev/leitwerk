@@ -344,7 +344,7 @@ extensions:
   #     api_key: env:OPENAI_API_KEY # or literal string "sk-..."
   #   anthropic:
   #     api_key: env:ANTHROPIC_API_KEY
-  #   azure-openai-responses:
+  #   azure:
   #     api_key: env:AZURE_OPENAI_API_KEY
   #     base_url: env:AZURE_OPENAI_ENDPOINT # optional non-secret HTTP(S) endpoint
   #     models: # Optional deployment IDs absent from the bundled catalog.
