@@ -11,6 +11,11 @@ let {
 	selectedId?: string;
 } = $props();
 const selected = $derived([...profiles, ...excluded].find((profile) => profile.id === selectedId));
+const hasIssue = $derived(
+	selectedId
+		? !selected || !!selected.policyReason || selected.availability !== "available"
+		: !profiles.some((profile) => profile.availability === "available" && !profile.policyReason),
+);
 const unavailable = $derived([
 	...excluded,
 	...profiles.filter((profile) => profile.availability !== "available"),
@@ -25,7 +30,7 @@ const unavailable = $derived([
 {:else if selectedId}
 	<p class="model-note" role="status">Profile '{selectedId}' is no longer configured. Choose another profile or clear the override.</p>
 {/if}
-{#if unavailable.length}
+{#if hasIssue && unavailable.length}
 	<details>
 		<summary>Why unavailable?</summary>
 		<ul>{#each unavailable as profile (profile.id)}<li><strong>{profile.id}</strong>: {profile.policyReason ?? profile.safeReason ?? profile.availability}</li>{/each}</ul>
