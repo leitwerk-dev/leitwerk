@@ -1382,6 +1382,7 @@ async function handleSubmit(event: SubmitEvent) {
 							<label class="field-label model-step-title" for={`${launcher.launchConfigSchema.id}-default-model-profile`}>
 								Default model
 							</label>
+							<div class="model-config-choice">
 							<select
 								id={`${launcher.launchConfigSchema.id}-default-model-profile`}
 								class="model-config-default-select"
@@ -1395,6 +1396,7 @@ async function handleSubmit(event: SubmitEvent) {
 								<ModelProfileOptions profiles={defaultModelSelectableProfiles} selectedId={defaultModelProfileId} />
 							</select>
 							<ModelPolicyDetails profiles={defaultModelSelectableProfiles} excluded={launcher.modelConfigSchema?.excludedProfiles?.[""]} selectedId={defaultModelProfileId} />
+							</div>
 						</div>
 						{#if modelPreviewRequest.loading && modelConfigPreview === null}
 							<p class="field-description model-config-status-note">Refreshing the current recommendation…</p>
@@ -1484,6 +1486,7 @@ async function handleSubmit(event: SubmitEvent) {
 											>
 												<span class="model-config-summary-turn-label">{turn.label}</span>
 												{#if advancedModelConfigOpen}
+													<div class="model-config-choice">
 													<select
 														id={`${launcher.launchConfigSchema.id}-${turn.turnId}-model-profile`}
 														class="model-config-summary-turn-select"
@@ -1501,6 +1504,7 @@ async function handleSubmit(event: SubmitEvent) {
 												<ModelProfileOptions profiles={launcher.modelConfigSchema?.profilesByTurn?.[turn.turnId] ?? launcher.modelConfigSchema?.availableProfiles ?? []} selectedId={turnModelProfileIds[turn.turnId] ?? ""} />
 													</select>
 													<ModelPolicyDetails profiles={launcher.modelConfigSchema?.profilesByTurn?.[turn.turnId] ?? launcher.modelConfigSchema?.availableProfiles ?? []} excluded={launcher.modelConfigSchema?.excludedProfiles?.[turn.turnId]} selectedId={turnModelProfileIds[turn.turnId] ?? ""} />
+													</div>
 												{:else}
 													<span class="model-config-summary-turn-model">
 														{turn.modelName ?? "No model available"}
@@ -1823,6 +1827,12 @@ async function handleSubmit(event: SubmitEvent) {
 	.model-config-summary-turn-model {
 		min-width: 0;
 		color: var(--chronicle-text-muted);
+	}
+
+	.model-config-choice {
+		display: grid;
+		gap: var(--space-xs);
+		min-width: 0;
 	}
 
 	.model-config-summary-turn-select {

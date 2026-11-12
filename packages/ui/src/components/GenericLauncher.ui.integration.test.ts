@@ -582,7 +582,7 @@ describe("GenericLauncher", () => {
 		expect(draftPlanTurnGroup.dataset.effectiveSource).toBe("process_config_turn");
 	});
 
-	it("groups model options and explains excluded candidates without resetting saved intent", async () => {
+	it("groups model options without showing unavailable help for a healthy automatic selection", async () => {
 		const launcher = createLauncher();
 		if (!launcher.modelConfigSchema) throw new Error("Missing model schema");
 		launcher.modelConfigSchema.availableProfiles = [
@@ -609,11 +609,7 @@ describe("GenericLauncher", () => {
 		const disclosure = Array.from(target.querySelectorAll("summary")).find(
 			(summary) => summary.textContent === "Why unavailable?",
 		);
-		expect(disclosure).toBeTruthy();
-		disclosure?.click();
-		expect(disclosure?.parentElement?.textContent).toContain(
-			"missing_labels (coding) from turn:example/run",
-		);
+		expect(disclosure).toBeUndefined();
 		expect(select.value).toBe("");
 	});
 
@@ -662,6 +658,7 @@ describe("GenericLauncher", () => {
 
 		expect(unavailableOption?.disabled).toBe(true);
 		expect(unavailableOption?.text).toContain("unavailable");
+		expect(target.textContent).not.toContain("Why unavailable?");
 	});
 
 	it("prefills launcher-provided model config from defaults and auto-opens the editor", async () => {
