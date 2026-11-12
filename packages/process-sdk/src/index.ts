@@ -1,3 +1,4 @@
+export type { ModelRequirements } from "@leitwerk-dev/protocol";
 export type {
 	BrowserUiExtensionAPI,
 	BrowserUiExtensionContext,

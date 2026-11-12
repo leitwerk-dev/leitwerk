@@ -5,6 +5,12 @@ Prompt and preparation remain on the same turn; no worker starts before readines
 A waiting LLM turn may also declare `.externalAction(...)` with fixed routes to a
 gated worker turn or a terminal outcome. Subscriptions arm only while it is waiting.
 
+Before allocation, the server applies process and turn model requirements, resolves
+a profile without availability input, then checks cached readiness. The prepared
+start captures that profile and execution options atomically before yielding.
+Unavailable winners block; no provider failover occurs. An unaccepted preparation
+failure is not a turn attempt. See [model selection](models.md#profile-resolution).
+
 An active LLM turn uses two server paths:
 
 - lifecycle messages mutate durable process state through ProcessEngine;

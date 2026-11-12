@@ -25,12 +25,18 @@ export function buildDashboardModelIssues(
 ): DashboardConfigurationIssue[] {
 	const issues = new Map<string, DashboardConfigurationIssue>();
 	const availability = deps.modelStatusCache.snapshot();
-	function add(code: string, key: string, message: string, source: IssueSource) {
+	function add(
+		code: string,
+		key: string,
+		message: string,
+		source: IssueSource,
+		severity?: "warning" | "error",
+	) {
 		const id = JSON.stringify([code, key]);
 		const issue = issues.get(id) ?? {
 			id,
 			code,
-			severity: code === "model_stale" ? ("warning" as const) : ("error" as const),
+			severity: severity ?? (code === "model_stale" ? ("warning" as const) : ("error" as const)),
 			message,
 			sources: [],
 		};
@@ -38,11 +44,18 @@ export function buildDashboardModelIssues(
 			issue.sources.push(source);
 		issues.set(id, issue);
 	}
-	function check(profileId: string | null | undefined, source: IssueSource, processId = "") {
+	function check(
+		profileId: string | null | undefined,
+		source: IssueSource,
+		processId = "",
+		turnId?: string,
+		preference = false,
+	) {
 		const id = trimToNull(profileId);
 		if (!id) return;
 		const result = deps.processModelPolicy.evaluate({
 			kind: "runtime_selection",
+			target: turnId ? { kind: "turn", turnId } : { kind: "process_default" },
 			processId,
 			selection: {
 				modelProfileId: id,
@@ -50,7 +63,7 @@ export function buildDashboardModelIssues(
 			},
 			availability,
 		});
-		if (result.ok) return;
+		if (result.ok || (preference && result.code === "model_profile_not_allowed")) return;
 		const key = result.code === "model_profile_not_allowed" ? JSON.stringify([id, processId]) : id;
 		const message = presentProcessModelPolicyFailure(result);
 		add(
@@ -75,6 +88,8 @@ export function buildDashboardModelIssues(
 			input.defaultModelProfileId,
 			{ ...source, label: `${source.label}: default model` },
 			input.processId,
+			undefined,
+			true,
 		);
 		check(
 			input.selectedTurnModelProfileId,
@@ -99,7 +114,42 @@ export function buildDashboardModelIssues(
 				config.modelProfileId,
 				{ ...source, label: `${source.label}: ${turnId}` },
 				input.processId,
+				turnId,
 			);
+	}
+	for (const processId of deps.processGraphs.keys()) {
+		check(
+			deps.config?.pi.process_title_generation.model_profile,
+			{ label: `${processId}: title generation`, href: null },
+			processId,
+		);
+		const preview = deps.processModelPolicy.project({
+			kind: "launcher_preview",
+			processId,
+			modelConfig: {},
+			availability,
+		});
+		for (const turn of preview.turns) {
+			if (
+				!turn.effective.error &&
+				(turn.effective.ranking?.kind === "cost_id" ||
+					(turn.effective.ranking?.tiedProfileIds.length ?? 0) > 1)
+			)
+				add(
+					"automatic_model_tiebreak",
+					`${processId}/${turn.turnId}`,
+					`Selected '${turn.effective.profile?.id}' by ${turn.effective.ranking?.kind === "cost_id" ? "cost group and profile ID" : `cost group and profile ID among equal-specificity defaults: ${turn.effective.ranking?.tiedProfileIds.join(", ")}`}`,
+					{ label: `${processId}: ${turn.turnId}`, href: null },
+					"warning",
+				);
+			if (turn.effective.error)
+				add(
+					"model_policy_blocked",
+					turn.effective.profile?.id ?? `${processId}/${turn.turnId}`,
+					turn.effective.error,
+					{ label: `${processId}: ${turn.turnId}`, href: null },
+				);
+		}
 	}
 	const config = deps.config;
 	if (config) {
@@ -116,12 +166,16 @@ export function buildDashboardModelIssues(
 				processConfig.default_model_profile,
 				{ label: `${prefix}.default_model_profile`, href: null },
 				processId,
+				undefined,
+				true,
 			);
 			for (const [turnId, turnConfig] of Object.entries(processConfig.turn_configs ?? {}))
 				check(
 					turnConfig.model_profile,
 					{ label: `${prefix}.turn_configs.${turnId}.model_profile`, href: null },
 					processId,
+					turnId,
+					true,
 				);
 		}
 	}
@@ -143,12 +197,19 @@ export function buildDashboardModelIssues(
 	}
 	for (const watcher of deps.processWatchers?.listAll() ?? []) {
 		const source = { label: watcher.configPath, href: "/watchers" };
-		check(watcher.launchModelConfig.defaultModelProfileId, source, watcher.processId);
+		check(
+			watcher.launchModelConfig.defaultModelProfileId,
+			source,
+			watcher.processId,
+			undefined,
+			true,
+		);
 		for (const [turnId, turnConfig] of Object.entries(watcher.launchModelConfig.turnConfigs ?? {}))
 			check(
 				turnConfig.modelProfileId,
 				{ ...source, label: `${source.label}: ${turnId}` },
 				watcher.processId,
+				turnId,
 			);
 	}
 	for (const process of deps.processes.listModelConfigurations()) {

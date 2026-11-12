@@ -262,7 +262,7 @@ describe("LaunchCoordinator reconciliation", () => {
 				defaultModelProfileId: eventProfile ?? "watcher-default",
 				turnConfigs: { repair: { modelProfileId: "repair-model" } },
 			},
-			invalidModelConfig: eventProfile ? "reject" : "omit",
+			invalidModelConfig: "retain",
 		});
 	});
 

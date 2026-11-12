@@ -66,13 +66,17 @@ export function prepareProcessModelConfig(input: {
 		else turnConfigs[id] = { ...turnConfigs[id], modelProfileId: config.modelProfileId };
 	}
 	const selections = [
-		patch.defaultModelProfileId,
-		...Object.values(patch.turnConfigs ?? {}).map((config) => config.modelProfileId),
+		{ id: patch.defaultModelProfileId, target: { kind: "process_default" } as const },
+		...Object.entries(patch.turnConfigs ?? {}).map(([turnId, config]) => ({
+			id: config.modelProfileId,
+			target: { kind: "turn", turnId } as const,
+		})),
 	];
-	for (const id of selections) {
+	for (const { id, target } of selections) {
 		if (!id) continue;
 		const validation = policy.evaluate({
 			kind: "runtime_selection",
+			target,
 			processId: process.processId,
 			availability,
 			selection: {

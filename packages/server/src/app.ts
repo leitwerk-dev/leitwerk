@@ -520,6 +520,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 						.profiles.find((entry) => entry.profileId === profile.id);
 					return {
 						value: profile.id,
+						labels: [...new Set(profile.labels ?? [])],
 						label: `${profile.id} — ${profile.provider}/${profile.model_id}`,
 						...(status?.availability === "available"
 							? {}
@@ -528,6 +529,10 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 				}),
 		});
 		const processModelPolicy = createServerProcessModelPolicy({
+			capabilities: (providerId, modelId) => {
+				const provider = modelProviderRegistry.require(providerId);
+				return provider.definition.capabilities?.({ config: provider.config, modelId }) ?? {};
+			},
 			scopedSettings,
 			config,
 			processGraphs,
@@ -540,6 +545,8 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 		markStartup("extension_ui_catalog");
 		const launcherModelProfiles: LauncherModelProfileSummary[] = config.pi.model_profiles.map(
 			(profile: ModelProfileSnapshot): LauncherModelProfileSummary => ({
+				labels: [...new Set(profile.labels ?? [])],
+				default: profile.default ?? false,
 				id: profile.id,
 				provider: profile.provider,
 				modelId: profile.model_id,
@@ -553,6 +560,7 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			return processModelPolicy
 				.project({
 					kind: "profile_options",
+					target: { kind: "process_default" },
 					processId,
 					availability: modelStatusCache.snapshot(),
 				})
@@ -604,6 +612,19 @@ export async function createAppContext(opts: AppOptions = {}): Promise<AppContex
 			(config.pi.process_title_generation.model_profile === null
 				? undefined
 				: createProcessTitleGenerator({
+						modelPolicyError: (processId, modelProfileId) => {
+							const result = processModelPolicy.evaluate({
+								kind: "runtime_selection",
+								target: { kind: "process_default" },
+								processId,
+								selection: {
+									modelProfileId,
+									provenance: { kind: "inherited", source: "fixed_purpose" },
+								},
+								availability: modelStatusCache.snapshot(),
+							});
+							return result.ok ? null : `Title model '${modelProfileId}' blocked: ${result.code}`;
+						},
 						config,
 						repos,
 						broadcaster,

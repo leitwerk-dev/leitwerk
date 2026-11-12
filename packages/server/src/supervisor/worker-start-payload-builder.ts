@@ -104,7 +104,12 @@ export function buildWorkerConfigSnapshot(config: LeitwerkConfig): ConfigSnapsho
 	);
 	return {
 		workers: buildWorkerRuntimeSettingsSnapshot(config),
-		pi: config.pi,
+		pi: {
+			...config.pi,
+			model_profiles: config.pi.model_profiles.map(
+				({ labels: _labels, default: _default, ...profile }) => profile,
+			),
+		},
 		...(Object.keys(processConfigs).length > 0 ? { process_configs: processConfigs } : {}),
 	};
 }

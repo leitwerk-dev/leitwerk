@@ -128,18 +128,86 @@ LLM turns resolve profiles in this order:
 values fail configuration loading. Catalog order never selects a default. Existing
 installations must add this setting before upgrading.
 
-Invalid or unavailable selections block execution; they do not silently select a
-replacement. Clearing an explicit choice restores current inheritance. Displaying
-or submitting an unchanged recommendation must not make it explicit. Title
-generation retains its separate internal purpose and configured model.
+Turn, launch and action overrides are hard choices. Fixed system-purpose profiles
+are authoritative and must satisfy the same requirements. Other inherited defaults
+are preferences: skip a known profile only when policy excludes it, then continue
+the chain. Unknown profiles and malformed settings block rather than falling back.
+Once an eligible profile is chosen, unavailable or stale status blocks; availability
+never changes selection. Clearing an override restores automatic selection. Merely
+viewing or submitting an automatic recommendation does not pin it.
+
+When no inherited preference is eligible, prefer eligible profiles marked `default:
+true`. Among those candidates, fewer unrelated labels wins, then cost group, then
+profile ID. Relevant labels are the union of positive all-of/any-of labels in every
+effective layer. All other labels, including cost and organization labels, count
+as unrelated. Without eligible marked defaults, rank by cost group then ID.
+IDs use fixed, locale-independent ordering; configuration order has no effect.
+
+Immediate UI and programmatic launches, and UI-created schedules, require every
+declared LLM turn to resolve and be available, including optional branches and
+fixed-purpose turns. Watchers and due schedules defer policy blocks to the affected
+turn. Title generation uses its fixed profile with process requirements; a blocked
+title does not block the business process or substitute another title model.
 
 [Scoped settings](scoped-settings.md) resolve when preparing each new start and
 retain their values and revisions with that start. Later edits affect future steps,
 including new operator retries, while worker recovery uses the captured start.
 
-`process_configs.<processId>.allowed_model_profiles` restricts defaults and overrides.
-Omitting the restriction permits all configured profiles; selecting an unavailable
-profile does not bypass credential requirements.
+### Classification and requirements
+
+Profiles may declare `labels` (default `[]`) and `default` (default `false`). Labels
+are case-sensitive lowercase ASCII identifiers matching `[a-z][a-z0-9_.-]*` and
+are normalized as sets. Operators own suitability and cost assertions. Starter
+labels include `coding`, `planning`, `research`, `writing`, and `extraction`.
+`free`, `economy`, `standard`, and `premium` are ordinary labels, not price fields.
+`free` means no usage cost; zero or missing provider prices never imply it.
+The first matching cost label in that order controls grouping and tie-breaking.
+Profiles without a cost label follow under Other models. Multiple cost labels
+are valid; all remain active for matching and specificity.
+
+Code declares `modelRequirements` on processes and LLM turns (or through the flow
+builder's `.modelRequirements(...)`). Configuration adds `model_requirements` at
+process and turn levels. Each requirements object supports `profiles` (allowlist),
+`capabilities` (all required), and `labels` with `all_of`, `any_of`, and `none_of`.
+Explicit empty profile allowlists and any-of clauses are invalid.
+
+```yaml
+process_configs:
+  repository_change:
+    model_requirements:
+      labels:
+        all_of: [approved-for-internal-code]
+    turn_configs:
+      implement:
+        model_requirements:
+          labels:
+            all_of: [coding]
+            any_of: [free, economy, standard]
+```
+
+Code process, operator process, code turn and operator turn layers are conjunctive.
+Each any-of clause must match independently; clauses are never unioned. The legacy
+`allowed_model_profiles` additionally intersects these restrictions. An empty
+intersection blocks work but leaves the dashboard available. A process preference
+need not serve every turn. Validate it against process requirements; validate turn
+choices against that turn's effective requirements.
+
+Capabilities are supplied by the owning provider's synchronous `capabilities`
+catalog projection at startup, not by status probes. Only confirmed `true` support
+satisfies a required capability; absent, unknown and false support fail eligibility.
+The models extension supplies `image-input` and `reasoning`. Registration alone
+never proves tool-use support. Classification and requirements are startup-only.
+
+Selection provenance adds `marked_default`, `automatic` and `fixed_purpose` to the
+existing serialized sources. Existing records decode unchanged; there is no SQLite
+schema change. Upgrade server and workers together; do not downgrade to a decoder
+that does not recognize these sources after new selections have been persisted.
+Captured starts retain identity and provenance, not current classification labels.
+
+Automatic availability recovery rechecks the captured profile, even after settings
+edits. If policy now excludes it, recovery blocks. Operator retry makes a new
+preparation and may re-resolve inherited choices; explicit choices remain pinned
+unless cleared.
 
 ## Extension-defined providers
 

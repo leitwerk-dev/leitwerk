@@ -440,6 +440,17 @@ actions that inherit settings. **Cancel** discards the draft. Live process updat
 and failed requests retain unsaved edits; saving disables duplicate submissions and
 refreshes process details. Active execution labels continue to show recorded models.
 
+Model selects use native optgroups: Free, Economy, Standard, Premium, then Other
+models, with stable profile-ID ordering within each group. Turn controls use the
+server's turn-specific catalog. Deleted or excluded saved selections retain their
+identity rather than appearing reset to Automatic. Availability stays separate
+from eligibility, and an unavailable winner is never substituted. Launcher previews
+explain skipped incompatible preferences and expose all-turn readiness errors,
+including optional branches, before admission. Show “Why unavailable?” only when
+there is a selection issue: the chosen profile is missing, excluded, or unavailable,
+or automatic selection has no usable candidates. Unrelated excluded or unavailable
+alternatives do not add help disclosures to healthy controls.
+
 ## Settings
 
 Open Settings from navigation to edit shared Instance and Repository defaults

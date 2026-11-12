@@ -14,6 +14,8 @@ import type {
 	LauncherReadiness,
 	LauncherValidationError,
 } from "@leitwerk-dev/protocol/launcher-contract";
+import ModelPolicyDetails from "../chronicle/components/ModelPolicyDetails.svelte";
+import ModelProfileOptions from "../chronicle/components/ModelProfileOptions.svelte";
 import {
 	fetchLauncherDefaults,
 	fetchLauncherModelConfigPreview,
@@ -46,9 +48,7 @@ import {
 	describeDefaultModelDisplayLine,
 	describeTurnModelDisplayLine,
 	getDefaultModelBlankOptionLabel,
-	getDefaultModelSelectableProfiles,
 	getLauncherModelCustomizationState,
-	getTurnModelBlankOptionLabel,
 } from "./launcher-model-config.js";
 import {
 	buildLauncherScheduleTimeString,
@@ -256,10 +256,7 @@ const defaultModelBlankOptionLabel = $derived(
 	getDefaultModelBlankOptionLabel(recommendedDefaultModelProfile),
 );
 const defaultModelSelectableProfiles = $derived(
-	getDefaultModelSelectableProfiles({
-		availableProfiles: launcher.modelConfigSchema?.availableProfiles ?? [],
-		recommendedProfile: recommendedDefaultModelProfile,
-	}),
+	launcher.modelConfigSchema?.availableProfiles ?? [],
 );
 const defaultsNotice = $derived(
 	buildLauncherDefaultsNotice({
@@ -1362,11 +1359,15 @@ async function handleSubmit(event: SubmitEvent) {
 					{@render validationMessages("model-config")}
 					<a href={`/settings?scope=${encodeURIComponent(modelConfigPreview?.settingsSubjectId ?? "instance")}`}>Repository and instance defaults</a>
 					{#each modelConfigPreview?.settingsExplanations ?? [] as explanation}<p>{explanation}</p>{/each}
-					{#each modelConfigPreview?.turns ?? [] as turn}{#if turn.effective.error}<p role="alert">{turn.description}: {turn.effective.error}</p>{/if}{/each}
+					{#each modelConfigPreview?.turns ?? [] as turn}{#if turn.effective.error}<p role="alert">{turn.description}: {turn.effective.error}</p>{:else if turn.effective.explanation}<p class="field-description">{turn.description}: {turn.effective.explanation}</p>{/if}{/each}
 					<div class="model-config-intro">
 						<p class="field-label">Model setup</p>
 						<p class="field-description">
-							Recommended models are ready to use. Change the default model here, or customize individual steps when needed.
+							{#if modelConfigPreview?.turns.some((turn) => turn.effective.error)}
+								Resolve the model issues above before launching. Your choices are retained.
+							{:else}
+								Models are selected automatically for each step. Change the process preference here, or customize individual steps when needed.
+							{/if}
 						</p>
 					</div>
 
@@ -1381,6 +1382,7 @@ async function handleSubmit(event: SubmitEvent) {
 							<label class="field-label model-step-title" for={`${launcher.launchConfigSchema.id}-default-model-profile`}>
 								Default model
 							</label>
+							<div class="model-config-choice">
 							<select
 								id={`${launcher.launchConfigSchema.id}-default-model-profile`}
 								class="model-config-default-select"
@@ -1391,14 +1393,10 @@ async function handleSubmit(event: SubmitEvent) {
 									setDefaultModelProfileValue((event.currentTarget as HTMLSelectElement).value)}
 							>
 								<option value="">{defaultModelBlankOptionLabel}</option>
-								{#each defaultModelSelectableProfiles as option (option.id)}
-									<option value={option.id} disabled={option.availability !== "available"}>
-										{option.label}{option.availability !== "available"
-											? ` — ${option.availability ?? "unavailable"}`
-											: ""}
-									</option>
-								{/each}
+								<ModelProfileOptions profiles={defaultModelSelectableProfiles} selectedId={defaultModelProfileId} />
 							</select>
+							<ModelPolicyDetails profiles={defaultModelSelectableProfiles} excluded={launcher.modelConfigSchema?.excludedProfiles?.[""]} selectedId={defaultModelProfileId} />
+							</div>
 						</div>
 						{#if modelPreviewRequest.loading && modelConfigPreview === null}
 							<p class="field-description model-config-status-note">Refreshing the current recommendation…</p>
@@ -1488,9 +1486,11 @@ async function handleSubmit(event: SubmitEvent) {
 											>
 												<span class="model-config-summary-turn-label">{turn.label}</span>
 												{#if advancedModelConfigOpen}
+													<div class="model-config-choice">
 													<select
 														id={`${launcher.launchConfigSchema.id}-${turn.turnId}-model-profile`}
 														class="model-config-summary-turn-select"
+														aria-label={`${turn.label} model`}
 								aria-invalid={getFieldErrors("model-config").length > 0}
 								aria-describedby={getFieldErrors("model-config").length ? fieldErrorsDomId("model-config") : undefined}
 														value={turnModelProfileIds[turn.turnId] ?? ""}
@@ -1500,18 +1500,11 @@ async function handleSubmit(event: SubmitEvent) {
 																(event.currentTarget as HTMLSelectElement).value,
 															)}
 													>
-														<option value="">{getTurnModelBlankOptionLabel()}</option>
-												{#each launcher.modelConfigSchema?.availableProfiles ?? [] as option (option.id)}
-													<option
-														value={option.id}
-														disabled={option.availability !== undefined && option.availability !== "available"}
-													>
-														{option.label}{option.availability && option.availability !== "available"
-															? ` — ${option.availability}`
-															: ""}
-													</option>
-												{/each}
+														<option value="">Use automatic selection</option>
+												<ModelProfileOptions profiles={launcher.modelConfigSchema?.profilesByTurn?.[turn.turnId] ?? launcher.modelConfigSchema?.availableProfiles ?? []} selectedId={turnModelProfileIds[turn.turnId] ?? ""} />
 													</select>
+													<ModelPolicyDetails profiles={launcher.modelConfigSchema?.profilesByTurn?.[turn.turnId] ?? launcher.modelConfigSchema?.availableProfiles ?? []} excluded={launcher.modelConfigSchema?.excludedProfiles?.[turn.turnId]} selectedId={turnModelProfileIds[turn.turnId] ?? ""} />
+													</div>
 												{:else}
 													<span class="model-config-summary-turn-model">
 														{turn.modelName ?? "No model available"}
@@ -1834,6 +1827,12 @@ async function handleSubmit(event: SubmitEvent) {
 	.model-config-summary-turn-model {
 		min-width: 0;
 		color: var(--chronicle-text-muted);
+	}
+
+	.model-config-choice {
+		display: grid;
+		gap: var(--space-xs);
+		min-width: 0;
 	}
 
 	.model-config-summary-turn-select {

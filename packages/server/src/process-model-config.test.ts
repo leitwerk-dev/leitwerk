@@ -417,7 +417,7 @@ it("preserves a pending one-time launch model and fences saves against terminal 
 	});
 });
 
-it("shows an actionable error instead of falling back when configured profiles are no longer allowed", () => {
+it("skips incompatible inherited preferences for a turn", () => {
 	const result = prepare(
 		{ defaultModelProfileId: null },
 		{
@@ -431,8 +431,7 @@ it("shows an actionable error instead of falling back when configured profiles a
 		source: "process_config",
 	});
 	expect(result.modelConfiguration.turns[0]).toMatchObject({
-		effectiveModelProfileId: "second",
-		effectiveSource: "process_config_turn",
-		effectiveError: expect.stringContaining("not allowed"),
+		effectiveModelProfileId: "first",
+		effectiveSource: "catalog_default",
 	});
 });

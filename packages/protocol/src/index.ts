@@ -108,6 +108,16 @@ export {
 	restoreTurnTraceProjection,
 } from "./live-turn-projection.js";
 export {
+	assertValidModelRequirements,
+	compareModelProfileIds,
+	MODEL_COST_LABELS,
+	MODEL_POLICY_IDENTIFIER,
+	type ModelRequirements,
+	modelCostRank,
+	modelPolicyIdentifiersSchema,
+	modelRequirementsSchema,
+} from "./model-requirements.js";
+export {
 	extractPiSessionMessageText,
 	isPiSessionMessageEntryWithRecord,
 } from "./pi-session-message.js";

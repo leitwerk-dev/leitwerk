@@ -4,6 +4,8 @@ import type {
 	ProcessModelConfigurationView,
 } from "@leitwerk-dev/protocol/http-contracts";
 import { tick } from "svelte";
+import ModelPolicyDetails from "../../../chronicle/components/ModelPolicyDetails.svelte";
+import ModelProfileOptions from "../../../chronicle/components/ModelProfileOptions.svelte";
 import { type ProcessDetailData, updateProcessModelConfig } from "../../../lib/api.js";
 import { loadProcessDetail } from "../../../lib/processes.svelte.js";
 import { modelSourceLabel as sourceLabel } from "./model-source-label.js";
@@ -110,9 +112,10 @@ async function save() {
     <div class="model-field">
      <label for="instance-default-model">Default profile</label>
      <select id="instance-default-model" bind:this={defaultSelect} bind:value={defaultValue}>
-      <option value="">Use inherited values by purpose</option>
-      {#each detail.modelConfiguration.availableProfiles as option (option.id)}<option value={option.id} disabled={option.availability !== "available"}>{option.label}{option.availability !== "available" ? ` · ${option.availability}` : ""}</option>{/each}
+      <option value="">Use automatic selection</option>
+      <ModelProfileOptions profiles={detail.modelConfiguration.availableProfiles} selectedId={defaultValue} />
      </select>
+     <ModelPolicyDetails profiles={detail.modelConfiguration.availableProfiles} excluded={detail.modelConfiguration.excludedProfiles?.[""]} selectedId={defaultValue} />
      <p class="note">Effective default: {configuration.defaultModel.effectiveModelProfileId ?? "Not configured"}</p>
     </div>
     <p class="note">Clearing a step override restores the instance default, then inherited purpose and configured defaults.</p>
@@ -123,9 +126,10 @@ async function save() {
       {:else}
        <label for={`step-model-${turn.turnId}`}>{turn.description}</label>
        <select id={`step-model-${turn.turnId}`} bind:value={turnValues[turn.turnId]}>
-        <option value="">Use inherited value</option>
-        {#each detail.modelConfiguration.availableProfiles as option (option.id)}<option value={option.id} disabled={option.availability !== "available"}>{option.label}{option.availability !== "available" ? ` · ${option.availability}` : ""}</option>{/each}
+        <option value="">Use automatic selection</option>
+        <ModelProfileOptions profiles={detail.modelConfiguration.profilesByTurn?.[turn.turnId] ?? detail.modelConfiguration.availableProfiles} selectedId={turnValues[turn.turnId]} />
        </select>
+       <ModelPolicyDetails profiles={detail.modelConfiguration.profilesByTurn?.[turn.turnId] ?? detail.modelConfiguration.availableProfiles} excluded={detail.modelConfiguration.excludedProfiles?.[turn.turnId]} selectedId={turnValues[turn.turnId]} />
        {#if turn.effectiveError}<p role="alert">{turn.effectiveError}</p>{/if}
         <p class="note">{turn.effectiveModelProfileId ?? turn.effectiveConfiguredModelProfileId ?? configuration.defaultModel.effectiveModelProfileId ?? "Not configured"} · {sourceLabel(turn.effectiveSource ?? turn.source)}</p>
       {/if}

@@ -2,7 +2,7 @@ import { execFileSync, type spawn } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { LaunchRun } from "@leitwerk-dev/domain";
+import { type LaunchRun, SYSTEM_ACTOR } from "@leitwerk-dev/domain";
 import { buildExtensionCatalogFromModules } from "@leitwerk-dev/extension-runtime/testing";
 import { type Codec, defineProcess, type LeitwerkExtensionModule } from "@leitwerk-dev/process-sdk";
 import { parseFutureLaunchPayloadJson, serializeFutureLaunchPayload } from "@leitwerk-dev/protocol";
@@ -561,6 +561,47 @@ afterAll(async () => {
 });
 
 describe("launcher HTTP routes", () => {
+	it("checks declared LLM turns at UI and programmatic admission even without a selected entry", async () => {
+		const blocked = await createIntegrationHarness({
+			extensionCatalog: buildExtensionCatalogFromModules([launcherTestExtension]),
+			inProcessWorkers: false,
+			configOverride(config) {
+				applyLauncherModelConfig(config);
+				config.process_configs = {
+					launcher_test_process: {
+						turn_configs: {
+							launcher_plan_turn: {
+								model_requirements: { labels: { all_of: ["unconfigured-classification"] } },
+							},
+						},
+					},
+				};
+			},
+		});
+		onTestFinished(() => blocked.close());
+		const base = `${blocked.address}/api/launchers/launcher_test_process.local_repo_ui`;
+		const launcherInput = { repoPath: "/tmp/blocked-policy", prompt: "Review changes" };
+		for (const schedule of [{ mode: "now" }, { mode: "once", runAt: futureIso() }]) {
+			const response = await fetch(`${base}/validate`, json({ launcherInput, schedule }));
+			expect(await response.json()).toMatchObject({
+				errors: [
+					expect.objectContaining({ message: expect.stringContaining("launcher_plan_turn") }),
+				],
+			});
+		}
+		const response = await fetch(
+			`${base}/future-launches`,
+			json({ launcherInput, schedule: { mode: "once", runAt: futureIso() } }),
+		);
+		expect(response.status).toBe(400);
+		expect(blocked.ctx.deps.futureExecutions.listAll()).toEqual([]);
+		const result = await blocked.ctx.deps.launchCoordinator.startProgrammatic(
+			{ launcherId: "launcher_test_process.local_repo_ui", launcherInput },
+			{ actor: SYSTEM_ACTOR, idempotencyKey: "blocked-model-policy" },
+		);
+		expect(result.process).toBeNull();
+		expect(result.error).toBeTruthy();
+	});
 	it("applies default skills and validates schedule edits against pinned revisions", async () => {
 		const skillHarness = await createIntegrationHarness({
 			extensionCatalog: buildExtensionCatalogFromModules([launcherTestExtension]),
@@ -785,13 +826,19 @@ describe("launcher HTTP routes", () => {
 							}),
 						]),
 					}),
-					modelConfigSchema: {
+					modelConfigSchema: expect.objectContaining({
+						profilesByTurn: {
+							launcher_plan_turn: [
+								expect.objectContaining({ id: "claude_fast" }),
+								expect.objectContaining({ id: "local_qwen" }),
+							],
+						},
 						availableProfiles: [
 							expect.objectContaining({ id: "claude_fast", availability: "available" }),
 							expect.objectContaining({ id: "local_qwen", availability: "available" }),
 						],
 						llmTurns: [{ turnId: "launcher_plan_turn", description: "Launcher setup turn" }],
-					},
+					}),
 				}),
 				expect.objectContaining({
 					id: "launcher_test_process.prefilled_model_ui",
@@ -899,7 +946,7 @@ describe("launcher HTTP routes", () => {
 		});
 	});
 
-	it("sanitizes launcher-prefilled defaults that violate the process allowlist and returns warnings", async () => {
+	it("retains invalid launcher-prefilled choices and returns warnings for correction", async () => {
 		const restrictedHarness = await createIntegrationHarness({
 			extensionCatalog: buildExtensionCatalogFromModules([launcherTestExtension]),
 			inProcessWorkers: false,
@@ -923,7 +970,7 @@ describe("launcher HTTP routes", () => {
 			expect(response.status).toBe(200);
 			expect(body.modelConfig).toEqual({
 				defaultModelProfileId: "local_qwen",
-				turnConfigs: {},
+				turnConfigs: { launcher_plan_turn: { modelProfileId: "claude_fast" } },
 			});
 			expect(body.warnings).toEqual([
 				expect.objectContaining({
