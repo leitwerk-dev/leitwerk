@@ -53,16 +53,6 @@ export type {
 export { isPinnedModelSelection } from "./types.js";
 export { ProcessModelPolicyConfigurationError };
 
-function resolutionMode(
-	startKind: Extract<ProcessModelPolicyEvaluationSubject, { kind: "process_turn" }>["startKind"],
-	initialSelection: boolean | undefined,
-): "resolve" | "initial" | "retry" | "continue" {
-	if (startKind === "retry" || startKind === "startup_retry") return "retry";
-	if (startKind === "continue") return "continue";
-	if (initialSelection) return "initial";
-	return "resolve";
-}
-
 function evaluateSubject(
 	snapshot: PolicySnapshot,
 	request: ProcessModelPolicyEvaluationSubject,
@@ -72,7 +62,10 @@ function evaluateSubject(
 			snapshot,
 			modelConfigurationFromProcess(request.process),
 			request.turnId,
-			resolutionMode(request.startKind, request.initialSelection),
+			request.initialSelection === true ||
+				request.startKind === "retry" ||
+				request.startKind === "startup_retry" ||
+				request.startKind === "continue",
 			existingTurnSelectionFromProcess(request.process),
 			modelOverride(
 				request.modelOverride,
@@ -92,20 +85,25 @@ function evaluateSubject(
 				turnConfigsJson: request.plan.processInput.turnConfigsJson,
 			}),
 			request.turnId,
-			"resolve",
+			false,
 			{ kind: "none" },
 			modelOverride(selected, selected !== null, "launch_override"),
 			request.availability,
 		);
 	}
 	if (request.kind === "runtime_selection") {
-		return validateSelection(snapshot, request.processId, request.selection, request.availability);
+		return validateSelection(
+			snapshot,
+			request.processId,
+			request.selection,
+			request.availability,
+			request.target.kind === "turn" ? request.target.turnId : undefined,
+		);
 	}
 	return recoverPreparation(
 		snapshot,
 		request.cause,
 		modelConfigurationFromProcess(request.process),
-		existingTurnSelectionFromProcess(request.process),
 		request.currentStart,
 		request.availability,
 	);
@@ -116,6 +114,10 @@ export function createServerProcessModelPolicy(input: {
 	config: LeitwerkConfig;
 	processGraphs: ProcessGraphRegistry;
 	processActionRegistry: Pick<ProcessActionRegistry, "getTurnDefinition">;
+	capabilities?: (
+		providerId: string,
+		modelId: string,
+	) => Readonly<Record<string, boolean | "unknown">>;
 	scopedSettings?: Pick<ScopedSettingsService, "modelDefault">;
 }): ServerProcessModelPolicy {
 	const snapshot = constructPolicySnapshot(input);

@@ -123,3 +123,11 @@ facts without storing credentials, provider responses, PIDs, pod names, or conta
   Reset restores inheritance while retaining the revision.
 - **Execution purpose**: Extension-defined binding from an LLM turn to model and
   other non-secret settings captured when preparing that turn.
+- **Model requirement**: Static hard restriction from code or operator configuration;
+  effective process and turn layers must all match.
+- **Model preference**: An inherited profile considered before automatic ranking;
+  it may be skipped for policy incompatibility, never for unavailability.
+- **Default candidate**: Profile marked `default: true` for automatic ranking, not
+  an authoritative default. Multiple candidates may coexist.
+- **Model readiness**: Cached availability of the profile already selected by policy;
+  readiness never changes the selected identity.

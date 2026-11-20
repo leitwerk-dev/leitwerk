@@ -7,6 +7,7 @@ import type {
 	TurnId,
 	TurnProgressReport,
 } from "@leitwerk-dev/domain";
+import { assertValidModelRequirements } from "@leitwerk-dev/protocol";
 import type {
 	ExtensionProcessDefinition,
 	ExternalActionSource,
@@ -422,6 +423,8 @@ export interface LlmTurnDefinition<
 	externalActions?: Record<string, ProcessHumanTurnExternalActionSpec<TParams, TState>>;
 	/** Code-defined model policy purpose. Purpose selections cannot be overridden per launch/action. @internal */
 	modelPurpose?: LlmModelPurpose;
+	/** Static restrictions applied in addition to process and operator policy. @public */
+	modelRequirements?: import("@leitwerk-dev/protocol").ModelRequirements;
 	/** Extension-defined scoped settings consumed by this turn. @public */
 	executionPurpose?: string;
 	/** Built-in Pi tools active while this turn runs. @public */
@@ -1791,6 +1794,13 @@ function buildDefinedProcess<TParams, TState>(
 export function defineProcess<TParams = unknown, TState = unknown>(
 	input: DefinedProcessInput<TParams, TState>,
 ): ExtensionProcessDefinition<TParams, TState> {
+	if (input.modelRequirements !== undefined) assertValidModelRequirements(input.modelRequirements);
+	for (const [turnId, turn] of Object.entries(input.turns)) {
+		if ("modelRequirements" in turn && turn.modelRequirements !== undefined) {
+			if (turn.kind !== "llm") throw new Error(`Model requirements require an LLM turn: ${turnId}`);
+			assertValidModelRequirements(turn.modelRequirements);
+		}
+	}
 	const compiled = buildDefinedProcess(input);
 	const process = {
 		id: input.id,
@@ -1803,6 +1813,9 @@ export function defineProcess<TParams = unknown, TState = unknown>(
 		stateCodec: input.stateCodec,
 		initialState: input.initialState,
 		...(input.runtime ? { runtime: { ...input.runtime } } : {}),
+		...(input.modelRequirements
+			? { modelRequirements: structuredClone(input.modelRequirements) }
+			: {}),
 		...(input.resolveStorageSize ? { resolveStorageSize: input.resolveStorageSize } : {}),
 		...(input.repositoryCredentials ? { repositoryCredentials: input.repositoryCredentials } : {}),
 		...(input.piConfig ? { piConfig: input.piConfig } : {}),

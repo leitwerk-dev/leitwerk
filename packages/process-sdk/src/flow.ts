@@ -1313,6 +1313,12 @@ abstract class LlmConfigurationBuilder<
 	): LlmItemContext<TFamily>;
 
 	/** @public */
+	modelRequirements(requirements: import("@leitwerk-dev/protocol").ModelRequirements): this {
+		this.configuration.modelRequirements = structuredClone(requirements);
+		return this;
+	}
+
+	/** @public */
 	executionPurpose(purpose: string): this {
 		if (purpose) this.configuration.executionPurpose = purpose;
 		else delete this.configuration.executionPurpose;
@@ -2571,6 +2577,12 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 	 * through. Flow diagrams render this as the main line. Must start at the entry
 	 * turn and reference only declared turns without repeats.
 	 */
+	/** @public */
+	modelRequirements(requirements: import("@leitwerk-dev/protocol").ModelRequirements): this {
+		this.configuration.modelRequirements = structuredClone(requirements);
+		return this;
+	}
+
 	/** @public */
 	happyPath(...turnIds: readonly TurnId[]): this {
 		this.configuration.happyPath = turnIds;

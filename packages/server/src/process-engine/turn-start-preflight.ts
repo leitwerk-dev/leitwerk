@@ -4,10 +4,7 @@ import type {
 	ResolvedTurnStart,
 	TurnStartRecordState,
 } from "@leitwerk-dev/domain";
-import {
-	filterProviderOptionsForDefinition,
-	resolveOutcomeContract,
-} from "@leitwerk-dev/process-sdk";
+import { resolveOutcomeContract } from "@leitwerk-dev/process-sdk";
 import { IPC_PROTOCOL_VERSION, WORKER_API_VERSION } from "@leitwerk-dev/worker-protocol";
 import type { LeitwerkConfig } from "../config/config-types.js";
 import type { RepositoryBundle } from "../db/repositories.js";
@@ -207,14 +204,40 @@ export async function prepareCreatedTurnStarts(
 
 		// Resolve the model and required settings without yielding. An edit while the
 		// resource bundle is assembled belongs to the next start, not this snapshot.
-		const evaluated = deps.processModelPolicy.evaluate({
-			kind: "process_turn",
-			process: nextProcess,
-			turnId: write.input.turnId,
-			initialSelection: true,
-			startKind: write.input.startKind,
-			availability,
-		});
+		const priorState = write.input.state;
+		const captured = priorState.automaticRetry
+			? priorState.kind === "preparation_failed"
+				? priorState.requestedModelProfileId && priorState.modelSelectionProvenance
+					? {
+							modelProfileId: priorState.requestedModelProfileId,
+							provenance: priorState.modelSelectionProvenance,
+						}
+					: null
+				: priorState.kind === "starting" &&
+						priorState.start.kind === "llm" &&
+						priorState.start.modelSelectionProvenance
+					? {
+							modelProfileId: priorState.start.model.profileId,
+							provenance: priorState.start.modelSelectionProvenance,
+						}
+					: null
+			: null;
+		const evaluated = captured
+			? deps.processModelPolicy.evaluate({
+					kind: "runtime_selection",
+					target: { kind: "turn", turnId: write.input.turnId },
+					processId: nextProcess.processId,
+					selection: captured,
+					availability,
+				})
+			: deps.processModelPolicy.evaluate({
+					kind: "process_turn",
+					process: nextProcess,
+					turnId: write.input.turnId,
+					initialSelection: true,
+					startKind: write.input.startKind,
+					availability,
+				});
 		if (!evaluated.ok) {
 			const code =
 				evaluated.code === "model_unavailable" ||
@@ -243,6 +266,8 @@ export async function prepareCreatedTurnStarts(
 			Object.assign(nextProcess, patch);
 			Object.assign(writes.processPatch, patch);
 		}
+		// Automatic bootstrap recovery reuses the complete prepared execution, not current settings.
+		if (captured && priorState.kind === "starting") continue;
 		const provenance =
 			nextProcess.selectedTurnModelKind && nextProcess.selectedTurnModelSource
 				? {
@@ -303,9 +328,7 @@ export async function prepareCreatedTurnStarts(
 		const recoveryOptions = explicitProviderOptions
 			? { ...explicitProviderOptions }
 			: retainedProviderId !== null && retainedProviderId !== provider.id
-				? {
-						...filterProviderOptionsForDefinition(provider.definition.options, retainedOptions),
-					}
+				? {}
 				: retainedOptions;
 		const optionResult = resolveRegisteredProviderOptions({
 			provider,

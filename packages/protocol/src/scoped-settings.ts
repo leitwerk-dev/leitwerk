@@ -42,6 +42,8 @@ export interface SettingMetadata {
 
 /** @public */
 export interface SettingChoice {
+	/** Server-supplied profile labels for model controls only. @internal */
+	labels?: readonly string[];
 	/** @public */
 	value: string;
 	/** @public */

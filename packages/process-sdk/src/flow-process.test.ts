@@ -32,6 +32,32 @@ function processBuilder() {
 }
 
 describe("flow process composition", () => {
+	it("preserves independent static process and LLM turn requirements", () => {
+		const process = processBuilder()
+			.modelRequirements({ labels: { any_of: ["coding", "writing"] } })
+			.turn(
+				flow
+					.llm("publish_plan")
+					.description("Publish plan")
+					.modelRequirements({ labels: { all_of: ["planning"] }, capabilities: ["reasoning"] })
+					.buildPrompt(() => "Plan")
+					.publish("plan")
+					.to("consume_plan"),
+			)
+			.turn(consumingTurn())
+			.define();
+		expect(process.modelRequirements).toEqual({ labels: { any_of: ["coding", "writing"] } });
+		expect(process.turns.get("publish_plan")?.definition).toMatchObject({
+			modelRequirements: { labels: { all_of: ["planning"] }, capabilities: ["reasoning"] },
+		});
+		expect(() =>
+			processBuilder()
+				.modelRequirements({ labels: { any_of: [] } })
+				.turn(publishingTurn())
+				.turn(consumingTurn())
+				.define(),
+		).toThrow("model requirements");
+	});
 	it("fails fast on duplicate fragment turn ids", () => {
 		const fragmentA = flow.fragment("a").turn(publishingTurn());
 		const fragmentB = flow.fragment("b").turn(publishingTurn());

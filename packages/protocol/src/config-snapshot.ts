@@ -114,6 +114,10 @@ export interface WorkerRuntimeConfigSnapshot {
 
 /** @public */
 export interface ModelProfileSnapshot {
+	/** Operator-owned policy labels; duplicates have no semantic effect. @public */
+	labels?: string[];
+	/** Candidate for automatic selection after inherited preferences. @public */
+	default?: boolean;
 	/** @public */
 	id: string;
 	/** @public */
@@ -192,12 +196,16 @@ export interface ProcessPiConfigSnapshot {
 
 /** @public */
 export interface ProcessTurnConfigSnapshot {
+	/** Additional static restrictions; cannot widen code-defined requirements. @public */
+	model_requirements?: import("./model-requirements.js").ModelRequirements;
 	/** @internal */
 	model_profile?: string;
 }
 
 /** @public */
 export interface ProcessConfigSnapshot {
+	/** Additional static restrictions; cannot widen code-defined requirements. @public */
+	model_requirements?: import("./model-requirements.js").ModelRequirements;
 	/** Server-only installed skill IDs for new launches. Replaces global defaults; [] opts out. @public */
 	default_skills?: string[];
 	/** @public */

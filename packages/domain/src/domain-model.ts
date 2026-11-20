@@ -455,6 +455,9 @@ export type ProcessSelectedTurnModelSource =
 	| "scoped_purpose_default"
 	| "process_config_default"
 	| "catalog_default"
+	| "marked_default"
+	| "automatic"
+	| "fixed_purpose"
 	| "legacy_persisted";
 
 /** @internal */
@@ -818,6 +821,9 @@ export const PROCESS_SELECTED_TURN_MODEL_SOURCES = [
 	"process_config_default",
 	"scoped_purpose_default",
 	"catalog_default",
+	"marked_default",
+	"automatic",
+	"fixed_purpose",
 	"legacy_persisted",
 ] as const satisfies readonly ProcessSelectedTurnModelSource[];
 

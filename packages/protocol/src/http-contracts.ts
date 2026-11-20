@@ -412,6 +412,12 @@ export type ModelProfileAvailability = "available" | "unavailable" | "stale";
 
 /** @internal */
 export type ModelProfileOptionSummary = {
+	/** Independent of cached availability; includes failed requirement origins. @internal */
+	policyReason?: string;
+	/** @internal */
+	labels?: readonly string[];
+	/** @internal */
+	default?: boolean;
 	/** @internal */
 	id: string;
 	/** @internal */
@@ -524,6 +530,10 @@ export type ProcessModelConfigurationIssueView = {
 
 /** @internal */
 export interface ProcessModelConfigurationView {
+	/** @internal */
+	excludedProfiles?: Readonly<Record<string, readonly ModelProfileOptionSummary[]>>;
+	/** @internal */
+	profilesByTurn?: Readonly<Record<string, readonly ModelProfileOptionSummary[]>>;
 	/** @internal */
 	state:
 		| {
@@ -819,6 +829,10 @@ export interface ProcessDetailData extends ProcessDiagnosticsData {
 
 /** @internal */
 export interface LauncherModelConfigSchema {
+	/** Empty key denotes process preference; other keys are turn IDs. @internal */
+	excludedProfiles?: Readonly<Record<string, readonly ModelProfileOptionSummary[]>>;
+	/** @internal */
+	profilesByTurn?: Readonly<Record<string, readonly ModelProfileOptionSummary[]>>;
 	/** @internal */
 	availableProfiles: readonly ModelProfileOptionSummary[];
 	/** @internal */
@@ -846,6 +860,8 @@ export interface LauncherTurnModelConfigPreview {
 	description: string;
 	/** @internal */
 	effective: {
+		/** @internal */
+		explanation?: string;
 		/** @internal */
 		error?: string;
 		/** @internal */
@@ -1985,6 +2001,9 @@ const futureLaunchPayloadInputSchema = v.object({
 						"process_config_default",
 						"scoped_purpose_default",
 						"catalog_default",
+						"marked_default",
+						"automatic",
+						"fixed_purpose",
 						"legacy_persisted",
 					]),
 				),

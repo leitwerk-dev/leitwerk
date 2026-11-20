@@ -349,6 +349,13 @@ export function evaluateStandardModelStatuses(
 	);
 }
 
+function modelCapabilities(model?: { input?: readonly string[]; reasoning?: boolean }) {
+	return {
+		"image-input": model?.input ? model.input.includes("image") : ("unknown" as const),
+		reasoning: model?.reasoning ?? ("unknown" as const),
+	};
+}
+
 /** @internal */
 export function createStandardModelProvider(
 	providerId: string,
@@ -361,6 +368,11 @@ export function createStandardModelProvider(
 			providers: config.baseUrl || config.models ? { [providerId]: { ...config } } : {},
 		})),
 		server: reference,
+		capabilities: ({ config, modelId }) =>
+			modelCapabilities(
+				config.models?.find((entry) => entry.id === modelId) ??
+					getBuiltinModels(providerId as never).find((entry) => entry.id === modelId),
+			),
 		models: (ctx) => evaluateStandardModelStatuses(providerId, ctx),
 		credential: { parse: (value) => parseApiKeyCredential(value, providerId) },
 		secrets: ({ credential }) => apiKeySecrets(credential),
@@ -404,6 +416,8 @@ export function createCustomGatewayProvider(
 	return defineModelProvider({
 		id: providerId,
 		parseConfig: (raw) => parseCustomGatewayConfig(providerId, raw),
+		capabilities: ({ config, modelId }) =>
+			modelCapabilities(config.models.find((entry) => entry.id === modelId)),
 		worker: configuredPiProvider(providerId, ({ config }) => ({
 			providers: {
 				[config.providerId]: {

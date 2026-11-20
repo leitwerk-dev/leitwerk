@@ -40,6 +40,7 @@ export function registerProcessActionRoutes(
 			);
 			const profiles = deps.processModelPolicy.project({
 				kind: "profile_options",
+				target: { kind: "process_default" },
 				processId: process.processId,
 				availability: deps.modelStatusCache.snapshot(),
 			});

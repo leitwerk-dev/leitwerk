@@ -43,6 +43,7 @@ export function createProcessModelSelection(
 			return deps.processModelPolicy
 				.project({
 					kind: "profile_options",
+					target: { kind: "process_default" },
 					processId: process.processId,
 					availability: deps.modelStatusCache.snapshot(),
 				})
@@ -114,6 +115,7 @@ export function createProcessModelSelection(
 				resolveCompatibleModelProfileIds: (providerId, modelId) =>
 					deps.processModelPolicy.project({
 						kind: "compatible_profiles",
+						target: { kind: "turn", turnId },
 						availability,
 						processId: process.processId,
 						providerId,

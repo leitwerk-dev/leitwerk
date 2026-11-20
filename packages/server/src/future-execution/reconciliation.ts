@@ -6,7 +6,6 @@ import type { ProcessActionRegistry } from "../process-action-registry.js";
 import type { ProcessGraphRegistry } from "../process-graph.js";
 import {
 	evaluateAtStableAvailabilityRevision,
-	isPinnedModelSelection,
 	type ServerProcessModelPolicy,
 } from "../process-model-policy/index.js";
 import type { ProcessOperationCoordinator } from "../process-operation-coordinator.js";
@@ -101,39 +100,8 @@ export async function reconcileFutureExecutionModelBlocks(input: {
 				if (projected && !sameModelPolicyState(current, projected)) updateCurrent(projected);
 			};
 
-			if (!isPinnedModelSelection(current.modelSelection)) {
-				await projectCurrent();
-				return;
-			}
-			if (!current.modelSelection) {
-				await projectCurrent();
-				if (!current.modelSelection) return;
-			}
-
-			const validation = await evaluateStable((snapshot) =>
-				input.policy.evaluate({
-					kind: "runtime_selection",
-					availability: snapshot,
-					processId: current.processId,
-					selection: current.modelSelection ?? null,
-				}),
-			);
-			if (!validation.ok) {
-				parkStaleEvaluation();
-				return;
-			}
-			const result = validation.value;
-			const inheritedInvalid =
-				!result.ok &&
-				current.modelSelection.provenance.kind === "inherited" &&
-				(result.code === "unknown_model_profile" || result.code === "model_profile_not_allowed");
-			if (inheritedInvalid) {
-				await projectCurrent();
-				return;
-			}
-			const blockedReason = toFutureExecutionBlockReason(result, input.asOf, current.blockedReason);
-			if (sameModelPolicyState(current, { ...current, blockedReason })) return;
-			updateCurrent({ blockedReason });
+			// Re-plan the destination and validate against that turn, including pinned payload choices.
+			await projectCurrent();
 		});
 	}
 	const reaction = await runFutureExecutionPostCommitEffects(input, effects);

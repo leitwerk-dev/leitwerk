@@ -582,6 +582,37 @@ describe("GenericLauncher", () => {
 		expect(draftPlanTurnGroup.dataset.effectiveSource).toBe("process_config_turn");
 	});
 
+	it("groups model options without showing unavailable help for a healthy automatic selection", async () => {
+		const launcher = createLauncher();
+		if (!launcher.modelConfigSchema) throw new Error("Missing model schema");
+		launcher.modelConfigSchema.availableProfiles = [
+			{ ...localProfile, labels: ["premium"] },
+			{ ...serverDefaultProfile, labels: ["free"] },
+		];
+		launcher.modelConfigSchema.excludedProfiles = {
+			"": [
+				{
+					...localProfile,
+					id: "excluded",
+					policyReason: "missing_labels (coding) from turn:example/run",
+				},
+			],
+		};
+		const { target } = mountSubject({ launcher });
+		await flush();
+		const select = await getModelSelect(target);
+		expect(Array.from(select.querySelectorAll("optgroup")).map((group) => group.label)).toEqual([
+			"Free",
+			"Premium",
+		]);
+		expect(select.value).toBe("");
+		const disclosure = Array.from(target.querySelectorAll("summary")).find(
+			(summary) => summary.textContent === "Why unavailable?",
+		);
+		expect(disclosure).toBeUndefined();
+		expect(select.value).toBe("");
+	});
+
 	it("keeps inherited recommendations separate from explicit choices of the same model", async () => {
 		const { target } = mountSubject();
 		await flush();
@@ -591,14 +622,14 @@ describe("GenericLauncher", () => {
 		const draftPlanSelect = await getModelSelect(target, "draft_plan");
 
 		expect(defaultModelSelect.options[0]?.value).toBe("");
-		expect(defaultModelSelect.options[0]?.text).toBe("Recommended (claude_fast)");
+		expect(defaultModelSelect.options[0]?.text).toBe("Automatic (claude_fast)");
 		expect(Array.from(defaultModelSelect.options).map((option) => option.value)).toEqual([
 			"",
 			"claude_fast",
 			"local_qwen",
 		]);
 		expect(draftPlanSelect.options[0]?.value).toBe("");
-		expect(draftPlanSelect.options[0]?.text).toBe("Use inherited value");
+		expect(draftPlanSelect.options[0]?.text).toBe("Use automatic selection");
 		expect(target.textContent).not.toContain("Thinking level");
 	});
 
@@ -627,6 +658,7 @@ describe("GenericLauncher", () => {
 
 		expect(unavailableOption?.disabled).toBe(true);
 		expect(unavailableOption?.text).toContain("unavailable");
+		expect(target.textContent).not.toContain("Why unavailable?");
 	});
 
 	it("prefills launcher-provided model config from defaults and auto-opens the editor", async () => {

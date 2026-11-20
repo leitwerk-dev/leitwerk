@@ -638,8 +638,8 @@ export function createLaunchCoordinator(deps: LaunchCoordinatorDeps): LaunchCoor
 								defaultModelProfileId:
 									eventProfile ?? watcher.launchModelConfig.defaultModelProfileId,
 							},
-							// Event selections express ticket/user intent. Never silently drop them.
-							invalidModelConfig: eventProfile ? "reject" : "omit",
+							// Keep watcher intent; the affected turn enforces policy before starting.
+							invalidModelConfig: "retain",
 						},
 					);
 					return prepared.ok
