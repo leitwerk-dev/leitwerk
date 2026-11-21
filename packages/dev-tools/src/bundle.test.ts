@@ -3,9 +3,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildExtensionBundle } from "./bundle.js";
+import { checkExtensionBundle } from "./bundle-check.js";
 
 const temporary: string[] = [];
-async function fixture(missingResource = false) {
+async function fixture(options: { missingResource?: boolean; source?: string } = {}) {
+	const missingResource = options.missingResource ?? false;
 	const root = await mkdtemp(path.join(tmpdir(), "leitwerk-bundle-test-"));
 	temporary.push(root);
 	await mkdir(path.join(root, "extension", "dist"), { recursive: true });
@@ -31,7 +33,7 @@ async function fixture(missingResource = false) {
 	);
 	await writeFile(
 		path.join(root, "extension", "dist", "index.js"),
-		"export default { manifest: { id: 'x', version: '1' } };\n",
+		options.source ?? "export default { manifest: { id: 'x', version: '1' } };\n",
 	);
 	await writeFile(
 		path.join(root, "composition.yaml"),
@@ -57,8 +59,29 @@ describe("extension bundles", () => {
 		]);
 	});
 
+	it("rejects an undeclared bare dependency in the packed JavaScript", async () => {
+		const input = await fixture({
+			source:
+				"import missing from 'not-in-the-bundle'; export default { manifest: { id: 'x', version: missing } };\n",
+		});
+		const output = path.join(input.root, "bundle");
+		await buildExtensionBundle(input.composition, output);
+		await expect(checkExtensionBundle(output)).rejects.toThrow(
+			"imports undeclared package 'not-in-the-bundle'",
+		);
+	});
+
+	it("fails boot when a packed extension cannot load", async () => {
+		const input = await fixture({
+			source: "export default { manifest: { id: 'x', version: }; };\n",
+		});
+		const output = path.join(input.root, "bundle");
+		await buildExtensionBundle(input.composition, output);
+		await expect(checkExtensionBundle(output)).rejects.toThrow();
+	});
+
 	it("rejects a declared resource that is not packaged", async () => {
-		const input = await fixture(true);
+		const input = await fixture({ missingResource: true });
 		await expect(
 			buildExtensionBundle(input.composition, path.join(input.root, "bundle")),
 		).rejects.toThrow("declares missing resource 'missing'");
