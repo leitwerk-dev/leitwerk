@@ -135,8 +135,10 @@ publishing and license staging never include private composed packages.
 ## Reload and verification
 
 Source development watches configured extension and workspace package sources.
-Runtime changes preflight before replacing the backend. A failed preflight leaves
-the healthy backend running. UI source changes use Vite's development path. Changes
+Runtime changes preflight before replacing the backend. Preflight validates against
+an SQLite snapshot and disposable workspace, tree and Pi directories. It leaves
+configured storage untouched. A failed preflight leaves the healthy backend
+running. UI source changes use Vite's development path. Changes
 to configuration or extension metadata preflight and restart the development session.
 
 Local workers can load composed source roots. Isolated workers do not receive host
