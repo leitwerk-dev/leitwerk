@@ -12,10 +12,11 @@ it("starts the declared sandbox through installed packages in release mode", asy
 	const { root, json } = testWorkspace();
 	json("package.json", { private: true, type: "module" });
 	mkdirSync(path.join(root, "sandbox"));
+	mkdirSync(path.join(root, "sandbox", "tests"));
 	writeFileSync(path.join(root, "leitwerk.yaml"), "server: {}\n");
 	writeFileSync(
 		path.join(root, "leitwerk.composition.yaml"),
-		"version: 1\nruntime_config: ./leitwerk.yaml\nsandboxes:\n  demo: ./sandbox/composition.js\n",
+		"version: 1\nruntime_config: ./leitwerk.yaml\ntest_roots:\n  - ./sandbox/tests\nsandboxes:\n  demo: ./sandbox/composition.js\n",
 	);
 	writeFileSync(path.join(root, "sandbox/composition.js"), "export default () => ({})\n");
 	json(".leitwerk/development.json", { mode: "release" });

@@ -160,6 +160,53 @@ for command and hook contracts.
 Custom compositions supply their catalog, scenarios, scripted Pi, controls, and
 provider fixtures. Keep extension behavior outside core packages.
 
+An extension composition is a factory, not a second process implementation. The
+factory receives `SandboxInput` and constructs adapters from those paths and URLs;
+production modules are assembled into the catalog exactly as in production. Export
+local-only adapters and seeds from the extension's `/testing` entry point so
+composition code and tests do not import private implementation paths. A scenario
+that exercises production behavior sets `launcherId` to the production launcher;
+use `withSandboxLaunchers` only for a deliberately local launcher. This preserves
+production launcher admission, validation, and turn semantics.
+
+A typical extension workspace can have:
+
+```text
+src/index.ts                 # production extension and process
+src/testing/index.ts         # local adapter factories and test seeds
+sandbox/composition.ts       # SandboxCompositionFactory
+sandbox/composition.test.ts # scripted harness tests
+```
+
+The composition's `createCatalog` includes the production extension and local
+adapter extension, while `scenarios` only describes admitted inputs. Persist adapter
+state below `input.paths.directory`; do not use the repository or ambient
+credentials. Test the same factory used by the launcher with
+`startSandboxHarness`:
+
+```ts
+import { startSandboxHarness } from "@leitwerk-dev/dev-sandbox/testing";
+import composition from "./composition.js";
+
+const sandbox = await startSandboxHarness(composition);
+try {
+  const result = await sandbox.admitScenario("example", { input: {} });
+  expect(result.statusCode).toBe(200);
+} finally {
+  await sandbox.stop();
+}
+```
+
+List the directory containing these tests under `test_roots` so the composed test
+command discovers them:
+
+```yaml
+test_roots:
+  - ./sandbox
+sandboxes:
+  example: ./sandbox/composition.ts
+```
+
 Extension workspaces declare sandbox compositions in the manifest. With the local
 core selected, `leitwerk-dev sandbox` starts the only declared sandbox; use
 `--sandbox=NAME` when several are declared. Launcher options such as `--llm=real`

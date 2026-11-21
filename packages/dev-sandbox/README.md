@@ -5,8 +5,17 @@
 scripted/real mode, UI/backend origins, and the selected model profile. It supplies
 the catalog, process configuration, named launch configurations, scripted Pi
 factory, initialization, controls, polling and cleanup. Adapters own their storage
-and scenario counters. Use `StubToolCallScriptResolver`,
+and scenario counters; construct them from `SandboxInput` rather than ambient
+credentials. Keep local adapter factories and seeds in an extension's `/testing`
+export. Use `StubToolCallScriptResolver`,
 `StubPiTreeHandleFactory({ recordSessionTrace: true })`, and ordinary callbacks.
+
+A composition wraps the production catalog; it is not a second process
+implementation. Scenarios that exercise a production process should set `launcherId`
+to its existing launcher. Add `withSandboxLaunchers` only for an intentional local
+launcher. Put tests using the same factory under a manifest `test_roots` directory
+and start them with `startSandboxHarness(factory)` for ephemeral ports and disposable
+storage.
 
 `withSandboxLaunchers` adds a `sandbox.<name>` UI launcher for each scenario with a
 `launch` callback. Use it only in a development composition; SDK definition identity
