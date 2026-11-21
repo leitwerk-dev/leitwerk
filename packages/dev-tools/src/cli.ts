@@ -3,7 +3,11 @@ import { parseArgs } from "node:util";
 import { type DevelopmentCommand, runDevelopment } from "./development.js";
 
 try {
-	if (process.argv[2]?.startsWith("skills:")) {
+	if (process.argv[2] === "bundle") {
+		await (await import("./bundle.js")).runBundleCli(process.argv.slice(3));
+	} else if (process.argv[2] === "bundle:check") {
+		await (await import("./bundle-check.js")).runBundleCheckCli(process.argv.slice(3));
+	} else if (process.argv[2]?.startsWith("skills:")) {
 		await (await import("./skill-pack.js")).runSkillPackCli(process.argv[2], process.argv.slice(3));
 	} else if (process.argv[2] === "api:report") {
 		await (await import("./api-report.js")).runApiReportCli(process.argv.slice(3));
@@ -39,7 +43,7 @@ try {
 		if (values.help || positionals.length === 0) {
 			console.info(`Usage: leitwerk-dev <command> [options]
 
-Commands: skills:prepare, skills:diff, skills:build, dev, build, typecheck, test:full, sandbox, api:check, api:report, core:status, core:use-local, core:use-release, benchmark:worker-startup
+Commands: bundle, bundle:check, skills:prepare, skills:diff, skills:build, dev, build, typecheck, test:full, sandbox, api:check, api:report, core:status, core:use-local, core:use-release, benchmark:worker-startup
 
 sandbox [--sandbox=NAME] [--llm=scripted|real] [--ui-port=N] [--backend-port=N] [reset]
                     Start a manifest-declared sandbox with the local core

@@ -5,8 +5,17 @@
 scripted/real mode, UI/backend origins, and the selected model profile. It supplies
 the catalog, process configuration, named launch configurations, scripted Pi
 factory, initialization, controls, polling and cleanup. Adapters own their storage
-and scenario counters. Use `StubToolCallScriptResolver`,
+and scenario counters; construct them from `SandboxInput` rather than ambient
+credentials. Keep local adapter factories and seeds in an extension's `/testing`
+export. Use `StubToolCallScriptResolver`,
 `StubPiTreeHandleFactory({ recordSessionTrace: true })`, and ordinary callbacks.
+
+A composition wraps the production catalog; it is not a second process
+implementation. Scenarios that exercise a production process should set `launcherId`
+to its existing launcher. Add `withSandboxLaunchers` only for an intentional local
+launcher. Put tests using the same factory under a manifest `test_roots` directory
+and start them with `startSandboxHarness(factory)` for ephemeral ports and disposable
+storage.
 
 `withSandboxLaunchers` adds a `sandbox.<name>` UI launcher for each scenario with a
 `launch` callback. Use it only in a development composition; SDK definition identity
@@ -39,12 +48,13 @@ Controls accept only same-origin browser requests. Listeners use `127.0.0.1`.
 Use `startSandboxHarness(factory)` from `@leitwerk-dev/dev-sandbox/testing` to test a
 scripted composition with an ephemeral port and disposable storage.
 
-The `/launcher` export provides `launchSandbox({ publicRoot, workspaceRoot,
-compositionEntry })`. It requires the public source checkout and its installed
-development dependencies. The composition entry exports its factory as default.
+The `/launcher` export provides `launchSandbox({ workspaceRoot, compositionEntry })`.
+Source startup may additionally provide `publicRoot`; installed startup supplies the
+published supervisor entry. The composition entry exports its factory as default.
 A storage directory cannot be reused for another composition until reset.
-This release does not provide installed-package sandbox startup. The CLI invokes
-the public development supervisor, including configuration reloads and custom
+The CLI supports both dependency lanes. Installed startup uses the published
+supervisor, backend and preflight entries, while source startup invokes the public
+development supervisor. Both lanes support configuration reloads and custom
 backend/preflight entries. `/preflight` validates with disposable application,
 workspace, Pi and adapter storage; it never starts background services.
 

@@ -1,10 +1,14 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createServer as createNetServer } from "node:net";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "@leitwerk-dev/server";
 import chokidar, { type FSWatcher } from "chokidar";
 import { createServer, type ViteDevServer } from "vite";
+import { stringify } from "yaml";
 import { stopAttached, waitForBackendReady } from "./child-process.js";
 import { createCoalescedRunner } from "./coalesced-runner.js";
 import { loadWorkspaceComposition } from "./composition.js";
@@ -12,9 +16,73 @@ import { build } from "./development.js";
 import { compositionPath, type DevelopmentOptions, workspaceRoot } from "./selection.js";
 import { packageDirectory, workspacePackages } from "./workspace.js";
 
+async function unusedPort(): Promise<number> {
+	const server = createNetServer();
+	server.listen(0, "127.0.0.1");
+	await new Promise<void>((resolve) => server.once("listening", resolve));
+	const address = server.address();
+	if (!address || typeof address === "string")
+		throw new Error("Could not reserve a candidate port");
+	await new Promise<void>((resolve, reject) =>
+		server.close((error) => (error ? reject(error) : resolve())),
+	);
+	return address.port;
+}
+
+async function preflightCandidate(
+	input: ReturnType<typeof loadWorkspaceComposition>,
+	configPath: string,
+	preflightEntry = fileURLToPath(new URL("./server.js", import.meta.url)),
+): Promise<void> {
+	const loaded = loadConfig(configPath);
+	if (!loaded.ok) throw new Error(loaded.error);
+	const scratchRoot = await mkdtemp(path.join(os.tmpdir(), "leitwerk-dev-candidate-"));
+	const port = await unusedPort();
+	const config = {
+		...loaded.config,
+		server: { ...loaded.config.server, host: "127.0.0.1", port },
+		storage: {
+			...loaded.config.storage,
+			sqlite_path: ":memory:",
+			process_workspaces_dir: path.join(scratchRoot, "workspaces"),
+			tree_files_dir: path.join(scratchRoot, "trees"),
+			artifacts_dir: path.join(scratchRoot, "artifacts"),
+		},
+		pi: { ...loaded.config.pi, agent_dir: path.join(scratchRoot, "pi") },
+	};
+	const candidateConfigPath = path.join(scratchRoot, "config.yaml");
+	await writeFile(candidateConfigPath, stringify(config));
+	const child = spawn(process.execPath, [preflightEntry], {
+		cwd: input.workspaceRoot,
+		stdio: "inherit",
+		env: {
+			...process.env,
+			LEITWERK_RUNTIME_LANE: "dist",
+			LEITWERK_COMPOSITION_PATH: input.manifestPath,
+			LEITWERK_CONFIG_PATH: candidateConfigPath,
+			HOST: "127.0.0.1",
+			PORT: String(port),
+		},
+	});
+	try {
+		if (!(await waitForBackendReady(child, `http://127.0.0.1:${port}/api/ready`)))
+			throw new Error("Built candidate did not become ready");
+	} finally {
+		await stopAttached(child, { graceMs: 5_000 });
+		await rm(scratchRoot, { recursive: true, force: true });
+	}
+}
+
 export async function develop(options: DevelopmentOptions): Promise<void> {
 	const root = workspaceRoot(options);
 	const manifestPath = compositionPath(options);
+	const backendEntry =
+		process.env.LEITWERK_DEV_BACKEND_ENTRY ??
+		fileURLToPath(new URL("./server.js", import.meta.url));
+	const preflightEntry = process.env.LEITWERK_DEV_PREFLIGHT_ENTRY ?? backendEntry;
+	const extraWatchPaths = JSON.parse(process.env.LEITWERK_DEV_WATCH_PATHS_JSON ?? "[]") as unknown;
+	if (!Array.isArray(extraWatchPaths) || extraWatchPaths.some((value) => typeof value !== "string"))
+		throw new Error("LEITWERK_DEV_WATCH_PATHS_JSON must be an array of paths");
 	const uiRoot = path.join(packageDirectory("@leitwerk-dev/ui", root), "dist");
 	if (!existsSync(path.join(uiRoot, "index.html")))
 		throw new Error("Installed Leitwerk UI has no dist/index.html");
@@ -49,6 +117,7 @@ export async function develop(options: DevelopmentOptions): Promise<void> {
 	};
 	const watchPaths = (configPath: string) => [
 		configPath,
+		...(extraWatchPaths as string[]),
 		...workspacePackages(root).flatMap((entry) => [
 			path.join(entry.dir, "src"),
 			path.join(entry.dir, "package.json"),
@@ -78,23 +147,19 @@ export async function develop(options: DevelopmentOptions): Promise<void> {
 	const terminate = () => void shutdown(143);
 	async function start(input: ReturnType<typeof settings>) {
 		if (stopping) return;
-		const child = spawn(
-			process.execPath,
-			[fileURLToPath(new URL("./server.js", import.meta.url))],
-			{
-				cwd: root,
-				stdio: "inherit",
-				env: {
-					...process.env,
-					LEITWERK_RUNTIME_LANE: "dist",
-					LEITWERK_COMPOSITION_PATH: manifestPath,
-					LEITWERK_CONFIG_PATH: input.configPath,
-					HOST: input.host,
-					PORT: String(input.port),
-					LEITWERK_BASE_URL: process.env.LEITWERK_BASE_URL ?? input.baseUrl,
-				},
+		const child = spawn(process.execPath, [backendEntry], {
+			cwd: root,
+			stdio: "inherit",
+			env: {
+				...process.env,
+				LEITWERK_RUNTIME_LANE: "dist",
+				LEITWERK_COMPOSITION_PATH: manifestPath,
+				LEITWERK_CONFIG_PATH: input.configPath,
+				HOST: input.host,
+				PORT: String(input.port),
+				LEITWERK_BASE_URL: process.env.LEITWERK_BASE_URL ?? input.baseUrl,
 			},
-		);
+		});
 		backend = child;
 		child.once("error", (error) => {
 			console.error(error.message);
@@ -140,8 +205,11 @@ export async function develop(options: DevelopmentOptions): Promise<void> {
 				try {
 					input = settings();
 					await build(root);
+					await preflightCandidate(input.input, input.configPath, preflightEntry);
 				} catch (error) {
-					console.error(error instanceof Error ? error.message : "Build failed");
+					console.error(
+						error instanceof Error ? error.message : "Build or candidate preflight failed",
+					);
 					return;
 				}
 				if (stopping) return;
