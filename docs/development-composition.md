@@ -140,6 +140,10 @@ an SQLite snapshot and disposable workspace, tree and Pi directories. It leaves
 configured storage untouched. A failed preflight leaves the healthy backend
 running. UI source changes use Vite's development path. Changes
 to configuration or extension metadata preflight and restart the development session.
+In the scripted sandbox, the source supervisor records running turns against the old
+worker lease before reload and retries only the matching turn after the new backend
+reports readiness. A failure that predates the reload, or a failure from another
+worker lifecycle, is left parked; authenticated backends skip this automatic retry.
 
 Local workers can load composed source roots. Isolated workers do not receive host
 source paths; package the required built artifacts in their images.

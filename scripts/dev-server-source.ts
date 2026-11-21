@@ -6,6 +6,10 @@ import chokidar from "chokidar";
 import { waitForBackendReady } from "../packages/dev-tools/src/child-process.ts";
 import { loadDevContext } from "./dev-context.ts";
 import {
+	recordInterruptedTurnCandidates,
+	retryInterruptedTurns,
+} from "./dev-interrupted-turn-retry.ts";
+import {
 	createCoalescedRunner,
 	exitStopOptions,
 	observeUnexpectedChildFailure,
@@ -16,6 +20,17 @@ import {
 import { loadActiveDevelopmentComposition } from "./development-composition.ts";
 
 const repoRoot = process.cwd();
+
+function interruptedTurnRetryEnabled(): boolean {
+	const explicit = process.env.LEITWERK_DEV_RETRY_INTERRUPTED_TURNS?.trim().toLowerCase();
+	if (explicit !== undefined) return ["1", "true", "yes", "on"].includes(explicit);
+	try {
+		return JSON.parse(process.env.LEITWERK_SANDBOX_INPUT ?? "null")?.mode === "scripted";
+	} catch {
+		return false;
+	}
+}
+
 const coreRuntimePackages = [
 	"domain",
 	"extension-runtime",
@@ -102,6 +117,8 @@ async function main(): Promise<void> {
 	let watcher: chokidar.FSWatcher | null = null;
 	const changedPaths = new Set<string>();
 	const expectedBackendExits = new WeakSet<ChildProcess>();
+	const retryEnabled = interruptedTurnRetryEnabled();
+	const backendBaseUrl = process.env.LEITWERK_BASE_URL ?? "http://127.0.0.1:8080";
 
 	const shutdown = async (exitCode: number): Promise<void> => {
 		if (shuttingDown) return;
@@ -164,6 +181,14 @@ async function main(): Promise<void> {
 	const restart = createCoalescedRunner(
 		async () => {
 			const paths = [...changedPaths];
+			const interruptedTurns = retryEnabled
+				? await recordInterruptedTurnCandidates(backendBaseUrl).catch((error) => {
+						console.error(
+							`[dev:server] Could not record interrupted turns: ${error instanceof Error ? error.message : String(error)}`,
+						);
+						return [];
+					})
+				: [];
 			changedPaths.clear();
 			console.info(
 				`[dev:server] Preflighting ${paths.length} changed runtime path(s): ${paths
@@ -182,7 +207,17 @@ async function main(): Promise<void> {
 				expectedBackendExits.add(previous);
 				await stopManaged(previous, { graceMs: 20_000 });
 			}
-			if (!shuttingDown) backend = spawnBackend();
+			if (!shuttingDown) {
+				backend = spawnBackend();
+				if (retryEnabled && interruptedTurns.length > 0) {
+					const ready = await waitForBackendReady(
+						backend,
+						new URL("/api/health", backendBaseUrl),
+						() => shuttingDown,
+					);
+					if (ready && !shuttingDown) await retryInterruptedTurns(backendBaseUrl, interruptedTurns);
+				}
+			}
 		},
 		() => shuttingDown,
 	);
