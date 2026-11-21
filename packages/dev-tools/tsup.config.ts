@@ -9,6 +9,7 @@ export default workspaceBuild({
 		"src/supervisor.ts",
 		"src/composition.ts",
 		"src/workspace.ts",
+		"src/bundle.ts",
 	],
 	dts: false,
 	splitting: true,

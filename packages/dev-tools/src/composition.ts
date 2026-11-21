@@ -179,7 +179,7 @@ export function loadWorkspaceComposition(manifestPath: string): WorkspaceComposi
 		declaredCoreRoot,
 		workspaceRoot,
 		runtimeConfigPath,
-		extensionDirs: [...new Set(extensionDirs)].sort(),
+		extensionDirs: [...new Set(extensionDirs)],
 		testRoots: [...new Set(testRoots)].sort(),
 		sandboxes,
 		packages: [...byName.values()].sort((left, right) => left.name.localeCompare(right.name)),
