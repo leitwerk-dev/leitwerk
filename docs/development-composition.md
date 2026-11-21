@@ -168,8 +168,8 @@ Keep local settings in `.leitwerk/sandbox/<name>.yaml`, not tracked files. Depen
 released `@leitwerk-dev/dev-sandbox` matching the other `@leitwerk-dev/*` pins, not a
 `file:` link into the checkout.
 
-The source sandbox requires a core checkout; installed packages do not include its
-supervisor, UI source, or built-in scenarios. Follow the
+The sandbox runs from installed packages in release mode; selecting a local core
+checkout uses the source supervisor and built-in source scenarios. Follow the
 [sandbox guide](https://github.com/leitwerk-dev/leitwerk/blob/main/sandbox/README.md)
 and [harness contract](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/dev-sandbox/README.md)
 for custom backend composition, startup, and reset. Those guides own the sandbox's

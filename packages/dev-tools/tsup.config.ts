@@ -6,6 +6,7 @@ export default workspaceBuild({
 		"src/skill-pack.ts",
 		"src/benchmark.ts",
 		"src/server.ts",
+		"src/supervisor.ts",
 		"src/composition.ts",
 		"src/workspace.ts",
 	],
