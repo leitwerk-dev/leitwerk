@@ -1,11 +1,7 @@
 import { cp, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import {
-	createCatalogWorkerDefinitionResolver,
-	loadExtensionCatalog,
-} from "@leitwerk-dev/extension-runtime";
-import { createAppContext, getDefaultConfig } from "@leitwerk-dev/server";
+import { runExtensionBootCheck } from "@leitwerk-dev/server";
 import type { ExtensionBundleManifest } from "./bundle.js";
 import { packageDirectory, readJson } from "./workspace.js";
 
@@ -63,7 +59,7 @@ async function verifyHosts(manifest: ExtensionBundleManifest): Promise<void> {
 		).version;
 		if (installed !== required.version) {
 			throw new Error(
-				`Host package '${required.name}' version mismatch: bundle requires ${required.version ?? "unknown"}, installed ${installed ?? "unknown"}`,
+				`Host package '${required.name}' version mismatch: required '${required.version}', installed '${installed}'`,
 			);
 		}
 	}
@@ -90,32 +86,8 @@ export async function checkExtensionBundle(bundleDir: string): Promise<void> {
 		const sources = manifest.sources.map((source) =>
 			path.join(checkedBundle, "node_modules", source.packageName),
 		);
-		const config = getDefaultConfig();
-		config.storage.sqlite_path = ":memory:";
-		config.extension_loading.sources = sources;
-		const catalog = await loadExtensionCatalog({ startDir: checkedBundle, sources });
-		if (!catalog) throw new Error("Bundle worker catalog was not loaded");
-		// Resolve every worker definition through the same catalog the local worker uses;
-		// this catches worker-boundary imports rather than merely proving server setup ran.
-		const resolveWorker = createCatalogWorkerDefinitionResolver(catalog);
-		for (const processId of catalog.processes.keys()) {
-			if (!resolveWorker(processId))
-				throw new Error(`Bundle worker catalog could not resolve '${processId}'`);
-		}
-		const context = await createAppContext({
-			config,
-			extensionCatalog: catalog,
-			extensionLoadingStartDir: checkedBundle,
-			logger: false,
-		});
-		try {
-			await context.app.listen({ host: "127.0.0.1", port: 0 });
-			const health = await context.app.inject({ method: "GET", url: "/api/health" });
-			if (health.statusCode !== 200 || health.json().status !== "ok")
-				throw new Error(`Bundle boot check failed with HTTP ${health.statusCode}`);
-		} finally {
-			await context.close();
-		}
+		// Reconstruct the ordered source list from manifest package provenance.
+		await runExtensionBootCheck({ extensionLoadingStartDir: checkedBundle, sources });
 	} finally {
 		await rm(scratch, { recursive: true, force: true });
 	}
