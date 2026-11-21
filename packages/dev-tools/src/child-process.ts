@@ -1,4 +1,5 @@
 import type { ChildProcess } from "node:child_process";
+import { once } from "node:events";
 import { setTimeout as delay } from "node:timers/promises";
 
 export function signalProcessGroup(child: ChildProcess, signal: NodeJS.Signals = "SIGTERM"): void {
@@ -44,6 +45,13 @@ export async function stopAttached(
 		child.kill(signal);
 		if (child.exitCode !== null || child.signalCode !== null) finish();
 	});
+}
+
+export function waitForSuccess(child: ChildProcess, signal?: AbortSignal): Promise<boolean> {
+	return once(child, "exit", { signal }).then(
+		([code]) => code === 0,
+		() => false,
+	);
 }
 
 export async function waitForBackendReady(

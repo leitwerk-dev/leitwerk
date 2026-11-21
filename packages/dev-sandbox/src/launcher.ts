@@ -18,8 +18,8 @@ export interface SandboxLauncherOptions {
 	compositionEntry: string;
 	/** @internal */
 	args?: string[];
-	/** Installed supervisor entry; omitted for source checkout startup. @internal */
-	supervisorEntry?: string;
+	/** Installed development CLI; omitted for source checkout startup. @internal */
+	cliEntry?: string;
 }
 
 /** Only these ambient values enter the sandbox process tree. @public */
@@ -145,7 +145,7 @@ export async function launchSandbox(options: SandboxLauncherOptions): Promise<vo
 	writeFileSync(pidFile, JSON.stringify(owner), { flag: "wx", mode: 0o600 });
 	console.info(`Local controls: ${input.urls.backend}/__local`);
 	try {
-		await runSupervisor(options, env);
+		await runSupervisor(options, env, compositionPath);
 	} catch (error) {
 		// A dead supervisor does not prove that its detached children stopped.
 		writeFileSync(pidFile, JSON.stringify({ ...owner, shutdownFailed: true }), { mode: 0o600 });
@@ -157,9 +157,10 @@ export async function launchSandbox(options: SandboxLauncherOptions): Promise<vo
 async function runSupervisor(
 	options: SandboxLauncherOptions,
 	env: NodeJS.ProcessEnv,
+	compositionPath: string,
 ): Promise<void> {
-	const command = options.supervisorEntry
-		? [options.supervisorEntry]
+	const command = options.cliEntry
+		? [options.cliEntry, "dev", "--composition", compositionPath]
 		: [
 				"--conditions=source",
 				"--import",
@@ -169,8 +170,7 @@ async function runSupervisor(
 				"scripts/dev-supervisor.ts",
 			];
 	const child = spawn(process.execPath, command, {
-		cwd: options.supervisorEntry ? options.workspaceRoot : (options.publicRoot ?? process.cwd()),
-
+		cwd: options.cliEntry ? options.workspaceRoot : (options.publicRoot ?? process.cwd()),
 		env,
 		stdio: "inherit",
 		detached: true,

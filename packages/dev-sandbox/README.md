@@ -48,15 +48,11 @@ Controls accept only same-origin browser requests. Listeners use `127.0.0.1`.
 Use `startSandboxHarness(factory)` from `@leitwerk-dev/dev-sandbox/testing` to test a
 scripted composition with an ephemeral port and disposable storage.
 
-The `/launcher` export provides `launchSandbox({ workspaceRoot, compositionEntry })`.
-Source startup may additionally provide `publicRoot`; installed startup supplies the
-published supervisor entry. The composition entry exports its factory as default.
-A storage directory cannot be reused for another composition until reset.
-The CLI supports both dependency lanes. Installed startup uses the published
-supervisor, backend and preflight entries, while source startup invokes the public
-development supervisor. Both lanes support configuration reloads and custom
-backend/preflight entries. `/preflight` validates with disposable application,
-workspace, Pi and adapter storage; it never starts background services.
+Use `leitwerk-dev sandbox` with installed packages, or call the `/launcher` export
+with `{ publicRoot, workspaceRoot, compositionEntry }` from a source checkout.
+The entry default-exports its factory. Reset storage before switching compositions.
+Both lanes reload configuration and support custom backend/preflight entries.
+`/preflight` uses disposable storage and never starts background services.
 
 Storage lives at `<workspace>/.leitwerk/sandbox/{scripted,real}`. `/storage` exports
 the confined reset operation. It verifies supervisor identity, retains storage on

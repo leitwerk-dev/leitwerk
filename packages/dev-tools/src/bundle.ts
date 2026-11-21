@@ -1,9 +1,17 @@
-import { createHash } from "node:crypto";
-import { chmod, cp, mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { createHash, type Hash } from "node:crypto";
+import { chmod, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { promisify } from "node:util";
+import * as extensionRuntime from "@leitwerk-dev/extension-runtime";
 import { loadConfig } from "@leitwerk-dev/server";
 import { loadWorkspaceComposition } from "./composition.js";
-import { packageDirectory, readJson, type WorkspacePackage } from "./workspace.js";
+import {
+	packageDirectory,
+	readJson,
+	readWorkspacePackage,
+	type WorkspacePackage,
+} from "./workspace.js";
 
 export interface BundleSource {
 	source: string;
@@ -20,8 +28,7 @@ export interface ExtensionBundleManifest {
 }
 
 type PackageRecord = WorkspacePackage & {
-	files?: unknown;
-	leitwerk?: { pi?: unknown; skills?: unknown };
+	leitwerk?: { pi?: { resources?: unknown }; skills?: unknown };
 };
 
 function hostPackage(name: string): boolean {
@@ -34,83 +41,48 @@ function packagePath(root: string, name: string, workspace: Map<string, Workspac
 	return packageDirectory(name, root);
 }
 
-function matchesFile(relative: string, patterns: string[]): boolean {
-	const normalized = relative.split(path.sep).join("/");
-	const positive = patterns.filter((item) => !item.startsWith("!"));
-	const negative = patterns.filter((item) => item.startsWith("!")).map((item) => item.slice(1));
-	const match = (pattern: string) => {
-		const escaped = pattern
-			.replace(/[.+^${}()|[\]\\]/g, "\\$&")
-			.replace(/\*\*/g, ".*")
-			.replace(/\*/g, "[^/]*");
-		return new RegExp(`^${escaped}$`).test(normalized);
-	};
-	return (positive.length === 0 || positive.some(match)) && !negative.some(match);
-}
+const run = promisify(execFile);
 
-async function filesUnder(root: string, relative = ""): Promise<string[]> {
-	const directory = path.join(root, relative);
-	const result: string[] = [];
-	for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) =>
-		a.name.localeCompare(b.name),
-	)) {
-		const child = relative ? `${relative}/${entry.name}` : entry.name;
-		if (entry.isDirectory()) result.push(...(await filesUnder(root, child)));
-		else if (entry.isFile()) result.push(child);
-	}
-	return result;
-}
-
-async function selectedFiles(root: string, manifest: PackageRecord): Promise<string[]> {
-	const patterns = Array.isArray(manifest.files)
-		? manifest.files.filter((x): x is string => typeof x === "string")
-		: [];
-	const files = await filesUnder(root);
-	const selected = files.filter((file) => matchesFile(file, patterns));
-	for (const required of ["package.json", "README", "README.md", "LICENSE", "LICENSE.md"]) {
-		const actual = files.find((file) => file.toLowerCase() === required.toLowerCase());
-		if (actual && !selected.includes(actual)) selected.push(actual);
-	}
-	return selected.sort();
-}
-
-function declaredResourcePaths(manifest: PackageRecord): string[] {
-	const pi = manifest.leitwerk?.pi;
-	const values: string[] = [];
-	if (pi && typeof pi === "object" && !Array.isArray(pi)) {
-		const resources = (pi as { resources?: unknown }).resources;
-		if (resources && typeof resources === "object" && !Array.isArray(resources)) {
-			for (const value of Object.values(resources))
-				if (Array.isArray(value))
-					values.push(...value.filter((x): x is string => typeof x === "string"));
-		}
-	}
-	if (typeof manifest.leitwerk?.skills === "string") values.push(manifest.leitwerk.skills);
-	return values;
+async function selectedFiles(root: string): Promise<string[]> {
+	const { stdout } = await run("npm", ["pack", ".", "--dry-run", "--json", "--ignore-scripts"], {
+		cwd: root,
+		env: {
+			...process.env,
+			PATH: [path.dirname(process.execPath), process.env.PATH].join(path.delimiter),
+		},
+		maxBuffer: 16 * 1024 * 1024,
+	});
+	const [pack] = JSON.parse(stdout) as Array<{ files: Array<{ path: string }> }>;
+	return pack.files.map((file) => file.path).sort();
 }
 
 async function copyPackage(
 	destination: string,
-	source: string,
 	manifest: PackageRecord,
+	hash: Hash,
 ): Promise<void> {
-	const files = await selectedFiles(source, manifest);
-	for (const relative of files) {
-		const from = path.join(source, relative);
+	for (const relative of await selectedFiles(manifest.dir)) {
+		const from = path.join(manifest.dir, relative);
 		const to = path.join(destination, relative);
-		await mkdir(path.dirname(to), { recursive: true });
+		const contents = await readFile(from);
 		const mode = (await stat(from)).mode & 0o111 ? 0o755 : 0o644;
-		await cp(from, to);
+		await mkdir(path.dirname(to), { recursive: true });
+		await writeFile(to, contents);
 		await chmod(to, mode);
+		hash.update(`${manifest.name}/${relative}\0${mode}\0`).update(contents);
 	}
-	for (const resource of declaredResourcePaths(manifest)) {
-		const target = path.resolve(source, resource);
-		if (
-			!target.startsWith(`${path.resolve(source)}${path.sep}`) ||
-			!(await stat(target).catch(() => null))
-		)
+	const { skillDirectories, promptDirectories } = extensionRuntime.resolvePiResourceDirectories(
+		destination,
+		manifest.name,
+		manifest.leitwerk?.pi?.resources,
+	);
+	const skillPack = extensionRuntime.resolveSkillPackPath(destination, manifest.leitwerk?.skills);
+	const resources = [...skillDirectories, ...promptDirectories];
+	if (skillPack) resources.push(skillPack);
+	for (const target of resources) {
+		if (!(await stat(target).catch(() => null)))
 			throw new Error(
-				`Extension package '${manifest.name}' declares missing resource '${resource}'`,
+				`Extension package '${manifest.name}' declares missing resource '${path.relative(destination, target)}'`,
 			);
 	}
 }
@@ -132,20 +104,17 @@ export async function buildExtensionBundle(
 		const resolved =
 			path.isAbsolute(source) || source.startsWith(".") ? path.resolve(configDir, source) : null;
 		if (!resolved) continue;
-		const packageJson = path.join(resolved, "package.json");
-		const manifest = readJson<PackageRecord>(packageJson);
-		if (typeof manifest.name !== "string")
-			throw new Error(`Extension source '${source}' has no package name`);
-		roots.push({ ...manifest, name: manifest.name, dir: resolved });
+		const manifest = readWorkspacePackage(resolved);
+		roots.push(manifest);
+		const relative = path.relative(composition.manifestDir, resolved).split(path.sep).join("/");
 		sourceRecords.push({
-			source: path.isAbsolute(source)
-				? path.relative(composition.manifestDir, resolved).split(path.sep).join("/")
-				: source,
+			source: path.isAbsolute(source) ? relative : source,
 			packageName: manifest.name,
-			path: path.relative(composition.manifestDir, resolved).split(path.sep).join("/"),
+			path: relative,
 		});
 	}
 	const packages = new Map<string, PackageRecord>();
+	const hosts = new Set<string>();
 	const visit = (entry: PackageRecord) => {
 		if (packages.has(entry.name) || hostPackage(entry.name)) return;
 		packages.set(entry.name, entry);
@@ -153,63 +122,46 @@ export async function buildExtensionBundle(
 			...entry.dependencies,
 			...entry.optionalDependencies,
 		})) {
-			if (hostPackage(dependency)) continue;
-			const dir = packagePath(process.cwd(), dependency, workspace);
+			if (hostPackage(dependency)) {
+				hosts.add(dependency);
+				continue;
+			}
+			if (packages.has(dependency)) continue;
+			const dir = packagePath(composition.workspaceRoot, dependency, workspace);
 			const manifest = readJson<PackageRecord>(path.join(dir, "package.json"));
 			visit({ ...manifest, name: dependency, dir });
 		}
 	};
 	roots.forEach(visit);
-	const staging = `${output}.staging-${process.pid}`;
-	await rm(staging, { recursive: true, force: true });
-	await mkdir(path.join(staging, "node_modules"), { recursive: true });
-	for (const entry of [...packages.values()].sort((a, b) => a.name.localeCompare(b.name))) {
-		await copyPackage(path.join(staging, "node_modules", entry.name), entry.dir, entry);
-	}
-	const hash = createHash("sha256");
-	for (const entry of [...packages.values()].sort((a, b) => a.name.localeCompare(b.name))) {
-		for (const file of await selectedFiles(entry.dir, entry)) {
-			const target = path.join(staging, "node_modules", entry.name, file);
-			hash.update(`${entry.name}/${file}\0${(await stat(target)).mode & 0o777}\0`);
-			hash.update(await readFile(target));
+	await mkdir(path.dirname(path.resolve(output)), { recursive: true });
+	const staging = await mkdtemp(`${path.resolve(output)}.staging-`);
+	try {
+		const hash = createHash("sha256");
+		const packed = [];
+		for (const [name, entry] of [...packages].sort(([a], [b]) => a.localeCompare(b))) {
+			const relative = `node_modules/${name}`;
+			await copyPackage(path.join(staging, relative), entry, hash);
+			packed.push({ name, version: entry.version, path: relative });
 		}
-	}
-	const manifest: ExtensionBundleManifest = {
-		formatVersion: 1,
-		digest: hash.digest("hex"),
-		packages: [...packages.values()]
-			.sort((a, b) => a.name.localeCompare(b.name))
-			.map((entry) => ({
-				name: entry.name,
-				version: entry.version,
-				path: `node_modules/${entry.name}`,
-			})),
-		hostPackages: [
-			...new Set([
-				...roots.flatMap((entry) =>
-					Object.keys({ ...entry.dependencies, ...entry.optionalDependencies }),
-				),
-				...[...packages.values()].flatMap((entry: PackageRecord) =>
-					Object.keys({ ...entry.dependencies, ...entry.optionalDependencies }),
-				),
-			]),
-		]
-			.filter(hostPackage)
-			.sort()
-			.map((name) => ({
+		const manifest: ExtensionBundleManifest = {
+			formatVersion: 1,
+			digest: hash.digest("hex"),
+			packages: packed,
+			hostPackages: [...hosts].sort().map((name) => ({
 				name,
-				version: readJson<PackageRecord>(
-					path.join(packagePath(process.cwd(), name, workspace), "package.json"),
+				version: readJson(
+					path.join(packagePath(composition.workspaceRoot, name, workspace), "package.json"),
 				).version,
 			})),
-		sources: sourceRecords,
-	};
-	await writeFile(path.join(staging, "bundle.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-	await rm(output, { recursive: true, force: true });
-	await mkdir(path.dirname(path.resolve(output)), { recursive: true });
-	await cp(staging, output, { recursive: true });
-	await rm(staging, { recursive: true, force: true });
-	return manifest;
+			sources: sourceRecords,
+		};
+		await writeFile(path.join(staging, "bundle.json"), `${JSON.stringify(manifest, null, 2)}\n`);
+		await rm(output, { recursive: true, force: true });
+		await rename(staging, output);
+		return manifest;
+	} finally {
+		await rm(staging, { recursive: true, force: true });
+	}
 }
 
 export async function runBundleCli(argv: readonly string[]): Promise<void> {

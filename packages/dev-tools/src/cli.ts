@@ -46,7 +46,7 @@ try {
 Commands: bundle, bundle:check, skills:prepare, skills:diff, skills:build, dev, build, typecheck, test:full, sandbox, api:check, api:report, core:status, core:use-local, core:use-release, benchmark:worker-startup
 
 sandbox [--sandbox=NAME] [--llm=scripted|real] [--ui-port=N] [--backend-port=N] [reset]
-                    Start a manifest-declared sandbox with the local core
+                    Start a manifest-declared sandbox
 
 --workspace PATH    Extension workspace (default: current directory)
 --composition PATH  Composition manifest relative to the workspace

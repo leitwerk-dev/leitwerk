@@ -187,6 +187,45 @@ export function loadWorkspaceComposition(manifestPath: string): WorkspaceComposi
 }
 
 /** @internal */
+export function devWatchPaths(): string[] {
+	const paths: unknown = JSON.parse(process.env.LEITWERK_DEV_WATCH_PATHS_JSON ?? "[]");
+	if (!Array.isArray(paths) || !paths.every((value) => typeof value === "string"))
+		throw new Error("LEITWERK_DEV_WATCH_PATHS_JSON must be an array of paths");
+	return paths;
+}
+
+/** Resolve one sandbox and separate its launcher arguments. @internal */
+export function selectSandbox(
+	file: string,
+	args: string[],
+): {
+	/** @internal */
+	workspaceRoot: string;
+	/** @internal */
+	compositionEntry: string;
+	/** @internal */
+	args: string[];
+} {
+	const { workspaceRoot, sandboxes } = loadWorkspaceComposition(file);
+	const names = Object.keys(sandboxes);
+	const option = "--sandbox=";
+	const selected = args.find((arg) => arg.startsWith(option))?.slice(option.length);
+	const name = selected ?? (names.length === 1 ? names[0] : undefined);
+	const compositionEntry = name && Object.hasOwn(sandboxes, name) ? sandboxes[name] : undefined;
+	if (!compositionEntry)
+		throw new Error(
+			names.length
+				? `Select a sandbox with --sandbox=<name>: ${names.join(", ")}`
+				: `${file} declares no sandboxes`,
+		);
+	return {
+		workspaceRoot,
+		compositionEntry,
+		args: args.filter((arg) => !arg.startsWith(option)),
+	};
+}
+
+/** @internal */
 export function loadDevelopmentComposition(
 	manifestPath: string,
 	executingLeitwerkRoot: string,

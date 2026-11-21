@@ -9,5 +9,4 @@ export {
 	createTestProcessProject,
 	createTestServerProcessContext,
 	createTestWorkerProcessContext,
-	runWorkerTurnForTest,
 } from "./testing.js";

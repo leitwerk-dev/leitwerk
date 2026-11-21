@@ -1,18 +1,17 @@
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { expect, it, onTestFinished } from "vitest";
+import { expect, it } from "vitest";
+import { testWorkspace } from "../packages/dev-tools/test-workspace.js";
 import { closeDatabase, createDatabase } from "../packages/server/src/db/database.js";
 
 const execFileAsync = promisify(execFile);
 const repoRoot = fileURLToPath(new URL("../", import.meta.url));
 
 async function fixture() {
-	const root = await mkdtemp(path.join(tmpdir(), "leitwerk-dev-preflight-test-"));
-	onTestFinished(() => rm(root, { recursive: true, force: true }));
+	const { root } = testWorkspace();
 	const storage = path.join(root, "configured");
 	const scratch = path.join(root, "scratch");
 	await mkdir(storage);

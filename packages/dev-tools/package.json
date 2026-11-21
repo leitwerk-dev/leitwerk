@@ -25,11 +25,6 @@
 			"source": "./src/skill-pack.ts",
 			"import": "./dist/skill-pack.js",
 			"types": "./dist/skill-pack.d.ts"
-		},
-		"./supervisor": {
-			"source": "./src/supervisor.ts",
-			"import": "./dist/supervisor.js",
-			"types": "./dist/supervisor.d.ts"
 		}
 	},
 	"scripts": {
@@ -39,6 +34,7 @@
 		"@jridgewell/trace-mapping": "^0.3.31",
 		"@leitwerk-dev/dev-sandbox": "0.4.0",
 		"@leitwerk-dev/domain": "0.4.0",
+		"@leitwerk-dev/extension-runtime": "0.4.0",
 		"@leitwerk-dev/protocol": "0.4.0",
 		"@leitwerk-dev/server": "0.4.0",
 		"@leitwerk-dev/ui": "0.4.0",

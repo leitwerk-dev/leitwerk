@@ -140,10 +140,11 @@ an SQLite snapshot and disposable workspace, tree and Pi directories. It leaves
 configured storage untouched. A failed preflight leaves the healthy backend
 running. UI source changes use Vite's development path. Changes
 to configuration or extension metadata preflight and restart the development session.
-In the scripted sandbox, the source supervisor records running turns against the old
-worker lease before reload and retries only the matching turn after the new backend
-reports readiness. A failure that predates the reload, or a failure from another
-worker lifecycle, is left parked; authenticated backends skip this automatic retry.
+Retry failed turns manually after a reload.
+
+Use `leitwerk-dev bundle:check DIRECTORY --config FILE` to boot-check a bundle with
+an external Leitwerk config. The check uses disposable storage and leaves background
+services stopped.
 
 Local workers can load composed source roots. Isolated workers do not receive host
 source paths; package the required built artifacts in their images.
@@ -160,45 +161,7 @@ for command and hook contracts.
 Custom compositions supply their catalog, scenarios, scripted Pi, controls, and
 provider fixtures. Keep extension behavior outside core packages.
 
-An extension composition is a factory, not a second process implementation. The
-factory receives `SandboxInput` and constructs adapters from those paths and URLs;
-production modules are assembled into the catalog exactly as in production. Export
-local-only adapters and seeds from the extension's `/testing` entry point so
-composition code and tests do not import private implementation paths. A scenario
-that exercises production behavior sets `launcherId` to the production launcher;
-use `withSandboxLaunchers` only for a deliberately local launcher. This preserves
-production launcher admission, validation, and turn semantics.
-
-A typical extension workspace can have:
-
-```text
-src/index.ts                 # production extension and process
-src/testing/index.ts         # local adapter factories and test seeds
-sandbox/composition.ts       # SandboxCompositionFactory
-sandbox/composition.test.ts # scripted harness tests
-```
-
-The composition's `createCatalog` includes the production extension and local
-adapter extension, while `scenarios` only describes admitted inputs. Persist adapter
-state below `input.paths.directory`; do not use the repository or ambient
-credentials. Test the same factory used by the launcher with
-`startSandboxHarness`:
-
-```ts
-import { startSandboxHarness } from "@leitwerk-dev/dev-sandbox/testing";
-import composition from "./composition.js";
-
-const sandbox = await startSandboxHarness(composition);
-try {
-  const result = await sandbox.admitScenario("example", { input: {} });
-  expect(result.statusCode).toBe(200);
-} finally {
-  await sandbox.stop();
-}
-```
-
-List the directory containing these tests under `test_roots` so the composed test
-command discovers them:
+Declare the sandbox factory and its test directory in the workspace manifest:
 
 ```yaml
 test_roots:
@@ -207,8 +170,7 @@ sandboxes:
   example: ./sandbox/composition.ts
 ```
 
-Extension workspaces declare sandbox compositions in the manifest. With the local
-core selected, `leitwerk-dev sandbox` starts the only declared sandbox; use
+`leitwerk-dev sandbox` starts the only declared sandbox; use
 `--sandbox=NAME` when several are declared. Launcher options such as `--llm=real`
 and `reset` pass through. The sandbox runs in the foreground; Ctrl-C shuts it down.
 Keep local settings in `.leitwerk/sandbox/<name>.yaml`, not tracked files. Depend on a

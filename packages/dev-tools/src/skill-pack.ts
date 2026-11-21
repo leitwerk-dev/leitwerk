@@ -5,6 +5,7 @@ import {
 	lstat,
 	mkdir,
 	mkdtemp,
+	mkdtempDisposable,
 	readdir,
 	readFile,
 	rename,
@@ -110,12 +111,8 @@ async function copyTree(source: string, destination: string): Promise<void> {
 }
 
 async function withTemp<T>(run: (root: string) => Promise<T>): Promise<T> {
-	const root = await mkdtemp(path.join(tmpdir(), "leitwerk-skill-pack-"));
-	try {
-		return await run(root);
-	} finally {
-		await rm(root, { recursive: true, force: true });
-	}
+	await using root = await mkdtempDisposable(path.join(tmpdir(), "leitwerk-skill-pack-"));
+	return await run(root.path);
 }
 
 async function patchedCopy(root: string, destination: string): Promise<Buffer> {

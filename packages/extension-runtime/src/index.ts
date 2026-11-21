@@ -17,6 +17,8 @@ export {
 	RUNTIME_EXTENSION_ALLOWED_ROOTS_ENV,
 	RUNTIME_EXTENSION_ENTRIES_ENV,
 	resolveExtensionEntries,
+	resolvePiResourceDirectories,
+	resolveSkillPackPath,
 	serializeResolvedExtensionEntries,
 } from "./extension-loader.js";
 export {

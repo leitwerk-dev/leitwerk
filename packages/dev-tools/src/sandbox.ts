@@ -3,7 +3,7 @@ import { once } from "node:events";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { launchSandbox } from "@leitwerk-dev/dev-sandbox/launcher";
-import { loadWorkspaceComposition } from "./composition.js";
+import { selectSandbox } from "./composition.js";
 import { assertSelection, compositionPath, type DevelopmentOptions } from "./selection.js";
 
 /**
@@ -14,26 +14,10 @@ import { assertSelection, compositionPath, type DevelopmentOptions } from "./sel
 export async function runSandbox(options: DevelopmentOptions, args: string[]): Promise<void> {
 	const selection = assertSelection(options);
 	const manifest = compositionPath(options);
-	const composition = loadWorkspaceComposition(manifest);
-	const selected = args.find((arg) => arg.startsWith("--sandbox="))?.slice("--sandbox=".length);
-	const names = Object.keys(composition.sandboxes);
-	const name = selected ?? (names.length === 1 ? names[0] : undefined);
-	if (!name || !composition.sandboxes[name])
-		throw new Error(
-			names.length
-				? `Select a sandbox with --sandbox=<name>: ${names.join(", ")}`
-				: `${manifest} declares no sandboxes`,
-		);
-	const launcherArgs = args.filter((arg) => !arg.startsWith("--sandbox="));
 	if (selection.mode !== "local") {
-		const supervisorEntry = fileURLToPath(
-			await import.meta.resolve("@leitwerk-dev/dev-tools/supervisor"),
-		);
 		await launchSandbox({
-			workspaceRoot: composition.workspaceRoot,
-			compositionEntry: composition.sandboxes[name],
-			supervisorEntry,
-			args: launcherArgs,
+			...selectSandbox(manifest, args),
+			cliEntry: fileURLToPath(new URL("./cli.js", import.meta.url)),
 		});
 		return;
 	}
@@ -48,8 +32,7 @@ export async function runSandbox(options: DevelopmentOptions, args: string[]): P
 			"tsx",
 			path.join(selection.checkout, "scripts/sandbox/cli.ts"),
 			`--composition=${manifest}`,
-			`--sandbox=${name}`,
-			...launcherArgs,
+			...args,
 		],
 		{ cwd: selection.checkout, stdio: "inherit" },
 	);
