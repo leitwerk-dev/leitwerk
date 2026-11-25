@@ -63,7 +63,7 @@ Every merge to `main` that increments the version automatically publishes a stab
 
 ## Writing documentation
 
-Choose the audience and purpose of a page before drafting it. [Plan documentation](docs/maintainers/documentation.md) describes how the four reader paths work and where tutorials, task guides, reference, and explanation belong. [WRITING.md](WRITING.md) sets the writing style.
+Choose the audience and purpose of a page before drafting it. [docs/AUTHORING.md](docs/AUTHORING.md) describes how the four reader paths work and where tutorials, task guides, reference, and explanation belong. [WRITING.md](WRITING.md) sets the writing style.
 
 ## API classification
 

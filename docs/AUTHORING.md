@@ -1,5 +1,7 @@
 # Plan documentation
 
+This file is contributor guidance. `scripts/build_docs.py` leaves it out of the published site.
+
 Leitwerk uses the [Divio documentation system](https://docs.divio.com/documentation-system/). Choose the audience first. Then choose the kind of help the reader needs on this visit.
 
 | Kind | Reader’s question | Example in Leitwerk |
@@ -18,4 +20,4 @@ Each audience starts with a tutorial. Say what the reader needs on arrival, give
 
 Keep the quick path short. A branching choice about storage belongs where an admin selects a deployment. A table of every supported storage key belongs in reference. Link between the two at the decision.
 
-For sentence-level style in contracts, compatibility tables, tests, and implementation notes, follow [`WRITING.md`](https://github.com/leitwerk-dev/leitwerk/blob/main/WRITING.md).
+For sentence-level style in contracts, compatibility tables, tests, and implementation notes, follow [WRITING.md](../WRITING.md).

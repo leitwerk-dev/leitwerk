@@ -87,7 +87,6 @@ nav = [
     ] },
     { "Development guides" = [
       { "Development compositions" = "maintainers/development-compositions.md" },
-      { "Plan documentation" = "maintainers/documentation.md" },
       { "Test a change" = "maintainers/testing.md" },
     ] },
   ] },

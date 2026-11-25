@@ -17,6 +17,8 @@ import zensical_likec4
 
 NAV_MARKER = "# __BUNDLED_EXTENSIONS_NAV__"
 IGNORED_NAMES = {".DS_Store", "__pycache__"}
+# Contributor guidance kept beside the docs source but never published.
+UNPUBLISHED_DOCS = {Path("AUTHORING.md")}
 LIKEC4_WORKSPACE = Path("docs") / "maintainers" / "likec4"
 LIKEC4_BUNDLE = Path("assets") / "javascripts" / "likec4-views.js"
 LIKEC4_CACHE = Path(".zensical-cache") / "likec4"
@@ -214,7 +216,7 @@ def _desired_staged_files(repo_root: Path) -> tuple[dict[Path, bytes], str]:
         if not src.is_file():
             continue
         rel = src.relative_to(docs_root)
-        if any(part in IGNORED_NAMES for part in rel.parts):
+        if rel in UNPUBLISHED_DOCS or any(part in IGNORED_NAMES for part in rel.parts):
             continue
         if src.suffix == ".md":
             text = src.read_text(encoding="utf-8")

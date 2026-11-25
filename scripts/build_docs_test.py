@@ -84,6 +84,7 @@ class BuildDocsTest(unittest.TestCase):
         self._write("docs/index.md", "# Home\n[Alpha](../extensions/alpha/README.md)\n")
         self._write("docs/maintainers/arch.md", "# Arch\n[Wiki](../../packages/wiki/README.md)\n")
         self._write("docs/.DS_Store", "junk")
+        self._write("docs/AUTHORING.md", "# Authoring\n")
         self._write(
             "extensions/alpha/README.md",
             "# Alpha\n[SDK](../../docs/extensions/process-sdk.md)\n[Wiki](../../packages/wiki/README.md)\n",
@@ -115,6 +116,7 @@ class BuildDocsTest(unittest.TestCase):
         staged_config = build_docs.stage_docs(self.root, staging)
         self.assertTrue(staged_config.is_file())
         self.assertFalse((staging / "docs" / ".DS_Store").exists())
+        self.assertFalse((staging / "docs" / "AUTHORING.md").exists())
         self.assertTrue((staging / "docs" / "extensions" / "bundled" / "alpha" / "process.mmd").is_file())
         self.assertFalse((staging / "docs" / "extensions" / "bundled" / "node_modules").exists())
 
