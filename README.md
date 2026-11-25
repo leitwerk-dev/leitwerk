@@ -4,7 +4,16 @@
 
 ![Leitwerk](docs/images/leitwerk.png)
 
-`Leitwerk` is a process-centric control plane around embedded [Pi](https://pi.dev) workers. The server owns durable state. Production workers execute selected turns in Docker containers or Kubernetes pods. The UI shows every process in one shared shell.
+Leitwerk runs software delivery workflows that combine AI work with human decisions. You can start work in the browser, review what it produces, and follow each step to completion.
+
+## Start here
+
+| If you want to… | Start with… |
+| --- | --- |
+| Use the browser | [Using Leitwerk](docs/users/index.md) |
+| Administer an installation | [Try Leitwerk locally](docs/admin/index.md) |
+| Build an extension | [Write your first process](docs/extensions/first-process.md) |
+| Change Leitwerk itself | [Trace a retry in the sandbox](docs/maintainers/index.md) |
 
 ## What it does
 
@@ -12,9 +21,11 @@
 - **Durable control plane:** Fastify + SQLite + WebSocket, with the server as the only writer of durable state.
 - **Disposable workers:** worker units embed `@earendil-works/pi-coding-agent` through the SDK and never access SQLite.
 - **Extension model:** Integrations and process definitions load through the same extension loader.
-- **Shared UI:** Svelte 5 app with a launcher-first home page and a process chronicle detail page.
+- **Shared UI:** Svelte 5 app with a dashboard home page, process launcher, and chronicle detail page.
 
-## Packages
+## Key packages
+
+Primary workspace packages under `packages/`; see [Architecture](docs/maintainers/architecture.md) for the full 18-package inventory.
 
 | Package | Description |
 |---------|-------------|
@@ -31,7 +42,9 @@
 | **[@leitwerk-dev/ui](packages/ui)** | Svelte 5 operator UI |
 | **[@leitwerk-dev/test-support](packages/test-support)** | Fakes and integration-test helpers |
 
-## Extensions
+## Key extensions
+
+Representative bundled extensions under `extensions/`; see [Built-in extensions](docs/extensions/process-sdk.md#built-in-extensions) for the full catalog.
 
 | Extension | Description |
 |-----------|-------------|
@@ -46,9 +59,7 @@
 
 ## Documentation
 
-Start with [docs/index.md](docs/index.md). It maps each document to its owned topic and suggests reading paths.
-
-Build or serve the docs locally with MkDocs Material:
+Browse [the documentation](https://leitwerk-dev.github.io/leitwerk/) (source in [`docs/`](docs/index.md)). To work on it locally, follow the [documentation approach](WRITING.md) and preview with Zensical.
 
 ```bash
 python3 -m pip install -r requirements-docs.txt
@@ -56,29 +67,15 @@ npm run docs:serve
 npm run docs:build
 ```
 
-Common entry points:
-
-| Topic | Document |
-|-------|----------|
-| Architecture overview | [docs/arc42.md](docs/arc42.md) |
-| Process and extension authoring | [docs/process-sdk.md](docs/process-sdk.md) |
-| Server/worker runtime | [docs/server-worker-lifecycle.md](docs/server-worker-lifecycle.md) |
-| Configuration | [docs/configuration.md](docs/configuration.md) |
-| Local Docker deployment | [docs/docker-deployment-guide.md](docs/docker-deployment-guide.md) |
-| CI, releases, and dependency updates | [docs/ci.md](docs/ci.md) |
-| UI and streaming model | [docs/ui.md](docs/ui.md), [docs/websocket.md](docs/websocket.md) |
-| Testing | [docs/testing.md](docs/testing.md) |
-| Terminology | [docs/ubiquitous_language.md](docs/ubiquitous_language.md) |
-
 ## Quick Start
 
-Follow [Run your first process](docs/introduction.md) for prerequisites, local-worker
+Follow [Local quickstart](docs/admin/local-quickstart.md) for prerequisites, local-worker
 configuration, model credentials, and the first launch. Leitwerk manages Pi resources;
 workers do not import your ambient Pi directory.
 
-For container isolation, use the [Docker](docs/docker-deployment-guide.md) or
-[Kubernetes](docs/kubernetes-deployment-guide.md) guide. See
-[Operate a process](docs/operator-guide.md) for reviews, Retry, Continue, and stopping work.
+For container isolation, use the [Docker](docs/admin/deploy-docker.md) or
+[Kubernetes](docs/admin/deploy-kubernetes.md) guide. See
+[Operate a process](docs/users/operate-processes.md) for reviews, Retry, Continue, and stopping work.
 
 ## Contributing
 
@@ -97,7 +94,7 @@ npm run parity:start # Start the built server/worker/extensions lane
 npm run lint         # Biome checks
 npm run check:boundaries # Enforce packages/* -> extensions/* boundaries
 npm run typecheck    # TypeScript project references
-npm run docs:build   # Build MkDocs documentation
+npm run docs:build   # Build Zensical documentation
 npm run test:parity  # Build and smoke-test the dist parity lane
 npm run test:full    # Lint, built server/default-worker/parity smoke, boundary checks, typecheck, Vitest, and Playwright
 ```

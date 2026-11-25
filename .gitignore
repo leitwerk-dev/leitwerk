@@ -17,6 +17,10 @@ leitwerk.yaml
 **/tsconfig.tsbuildinfo
 test-results
 site/
+.venv/
+.zensical-staging/
+.zensical-cache/
+.cache/
 __pycache__/
 plan
 

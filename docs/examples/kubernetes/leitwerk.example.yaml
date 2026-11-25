@@ -46,6 +46,7 @@ extension_loading:
     - /app/extensions/skills
     - /app/extensions/models
     - /app/extensions/showcase-processes
+    - /app/extensions/example-processes
 
 extensions:
   models:

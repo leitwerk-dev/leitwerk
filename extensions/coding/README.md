@@ -164,7 +164,7 @@ The following exported declarations are `@public`:
 - `@leitwerk-dev/coding/repository-rebase`: `ConflictEvidence`, `conflictEvidence`, `validateConflict`, `describeConflict`, `conflictKey`, `createConflictReporter`.
 - `@leitwerk-dev/coding/repository-change-state`: `RepositoryChangeState`.
 
-See the [SDK compatibility policy](../../docs/process-sdk.md#api-compatibility) for member classifications and support guarantees.
+See the [SDK compatibility policy](../../docs/extensions/process-sdk.md#api-compatibility) for member classifications and support guarantees.
 
 Pre-launch repository lookup uses `sanitizeWorkerSubprocessEnv` without project credentials. Trusted project Git operations use `repositoryGitSubprocessEnv(projectKey)`.
 

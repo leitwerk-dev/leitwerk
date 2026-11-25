@@ -1,0 +1,210 @@
+// Deployment model: local development, Docker on one host, and Kubernetes.
+// The Kubernetes environment follows the public GitHub composition deployment;
+// hosting provider, location, and host names are intentionally omitted.
+deployment {
+
+  // ------------------------------------------------------------------ Local
+
+  environment local 'Local development' {
+    description 'Source checkout with `npm run dev`. Workers run as host subprocesses with the OS user\'s permissions; no container isolation.'
+
+    browser localBrowser 'Browser' {
+      ui = instanceOf leitwerk.ui {
+        description 'Served by the Vite dev server, which proxies API and WebSocket calls to the server.'
+      }
+    }
+
+    machine workstation 'Developer workstation' {
+      technology 'macOS or Linux, Node.js 26'
+
+      osProcess serverProcess 'leitwerk server' {
+        technology 'npm run dev (tsx)'
+        server = instanceOf leitwerk.server {
+          description 'Local runner; LEITWERK_CONFIG_PATH points at .leitwerk/local/leitwerk.yaml.'
+        }
+      }
+
+      osProcess workerProcess 'Local worker (one per process)' {
+        technology 'Node.js subprocess'
+        worker = instanceOf leitwerk.unit.worker
+      }
+
+      filesystem dotLeitwerk '.leitwerk/local' {
+        state = instanceOf leitwerk.state {
+          title 'leitwerk.sqlite, trees, snapshots'
+        }
+        workspace = instanceOf leitwerk.unit.workspace {
+          title 'workspaces/<process>'
+          description 'Full clones and the managed Pi agent dir; ~/.pi/agent is ignored.'
+        }
+      }
+    }
+
+    saas localModels 'Model provider' {
+      models = instanceOf models
+    }
+    saas localGit 'Git remotes' {
+      git = instanceOf gitRemote
+    }
+  }
+
+  // ----------------------------------------------------------------- Docker
+
+  environment docker 'Docker Compose (single host)' {
+    description 'Server, Caddy gateway, and isolated worker containers on one Docker daemon. At most one Leitwerk server per daemon.'
+
+    browser dockerBrowser 'Browser' {
+      ui = instanceOf leitwerk.ui
+    }
+
+    machine dockerHost 'Docker host' {
+      technology 'Linux, Docker Engine'
+
+      engine = instanceOf runtime {
+        title 'Docker Engine'
+        description 'Started and queried by the server through the mounted socket. Workers never receive it.'
+      }
+
+      network bridge 'leitwerk bridge network' {
+        technology 'user-defined bridge'
+
+        dockerContainer proxyContainer 'reverse-proxy' {
+          technology 'caddy:2, ports 80/443'
+          gateway = instanceOf leitwerk.gateway {
+            description 'Let\'s Encrypt TLS; serves ./ui and proxies backend paths to leitwerk-server:8080.'
+          }
+        }
+
+        dockerContainer serverContainer 'leitwerk-server' {
+          technology 'leitwerk-server image, /var/run/docker.sock mounted'
+          server = instanceOf leitwerk.server
+        }
+
+        dockerContainer workerContainer 'Worker container (one per process)' {
+          technology 'leitwerk-worker-generic image'
+          worker = instanceOf leitwerk.unit.worker {
+            description 'Reaches the server by the internal name leitwerk-server.'
+          }
+          dockerd = instanceOf leitwerk.unit.dockerd {
+            description 'Only for runtime.docker processes; sysbox-runc runtime or privileged container.'
+          }
+        }
+      }
+
+      filesystem stateVolume 'leitwerk_state volume' {
+        state = instanceOf leitwerk.state
+      }
+
+      filesystem processVolumes 'docker.process_volume.host_root' {
+        technology 'bind (default) or named volumes'
+        workspace = instanceOf leitwerk.unit.workspace {
+          description 'Not mounted into the server; the server sees process state only through session snapshots.'
+        }
+      }
+    }
+
+    saas dockerIdp 'Identity provider' {
+      idp = instanceOf idp
+    }
+    saas dockerModels 'Model providers' {
+      models = instanceOf models
+    }
+    saas dockerForge 'Forges and Git remotes' {
+      forge = instanceOf forge
+      git = instanceOf gitRemote
+    }
+    saas dockerRegistry 'Container registry' {
+      registry = instanceOf registry
+    }
+  }
+
+  // ------------------------------------------------------------- Kubernetes
+
+  environment kubernetes 'Kubernetes (production reference)' {
+    description 'Helm release of the shared chart running a GitHub issue-to-pull-request composition on an ARM64 cluster.'
+
+    browser k8sBrowser 'Browser' {
+      ui = instanceOf leitwerk.ui
+    }
+
+    cluster k8sCluster 'Kubernetes cluster' {
+      technology 'linux/arm64'
+
+      api = instanceOf runtime {
+        title 'Kubernetes API'
+        description 'Server RBAC creates process namespaces, worker Pods, PVCs, and copies image pull secrets.'
+      }
+
+      namespace serverNamespace 'Server namespace' {
+        technology 'Helm release, dedicated to the server'
+
+        pod gatewayDeployment 'gateway Deployment' {
+          technology 'Ingress → Service :8080 → Caddy'
+          gateway = instanceOf leitwerk.gateway
+        }
+
+        pod serverDeployment 'server Deployment' {
+          technology '1 replica; preflight Job gates atomic Helm upgrades'
+          server = instanceOf leitwerk.server {
+            description 'Derived image: upstream release plus composition extensions (model provider, GitHub repo-change process). Config from a content-addressed Secret.'
+          }
+        }
+
+        volume serverPvc 'server PVC' {
+          state = instanceOf leitwerk.state
+        }
+      }
+
+      namespace processNamespace 'leitwerk-process-<id> (one per process)' {
+        technology 'admission policy, worker ServiceAccount'
+
+        pod workerPod 'Worker Pod' {
+          technology 'generic runtime profile; Docker RuntimeClass for runtime.docker'
+          worker = instanceOf leitwerk.unit.worker {
+            description 'Derived worker image matching the server image and worker protocol version.'
+          }
+          dockerd = instanceOf leitwerk.unit.dockerd
+        }
+
+        volume processPvc 'process PVC' {
+          technology 'retained; optional pre-provisioned pool'
+          workspace = instanceOf leitwerk.unit.workspace
+        }
+      }
+    }
+
+    saas k8sDelivery 'Delivery' {
+      ci = instanceOf ci {
+        title 'Self-hosted forge CI'
+        description 'Full composition gate, installed-release validation, ARM64 image builds, promotion.'
+      }
+      registry = instanceOf registry {
+        title 'Private OCI registry'
+      }
+    }
+
+    saas k8sGithub 'GitHub' {
+      forge = instanceOf forge {
+        title 'GitHub API'
+        description 'Issues labelled use-leitwerk, pull requests, reviews, Actions checks; restricted to one organization.'
+      }
+      git = instanceOf gitRemote {
+        title 'GitHub Git'
+        description 'Write-capable SSH deploy key per repository, pinned host keys.'
+      }
+      idp = instanceOf idp {
+        title 'GitHub login'
+      }
+    }
+
+    saas k8sModels 'Model broker' {
+      models = instanceOf models {
+        title 'Codex account broker'
+        description 'Quota-aware account selection with in-request failover.'
+      }
+    }
+  }
+
+  // Local mode has no runtime platform: the server spawns workers directly.
+  local.workstation.serverProcess.server -> local.workstation.workerProcess.worker 'spawns (local runner)'
+}

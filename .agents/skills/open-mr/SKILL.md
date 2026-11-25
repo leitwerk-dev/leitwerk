@@ -8,7 +8,7 @@ description: Open or update a Leitwerk pull request from completed changes, incl
 Leitwerk uses GitHub pull requests. Treat an MR request as a PR request here.
 
 Read [AGENTS.md](../../../AGENTS.md), [CONTRIBUTING.md](../../../CONTRIBUTING.md),
-[WRITING.md](../../../WRITING.md), and [CI requirements](../../../docs/ci.md) before
+[WRITING.md](../../../WRITING.md), and [CI requirements](../../../docs/maintainers/ci-and-releases.md) before
 preparing the contribution. These files own the repository policy.
 
 ## Prepare the changes

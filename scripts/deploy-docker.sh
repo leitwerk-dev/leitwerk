@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REVISION="${LEITWERK_DOCKER_REVISION:-6f309e4}"
-DEPLOY_ID="${LEITWERK_DOCKER_ID:-leitwerk-local-${REVISION}}"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+REVISION="${LEITWERK_DOCKER_REVISION:-$(git -C "${repo_root}" rev-parse --short HEAD)}"
+DEPLOY_ID="${LEITWERK_DOCKER_ID:-leitwerk-local}"
 DEPLOY_ROOT="${LEITWERK_DOCKER_ROOT:-${HOME}/.local/share/leitwerk/deployments/${DEPLOY_ID}}"
 SERVER_IMAGE="leitwerk-server:${REVISION}"
 WORKER_IMAGE="leitwerk-worker-generic:${REVISION}"
@@ -34,11 +35,10 @@ command -v docker >/dev/null 2>&1 || { echo "docker is required" >&2; exit 1; }
 command -v curl >/dev/null 2>&1 || { echo "curl is required" >&2; exit 1; }
 docker compose version >/dev/null
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 compose_file="${DEPLOY_ROOT}/compose.yaml"
 [[ -f "${compose_file}" ]] || {
 	echo "Deployment configuration is missing: ${compose_file}" >&2
-	echo "Create it using docs/docker-deployment-guide.md first." >&2
+	echo "Create it using docs/admin/deploy-docker.md first." >&2
 	exit 1
 }
 

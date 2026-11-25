@@ -240,11 +240,11 @@ context, event, message, record, destination, retry and settings types.
 Members have individual classifications; these exports do not make every member
 public. Both `@public` and `@internal` APIs remain usable and fully typed. Source
 annotations are authoritative; see the [SDK compatibility
-policy](../../docs/process-sdk.md#api-compatibility).
+policy](../../docs/extensions/process-sdk.md#api-compatibility).
 
 ### External-write replay
 
-Writes follow the [shared reconciliation contract](../../docs/process-sdk.md#typed-external-writes).
+Writes follow the [shared reconciliation contract](../../docs/extensions/external-writes-and-adapters.md#typed-external-writes).
 Comment recovery includes closed merge requests and completed discussions. A logged
 comment or reaction that cannot be recovered fails without repeating the write.
 

@@ -20,7 +20,7 @@ network requests or process execution. Optional `onInspectTurn(turnId)` adds an
 Chronicle CSS tokens supply the theme, with standalone fallbacks.
 `internal/WorkflowIcon.svelte` is shared implementation, not a supported extension API.
 
-See the [Workflow interaction contract](../../docs/ui.md#process-inspector) for
+See the [Workflow interaction contract](../../docs/maintainers/ui-contracts.md#process-inspector) for
 layout, repeat notation, tools, and inspection behavior. The graph describes the
 current definition, not the tools or items of a particular execution.
 

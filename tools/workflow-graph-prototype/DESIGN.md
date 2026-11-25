@@ -85,7 +85,7 @@ spacing to separate levels before adding decorative treatments.
 
 Repeat path uses a scrollable graph canvas with computed layout. In the showcase, selected-step details always appear below the graph, matching the application's inspector view and preserving graph width. The guided preview pairs the same successful path with a starting-context form, then stacks those regions on narrow screens. At mobile widths, page gutters contract to 14px and graph exploration stays horizontally scrollable with a visible hint. Repeated spacing values cluster around 8px, 16px, and 24px.
 
-Follow the [Workflow contract](../../docs/ui.md#process-inspector) for path placement, ports, repeats, route conditions, and inspection. Equal-length successful paths use declaration order.
+Follow the [Workflow contract](../../docs/maintainers/ui-contracts.md#process-inspector) for path placement, ports, repeats, route conditions, and inspection. Equal-length successful paths use declaration order.
 
 Allocate space from the largest node in each column. Keep connectors clear of nodes, repeat headers, and other routes. Internal paths and external routes share the repeat enclosure's coordinate origin; border and selection styling must not shift them.
 
@@ -104,7 +104,7 @@ Most surfaces use borders and pale blue-gray fills rather than shadows. The hove
 - Route labels sit on an opaque light backing for contrast. Active routes turn blue; idle rework routes are amber. Muted routes remain visible.
 - Terminal completion is green-tinted; abort is neutral gray.
 
-Collection and empty-list behavior belong to the [mapped-turn contract](../../docs/process-sdk.md#mapped-llm-turns).
+Collection and empty-list behavior belong to the [mapped-turn contract](../../docs/extensions/process-sdk.md#mapped-llm-turns).
 
 ### Repeated activity
 - Use the xl radius for the pale blue, dashed enclosure around one activity and its local return path.
