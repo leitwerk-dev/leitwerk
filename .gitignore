@@ -42,6 +42,6 @@ leitwerk.yaml
 /.agents/skills/*
 !/.agents/skills/review-stack/
 !/.agents/skills/api-findings/
-!/.agents/skills/open-mr/
+!/.agents/skills/open-pr/
 .codex/
 .DS_Store

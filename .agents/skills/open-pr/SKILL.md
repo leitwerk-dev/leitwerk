@@ -1,11 +1,11 @@
 ---
-name: open-mr
+name: open-pr
 description: Open or update a Leitwerk pull request from completed changes, including validation, DCO sign-offs, and example images for UI changes. Use when asked to commit, push, and open an MR or PR in this repository.
 ---
 
-# Open a merge request
+# Open a pull request
 
-Leitwerk uses GitHub pull requests. Treat an MR request as a PR request here.
+Leitwerk uses GitHub pull requests. Treat a merge request (MR) request as a PR request here.
 
 Read [AGENTS.md](../../../AGENTS.md), [CONTRIBUTING.md](../../../CONTRIBUTING.md),
 [WRITING.md](../../../WRITING.md), and [CI requirements](../../../docs/maintainers/ci-and-releases.md) before
