@@ -1,5 +1,68 @@
 # Changelog
 
+## 0.5.4 (2026-11-25)
+
+feat(models): classify profiles and select eligible models deterministically (#231)
+
+Source: 3d23ee52a97f4814ad6d30ae7c0ab3b8372fa336
+Previous release: v0.5.3
+
+## 0.5.3 (2026-11-21)
+
+chore(deps): update dependency mkdocs-material to v9.8.1 (#237)
+
+Source: e9c4862ed637b0865396128fd4981fd9e6d61204
+Previous release: v0.5.2
+
+## 0.5.2 (2026-11-20)
+
+chore(deps): update npm to v10.9.10 (#234)
+
+Source: 798dc03cc6525dbeb9991cc68b606e94fa62a240
+Previous release: v0.5.1
+
+## 0.5.1 (2026-11-20)
+
+fix(deps): update caddy docker tag to v2.11.8 (#235)
+
+Source: 8fd28d594f9b463a33e9523ef86d92dbe1fa9d73
+Previous release: v0.5.0
+
+## 0.5.0 (2026-11-11)
+
+chore(deps)!: update Pi and release non-doc changes (#232)
+
+Source: ff06d7fa54f52a6e7324901e4b1bb2c275f1230d
+Previous release: v0.4.4
+
+## 0.4.4 (2026-11-10)
+
+feat(launchers): expose configuration readiness before launch (#229)
+
+Source: 0b162a3acf667dbbcbe5311e504256897f581f67
+Previous release: v0.4.3
+
+## 0.4.3 (2026-11-06)
+
+feat(auth): add OIDC admission policies and user information (#224)
+
+Source: a17461738062f486a020daadd68676a881ef8e36
+Previous release: v0.4.2
+
+## 0.4.2 (2026-11-03)
+
+fix(gitlab): support globally labeled merge request discovery (#222)
+
+Source: 6720e88b8d8ebcd79d2caca0b679744c95b0938d
+Previous release: v0.4.1
+
+## 0.4.1 (2026-11-02)
+
+fix(kubernetes): reclaim terminal process storage safely (#217)
+
+Source: c8ed293c3df904b554d9304959c5cc8fae9c80c8
+Previous release: v0.4.0
+
 ## [0.4.0](https://github.com/leitwerk-dev/leitwerk/compare/v0.3.1...v0.4.0) (2026-10-13)
 
 
