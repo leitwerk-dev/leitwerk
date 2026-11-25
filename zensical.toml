@@ -1,0 +1,181 @@
+[project]
+site_name = "Leitwerk"
+site_description = "The control unit for AI-driven software delivery"
+site_author = "Leitwerk contributors"
+site_url = "https://leitwerk-dev.github.io/leitwerk/"
+repo_url = "https://github.com/leitwerk-dev/leitwerk"
+repo_name = "leitwerk-dev/leitwerk"
+
+docs_dir = "docs"
+site_dir = "site"
+use_directory_urls = true
+
+extra_css = [
+  "assets/stylesheets/extra.css",
+]
+
+extra_javascript = [
+  { path = "assets/javascripts/likec4-views.js", defer = true },
+  { path = "assets/javascripts/leitwerk-flow.js", defer = true },
+  { path = "assets/javascripts/leitwerk-flow-docs.js", defer = true },
+]
+
+nav = [
+  { "Home" = "index.md" },
+  { "Users" = [
+    "users/index.md",
+    { "How-to guides" = [
+      { "Work with a process" = "users/operate-processes.md" },
+      { "Manage skills" = "users/skills.md" },
+      { "Change shared settings" = "users/settings.md" },
+      { "Use solution wikis" = "users/solution-wiki.md" },
+      { "Manage API tokens" = "users/api-tokens.md" },
+    ] },
+  ] },
+  { "Admin" = [
+    "admin/index.md",
+    { "Deployment" = [
+      { "Run with a live model" = "admin/local-quickstart.md" },
+      { "Docker Compose" = "admin/deploy-docker.md" },
+      { "Kubernetes (Helm)" = "admin/deploy-kubernetes.md" },
+    ] },
+    { "Operations" = [
+      { "Configuration reference" = "admin/configuration.md" },
+      { "Models & gateways" = "admin/models.md" },
+      { "Security & auth" = "admin/security.md" },
+      { "Backup & upgrades" = "admin/backup-and-upgrades.md" },
+    ] },
+  ] },
+  { "Extensions" = [
+    "extensions/index.md",
+    { "Tutorial" = [
+      { "Write your first process" = "extensions/first-process.md" },
+    ] },
+    { "How-to guides" = [
+      { "Set up an extension workspace" = "extensions/development-setup.md" },
+      { "Start a process from an event" = "extensions/watchers.md" },
+      { "Distribute a skill pack" = "extensions/skill-packs.md" },
+      { "Test an extension" = "extensions/testing.md" },
+    ] },
+    { "Reference" = [
+      { "Process SDK" = "extensions/process-sdk.md" },
+      { "Launchers & readiness" = "extensions/launchers-and-readiness.md" },
+      { "Agent tools" = "extensions/agent-tools.md" },
+      { "External writes & adapters" = "extensions/external-writes-and-adapters.md" },
+      { "Scoped settings" = "extensions/scoped-settings.md" },
+      { "Model providers" = "extensions/model-providers.md" },
+      { "UI renderers" = "extensions/ui-renderers.md" },
+    ] },
+    # __BUNDLED_EXTENSIONS_NAV__
+  ] },
+  { "Maintainers" = [
+    "maintainers/index.md",
+    { "Explanation" = [
+      { "System architecture" = "maintainers/architecture.md" },
+      { "Architecture diagrams" = "maintainers/architecture-diagrams.md" },
+      { "How an AI turn runs" = "maintainers/llm-turn.md" },
+    ] },
+    { "Reference" = [
+      { "Terminology" = "maintainers/terminology.md" },
+      { "Server & worker lifecycle" = "maintainers/server-worker-lifecycle.md" },
+      { "Process workspace" = "maintainers/process-workspace.md" },
+      { "Browser WebSocket protocol" = "maintainers/websocket.md" },
+      { "UI contracts" = "maintainers/ui-contracts.md" },
+      { "CI & releases" = "maintainers/ci-and-releases.md" },
+      { "Future work" = "maintainers/future.md" },
+    ] },
+    { "Development guides" = [
+      { "Development compositions" = "maintainers/development-compositions.md" },
+      { "Test a change" = "maintainers/testing.md" },
+    ] },
+  ] },
+]
+
+[project.theme]
+variant = "modern"
+language = "en"
+logo = "assets/logo.png"
+favicon = "assets/favicon.png"
+features = [
+  "navigation.instant",
+  "navigation.instant.prefetch",
+  "navigation.tabs",
+  "navigation.tabs.sticky",
+  "navigation.indexes",
+  "navigation.sections",
+  "navigation.path",
+  "navigation.top",
+  "navigation.footer",
+  "content.code.copy",
+  "content.code.annotate",
+  "content.tabs.link",
+  "search.suggest",
+  "search.highlight",
+]
+
+[project.theme.font]
+text = "Inter"
+code = "JetBrains Mono"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "indigo"
+accent = "indigo"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "indigo"
+accent = "indigo"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to light mode"
+
+[project.validation]
+invalid_links = true
+invalid_link_anchors = true
+
+[project.plugins.search]
+
+[project.plugins.glightbox]
+enabled = true
+auto = true
+
+[project.markdown_extensions.admonition]
+[project.markdown_extensions.attr_list]
+[project.markdown_extensions.def_list]
+[project.markdown_extensions.footnotes]
+[project.markdown_extensions.md_in_html]
+[project.markdown_extensions.tables]
+
+[project.markdown_extensions.toc]
+permalink = true
+toc_depth = 3
+
+[project.markdown_extensions.pymdownx.details]
+
+[project.markdown_extensions.pymdownx.emoji]
+emoji_index = "zensical.extensions.emoji.twemoji"
+emoji_generator = "zensical.extensions.emoji.to_svg"
+
+[project.markdown_extensions.pymdownx.highlight]
+anchor_linenums = true
+line_spans = "__span"
+pygments_lang_class = true
+
+[project.markdown_extensions.pymdownx.inlinehilite]
+
+[project.markdown_extensions.pymdownx.snippets]
+check_paths = true
+base_path = ["."]
+
+[project.markdown_extensions.pymdownx.superfences]
+custom_fences = [
+  { name = "mermaid", class = "mermaid", format = "pymdownx.superfences.fence_code_format" },
+  { name = "likec4-view", class = "likec4-view", format = "zensical_likec4.fence_format" },
+]
+
+[project.markdown_extensions.pymdownx.tabbed]
+alternate_style = true

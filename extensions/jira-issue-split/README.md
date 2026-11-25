@@ -115,7 +115,7 @@ Successful trigger receipts persist independently of process cleanup and prevent
 reapplying a consumed `use-leitwerk` label.
 
 The splitter and newly launched Jira changes for its children share a
-[topic solution wiki](../../docs/topic-wiki.md) scoped to the source issue, including
+[topic solution wiki](../../docs/users/solution-wiki.md) scoped to the source issue, including
 manually created children. Splitting a story uses that story's wiki even if it belongs
 to an epic. Separate stories in the same epic do not share their subtask wikis.
 Processes keep independent execution trees. The wiki shares reusable solutions

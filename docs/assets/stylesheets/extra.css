@@ -1,27 +1,293 @@
 :root {
-	--leitwerk-card-radius: 0.75rem;
+	--leitwerk-radius: 0.625rem;
+	--leitwerk-radius-sm: 0.375rem;
+	--leitwerk-border: color-mix(in srgb, var(--md-default-fg-color) 11%, transparent);
+	--leitwerk-border-strong: color-mix(in srgb, var(--md-accent-fg-color) 45%, transparent);
+	--leitwerk-surface-subtle: color-mix(in srgb, var(--md-default-fg-color) 3.5%, transparent);
 }
 
-.md-typeset h1,
-.md-typeset h2 {
+/* Accessible link contrast on dark slate surfaces */
+[data-md-color-scheme="slate"],
+[data-md-color-scheme="slate"][data-md-color-primary] {
+	--md-typeset-a-color: #8c9eff;
+}
+
+/* Typography hierarchy — crisp, restrained, minimal ornamentation */
+.md-typeset h1 {
 	font-weight: 750;
-	letter-spacing: -0.02em;
+	letter-spacing: -0.025em;
+	margin-bottom: 0.85em;
 }
 
+.md-typeset h2 {
+	font-weight: 700;
+	letter-spacing: -0.02em;
+	padding-top: 0.35em;
+}
+
+.md-typeset h3 {
+	font-weight: 650;
+	letter-spacing: -0.012em;
+}
+
+/* Blockquotes */
 .md-typeset blockquote {
 	border-left: 0.2rem solid var(--md-accent-fg-color);
 	color: var(--md-default-fg-color--light);
 }
 
+/* Card grids (audience router on landing & section indexes) */
+@media screen and (min-width: 45em) {
+	.md-typeset .grid.cards:has(> ul > li:nth-child(4):last-child),
+	.md-typeset .grid.cards:has(> ol > li:nth-child(4):last-child) {
+		grid-template-columns: repeat(2, minmax(0, 1fr));
+	}
+}
+
+.md-typeset .grid.cards > ul > li,
+.md-typeset .grid.cards > ol > li {
+	border: 1px solid var(--leitwerk-border);
+	border-radius: var(--leitwerk-radius);
+	transition:
+		border-color 140ms ease,
+		box-shadow 140ms ease,
+		transform 140ms ease;
+}
+
+.md-typeset .grid.cards > ul > li:hover,
+.md-typeset .grid.cards > ol > li:hover {
+	border-color: var(--leitwerk-border-strong);
+	box-shadow: 0 4px 16px -4px color-mix(in srgb, var(--md-default-fg-color) 10%, transparent);
+	transform: translateY(-1px);
+}
+
+.md-typeset .grid.cards > ul > li > p:first-child,
+.md-typeset .grid.cards > ol > li > p:first-child {
+	margin-top: 0;
+}
+
+/* Tables */
 .md-typeset table:not([class]) {
-	border-radius: var(--leitwerk-card-radius);
+	border: 1px solid var(--leitwerk-border);
+	border-radius: var(--leitwerk-radius);
 	overflow: hidden;
+	font-size: 0.78rem;
 }
 
+.md-typeset table:not([class]) th {
+	background-color: var(--leitwerk-surface-subtle);
+	font-weight: 650;
+}
+
+/* Code blocks & inline code */
 .md-typeset code {
-	border-radius: 0.25rem;
+	border-radius: var(--leitwerk-radius-sm);
 }
 
+.md-typeset pre > code {
+	border-radius: var(--leitwerk-radius);
+}
+
+/* Example Chronicle */
+.md-typeset .process-chronicle > ol {
+	list-style: none;
+	padding: 0;
+	margin: 1rem 0;
+}
+
+.md-typeset .process-chronicle li {
+	position: relative;
+	margin: 0 0 0 0.35rem;
+	padding: 0 0 0.75rem 1rem;
+	border-left: 2px solid var(--leitwerk-border);
+}
+
+.process-chronicle li::before {
+	content: "";
+	position: absolute;
+	left: calc(-0.25rem - 1px);
+	top: 0.38rem;
+	width: 0.5rem;
+	height: 0.5rem;
+	border-radius: 50%;
+	background: var(--md-default-fg-color--light);
+}
+
+.md-typeset .process-chronicle li:last-child {
+	border-color: transparent;
+	padding-bottom: 0;
+}
+
+.process-chronicle li:last-child::before {
+	background: var(--md-typeset-a-color);
+}
+
+/* Mermaid diagrams */
 .md-typeset .mermaid {
 	text-align: center;
+	margin: 1.25rem 0;
+}
+
+/* LikeC4 views */
+.md-typeset likec4-view {
+	display: block;
+	min-height: 12rem;
+	margin: 1.25rem 0;
+}
+
+/* Screenshots & figures */
+.md-typeset img {
+	border-radius: var(--leitwerk-radius-sm);
+}
+
+/* Landing page jumbotron: the pitch, with one card per example process */
+.md-typeset .lw-hero {
+	margin: 0 0 2rem;
+	padding: 2.6rem 2.2rem 2.2rem;
+	border: 1px solid var(--leitwerk-border);
+	border-radius: calc(var(--leitwerk-radius) * 1.6);
+	background:
+		radial-gradient(
+			120% 90% at 0% 0%,
+			color-mix(in srgb, var(--md-primary-fg-color) 14%, transparent),
+			transparent 60%
+		),
+		radial-gradient(
+			90% 80% at 100% 100%,
+			color-mix(in srgb, var(--md-accent-fg-color) 10%, transparent),
+			transparent 60%
+		),
+		var(--leitwerk-surface-subtle);
+}
+
+.md-typeset .lw-hero h1 {
+	margin: 0 0 0.6rem;
+	font-size: 2.6rem;
+	line-height: 1.1;
+	color: var(--md-default-fg-color);
+}
+
+.md-typeset .lw-hero__lead {
+	max-width: 32em;
+	margin: 0 0 0.8rem;
+	font-size: 1.35rem;
+	font-weight: 650;
+	line-height: 1.3;
+	letter-spacing: -0.012em;
+	text-wrap: balance;
+}
+
+.md-typeset .lw-hero__sub {
+	max-width: 42em;
+	margin: 0 0 1.8rem;
+	color: var(--md-default-fg-color--light);
+}
+
+.md-typeset .lw-pitch {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 1rem;
+}
+
+.md-typeset .lw-pitch__card {
+	display: flex;
+	flex-direction: column;
+	gap: 0.45rem;
+	padding: 1.1rem 1.1rem 1rem;
+	border: 1px solid var(--leitwerk-border);
+	border-radius: var(--leitwerk-radius);
+	background: var(--md-default-bg-color);
+	color: var(--md-default-fg-color);
+	font: inherit;
+	text-align: left;
+	cursor: pointer;
+	transition:
+		border-color 140ms ease,
+		box-shadow 140ms ease,
+		transform 140ms ease;
+}
+
+.md-typeset .lw-pitch__card:hover,
+.md-typeset .lw-pitch__card[aria-pressed="true"] {
+	border-color: var(--leitwerk-border-strong);
+	box-shadow: 0 6px 20px -6px color-mix(in srgb, var(--md-default-fg-color) 18%, transparent);
+	transform: translateY(-1px);
+}
+
+.md-typeset .lw-pitch__card[aria-pressed="true"] {
+	border-color: var(--md-accent-fg-color);
+	box-shadow: 0 0 0 1px var(--md-accent-fg-color);
+}
+
+.md-typeset .lw-pitch__card:focus-visible {
+	outline: 2px solid var(--md-accent-fg-color);
+	outline-offset: 2px;
+}
+
+.md-typeset .lw-pitch__step {
+	font-size: 0.68rem;
+	font-weight: 700;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: var(--md-typeset-a-color);
+}
+
+.md-typeset .lw-pitch__title {
+	font-size: 1.05rem;
+	font-weight: 700;
+	letter-spacing: -0.01em;
+}
+
+.md-typeset .lw-pitch__text {
+	flex: 1;
+	font-size: 0.8rem;
+	line-height: 1.5;
+	color: var(--md-default-fg-color--light);
+}
+
+.md-typeset .lw-pitch__cta {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.45rem;
+	margin-top: 0.3rem;
+	font-size: 0.78rem;
+	font-weight: 650;
+	color: var(--md-typeset-a-color);
+}
+
+.md-typeset .lw-pitch__cta::before {
+	content: "";
+	width: 0;
+	height: 0;
+	border-style: solid;
+	border-width: 0.32rem 0 0.32rem 0.52rem;
+	border-color: transparent transparent transparent currentColor;
+}
+
+/* The player that a pitch card opens; it always shows at full height */
+.md-typeset .lw-player {
+	margin: 0 0 2.4rem;
+	scroll-margin-top: 6rem;
+}
+
+.md-typeset .lw-player leitwerk-flow {
+	display: block;
+}
+
+@media (max-width: 48em) {
+	.md-typeset .lw-hero {
+		padding: 1.6rem 1.1rem 1.2rem;
+	}
+
+	.md-typeset .lw-hero h1 {
+		font-size: 2rem;
+	}
+
+	.md-typeset .lw-hero__lead {
+		font-size: 1.15rem;
+	}
+
+	.md-typeset .lw-pitch {
+		grid-template-columns: 1fr;
+	}
 }

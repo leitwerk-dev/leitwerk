@@ -59,13 +59,17 @@ With an existing config Secret, set `kubernetes.process_volume.pre_provision`
 and `kubernetes.image_preload.enabled` there too. Apply RBAC and admission updates
 before enabling those settings. Preparation is asynchronous and does not gate
 readiness; deployment verification should check ready volumes and successful
-image-preparation Pods. See [configuration](../../docs/configuration.md) for
+image-preparation Pods. See [Kubernetes deployment](../../docs/admin/deploy-kubernetes.md) and [configuration](../../docs/admin/configuration.md) for
 the preparation and replenishment contracts.
 
 Set `gateway.enabled=true` to serve the revision-matched SPA through Caddy. An
 init container copies the UI from the server image, and the gateway proxies API,
 authentication, WebSocket, and extension-UI routes to Fastify. The gateway
-currently requires `internalTls.enabled=false`.
+currently requires `internalTls.enabled=false`. When `internalTls.enabled=true`,
+`server.ingress` alone routes only to `leitwerk-server` (which does not serve
+the UI SPA); provide an external proxy that serves the extracted
+`/app/packages/ui/dist` SPA and proxies `/api/*`, `/auth/*`, `/ws`, and
+`/ext-ui/*` over HTTPS.
 
 Use `server.nodeSelector`/`server.tolerations` and the corresponding
 `gateway.nodeSelector`/`gateway.tolerations` values when both Deployments must
@@ -92,25 +96,12 @@ Because Docker Desktop's Kind-backed containerd does not share the Docker image
 store, `load-images.sh` uses a short-lived privileged pod to import the two
 revision-tagged images into the single local node. Do not use that loader on a
 shared or remote cluster. The scripts use the ignored local `leitwerk.yaml` as
-configuration input, including
-optional provider extensions such as Codex Nifto. `backup.sh` stops the server,
+configuration input, including any configured provider extensions. `backup.sh` stops the server,
 archives the server and process PVCs, checksums the protected result, and then
 restores service. `undeploy.sh stop` retains all durable resources; its explicit
 `purge` mode requires a checksummed backup and the full deployment id.
 
-Local Kind loop:
-
-```bash
-npm run build
-npm run k8s:kind:create
-npm run k8s:images:build
-npm run k8s:images:load
-npm run k8s:helm:deploy:kind
-npm run test:k8s:local
-npm run k8s:kind:delete
-```
-
-Override image names with `SERVER_IMAGE`, `WORKER_GENERIC_IMAGE`, and `WORKER_SPECIALIZED_IMAGE` when running the scripts. If `npm run test:k8s:local` reports that the server ServiceAccount cannot create namespaces, the deployed RBAC is stale; rerun `npm run k8s:helm:deploy:kind` before rerunning the smoke test.
+For local smoke tests, see the [Kind guide](../../docs/admin/deploy-kubernetes.md#kind).
 
 ## Resource quotas
 

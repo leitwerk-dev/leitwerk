@@ -45,4 +45,4 @@ The following exported declarations are `@public`:
 
 - `@leitwerk-dev/process-analysis`: `default`.
 
-See the [SDK compatibility policy](../../docs/process-sdk.md#api-compatibility) for member classifications and support guarantees.
+See the [SDK compatibility policy](../../docs/extensions/process-sdk.md#api-compatibility) for member classifications and support guarantees.

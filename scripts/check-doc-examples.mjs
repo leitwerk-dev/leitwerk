@@ -1,13 +1,12 @@
 // Standalone documentation check. It does not start a server, worker, or provider.
 import assert from "node:assert/strict";
-import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { glob, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "@leitwerk-dev/server";
 import { createExtensionTestHarness } from "@leitwerk-dev/test-support/process";
 import ts from "typescript";
-import { parse, stringify } from "yaml";
+import { parse } from "yaml";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const examplePath = path.join(root, "docs/examples/first-process.ts");
@@ -61,12 +60,16 @@ try {
 console.log("Tutorial: TypeScript, module loading, graph, and launcher checks passed.");
 
 // Markdown fragments are syntax-checked, not treated as complete configurations.
-const markdown = new Map();
+const docsRoot = path.join(root, "docs");
 let fragments = 0;
-for (const filename of (await readdir(path.join(root, "docs"))).sort()) {
-	if (!filename.endsWith(".md")) continue;
-	const text = await readFile(path.join(root, "docs", filename), "utf8");
-	markdown.set(filename, text);
+for await (const entry of glob("**/*.md", {
+	cwd: docsRoot,
+	exclude: ["**/{examples,assets,images}/**"],
+	withFileTypes: true,
+})) {
+	if (!entry.isFile()) continue;
+	const filename = path.relative(docsRoot, path.join(entry.parentPath, entry.name));
+	const text = await readFile(path.join(docsRoot, filename), "utf8");
 	for (const match of text.matchAll(/^```(json|yaml)\n([\s\S]*?)^```/gm)) {
 		try {
 			if (match[1] === "json") JSON.parse(match[2]);
@@ -78,35 +81,14 @@ for (const filename of (await readdir(path.join(root, "docs"))).sort()) {
 	}
 }
 
-const directory = await mkdtemp(path.join(tmpdir(), "leitwerk-doc-examples-"));
-try {
-	const base = parse(await readFile(path.join(root, "leitwerk.yaml.example"), "utf8"));
-	const localBlock = markdown.get("introduction.md").match(/^```yaml\n([\s\S]*?)^```/m);
-	assert.ok(localBlock, "Local walkthrough must include its YAML overrides");
-	const local = parse(localBlock[1]);
-	const merged = { ...base, ...local };
-	for (const key of ["workers", "pi", "extensions"]) merged[key] = { ...base[key], ...local[key] };
-	const configurations = [["local", merged]];
-	for (const runner of ["docker", "kubernetes"]) {
-		configurations.push([
-			runner,
-			parse(
-				await readFile(path.join(root, `docs/examples/${runner}/leitwerk.example.yaml`), "utf8"),
-			),
-		]);
-	}
-	for (const [name, configuration] of configurations) {
-		const filename = path.join(directory, `${name}.yaml`);
-		await writeFile(filename, stringify(configuration));
-		const result = loadConfig(filename);
-		assert.equal(result.ok, true, result.ok ? name : `${name}: ${result.error}`);
-		assert.equal(result.config.workers.runner, name);
-		assert.notEqual(result.config.storage.sqlite_path, ":memory:");
-		assert.ok(result.config.pi.model_profiles.length > 0);
-		assert.ok(result.config.extension_loading.sources.length > 0);
-	}
-} finally {
-	await rm(directory, { recursive: true, force: true });
+for (const runner of ["local", "docker", "kubernetes"]) {
+	const filename = path.join(root, "docs/examples", runner, "leitwerk.example.yaml");
+	const result = loadConfig(filename);
+	assert.equal(result.ok, true, result.ok ? runner : `${runner}: ${result.error}`);
+	assert.equal(result.config.workers.runner, runner);
+	assert.notEqual(result.config.storage.sqlite_path, ":memory:");
+	assert.ok(result.config.pi.model_profiles.length > 0);
+	assert.ok(result.config.extension_loading.sources.length > 0);
 }
 console.log(
 	`Configuration: local/Docker/Kubernetes schemas and ${fragments} Markdown fragments passed.`,

@@ -17,6 +17,10 @@ leitwerk.yaml
 **/tsconfig.tsbuildinfo
 test-results
 site/
+.venv/
+.zensical-staging/
+.zensical-cache/
+.cache/
 __pycache__/
 plan
 
@@ -38,6 +42,6 @@ leitwerk.yaml
 /.agents/skills/*
 !/.agents/skills/review-stack/
 !/.agents/skills/api-findings/
-!/.agents/skills/open-mr/
+!/.agents/skills/open-pr/
 .codex/
 .DS_Store

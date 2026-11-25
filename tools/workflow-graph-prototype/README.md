@@ -31,9 +31,9 @@ publication from below. All samples place selected-step details below the graph.
 Tool sets are illustrative static declarations, not recorded calls. The guided
 preview stacks its path and starting-context form on narrow screens.
 
-See the [Workflow interaction contract](../../docs/ui.md#process-inspector) for
+See the [Workflow interaction contract](../../docs/maintainers/ui-contracts.md#process-inspector) for
 layout, repeat notation, tool disclosure, hover, selection, and keyboard behavior.
-The [mapped-turn contract](../../docs/process-sdk.md#mapped-llm-turns) defines item
+The [mapped-turn contract](../../docs/extensions/process-sdk.md#mapped-llm-turns) defines item
 execution and collection; collection does not add another executed turn.
 
 ## Validate
@@ -45,7 +45,7 @@ npm run check --prefix tools/workflow-graph-prototype
 This runs Biome and the standalone production build. Preview UI changes also need
 focused browser/visual checks, including all four samples and the guided form.
 Shared-package and application changes require `npm run test:full` in addition
-to the preview check; see [Testing](../../docs/testing.md).
+to the preview check; see [Testing](../../docs/maintainers/testing.md).
 
 ## Integration boundary
 

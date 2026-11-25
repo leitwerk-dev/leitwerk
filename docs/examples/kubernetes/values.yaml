@@ -8,7 +8,7 @@ server:
     - secretRef:
         name: leitwerk-provider
   storage:
-    retain: true
+    existingClaim: leitwerk-server
 
 # Serves the built UI and forwards browser requests to the server.
 gateway:

@@ -26,9 +26,9 @@ Renderer changes must appear in both surfaces; the guided form remains local.
 
 ## Capabilities and Constraints
 
-Follow the shared [Workflow interaction contract](../../docs/ui.md#process-inspector)
+Follow the shared [Workflow interaction contract](../../docs/maintainers/ui-contracts.md#process-inspector)
 for layout, turn kinds, tools, inspection, and keyboard behavior. Execution and
-empty-collection semantics belong to the [mapped-turn contract](../../docs/process-sdk.md#mapped-llm-turns).
+empty-collection semantics belong to the [mapped-turn contract](../../docs/extensions/process-sdk.md#mapped-llm-turns).
 [DESIGN.md](DESIGN.md) records the preview's visual treatment.
 
 - Use the repeat-path treatment exclusively, without a comparison switcher.

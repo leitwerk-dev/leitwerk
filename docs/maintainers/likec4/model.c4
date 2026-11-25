@@ -1,0 +1,383 @@
+// Logical model: system context (C1), containers (C2), and components (C3).
+// Relationships are declared on the most specific element; LikeC4 lifts them to
+// the container and system levels.
+model {
+
+  // ---------------------------------------------------------------- People
+
+  operator = actor 'Operator' {
+    description 'Launches processes, reviews plans and results, answers questions, approves gates, retries failures.'
+  }
+
+  admin = actor 'Administrator' {
+    description 'Deploys Leitwerk, owns leitwerk.yaml, credentials, model catalogs, and backups.'
+  }
+
+  extensionAuthor = actor 'Extension author' {
+    description 'Writes code-defined processes, tools, watchers, providers, and UI renderers as extension packages.'
+  }
+
+  automation = actor 'API client' {
+    description 'Script or service that calls the HTTP API with a personal API token.'
+  }
+
+  // ------------------------------------------------------- External systems
+
+  idp = external 'Identity provider' {
+    description 'One configured OIDC issuer or native GitHub login.'
+    technology 'OIDC, OAuth'
+  }
+
+  models = external 'Model providers' {
+    description 'LLM APIs and gateways supplied by provider extensions (e.g. OpenAI, Anthropic, a quota-aware Codex account broker).'
+    technology 'HTTPS'
+  }
+
+  forge = external 'Forges and trackers' {
+    description 'Issue trackers, merge/pull requests, and CI status (GitHub, GitLab, Forgejo, Jira, Woodpecker) reached through integration extensions.'
+    technology 'REST, GraphQL'
+  }
+
+  gitRemote = external 'Git remotes' {
+    description 'Repositories that workers clone, fetch, and push.'
+    technology 'Git over SSH'
+  }
+
+  chat = external 'Notification channels' {
+    #optional
+    description 'Operator attention notifications, e.g. Telegram.'
+  }
+
+  runtime = external 'Worker runtime platform' {
+    description 'Starts isolated worker execution units: Docker Engine or the Kubernetes API. Local mode uses host subprocesses instead.'
+    technology 'Docker Engine API, Kubernetes API'
+  }
+
+  registry = external 'Container registry' {
+    description 'Stores immutable, digest-pinned server and worker images.'
+    technology 'OCI'
+  }
+
+  ci = external 'CI and image pipeline' {
+    description 'Validates a composition against a Leitwerk release, then builds and publishes matched server/worker images.'
+    technology 'CI runner, Kaniko, Helm/Skaffold'
+  }
+
+  // --------------------------------------------------------------- Leitwerk
+
+  leitwerk = system 'Leitwerk' {
+    description 'Coordinates code-defined AI workflows with human decisions and external integrations.'
+
+    ui = webapp 'Web UI' {
+      description 'Single-page app: Dashboard, Launcher, Chronicle, Turn Rail, Inspector, Settings, Skills, Watchers, Solution wiki.'
+      technology 'Svelte 5, Vite'
+
+      liveStore = component 'Live state client' {
+        description 'Applies authoritative snapshots, then newer live events; rebuilds after reconnect.'
+        technology 'WebSocket'
+      }
+      dashboard = component 'Dashboard and Launcher' {
+        description 'Process overview, attention list, launch forms with readiness and model selection.'
+      }
+      processView = component 'Process view' {
+        description 'Chronicle, Turn Rail, workflow graph, actions, questions, retry and continue.'
+        technology '@leitwerk-dev/workflow-graph'
+      }
+      inspector = component 'Inspector' {
+        description 'Turn traces, Pi session tree, workspace and storage details.'
+      }
+      settingsView = component 'Settings, Skills, Watchers, Wiki' {
+        description 'Scoped settings, skill packs, watcher status, topic solution wikis, API tokens.'
+      }
+      extensionSlots = component 'Extension UI slots' {
+        description 'Bounded slots rendering extension-supplied UI renderers.'
+      }
+
+      dashboard -> liveStore 'reads'
+      processView -> liveStore 'reads'
+      inspector -> liveStore 'reads'
+      processView -> extensionSlots 'renders'
+    }
+
+    gateway = container 'Web gateway' {
+      description 'Public entrypoint: terminates TLS, serves the UI bundle, and reverse-proxies /api, /auth, /ws, and /ext-ui to the server.'
+      technology 'Caddy'
+    }
+
+    server = container 'Server' {
+      description 'Exclusive owner of durable state. Runs the process engine, launches and supervises workers, and talks to team tools.'
+      technology 'Node.js, Fastify, @fastify/websocket'
+
+      web = module 'Web API' {
+        description 'Browser and API-client edge: routes, authentication, read models, wikis.'
+
+        api = component 'HTTP and WebSocket API' {
+          description 'Process, launcher, settings, and wiki routes; browser WebSocket frames; extension UI routes.'
+          technology 'Fastify'
+        }
+        auth = component 'Authentication' {
+          description 'OIDC/GitHub login with admission policy, hashed sessions, personal API tokens, actor attribution.'
+        }
+        presenter = component 'Read models and broadcast' {
+          description 'Projects durable state into UI snapshots and streams live events to subscribed browsers.'
+        }
+        wiki = component 'Solution wiki' {
+          description 'Topic wikis: storage, routes, and agent tools.'
+          technology '@leitwerk-dev/wiki'
+        }
+      }
+
+      processes = module 'Process orchestration' {
+        description 'Launches processes and moves them through their code-defined turn graphs.'
+
+        launch = component 'Launch pipeline' {
+          description 'Launch Runs: input validation, preparation checks, model and skill resolution, admission and idempotency.'
+        }
+        engine = component 'Process engine' {
+          description 'Turn graph transitions, input queue, lifecycle status, retry and continue.'
+          technology 'ProcessEngine'
+
+          coordinator = component 'Operation coordinator' {
+            description 'Per-process exclusive lifecycle mutations; defers extension host events until the lock is released (ADR-023).'
+          }
+          inputs = component 'Input dispatch' {
+            description 'FIFO-sequenced process inputs from operators, watchers, and workers.'
+          }
+          actions = component 'Action planner' {
+            description 'Validates operator actions and plans the next selected turn and its model.'
+          }
+          graph = component 'Graph rules' {
+            description 'Pure turn-graph validation and transition rules; no I/O.'
+            technology '@leitwerk-dev/domain'
+          }
+          turns = component 'Turn records' {
+            description 'TurnStartRecord reservation, accepted ProcessTurnRecords, retry, error parking.'
+          }
+        }
+        notifier = component 'Attention notifier' {
+          description 'Notifies operators when a process waits for them.'
+        }
+        titles = component 'Title and commit message generation' {
+          description 'Server-side model calls for process titles and commit messages.'
+        }
+      }
+
+      execution = module 'Worker execution' {
+        description 'Starts, supervises, and talks to disposable workers.'
+
+        supervisor = component 'Worker supervisor' {
+          description 'Worker leases and heartbeats, readiness gate, turn-start reservation, stale-outcome rejection.'
+        }
+        runners = component 'Worker runners' {
+          description 'Local, Docker, and Kubernetes execution units, process volumes, read-only state exporters.'
+          technology '@leitwerk-dev/worker-runners'
+        }
+        workerGateway = component 'Worker gateway' {
+          description 'Authenticated worker IPC at /internal/workers/connect and session-snapshot uploads.'
+          technology 'WebSocket, HTTP'
+        }
+        credentials = component 'Credentials and Pi resources' {
+          description 'Encrypted credential store; immutable, content-addressed Pi resource snapshots; per-worker secret bag.'
+        }
+      }
+
+      extensions = module 'Extensions and integrations' {
+        description 'Loads extension code and connects processes to team tools.'
+
+        extRuntime = component 'Extension runtime' {
+          description 'Discovers extensions and assembles the catalog of processes, tools, watchers, providers, settings, and UI renderers.'
+          technology 'jiti'
+        }
+        watchers = component 'Watcher scheduler' {
+          description 'Polls external sources on schedules and turns observations into launches or process inputs.'
+          technology '@leitwerk-dev/watcher-utils'
+        }
+        integrations = component 'Integration calls and external writes' {
+          description 'Server-side tool execution with server-held API tokens; idempotent ensureWrite with publication receipts.'
+          technology '@leitwerk-dev/external-writes'
+        }
+      }
+
+      persistence = component 'Persistence' {
+        description 'Single SQLite writer; explicit, backed-up migrations; tree files and retained snapshots.'
+        technology 'Drizzle ORM, node:sqlite'
+      }
+    }
+
+    state = store 'Server state' {
+      description 'SQLite database, Pi tree files, latest session snapshots, encrypted credentials.'
+      technology 'SQLite, files'
+    }
+
+    unit = module 'Process execution unit' {
+      #perProcess
+      description 'One isolated execution unit per process: a disposable worker, its retained volume, and optional private Docker.'
+      technology 'Subprocess, Docker container, or Kubernetes Pod'
+
+      worker = container 'Worker' {
+        #perProcess
+        description 'Disposable execution unit for one process. Runs automatic and LLM turns; never accesses SQLite.'
+        technology 'Node.js, Pi coding agent SDK'
+
+        client = component 'Worker protocol client' {
+          description 'Connects with a worker credential; receives assignments; acknowledges worker.turn_started; reports outcomes.'
+          technology '@leitwerk-dev/worker-protocol'
+        }
+        bootstrap = component 'Workspace preparation' {
+          description 'Full git clone per component; aggregates AGENTS.md and skills; materializes the verified Pi snapshot and 0600 credentials.'
+        }
+        driver = component 'Turn driver' {
+          description 'Runs the selected turn on the Pi session tree; model switches affect only future calls.'
+          technology 'SdkPiTreeHandle'
+        }
+        tools = component 'Agent and outcome tools' {
+          description 'Coding tools, integration tool proxies, and turn-specific outcome tools registered as customTools.'
+        }
+        uploader = component 'Snapshot uploader' {
+          description 'Uploads the session snapshot required before terminal LLM publication.'
+        }
+      }
+
+      dockerd = container 'Private Docker daemon' {
+        #optional #perProcess
+        description 'Per-worker Docker for processes that declare runtime.docker; never the host socket.'
+        technology 'dockerd, overlay2, sysbox-runc / gVisor / VM'
+      }
+
+      workspace = store 'Process volume' {
+        #perProcess
+        description 'Retained per-process state: repository clones, managed Pi agent dir, sessions, tooling, Docker data.'
+        technology 'Bind mount, named volume, or PVC'
+      }
+    }
+  }
+
+  // ------------------------------------------------------- Relationships
+
+  operator -> leitwerk.ui 'launches, reviews, approves, retries'
+  automation -> leitwerk.server.web.api 'calls API' {
+    technology 'HTTPS, Bearer lwk_pat_…'
+  }
+  admin -> leitwerk.server 'configures' {
+    technology 'leitwerk.yaml, secrets, encryption key'
+  }
+  admin -> ci 'adopts releases, triggers deploys'
+  extensionAuthor -> leitwerk.server.extensions.extRuntime 'ships processes and integrations' {
+    technology 'extension packages, compositions'
+  }
+  extensionAuthor -> ci 'pushes composition changes'
+
+  leitwerk.ui -> leitwerk.gateway 'loads app, sends requests' {
+    technology 'HTTPS'
+  }
+  leitwerk.ui.liveStore -> leitwerk.server.web.api 'subscribes to snapshots and live events' {
+    technology 'WebSocket /ws'
+  }
+  leitwerk.ui.dashboard -> leitwerk.server.web.api 'launches processes' {
+    technology 'HTTP JSON'
+  }
+  leitwerk.ui.processView -> leitwerk.server.web.api 'submits operator commands' {
+    technology 'HTTP JSON'
+  }
+  leitwerk.ui.settingsView -> leitwerk.server.web.api 'reads and edits settings, wikis, tokens' {
+    technology 'HTTP JSON'
+  }
+  leitwerk.ui.extensionSlots -> leitwerk.server.web.api 'loads renderers' {
+    technology '/ext-ui'
+  }
+  leitwerk.gateway -> leitwerk.server.web.api 'reverse-proxies' {
+    technology 'HTTP, WebSocket'
+  }
+
+  // Server internals
+  leitwerk.server.web.api -> leitwerk.server.web.auth 'authenticates requests'
+  leitwerk.server.web.auth -> idp 'signs users in' {
+    technology 'OIDC + PKCE / GitHub OAuth'
+  }
+  leitwerk.server.web.api -> leitwerk.server.processes.launch 'launch intents'
+  leitwerk.server.web.api -> leitwerk.server.processes.engine.actions 'operator commands'
+  leitwerk.server.web.api -> leitwerk.server.web.presenter 'reads and subscriptions'
+  leitwerk.server.web.api -> leitwerk.server.web.wiki 'wiki requests'
+  leitwerk.server.processes.launch -> leitwerk.server.processes.engine.coordinator 'creates process instances'
+  leitwerk.server.processes.launch -> leitwerk.server.processes.titles 'requests titles'
+  leitwerk.server.extensions.extRuntime -> leitwerk.server.processes.engine.graph 'process definitions'
+  leitwerk.server.extensions.extRuntime -> leitwerk.server.extensions.watchers 'watcher definitions'
+  leitwerk.server.extensions.extRuntime -> leitwerk.server.extensions.integrations 'tools and adapters'
+  leitwerk.server.extensions.watchers -> leitwerk.server.processes.launch 'event launches'
+  leitwerk.server.extensions.watchers -> leitwerk.server.processes.engine.inputs 'process inputs'
+  leitwerk.server.extensions.watchers -> forge 'polls issues, reviews, CI' {
+    technology 'REST, GraphQL'
+  }
+  leitwerk.server.processes.engine.turns -> leitwerk.server.execution.supervisor 'requests turn starts'
+  leitwerk.server.processes.engine.coordinator -> leitwerk.server.extensions.integrations 'publication effects (after lock release)'
+  leitwerk.server.processes.engine.coordinator -> leitwerk.server.web.presenter 'state changes'
+  leitwerk.server.processes.engine.coordinator -> leitwerk.server.processes.notifier 'waiting for operator'
+  leitwerk.server.processes.notifier -> chat 'sends notifications'
+  leitwerk.server.execution.supervisor -> leitwerk.server.execution.runners 'start, stop, adopt'
+  leitwerk.server.execution.supervisor -> leitwerk.server.execution.credentials 'resolves Pi snapshot and secret bag'
+  leitwerk.server.execution.runners -> runtime 'creates worker units and volumes' {
+    technology 'Docker Engine API / Kubernetes API'
+  }
+  leitwerk.server.execution.workerGateway -> leitwerk.server.execution.supervisor 'acceptance, heartbeats'
+  leitwerk.server.execution.workerGateway -> leitwerk.server.processes.engine.turns 'correlated outcomes'
+  leitwerk.server.execution.workerGateway -> leitwerk.server.extensions.integrations 'integration tool calls'
+  leitwerk.server.extensions.integrations -> forge 'ensureWrite (idempotent)' {
+    technology 'REST, GraphQL'
+  }
+  leitwerk.server.processes.titles -> models 'generates titles and commit messages'
+  leitwerk.server.processes.engine.coordinator -> leitwerk.server.persistence 'transactions'
+
+  // Process engine internals
+  leitwerk.server.processes.engine.actions -> leitwerk.server.processes.engine.graph 'checks transitions'
+  leitwerk.server.processes.engine.actions -> leitwerk.server.processes.engine.inputs 'enqueues actions'
+  leitwerk.server.processes.engine.inputs -> leitwerk.server.processes.engine.coordinator 'dispatches in order'
+  leitwerk.server.processes.engine.coordinator -> leitwerk.server.processes.engine.graph 'applies transitions'
+  leitwerk.server.processes.engine.coordinator -> leitwerk.server.processes.engine.turns 'selects next turn'
+  leitwerk.server.processes.engine.turns -> leitwerk.server.processes.engine.coordinator 'accepted outcomes'
+  leitwerk.server.processes.launch -> leitwerk.server.persistence 'Launch Runs'
+  leitwerk.server.execution.credentials -> leitwerk.server.persistence 'encrypted credentials'
+  leitwerk.server.web.wiki -> leitwerk.server.persistence 'wiki pages'
+  leitwerk.server.execution.workerGateway -> leitwerk.server.persistence 'session snapshots'
+  leitwerk.server.persistence -> leitwerk.state 'reads and writes' {
+    technology 'SQL, files'
+  }
+
+  // Worker lifecycle
+  runtime -> leitwerk.unit.worker 'runs'
+  runtime -> registry 'pulls images' {
+    technology 'OCI'
+  }
+  ci -> registry 'publishes digest-pinned images'
+
+  // Worker internals
+  leitwerk.unit.worker.client -> leitwerk.server.execution.workerGateway 'worker.* messages' {
+    technology 'authenticated WebSocket'
+  }
+  leitwerk.unit.worker.uploader -> leitwerk.server.execution.workerGateway 'uploads session snapshots' {
+    technology 'HTTP'
+  }
+  leitwerk.unit.worker.client -> leitwerk.unit.worker.bootstrap 'prepares workspace'
+  leitwerk.unit.worker.client -> leitwerk.unit.worker.driver 'runs assigned turn'
+  leitwerk.unit.worker.driver -> leitwerk.unit.worker.tools 'tool calls'
+  leitwerk.unit.worker.driver -> leitwerk.unit.worker.uploader 'turn end'
+  leitwerk.unit.worker.tools -> leitwerk.unit.worker.client 'integration and outcome requests'
+  leitwerk.unit.worker.driver -> models 'LLM requests' {
+    technology 'HTTPS'
+  }
+  leitwerk.unit.worker.bootstrap -> gitRemote 'clones and fetches' {
+    technology 'Git over SSH'
+  }
+  leitwerk.unit.worker.tools -> gitRemote 'pushes branches' {
+    technology 'Git over SSH'
+  }
+  leitwerk.unit.worker.bootstrap -> leitwerk.unit.workspace 'clones, Pi resources'
+  leitwerk.unit.worker.driver -> leitwerk.unit.workspace 'session tree, file edits'
+  leitwerk.unit.worker.uploader -> leitwerk.unit.workspace 'reads session'
+  leitwerk.unit.worker.tools -> leitwerk.unit.dockerd 'builds and runs containers' {
+    technology 'Unix socket'
+  }
+  leitwerk.unit.dockerd -> leitwerk.unit.workspace 'stores images and layers' {
+    technology '/state/tooling/docker'
+  }
+  leitwerk.unit.dockerd -> registry 'pulls images'
+}

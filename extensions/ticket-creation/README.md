@@ -57,10 +57,10 @@ The following exported declarations are `@public`:
 Members have individual classifications; these exports do not make every member
 public. Both `@public` and `@internal` APIs remain usable and fully typed. Source
 annotations are authoritative; see the [SDK compatibility
-policy](../../docs/process-sdk.md#api-compatibility).
+policy](../../docs/extensions/process-sdk.md#api-compatibility).
 
 ### External-write replay
 
-Adapters follow the [shared reconciliation contract](../../docs/process-sdk.md#typed-external-writes)
+Adapters follow the [shared reconciliation contract](../../docs/extensions/external-writes-and-adapters.md#typed-external-writes)
 and return the standard ticket receipt on creation and replay. A logged ticket
 that cannot be recovered fails without creating another ticket.

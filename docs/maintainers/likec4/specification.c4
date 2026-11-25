@@ -1,0 +1,124 @@
+// Element kinds, deployment node kinds, and notation shared by all Leitwerk views.
+specification {
+
+  element actor {
+    notation 'Person'
+    style {
+      shape person
+      color amber
+    }
+  }
+
+  element system {
+    notation 'Software system'
+    style {
+      color primary
+    }
+  }
+
+  element external {
+    notation 'External system'
+    style {
+      color gray
+    }
+  }
+
+  element container {
+    notation 'Container'
+    style {
+      color blue
+    }
+  }
+
+  element webapp {
+    notation 'Browser application'
+    style {
+      shape browser
+      color sky
+    }
+  }
+
+  element store {
+    notation 'Durable storage'
+    style {
+      shape storage
+      color indigo
+    }
+  }
+
+  element module {
+    notation 'Component group'
+    style {
+      color indigo
+      opacity 10%
+    }
+  }
+
+  element component {
+    notation 'Component'
+    style {
+      color secondary
+    }
+  }
+
+  deploymentNode environment {
+    notation 'Deployment environment'
+    style {
+      color slate
+    }
+  }
+
+  deploymentNode machine {
+    notation 'Host machine'
+  }
+
+  deploymentNode browser {
+    notation 'Web browser'
+  }
+
+  deploymentNode osProcess {
+    notation 'OS process'
+  }
+
+  deploymentNode filesystem {
+    notation 'Host directory or volume'
+  }
+
+  deploymentNode network {
+    notation 'Network'
+  }
+
+  deploymentNode dockerContainer {
+    notation 'Docker container'
+  }
+
+  deploymentNode cluster {
+    notation 'Kubernetes cluster'
+  }
+
+  deploymentNode namespace {
+    notation 'Kubernetes namespace'
+  }
+
+  deploymentNode pod {
+    notation 'Kubernetes workload'
+  }
+
+  deploymentNode volume {
+    notation 'Persistent volume'
+  }
+
+  deploymentNode saas {
+    notation 'Hosted service'
+    style {
+      color gray
+    }
+  }
+
+  relationship async {
+    line dotted
+  }
+
+  tag optional
+  tag perProcess
+}

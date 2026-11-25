@@ -22,7 +22,7 @@ function createMermaidWorker(): MermaidRenderWorker {
 	}) as MermaidRenderWorker;
 }
 
-/** Sanitizes executable SVG content but does not enforce a network resource policy; see docs/security.md. */
+/** Sanitizes executable SVG content but does not enforce a network resource policy; see docs/admin/security.md. */
 export function sanitizeMermaidSvg(svg: string): string {
 	const purifier = createDOMPurify(globalThis.window);
 	return purifier.sanitize(svg.replace(CSS_IMPORT, ""), {

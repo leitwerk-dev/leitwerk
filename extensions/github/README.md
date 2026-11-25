@@ -161,11 +161,11 @@ The following exported declarations are `@public`:
 Members have individual classifications; these exports do not make every member
 public. Both `@public` and `@internal` APIs remain usable and fully typed. Source
 annotations are authoritative; see the [SDK compatibility
-policy](../../docs/process-sdk.md#api-compatibility).
+policy](../../docs/extensions/process-sdk.md#api-compatibility).
 
 ### External-write replay
 
-Writes follow the [shared reconciliation contract](../../docs/process-sdk.md#typed-external-writes).
+Writes follow the [shared reconciliation contract](../../docs/extensions/external-writes-and-adapters.md#typed-external-writes).
 Pull requests are matched by branch pair; comments and replies use hidden markers
 within their repository and thread. Reaction recovery matches the bot's identity.
 Update recovery compares requested fields, including normalized labels. Logged

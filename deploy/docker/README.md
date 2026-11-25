@@ -2,36 +2,19 @@
 
 Server-in-container topology for the Docker run mode. For a revision-pinned,
 loopback-only installation that can run beside a source development server, see
-the [local Docker deployment guide](../../docs/docker-deployment-guide.md). Run the server in a
+the [local Docker deployment guide](../../docs/admin/deploy-docker.md). Run the server in a
 container too, even on one machine: it is the easiest topology to secure and it
 matches the Kubernetes model, so the secure choice and the k8s-ready choice
 coincide.
 
 ## Topology
 
-```
-            public HTTPS (Let's Encrypt)
-                      │
-              ┌───────▼────────┐
-              │  reverse-proxy │  (Caddy, the public UI/API entrypoint)
-              └───────┬────────┘
-                      │  private network: leitwerk
-              ┌───────▼─────────────┐
-              │ leitwerk-server │  internal name: leitwerk-server:8080
-              └───────┬─────────────┘
-        Docker Engine │ socket (start/stop/list/adopt workers)
-              ┌───────▼────────┐   ┌────────────────┐
-              │ worker (proc A)│   │ worker (proc B)│  …one per active process
-              └────────────────┘   └────────────────┘
-                  /state volume        /state volume   (server never reads them)
-```
+See [Compose topology](../../docs/admin/deploy-docker.md#compose-topology) for
+shared networking and routing. In this variant Caddy is the public UI/API
+entrypoint and terminates HTTPS with Let's Encrypt.
 
-- **Shared private network.** `leitwerk` is a user-defined bridge shared by
-  the server and every worker. Workers reach the server by the stable internal
-  name `leitwerk-server`, never a host IP or `host.docker.internal`.
-  `docker.server_url` is always config, never derived from host networking.
-- **Reverse proxy for public HTTPS.** Caddy terminates public UI/API HTTPS and
-  forwards to the server. It is the only public UI/API entrypoint.
+- **Worker address.** Set `docker.server_url` explicitly; it is never derived
+  from host networking.
 - **Internal TLS (optional).** `internal_tls` secures the worker → server
   IPC and session-snapshot endpoints over the private network. The cert carries
   a SAN for `leitwerk-server`; workers trust the signing CA via
@@ -83,11 +66,19 @@ The server rejects unsupported APIs instead of mounting the complete process vol
    and set `docker.server_ca_file` to the absolute host path for the CA file.
    The cert must carry a SAN for `leitwerk-server`.
 
-4. Build and start:
+4. Build the server image, extract the built UI for Caddy, and start:
 
    ```bash
-   docker compose -f deploy/docker/docker-compose.yaml up --build
+   docker compose -f deploy/docker/docker-compose.yaml build leitwerk-server
+   rm -rf deploy/docker/ui && mkdir -p deploy/docker/ui
+   ui_source="$(docker create "leitwerk-server:${LEITWERK_IMAGE_TAG:-local}")"
+   docker cp "$ui_source:/app/packages/ui/dist/." deploy/docker/ui/
+   docker rm "$ui_source"
+   docker compose -f deploy/docker/docker-compose.yaml up -d
    ```
+
+   Re-extract `deploy/docker/ui` whenever you rebuild `leitwerk-server` so the
+   SPA matches the server revision.
 
 The server mounts the Docker Engine socket so its Docker runner can manage
 worker containers on the same private network. On restart the server lists

@@ -31,4 +31,4 @@ The source lane loads `src/ui/manifest.json`; the dist lane loads the manifest a
 
 ## API support
 
-The default export from `@leitwerk-dev/example-processes` is `@public`. See the [SDK compatibility policy](../../docs/process-sdk.md#api-compatibility).
+The default export from `@leitwerk-dev/example-processes` is `@public`. See the [SDK compatibility policy](../../docs/extensions/process-sdk.md#api-compatibility).

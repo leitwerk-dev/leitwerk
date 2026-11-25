@@ -25,6 +25,7 @@ volumes:
 
 services:
   leitwerk-server:
+    image: leitwerk-server:${LEITWERK_IMAGE_TAG:-local}
     build:
       context: ../..
       dockerfile: deploy/images/Dockerfile.server
@@ -58,6 +59,7 @@ services:
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./ui:/srv:ro
       - caddy_data:/data
       - caddy_config:/config
     restart: unless-stopped

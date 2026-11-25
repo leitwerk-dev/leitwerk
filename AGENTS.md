@@ -3,30 +3,12 @@
 Concise guidance for AI processes working in `leitwerk/`.
 
 ## 1. Source of truth
-When changing the design or implementation, keep these aligned:
-- `docs/arc42.md`
-- `docs/introduction.md`
-- `docs/process-sdk.md`
-- `docs/agent-tools.md`
-- `docs/server-worker-lifecycle.md`
-- `docs/watchers.md`
-- `docs/testing.md`
-- `docs/configuration.md`
-- `docs/ubiquitous_language.md`
-- `docs/process-workspace.md`
-- `docs/websocket.md`
-- `docs/ui.md`
-- `docs/llm-turn.md`
-- `docs/models.md`
-- `docs/development-composition.md`
-- `docs/security.md`
-- `docs/ci.md`
-- `docs/future.md`
+When changing the design or implementation, update the relevant docs for [users](docs/users/index.md), [admins](docs/admin/index.md), [extension developers](docs/extensions/index.md), or [maintainers](docs/maintainers/index.md).
 
-Treat `docs/*.md` as the intended target state. Resolve wording drift by updating the docs to the intended contract.
-- Follow `WRITING.md` for API docs, semantic rules, compatibility tables, tests, and implementation notes.
+Treat `docs/**/*.md` as the intended target state. Resolve wording drift by updating the docs to the intended contract.
+- Follow [AUTHORING.md](AUTHORING.md) when shaping an audience’s learning path, and [WRITING.md](WRITING.md) when writing contracts, compatibility tables, tests, and implementation notes.
 - Document extension/process-specific behavior in that extension's `README.md`.
-- Do not update cross-cutting `docs/*.md` or `leitwerk.yaml.example` merely because an optional extension/process is added. Update them only when shared contracts, config schema, runtime invariants, or core UX change.
+- Do not update cross-cutting `docs/**/*.md` or `leitwerk.yaml.example` merely because an optional extension/process is added. Update them only when shared contracts, config schema, runtime invariants, or core UX change.
 - When config keys change, update `leitwerk.yaml.example` in the same change.
 
 ## 2. Technology stack & Product model
@@ -35,19 +17,19 @@ Treat `docs/*.md` as the intended target state. Resolve wording drift by updatin
 - **Database**: Drizzle ORM + `node:sqlite` (synchronous)
 - **Testing**: Vitest
 - **Linting/formatting**: Biome
-- **Build**: tsup (server/worker/domain/protocol), tsx (dev), Vite (UI)
+- **Build**: Turbo (`npm run build`), tsup (server/worker/domain/protocol), tsx (dev), Vite (UI), Zensical (`npm run docs:build`)
 - **Pi integration**: `@earendil-works/pi-coding-agent` SDK embedded in workers
 - **Product Model**: Process-centric. Poem Creator lives in `showcase-processes`; prompt and Kubernetes smoke processes live in `example-processes`. Loaded dynamically via `jiti`, not statically privileged.
 
 ## 3. Package layout & Boundaries
 Monorepo using npm workspaces. 
-- **Core (`packages/`)**: `domain`, `protocol`, `worker-protocol`, `process-sdk`, `extension-runtime`, `watcher-utils`, `external-writes`, `worker-runners`, `server`, `worker`, `ui`, `test-support`.
+- **Core (`packages/`)**: `dev-sandbox`, `dev-tools`, `domain`, `extension-runtime`, `external-writes`, `pi-session-transfer`, `process-sdk`, `protocol`, `server`, `session-transfer`, `test-support`, `ui`, `watcher-utils`, `wiki`, `worker`, `worker-protocol`, `worker-runners`, `workflow-graph`.
 - **Extensions (`extensions/`)**: `showcase-processes`, `example-processes`, `models`, `coding`, `forgejo-repo-change`, `git-ssh`, `process-analysis`, `telegram`, etc.
 
 **Hard Rule:** Core packages under `packages/` must **never** import from `extensions/` (applies to runtime, tests, and types). Top-level `tests/` should import via package specifiers (e.g., `@leitwerk-dev/domain`).
 
 ## 4. Architecture & Runtime Invariants
-- **State Ownership:** The server is the exclusive source of truth for durable state. Workers are disposable and **never** access SQLite. All state flows via IPC (stdin/stdout).
+- **State Ownership:** The server is the exclusive source of truth for durable state. Workers are disposable and **never** access SQLite. All state flows via authenticated WebSocket (`/internal/workers/connect`) and session-snapshot HTTP uploads.
 - **SQLite Schema Migrations:** Every durable schema change requires an explicit migration. Startup backs up file-backed SQLite before applying known migrations atomically, validates the result, and rejects unknown drift. Never reset configured storage automatically.
 - **Process Lineage:** Multi-component work is still *one* process instance with *one* persisted instance tree.
 - **Pi Integration:** Local workers force Pi to use the leitwerk-managed `pi.agent_dir` (`~/.pi/agent` is ignored). Tree-first API via `SdkPiTreeHandle`.
@@ -77,14 +59,14 @@ Core types live in `packages/domain/src/domain-model.ts`:
 ## 6. Contribution Policy
 - **PR Titles:** Use Conventional Commits syntax: `type(scope)!: description`. Allowed types are `feat`, `fix`, `docs`, `test`, `ci`, `build`, `chore`, `refactor`, `perf`, and `revert`.
 - **DCO Sign-off:** Every commit must contain a `Signed-off-by` trailer matching the commit author's name and email. Create commits with `git commit -s`. Repair an existing commit with `git commit --amend -s` (or sign off each commit during an interactive rebase).
-- **Required Checks:** Before merge, confirm both `Full validation` and `Conventional PR title and DCO` pass. See `CONTRIBUTING.md` and `docs/ci.md` for the complete policy.
+- **Required Checks:** Before merge, confirm both `Full validation` and `Conventional PR title and DCO` pass. See `CONTRIBUTING.md` and `docs/maintainers/ci-and-releases.md` for the complete policy.
 
 ## 7. Testing & Operational Directives
 - **Change Completion:** Changes to application code, shared contracts, application dependencies, or application build/test/runtime configuration require `npm run test:full` (lint, build, typecheck, tests) to pass. Partial workspace runs do not replace full validation for these changes.
-- **Scoped Validation:** For documentation-only changes (including `AGENTS.md`), review the diff for correctness and consistency. For standalone helper scripts that do not affect the application or its build/test/runtime paths, use syntax checks and focused smoke checks. These changes do not require `npm run test:full`; complete them once the relevant checks pass. The pre-merge required checks in section 6 still apply.
-- **Isolated Tools:** Changes confined to `tools/api-explorer-prototype/`, including its dependencies and configuration, use `npm run check --prefix tools/api-explorer-prototype` and focused browser/visual checks for UI changes. Do not run `npm run test:full` for these changes. Application changes made alongside the tool still follow Change Completion.
+- **Scoped Validation:** For documentation-only changes (including `AGENTS.md`), review the diff for correctness and consistency and run `npm run docs:build` (plus `node --import tsx scripts/check-doc-examples.mjs` after `npm run build` when examples change). For standalone helper scripts that do not affect the application or its build/test/runtime paths, use syntax checks and focused smoke checks. These changes do not require `npm run test:full`; complete them once the relevant checks pass. The pre-merge required checks in section 6 still apply.
+- **Isolated Tools:** Changes confined to `tools/api-explorer-prototype/` use `npm run check --prefix tools/api-explorer-prototype` and focused browser/visual checks for UI changes. Changes confined to `tools/workflow-graph-prototype/` use `npm run check --prefix tools/workflow-graph-prototype` and focused browser/visual checks for UI changes. Do not run `npm run test:full` for changes confined to either tool; application changes made alongside them still follow Change Completion.
 - **Test Failure Triage:** If tests fail in `packages/*/dist` or `extensions/*/dist`, suspect stale build artifacts. **Never edit `dist/` by hand.** Run `npm run build` (or `npm run build -w <workspace>`) before debugging logic.
-- **Running vitest**: Always rebuild before running vitest to avoid stale artifacts.
+- **Built-Artifact Suites vs Vitest:** Workspace Vitest projects alias packages to live TypeScript sources, while Playwright browser tests, `test:parity`, `api:check`, and `scripts/check-doc-examples.mjs` execute built `dist/` outputs — run `npm run build` before running those built-artifact checks.
 - **Schema Changes:** Test migrations against file-backed storage and verify durable data survives. Do not delete operator data automatically. Preserve durable process, workspace, and tree state.
 - **Fakes:** Use `FakeLlmProvider` and extension-owned fakes for boundary testing. Avoid broad mocking.
 - **Test Value:** Add tests for observable contracts and concrete failure modes not already covered. Set expected results independently of implementation logic; tests must survive behavior-preserving refactors. Running the required suite does not imply adding a test for every edit.
@@ -93,7 +75,7 @@ Core types live in `packages/domain/src/domain-model.ts`:
 - **API Classification:** Use `@internal` by default for exported declarations and members. Use `@public` only when the declaration is an intentionally supported external API and its compatibility contract has been established.
 
 ## 8. MVP Boundaries
-These are not MVP features. Keep them in `docs/future.md` until explicitly promoted:
+These are not MVP features. Keep them in `docs/maintainers/future.md` until explicitly promoted:
 - per-process/per-tenant authorization or tenant isolation (single-provider SSO + attribution is in scope)
 - process-to-process creation
 - config-defined processes

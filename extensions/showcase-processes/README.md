@@ -59,4 +59,4 @@ The source lane loads `src/ui/manifest.json` and lets Vite transform the custom-
 
 ## API support
 
-The default export from `@leitwerk-dev/showcase-processes` is `@public`. See the [SDK compatibility policy](../../docs/process-sdk.md#api-compatibility).
+The default export from `@leitwerk-dev/showcase-processes` is `@public`. See the [SDK compatibility policy](../../docs/extensions/process-sdk.md#api-compatibility).

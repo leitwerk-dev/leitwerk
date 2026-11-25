@@ -1,6 +1,6 @@
 # Settings surface
 
-Mode: Operate. Open Settings from global navigation. The surface follows the [design system](../DESIGN.md). Resolution and execution behavior are defined in [Scoped settings](../../../docs/scoped-settings.md).
+Mode: Operate. Open Settings from global navigation. The surface follows the [design system](../DESIGN.md). Operator usage is in [Settings](../../../docs/users/settings.md) and extension contracts are in [Scoped settings](../../../docs/extensions/scoped-settings.md).
 
 ## Purpose and direction
 

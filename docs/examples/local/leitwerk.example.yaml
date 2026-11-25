@@ -1,0 +1,26 @@
+# Copy to .leitwerk/local/leitwerk.yaml and start Leitwerk from the checkout root.
+storage:
+  sqlite_path: ./.leitwerk/local/leitwerk.sqlite
+  process_workspaces_dir: ./.leitwerk/local/workspaces
+  tree_files_dir: ./.leitwerk/local/trees
+
+workers:
+  runner: local
+
+pi:
+  agent_dir: ./.leitwerk/local/pi
+  default_model_profile: example_model
+  model_profiles:
+    - id: example_model
+      provider: openai
+      model_id: gpt-4o
+
+extension_loading:
+  sources:
+    - ../../extensions/models
+    - ../../extensions/example-processes
+
+extensions:
+  models:
+    openai:
+      api_key: env:OPENAI_API_KEY

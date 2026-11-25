@@ -50,7 +50,7 @@ To update upstream, finish or preserve the current working copy and remove
 `.skill-pack/work/`, then run `skills:prepare` with `-- --ref <commit-or-tag>`.
 Resolve any patch failures in the new working copy and regenerate the diff before
 building. Commit the updated pristine files, pinned recipe, and patch together.
-See [Skill packs](../../docs/skill-packs.md) for the contribution and maintenance
+See [Skill packs](../../docs/extensions/skill-packs.md) for the contribution and maintenance
 contracts.
 
 The upstream files are MIT licensed. Their original license is retained under

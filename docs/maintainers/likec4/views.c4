@@ -1,0 +1,101 @@
+views {
+  // C1 — system context
+  view index {
+    title 'System context'
+    description 'Leitwerk, the people who use and run it, and the systems it depends on.'
+    include *
+    autoLayout TopBottom
+  }
+
+  // C2 — containers
+  view containers of leitwerk {
+    title 'Containers'
+    description 'Server owns durable state; workers are disposable and report over authenticated IPC.'
+    include *
+    include
+      leitwerk.ui -> leitwerk.gateway,
+      leitwerk.gateway -> leitwerk.server
+    exclude ci, admin, extensionAuthor
+    autoLayout TopBottom
+  }
+
+  // C3 — components
+  view serverComponents of leitwerk.server {
+    title 'Server components'
+    description 'Top-level component groups. Open a group to zoom in.'
+    include *
+    autoLayout TopBottom
+  }
+
+  view serverWeb of leitwerk.server.web {
+    title 'Server: Web API'
+    include *
+    autoLayout TopBottom
+  }
+
+  view serverProcesses of leitwerk.server.processes {
+    title 'Server: Process orchestration'
+    include *
+    autoLayout TopBottom
+  }
+
+  view processEngine of leitwerk.server.processes.engine {
+    title 'Server: Process engine'
+    description 'Pure graph rules inside an imperative shell that serializes per-process mutations.'
+    include *
+    autoLayout TopBottom
+  }
+
+  view serverExecution of leitwerk.server.execution {
+    title 'Server: Worker execution'
+    include *
+    autoLayout TopBottom
+  }
+
+  view serverExtensions of leitwerk.server.extensions {
+    title 'Server: Extensions and integrations'
+    include *
+    autoLayout TopBottom
+  }
+
+  view executionUnit of leitwerk.unit {
+    title 'Process execution unit'
+    include *
+    autoLayout TopBottom
+  }
+
+  view workerComponents of leitwerk.unit.worker {
+    title 'Worker components'
+    include *
+    autoLayout TopBottom
+  }
+
+  view uiComponents of leitwerk.ui {
+    title 'Web UI components'
+    include *
+    autoLayout TopBottom
+  }
+
+  // Deployment
+  deployment view localDeployment {
+    title 'Deployment: local development'
+    include local.**
+    autoLayout TopBottom
+  }
+
+  deployment view dockerDeployment {
+    title 'Deployment: Docker Compose'
+    include docker.**
+    // The browser reaches the server only through the gateway.
+    exclude docker.dockerBrowser.ui -> docker.dockerHost.bridge.serverContainer.server
+    autoLayout TopBottom
+  }
+
+  deployment view kubernetesDeployment {
+    title 'Deployment: Kubernetes (production reference)'
+    include kubernetes.**
+    // The browser reaches the server only through the gateway.
+    exclude kubernetes.k8sBrowser.ui -> kubernetes.k8sCluster.serverNamespace.serverDeployment.server
+    autoLayout TopBottom
+  }
+}
