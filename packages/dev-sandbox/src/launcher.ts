@@ -11,13 +11,15 @@ import { assertSandboxPath, processIdentity, resetSandbox, sandboxDirectory } fr
 /** @public */
 export interface SandboxLauncherOptions {
 	/** @public */
-	publicRoot: string;
+	publicRoot?: string;
 	/** @public */
 	workspaceRoot: string;
 	/** @public */
 	compositionEntry: string;
 	/** @internal */
 	args?: string[];
+	/** Installed development CLI; omitted for source checkout startup. @internal */
+	cliEntry?: string;
 }
 
 /** Only these ambient values enter the sandbox process tree. @public */
@@ -143,7 +145,7 @@ export async function launchSandbox(options: SandboxLauncherOptions): Promise<vo
 	writeFileSync(pidFile, JSON.stringify(owner), { flag: "wx", mode: 0o600 });
 	console.info(`Local controls: ${input.urls.backend}/__local`);
 	try {
-		await runSupervisor(options.publicRoot, env);
+		await runSupervisor(options, env, compositionPath);
 	} catch (error) {
 		// A dead supervisor does not prove that its detached children stopped.
 		writeFileSync(pidFile, JSON.stringify({ ...owner, shutdownFailed: true }), { mode: 0o600 });
@@ -152,19 +154,27 @@ export async function launchSandbox(options: SandboxLauncherOptions): Promise<vo
 	rmSync(pidFile, { force: true });
 }
 
-async function runSupervisor(publicRoot: string, env: NodeJS.ProcessEnv): Promise<void> {
-	const child = spawn(
-		process.execPath,
-		[
-			"--conditions=source",
-			"--import",
-			"./scripts/pi-source-conditions.mjs",
-			"--import",
-			"tsx",
-			"scripts/dev-supervisor.ts",
-		],
-		{ cwd: publicRoot, env, stdio: "inherit", detached: true },
-	);
+async function runSupervisor(
+	options: SandboxLauncherOptions,
+	env: NodeJS.ProcessEnv,
+	compositionPath: string,
+): Promise<void> {
+	const command = options.cliEntry
+		? [options.cliEntry, "dev", "--composition", compositionPath]
+		: [
+				"--conditions=source",
+				"--import",
+				"./scripts/pi-source-conditions.mjs",
+				"--import",
+				"tsx",
+				"scripts/dev-supervisor.ts",
+			];
+	const child = spawn(process.execPath, command, {
+		cwd: options.cliEntry ? options.workspaceRoot : (options.publicRoot ?? process.cwd()),
+		env,
+		stdio: "inherit",
+		detached: true,
+	});
 	let timer: NodeJS.Timeout | undefined;
 	const signal = (value: NodeJS.Signals) => {
 		try {

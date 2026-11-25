@@ -84,8 +84,8 @@ it("runs the installed CLI outside the core checkout, forwards the UI API and re
 		path.join(root, "extension/build.mjs"),
 		`import fs from 'node:fs'; if (fs.existsSync('block-build')) { console.error('BUILD_BLOCKED'); process.exit(1); } fs.mkdirSync('dist', {recursive:true}); fs.copyFileSync('src/index.js','dist/index.js');`,
 	);
-	const source = (version: number) =>
-		`import { fixtureModelProviders } from '@leitwerk-dev/test-support'; console.log('PROBE_${version}:'+process.pid); export default { manifest: { id: 'probe', version: '1.0.0' }, modelProviders: fixtureModelProviders({id: 'probe', modelId: 'probe'}) };`;
+	const source = (version: number, broken = false) =>
+		`import { fixtureModelProviders } from '@leitwerk-dev/test-support'; ${broken ? "throw new Error('LOAD_BLOCKED');" : `if (!process.env.LEITWERK_DEV_PREFLIGHT) console.log('PROBE_${version}:'+process.pid);`} export default { manifest: { id: 'probe', version: '1.0.0' }, modelProviders: fixtureModelProviders({id: 'probe', modelId: 'probe'}) };`;
 	writeFileSync(path.join(root, "extension/src/index.js"), source(1));
 	const { child, output, waitFor } = start();
 	const ready = async () => {
@@ -113,6 +113,12 @@ it("runs the installed CLI outside the core checkout, forwards the UI API and re
 		writeFileSync(path.join(root, "extension/src/index.js"), source(3));
 		await waitFor(async () => output().includes("PROBE_3:") && (await ready()));
 		expect(/PROBE_3:(\d+)/.exec(output())?.[1]).not.toBe(firstPid);
+		writeFileSync(path.join(root, "extension/src/index.js"), source(4, true));
+		await waitFor(() => output().includes("LOAD_BLOCKED"));
+		expect(await ready()).toBe(true);
+		expect(output()).not.toContain("PROBE_4:");
+		writeFileSync(path.join(root, "extension/src/index.js"), source(5));
+		await waitFor(async () => output().includes("PROBE_5:") && (await ready()));
 	} finally {
 		await stopAttached(child, { graceMs: 5000 });
 	}

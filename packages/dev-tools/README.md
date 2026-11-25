@@ -66,8 +66,8 @@ Repository-specific checks can use two optional npm scripts:
   either mode, for auxiliary TypeScript projects outside the composed packages.
 
 `sandbox` starts a sandbox composition declared in the manifest's `sandboxes` map.
-It requires the local core, because the supervisor and UI tooling are
-source-only. `--sandbox=NAME` selects one of several entries. `--llm=real`, the
+It uses the installed Leitwerk supervisor and runtime packages in release mode;
+`core:use-local` selects the source lane. `--sandbox=NAME` selects one of several entries. `--llm=real`, the
 port options and `reset` pass through to the checkout's sandbox launcher. See the
 [harness contract](../dev-sandbox/README.md).
 

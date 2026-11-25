@@ -1,6 +1,9 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { launchSandbox } from "@leitwerk-dev/dev-sandbox/launcher";
+import { selectSandbox } from "./composition.js";
 import { assertSelection, compositionPath, type DevelopmentOptions } from "./selection.js";
 
 /**
@@ -10,8 +13,15 @@ import { assertSelection, compositionPath, type DevelopmentOptions } from "./sel
  */
 export async function runSandbox(options: DevelopmentOptions, args: string[]): Promise<void> {
 	const selection = assertSelection(options);
-	if (selection.mode !== "local" || !selection.checkout)
-		throw new Error("The sandbox requires the local core. Run core:use-local first.");
+	const manifest = compositionPath(options);
+	if (selection.mode !== "local") {
+		await launchSandbox({
+			...selectSandbox(manifest, args),
+			cliEntry: fileURLToPath(new URL("./cli.js", import.meta.url)),
+		});
+		return;
+	}
+	if (!selection.checkout) throw new Error("Local core selection has no checkout");
 	const child = spawn(
 		process.execPath,
 		[
@@ -21,7 +31,7 @@ export async function runSandbox(options: DevelopmentOptions, args: string[]): P
 			"--import",
 			"tsx",
 			path.join(selection.checkout, "scripts/sandbox/cli.ts"),
-			`--composition=${compositionPath(options)}`,
+			`--composition=${manifest}`,
 			...args,
 		],
 		{ cwd: selection.checkout, stdio: "inherit" },

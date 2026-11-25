@@ -68,6 +68,8 @@ export const test = base.extend<Record<string, never>, BrowserWorkerFixtures>({
 			let ctx: AppContext | null = null;
 			try {
 				const config = getDefaultConfig();
+				// The browser suite does not require a live Docker daemon.
+				config.workers.runner = "local";
 				config.workers.shutdown_grace_period = "100ms";
 				config.server.base_url = `http://127.0.0.1:${process.env.LEITWERK_BROWSER_UI_PORT}`;
 				await browserServerOptions.configure?.(config, tempRoot);

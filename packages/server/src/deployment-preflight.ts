@@ -69,21 +69,29 @@ export async function runDeploymentPreflight(input: {
 	await backupProductionDatabase({ sourcePath, destinationPath: databaseCopyPath });
 
 	const createContext = input.createContext ?? (await import("./app.js")).createAppContext;
-	let ctx: AppContext | null = null;
-	try {
-		ctx = await createContext({
+	await checkPreflightApp(
+		await createContext({
 			config: deploymentPreflightConfig(input.config, scratchRoot, databaseCopyPath),
 			extensionLoadingStartDir: input.extensionLoadingStartDir,
-		});
+		}),
+	);
+}
+
+export async function checkPreflightApp(ctx: AppContext, listen = true): Promise<void> {
+	try {
+		if (!listen) {
+			await ctx.app.ready();
+			return;
+		}
 		await ctx.app.listen({ host: "127.0.0.1", port: 0 });
 		const health = await ctx.app.inject({ method: "GET", url: "/api/health" });
 		if (health.statusCode !== 200 || health.json().status !== "ok") {
-			throw new Error(`Deployment preflight health check failed with HTTP ${health.statusCode}`);
+			throw new Error(`Preflight health check failed with HTTP ${health.statusCode}`);
 		}
 		if (ctx.isReady()) {
-			throw new Error("Deployment preflight started background services unexpectedly");
+			throw new Error("Preflight started background services unexpectedly");
 		}
 	} finally {
-		await ctx?.close();
+		await ctx.close();
 	}
 }

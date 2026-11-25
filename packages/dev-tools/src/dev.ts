@@ -5,9 +5,9 @@ import { fileURLToPath } from "node:url";
 import { loadConfig } from "@leitwerk-dev/server";
 import chokidar, { type FSWatcher } from "chokidar";
 import { createServer, type ViteDevServer } from "vite";
-import { stopAttached, waitForBackendReady } from "./child-process.js";
+import { stopAttached, waitForBackendReady, waitForSuccess } from "./child-process.js";
 import { createCoalescedRunner } from "./coalesced-runner.js";
-import { loadWorkspaceComposition } from "./composition.js";
+import { devWatchPaths, loadWorkspaceComposition } from "./composition.js";
 import { build } from "./development.js";
 import { compositionPath, type DevelopmentOptions, workspaceRoot } from "./selection.js";
 import { packageDirectory, workspacePackages } from "./workspace.js";
@@ -15,10 +15,16 @@ import { packageDirectory, workspacePackages } from "./workspace.js";
 export async function develop(options: DevelopmentOptions): Promise<void> {
 	const root = workspaceRoot(options);
 	const manifestPath = compositionPath(options);
+	const backendEntry =
+		process.env.LEITWERK_DEV_BACKEND_ENTRY ??
+		fileURLToPath(new URL("./server.js", import.meta.url));
+	const preflightEntry = process.env.LEITWERK_DEV_PREFLIGHT_ENTRY ?? backendEntry;
+	const extraWatchPaths = devWatchPaths();
 	const uiRoot = path.join(packageDirectory("@leitwerk-dev/ui", root), "dist");
 	if (!existsSync(path.join(uiRoot, "index.html")))
 		throw new Error("Installed Leitwerk UI has no dist/index.html");
 	let backend: ChildProcess | undefined;
+	let candidate: ChildProcess | undefined;
 	let expectedExit: ChildProcess | undefined;
 	let ui: ViteDevServer | undefined;
 	let watcher: FSWatcher | undefined;
@@ -38,7 +44,6 @@ export async function develop(options: DevelopmentOptions): Promise<void> {
 		if (port === uiPort) throw new Error("Backend and UI ports must differ");
 		const proxyHost = ["0.0.0.0", "::"].includes(host) ? "127.0.0.1" : host;
 		return {
-			input,
 			configPath,
 			host,
 			port,
@@ -49,6 +54,7 @@ export async function develop(options: DevelopmentOptions): Promise<void> {
 	};
 	const watchPaths = (configPath: string) => [
 		configPath,
+		...extraWatchPaths,
 		...workspacePackages(root).flatMap((entry) => [
 			path.join(entry.dir, "src"),
 			path.join(entry.dir, "package.json"),
@@ -69,6 +75,7 @@ export async function develop(options: DevelopmentOptions): Promise<void> {
 		process.exitCode = code;
 		shutdownPromise = (async () => {
 			await watcher?.close();
+			if (candidate) await stopAttached(candidate, { graceMs: 5_000 });
 			await stopBackend();
 			await ui?.close();
 		})();
@@ -76,25 +83,24 @@ export async function develop(options: DevelopmentOptions): Promise<void> {
 	}
 	const interrupt = () => void shutdown(130);
 	const terminate = () => void shutdown(143);
+	const spawnServer = (input: ReturnType<typeof settings>, preflight = false) =>
+		spawn(process.execPath, [preflight ? preflightEntry : backendEntry], {
+			cwd: root,
+			stdio: "inherit",
+			env: {
+				...process.env,
+				LEITWERK_RUNTIME_LANE: "dist",
+				LEITWERK_DEV_PREFLIGHT: preflight ? "1" : undefined,
+				LEITWERK_COMPOSITION_PATH: manifestPath,
+				LEITWERK_CONFIG_PATH: input.configPath,
+				HOST: input.host,
+				PORT: String(input.port),
+				LEITWERK_BASE_URL: process.env.LEITWERK_BASE_URL ?? input.baseUrl,
+			},
+		});
 	async function start(input: ReturnType<typeof settings>) {
 		if (stopping) return;
-		const child = spawn(
-			process.execPath,
-			[fileURLToPath(new URL("./server.js", import.meta.url))],
-			{
-				cwd: root,
-				stdio: "inherit",
-				env: {
-					...process.env,
-					LEITWERK_RUNTIME_LANE: "dist",
-					LEITWERK_COMPOSITION_PATH: manifestPath,
-					LEITWERK_CONFIG_PATH: input.configPath,
-					HOST: input.host,
-					PORT: String(input.port),
-					LEITWERK_BASE_URL: process.env.LEITWERK_BASE_URL ?? input.baseUrl,
-				},
-			},
-		);
+		const child = spawnServer(input);
 		backend = child;
 		child.once("error", (error) => {
 			console.error(error.message);
@@ -140,8 +146,16 @@ export async function develop(options: DevelopmentOptions): Promise<void> {
 				try {
 					input = settings();
 					await build(root);
+					if (stopping) return;
+					candidate = spawnServer(input, true);
+					const ok = await waitForSuccess(candidate, AbortSignal.timeout(30_000));
+					if (!ok) await stopAttached(candidate, { graceMs: 5_000 });
+					candidate = undefined;
+					if (!ok && !stopping) throw new Error("Built candidate preflight failed");
 				} catch (error) {
-					console.error(error instanceof Error ? error.message : "Build failed");
+					console.error(
+						error instanceof Error ? error.message : "Build or candidate preflight failed",
+					);
 					return;
 				}
 				if (stopping) return;

@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { signalProcessGroup, stopAttached } from "../packages/dev-tools/src/child-process.ts";
 
+export { waitForSuccess } from "../packages/dev-tools/src/child-process.ts";
 export { createCoalescedRunner } from "../packages/dev-tools/src/coalesced-runner.ts";
 export { signalProcessGroup, stopAttached };
 
@@ -72,13 +73,6 @@ export function spawnAttachedTsx(scriptPath: string, options: SpawnOptions = {})
 			detached: false,
 		},
 	);
-}
-
-export function waitForSuccess(child: ChildProcess): Promise<boolean> {
-	return new Promise((resolve) => {
-		child.once("error", () => resolve(false));
-		child.once("exit", (code) => resolve(code === 0));
-	});
 }
 
 export interface UnexpectedChildFailure {

@@ -1,4 +1,4 @@
-import { createAppContext, loadConfig } from "@leitwerk-dev/server";
+import { createAppContext, loadConfig, runExtensionBootCheck } from "@leitwerk-dev/server";
 import { loadWorkspaceComposition } from "./composition.js";
 
 const input = loadWorkspaceComposition(process.env.LEITWERK_COMPOSITION_PATH as string);
@@ -11,18 +11,18 @@ config.server.base_url = process.env.LEITWERK_BASE_URL ?? config.server.base_url
 config.extension_loading.sources = [
 	...new Set([...config.extension_loading.sources, ...input.extensionDirs]),
 ];
-const context = await createAppContext({ config, extensionLoadingStartDir: input.workspaceRoot });
-let stopping = false;
-async function stop() {
-	if (stopping) return;
-	stopping = true;
-	await context.close();
-}
-process.once("SIGINT", () => void stop());
-process.once("SIGTERM", () => void stop());
-try {
-	await context.listen({ host: config.server.host, port: config.server.port });
-} catch (error) {
-	await stop();
-	throw error;
+const extensionLoadingStartDir = input.workspaceRoot;
+if (process.env.LEITWERK_DEV_PREFLIGHT === "1") {
+	await runExtensionBootCheck(config, { extensionLoadingStartDir });
+} else {
+	const context = await createAppContext({ config, extensionLoadingStartDir });
+	const stop = () => context.close();
+	process.once("SIGINT", () => void stop());
+	process.once("SIGTERM", () => void stop());
+	try {
+		await context.listen({ host: config.server.host, port: config.server.port });
+	} catch (error) {
+		await stop();
+		throw error;
+	}
 }

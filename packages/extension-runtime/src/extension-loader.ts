@@ -298,7 +298,8 @@ function resolveOptionalPiEntryPath(
 	});
 }
 
-function resolvePiResourceDirectories(
+/** @internal */
+export function resolvePiResourceDirectories(
 	packageDir: string,
 	packageName: string,
 	resources: unknown,
@@ -393,7 +394,9 @@ function resolvePackageDirFromSpecifier(startDir: string, source: string): strin
 	);
 }
 
-function resolveSkillPackPath(packageDir: string, value: unknown): string {
+/** @internal */
+export function resolveSkillPackPath(packageDir: string, value: unknown): string | undefined {
+	if (value === undefined) return undefined;
 	if (typeof value !== "string" || !value.trim()) {
 		throw new Error("leitwerk.skills must name a generated skill-pack manifest");
 	}
@@ -417,10 +420,7 @@ async function readExtensionEntryFromPackageJson(
 		packageDir,
 		entryPath: resolveExtensionEntryPath(packageDir, packageName.output, extensionPath, lane),
 		pi: resolvePiContribution(packageDir, packageName.output, parsed.leitwerk?.pi, lane),
-		skillPackPath:
-			parsed.leitwerk?.skills === undefined
-				? undefined
-				: resolveSkillPackPath(packageDir, parsed.leitwerk.skills),
+		skillPackPath: resolveSkillPackPath(packageDir, parsed.leitwerk?.skills),
 	};
 }
 

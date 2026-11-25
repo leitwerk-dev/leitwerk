@@ -135,9 +135,16 @@ publishing and license staging never include private composed packages.
 ## Reload and verification
 
 Source development watches configured extension and workspace package sources.
-Runtime changes preflight before replacing the backend. A failed preflight leaves
-the healthy backend running. UI source changes use Vite's development path. Changes
+Runtime changes preflight before replacing the backend. Preflight validates against
+an SQLite snapshot and disposable workspace, tree and Pi directories. It leaves
+configured storage untouched. A failed preflight leaves the healthy backend
+running. UI source changes use Vite's development path. Changes
 to configuration or extension metadata preflight and restart the development session.
+Retry failed turns manually after a reload.
+
+Use `leitwerk-dev bundle:check DIRECTORY --config FILE` to boot-check a bundle with
+an external Leitwerk config. The check uses disposable storage and leaves background
+services stopped.
 
 Local workers can load composed source roots. Isolated workers do not receive host
 source paths; package the required built artifacts in their images.
@@ -154,16 +161,24 @@ for command and hook contracts.
 Custom compositions supply their catalog, scenarios, scripted Pi, controls, and
 provider fixtures. Keep extension behavior outside core packages.
 
-Extension workspaces declare sandbox compositions in the manifest. With the local
-core selected, `leitwerk-dev sandbox` starts the only declared sandbox; use
+Declare the sandbox factory and its test directory in the workspace manifest:
+
+```yaml
+test_roots:
+  - ./sandbox
+sandboxes:
+  example: ./sandbox/composition.ts
+```
+
+`leitwerk-dev sandbox` starts the only declared sandbox; use
 `--sandbox=NAME` when several are declared. Launcher options such as `--llm=real`
 and `reset` pass through. The sandbox runs in the foreground; Ctrl-C shuts it down.
 Keep local settings in `.leitwerk/sandbox/<name>.yaml`, not tracked files. Depend on a
 released `@leitwerk-dev/dev-sandbox` matching the other `@leitwerk-dev/*` pins, not a
 `file:` link into the checkout.
 
-The source sandbox requires a core checkout; installed packages do not include its
-supervisor, UI source, or built-in scenarios. Follow the
+The sandbox runs from installed packages in release mode; selecting a local core
+checkout uses the source supervisor and built-in source scenarios. Follow the
 [sandbox guide](https://github.com/leitwerk-dev/leitwerk/blob/main/sandbox/README.md)
 and [harness contract](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/dev-sandbox/README.md)
 for custom backend composition, startup, and reset. Those guides own the sandbox's

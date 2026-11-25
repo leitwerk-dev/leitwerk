@@ -8,6 +8,8 @@ export default workspaceBuild({
 		"src/server.ts",
 		"src/composition.ts",
 		"src/workspace.ts",
+		"src/bundle.ts",
+		"src/bundle-check.ts",
 	],
 	dts: false,
 	splitting: true,

@@ -13,7 +13,7 @@ import {
 	stopManaged,
 	waitForSuccess,
 } from "./dev-process.ts";
-import { loadActiveDevelopmentComposition } from "./development-composition.ts";
+import { devWatchPaths, loadActiveDevelopmentComposition } from "./development-composition.ts";
 
 const repoRoot = process.cwd();
 const coreRuntimePackages = [
@@ -77,14 +77,7 @@ async function main(): Promise<void> {
 	const backendEntry = process.env.LEITWERK_DEV_BACKEND_ENTRY
 		? path.resolve(process.env.LEITWERK_DEV_BACKEND_ENTRY)
 		: path.join(repoRoot, "packages/server/src/main.ts");
-	const watchPaths = new Set<string>([backendEntry]);
-	const extraWatchPaths: unknown = JSON.parse(process.env.LEITWERK_DEV_WATCH_PATHS_JSON ?? "[]");
-	if (
-		!Array.isArray(extraWatchPaths) ||
-		!extraWatchPaths.every((value) => typeof value === "string")
-	)
-		throw new Error("LEITWERK_DEV_WATCH_PATHS_JSON must be an array of paths");
-	for (const watchPath of extraWatchPaths) watchPaths.add(path.resolve(watchPath));
+	const watchPaths = new Set([backendEntry, ...devWatchPaths().map((dir) => path.resolve(dir))]);
 	for (const packageName of coreRuntimePackages) {
 		watchPaths.add(path.join(repoRoot, "packages", packageName, "src"));
 	}
