@@ -372,7 +372,7 @@ export function createFutureLaunchLifecycle(
 			modelConfig: normalizeLaunchModelConfigInput(input.modelConfig),
 			invalidModelConfig: "reject",
 		});
-		if (!prepared.ok && schedule.value.mode === "now") {
+		if (!prepared.ok) {
 			return {
 				ok: false as const,
 				outcome: {
@@ -382,20 +382,25 @@ export function createFutureLaunchLifecycle(
 			};
 		}
 		const launchPlan = applySubmittedProcessTitleToLaunchPlan(prepared.launchPlan, input);
+		const preview = deps.processModelPolicy.project({
+			kind: "launcher_preview",
+			processId: launchPlan.processId,
+			plan: launchPlan,
+			modelConfig: prepared.modelConfig,
+			availability: deps.modelStatusCache.snapshot(),
+		});
+		const issues = preview.turns
+			.filter((turn) => turn.effective.error)
+			.map((turn) => ({
+				code: "model_not_ready",
+				message: `${turn.turnId}: ${turn.effective.error}`,
+			}));
+		if (issues.length) return { ok: false as const, outcome: { kind: "invalid" as const, issues } };
 		const modelState = projectLaunchPlanModelState(launchPlan, {
 			policy: deps.processModelPolicy,
 			availability: deps.modelStatusCache.snapshot(),
 			detectedAt: operationTime.toISOString(),
 		});
-		if (!prepared.ok && !modelState.blockedReason) {
-			return {
-				ok: false as const,
-				outcome: {
-					kind: "invalid" as const,
-					issues: presentLaunchPlanPreparationIssues(prepared.errors),
-				},
-			};
-		}
 		return { ok: true as const, launchPlan, modelState, schedule: schedule.value };
 	}
 

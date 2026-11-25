@@ -66,7 +66,17 @@ export default {
 ```
 
 Model provider sets resolve before server setup. Each provider parses only its
-owner-supplied configuration fragment. See [extension-defined providers](models.md#extension-defined-providers).
+owner-supplied configuration fragment. Providers may expose synchronous
+`capabilities({config, modelId})` metadata: values are `true`, `false` or `"unknown"`.
+This projection must be side-effect free and must not probe availability or credentials.
+Missing metadata is unknown, not supported. See [extension-defined providers](models.md#extension-defined-providers).
+
+`ModelRequirements` is a shared data-only contract. Processes and LLM turns declare
+`modelRequirements` directly or through `.modelRequirements(...)` on flow builders.
+It supports profile allowlists, required capabilities, and label all-of/any-of/none-of
+clauses. Non-LLM turn declarations and empty allowlists/any-of clauses are rejected.
+Operator requirements intersect, never widen, code declarations. See
+[model policy](models.md#classification-and-requirements) for selection and precedence.
 Browser result renderers use a separate [UI manifest](extension-ui.md).
 
 Shared solution wikis are owned by [`@leitwerk-dev/wiki`](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/wiki/README.md),

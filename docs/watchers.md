@@ -151,8 +151,11 @@ See the [source reporter API](https://github.com/leitwerk-dev/leitwerk/blob/main
 and [watcher utilities](https://github.com/leitwerk-dev/leitwerk/blob/main/packages/watcher-utils/README.md).
 Provider-specific policies belong in their extension READMEs.
 
-A watcher may select `defaultModelProfileId` from trusted event data. That explicit
-selection overrides the configured watcher default and must pass model validation;
-an unavailable selection fails admission instead of falling back. Configured
-per-turn overrides retain precedence. Watchers without an event selection keep
-the existing inherited-default behavior.
+A watcher may select `defaultModelProfileId` from trusted event data. That preference
+overrides the configured watcher default. Per-turn overrides retain precedence.
+Representable invalid model choices are retained with diagnostics, never silently
+omitted. Watcher admission defers policy and availability blocks to the affected
+turn; malformed configuration still fails parsing. Every actual LLM start enforces
+the same [requirements and deterministic selection](models.md#profile-resolution)
+as UI launches. An unavailable selected model blocks without failover. A durably
+created, blocked process retains its handoff identity and source acknowledgement.

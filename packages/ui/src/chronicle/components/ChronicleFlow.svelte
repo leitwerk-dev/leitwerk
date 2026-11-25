@@ -106,12 +106,17 @@ let {
 	hasTerminalSummary = false,
 }: Props = $props();
 
+const recoveryProfiles = $derived(
+	modelConfiguration.profilesByTurn?.[selectedTurn?.turnId ?? ""] ??
+		modelConfiguration.availableProfiles,
+);
 const inheritedRecoveryModel = $derived(
 	modelConfiguration.turns.find((turn) => turn.turnId === selectedTurn?.turnId)
 		?.effectiveModelProfileId ?? null,
 );
 const recoveryModel = $derived(
-	modelConfiguration.effectiveSelectedTurn?.source === "action_override"
+	modelConfiguration.effectiveSelectedTurn?.source === "action_override" ||
+		modelConfiguration.effectiveSelectedTurn?.source === "launch_override"
 		? modelConfiguration.effectiveSelectedTurn.modelProfileId
 		: inheritedRecoveryModel,
 );
@@ -255,7 +260,7 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 				continuePrompt={recovery.defaultContinuePrompt}
 				retryBusy={recoveryController.retryBusy}
 				retryError={recoveryController.retryError}
-				modelProfiles={modelConfiguration.availableProfiles}
+				modelProfiles={recoveryProfiles}
 				defaultModelProfileId={recoveryModel}
                 inheritedModelProfileId={inheritedRecoveryModel}
 				defaultProviderOptions={recovery.providerOptions}
@@ -297,7 +302,7 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 		<ChronicleStartupRecoverySection
 			{instanceId}
 			recovery={startupRecovery}
-			modelProfiles={modelConfiguration.availableProfiles}
+			modelProfiles={recoveryProfiles}
 			defaultModelProfileId={recoveryModel}
             inheritedModelProfileId={inheritedRecoveryModel}
 			busy={recoveryController.startupRetryBusy}

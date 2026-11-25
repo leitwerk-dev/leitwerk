@@ -5,6 +5,13 @@ report facts, and upload session snapshots. This reference owns acceptance,
 supervision, launch evidence, and recovery contracts. See [LLM turn flow](llm-turn.md)
 for the end-to-end sequence and [operations](operations.md) for deployment recovery.
 
+Model readiness failures retain the selected profile and provenance before worker
+acceptance. Automatic recovery rechecks that captured selection under current policy;
+it never re-ranks after a settings or availability change. Operator retry prepares
+anew and may refresh inherited choices. Accepted work keeps its capture. Profile
+classification labels and automatic-candidate flags are server-only selection metadata,
+not executable worker configuration or adoption-fingerprint inputs.
+
 ## AppContext lifecycle
 
 `createAppContext()` acquires resources without binding or starting background work.

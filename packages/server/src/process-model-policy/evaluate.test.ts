@@ -72,15 +72,14 @@ describe("server process model policy evaluate", () => {
 		});
 	});
 
-	it("blocks a disallowed global default instead of selecting the first allowed profile", () => {
+	it("ranks eligible profiles when the global default is disallowed", () => {
 		const { policy } = createTestModelPolicy({
 			defaultProfileId: "second",
 			allowedProfileIds: ["first"],
 		});
 		expect(policy.evaluate(resolve(createTestProcessInstance()))).toMatchObject({
-			ok: false,
-			code: "model_profile_not_allowed",
-			selection: { modelProfileId: "second" },
+			ok: true,
+			selection: { modelProfileId: "first", provenance: { source: "automatic" } },
 		});
 	});
 
@@ -216,13 +215,11 @@ describe("server process model policy evaluate", () => {
 		for (const configured of [
 			{ processTurnProfileId: "removed" },
 			{ processDefaultProfileId: "removed" },
-			{ processTurnProfileId: "first", allowedProfileIds: ["second"] },
-			{ processDefaultProfileId: "first", allowedProfileIds: ["second"] },
 		]) {
 			const { policy } = createTestModelPolicy(configured);
 			expect(policy.evaluate(resolve(createTestProcessInstance()))).toMatchObject({
 				ok: false,
-				code: configured.allowedProfileIds ? "model_profile_not_allowed" : "unknown_model_profile",
+				code: "unknown_model_profile",
 			});
 		}
 	});
@@ -266,7 +263,7 @@ describe("server process model policy evaluate", () => {
 		});
 	});
 
-	it("re-resolves inherited startup failures after the old default is removed", () => {
+	it("keeps captured inherited startup failures after the old default is removed", () => {
 		const { policy } = createTestModelPolicy({
 			profiles: [{ id: "local_qwen" }],
 			processDefaultProfileId: "local_qwen",
@@ -300,9 +297,10 @@ describe("server process model policy evaluate", () => {
 				availability: createModelAvailabilitySnapshot([{ profileId: "local_qwen" }], 1),
 			}),
 		).toMatchObject({
-			ok: true,
+			ok: false,
+			code: "unknown_model_profile",
 			selection: {
-				modelProfileId: "local_qwen",
+				modelProfileId: "claude_fast",
 				provenance: { kind: "inherited", source: "process_config_default" },
 			},
 		});
@@ -348,6 +346,7 @@ describe("server process model policy evaluate", () => {
 		expect(
 			policy.project({
 				kind: "profile_options",
+				target: { kind: "process_default" },
 				processId: "policy",
 				availability: availability(),
 			}),

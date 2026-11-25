@@ -41,8 +41,11 @@ function createServiceHarness(
 	const deps = createOwnedTestDeps();
 	const processOperations = createProcessOperationCoordinator();
 	const processGraphs = createDefaultTestProcessGraphRegistry();
+	const config = getDefaultConfig();
+	config.pi.default_model_profile = "test";
+	config.pi.model_profiles = [{ id: "test", provider: "test", model_id: "test" }];
 	const processModelPolicy = createServerProcessModelPolicy({
-		config: getDefaultConfig(),
+		config,
 		processGraphs,
 		processActionRegistry: {
 			getTurnDefinition: () => undefined,
@@ -54,7 +57,16 @@ function createServiceHarness(
 			revision: 1,
 			capturedAt: "2026-01-01T00:00:00.000Z",
 			availabilityTransitions: [],
-			profiles: [],
+			profiles: [
+				{
+					profileId: "test",
+					providerId: "test",
+					modelId: "test",
+					availability: "available" as const,
+					safeReason: null,
+					checkedAt: null,
+				},
+			],
 		}),
 	};
 	const commands =
