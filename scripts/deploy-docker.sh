@@ -2,11 +2,8 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-REVISION="${LEITWERK_DOCKER_REVISION:-$(git -C "${repo_root}" rev-parse --short HEAD)}"
 DEPLOY_ID="${LEITWERK_DOCKER_ID:-leitwerk-local}"
 DEPLOY_ROOT="${LEITWERK_DOCKER_ROOT:-${HOME}/.local/share/leitwerk/deployments/${DEPLOY_ID}}"
-SERVER_IMAGE="leitwerk-server:${REVISION}"
-WORKER_IMAGE="leitwerk-worker-generic:${REVISION}"
 URL="${LEITWERK_DOCKER_URL:-http://127.0.0.1:18080}"
 
 usage() {
@@ -15,7 +12,7 @@ Usage: ./deploy-docker.sh
 
 Starts the local Docker deployment at ${URL}.
 Environment overrides:
-  LEITWERK_DOCKER_REVISION  Image revision tag (default: ${REVISION})
+  LEITWERK_DOCKER_REVISION  Override REVISION in the deployment's .env
   LEITWERK_DOCKER_ID        Compose/deployment id (default: ${DEPLOY_ID})
   LEITWERK_DOCKER_ROOT      Deployment directory (default: ${DEPLOY_ROOT})
   LEITWERK_DOCKER_URL       Health/UI URL (default: ${URL})
@@ -33,14 +30,16 @@ fi
 
 command -v docker >/dev/null 2>&1 || { echo "docker is required" >&2; exit 1; }
 command -v curl >/dev/null 2>&1 || { echo "curl is required" >&2; exit 1; }
-docker compose version >/dev/null
-
 compose_file="${DEPLOY_ROOT}/compose.yaml"
 [[ -f "${compose_file}" ]] || {
 	echo "Deployment configuration is missing: ${compose_file}" >&2
 	echo "Create it using docs/admin/deploy-docker.md first." >&2
 	exit 1
 }
+
+if [[ -n "${LEITWERK_DOCKER_REVISION:-}" ]]; then export REVISION="${LEITWERK_DOCKER_REVISION}"; fi
+SERVER_IMAGE="$(cd "${DEPLOY_ROOT}" && docker compose config --images leitwerk-server)"
+WORKER_IMAGE="leitwerk-worker-generic:${SERVER_IMAGE#leitwerk-server:}"
 
 answer=""
 read -r -p "Rebuild ${SERVER_IMAGE} and ${WORKER_IMAGE}? [y/N] " answer
@@ -77,7 +76,7 @@ docker compose config --quiet
 docker compose up -d
 
 for _ in $(seq 1 60); do
-	if curl -fsS "${URL}/api/health" >/dev/null && curl -fsS "${URL}/" | grep -q '<div id="app">'; then
+	if curl -fsS "${URL}/api/ready" >/dev/null && curl -fsS "${URL}/" | grep -q '<div id="app">'; then
 		docker compose ps
 		echo
 		echo "Leitwerk UI: ${URL}"

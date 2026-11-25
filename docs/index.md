@@ -37,7 +37,7 @@ hide:
 </div>
 
 <div class="lw-player" id="lw-flow-player" hidden>
-<leitwerk-flow docs-base="./"></leitwerk-flow>
+<leitwerk-flow></leitwerk-flow>
 </div>
 
 ## Where to start

@@ -77,7 +77,7 @@ npm run docs:build
 npm run docs:serve
 ```
 
-`npm run docs:build` runs staging/link unit tests (`scripts/build_docs_test.py`) and builds the site with Zensical strict link and anchor validation (`scripts/build_docs.py build`). The build also generates the LikeC4 web component bundle from `docs/maintainers/likec4/` with the `likec4` devDependency, so run `npm ci` first.
+Run `npm ci` first and install Zensical in the Python environment used by `python3`. The strict build writes to `.zensical-staging/site`. Restart `docs:serve` after editing sources to refresh the staged snapshot.
 
 Embed a LikeC4 view in any page with a fence that holds only the view id:
 

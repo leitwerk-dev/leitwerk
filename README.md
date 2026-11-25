@@ -59,13 +59,7 @@ Representative bundled extensions under `extensions/`; see [Built-in extensions]
 
 ## Documentation
 
-Browse [the documentation](https://leitwerk-dev.github.io/leitwerk/) (source in [`docs/`](docs/index.md)). To work on it locally, follow [docs/AUTHORING.md](docs/AUTHORING.md) and [WRITING.md](WRITING.md) and preview with Zensical.
-
-```bash
-python3 -m pip install -r requirements-docs.txt
-npm run docs:serve
-npm run docs:build
-```
+Browse [the documentation](https://leitwerk-dev.github.io/leitwerk/) (source in [`docs/`](docs/index.md)). To edit or preview it, see [Documentation checks](docs/maintainers/testing.md#documentation-checks), [AUTHORING.md](AUTHORING.md), and [WRITING.md](WRITING.md).
 
 ## Quick Start
 

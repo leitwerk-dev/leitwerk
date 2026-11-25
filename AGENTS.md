@@ -3,14 +3,10 @@
 Concise guidance for AI processes working in `leitwerk/`.
 
 ## 1. Source of truth
-When changing the design or implementation, keep the relevant docs aligned:
-- **Users (`docs/users/`):** `index.md`, `operate-processes.md`, `skills.md`, `settings.md`, `solution-wiki.md`, `api-tokens.md`
-- **Admin (`docs/admin/`):** `index.md`, `local-quickstart.md`, `deploy-docker.md`, `deploy-kubernetes.md`, `configuration.md`, `models.md`, `security.md`, `backup-and-upgrades.md`
-- **Extensions (`docs/extensions/`):** `index.md`, `first-process.md`, `development-setup.md`, `process-sdk.md`, `launchers-and-readiness.md`, `agent-tools.md`, `watchers.md`, `external-writes-and-adapters.md`, `scoped-settings.md`, `model-providers.md`, `skill-packs.md`, `ui-renderers.md`, `testing.md`
-- **Maintainers (`docs/maintainers/`):** `index.md`, `architecture.md`, `architecture-diagrams.md`, `terminology.md`, `server-worker-lifecycle.md`, `llm-turn.md`, `process-workspace.md`, `websocket.md`, `ui-contracts.md`, `development-compositions.md`, `testing.md`, `ci-and-releases.md`, `future.md`
+When changing the design or implementation, update the relevant docs for [users](docs/users/index.md), [admins](docs/admin/index.md), [extension developers](docs/extensions/index.md), or [maintainers](docs/maintainers/index.md).
 
 Treat `docs/**/*.md` as the intended target state. Resolve wording drift by updating the docs to the intended contract.
-- Follow [docs/AUTHORING.md](docs/AUTHORING.md) when shaping an audience’s learning path, and [WRITING.md](WRITING.md) when writing contracts, compatibility tables, tests, and implementation notes.
+- Follow [AUTHORING.md](AUTHORING.md) when shaping an audience’s learning path, and [WRITING.md](WRITING.md) when writing contracts, compatibility tables, tests, and implementation notes.
 - Document extension/process-specific behavior in that extension's `README.md`.
 - Do not update cross-cutting `docs/**/*.md` or `leitwerk.yaml.example` merely because an optional extension/process is added. Update them only when shared contracts, config schema, runtime invariants, or core UX change.
 - When config keys change, update `leitwerk.yaml.example` in the same change.

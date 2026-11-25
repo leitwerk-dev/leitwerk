@@ -1,12 +1,12 @@
-// Connect <leitwerk-flow> elements to the docs: follow the palette toggle, and let the landing page
-// pitch cards open the player with their flow and start it.
+// Sync LikeC4 with the docs palette and open walkthroughs from the homepage cards.
 (() => {
 	const scheme = () =>
 		document.body.getAttribute("data-md-color-scheme") === "slate" ? "dark" : "light";
 	const sync = () => {
 		const value = scheme();
-		for (const flow of document.querySelectorAll("leitwerk-flow")) {
-			if (flow.getAttribute("color-scheme") !== value) flow.setAttribute("color-scheme", value);
+		for (const diagram of document.querySelectorAll("likec4-view")) {
+			if (diagram.getAttribute("color-scheme") !== value)
+				diagram.setAttribute("color-scheme", value);
 		}
 	};
 	new MutationObserver(sync).observe(document.body, {
@@ -27,13 +27,11 @@
 			other.setAttribute("aria-pressed", String(other === card));
 		}
 		player.hidden = false;
-		flow.flow = card.dataset.flowCard;
-		flow.reset();
+		flow.start(card.dataset.flowCard);
 		flow.focus({ preventScroll: true });
 		player.scrollIntoView({
 			behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
 			block: "start",
 		});
-		flow.play();
 	});
 })();

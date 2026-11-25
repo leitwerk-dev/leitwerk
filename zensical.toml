@@ -16,7 +16,6 @@ extra_css = [
 
 extra_javascript = [
   { path = "assets/javascripts/likec4-views.js", defer = true },
-  { path = "assets/javascripts/likec4-color-scheme.js", defer = true },
   { path = "assets/javascripts/leitwerk-flow.js", defer = true },
   { path = "assets/javascripts/leitwerk-flow-docs.js", defer = true },
 ]

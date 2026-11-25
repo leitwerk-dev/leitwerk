@@ -1,6 +1,6 @@
 // Standalone documentation check. It does not start a server, worker, or provider.
 import assert from "node:assert/strict";
-import { readdir, readFile } from "node:fs/promises";
+import { glob, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadConfig } from "@leitwerk-dev/server";
@@ -60,24 +60,16 @@ try {
 console.log("Tutorial: TypeScript, module loading, graph, and launcher checks passed.");
 
 // Markdown fragments are syntax-checked, not treated as complete configurations.
-async function collectMarkdownFiles(dir, prefix = "") {
-	const entries = await readdir(dir, { withFileTypes: true });
-	const files = [];
-	for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-		const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
-		if (entry.isDirectory()) {
-			if (entry.name === "examples" || entry.name === "assets" || entry.name === "images") continue;
-			files.push(...(await collectMarkdownFiles(path.join(dir, entry.name), rel)));
-		} else if (entry.isFile() && entry.name.endsWith(".md")) {
-			files.push(rel);
-		}
-	}
-	return files;
-}
-
+const docsRoot = path.join(root, "docs");
 let fragments = 0;
-for (const filename of await collectMarkdownFiles(path.join(root, "docs"))) {
-	const text = await readFile(path.join(root, "docs", filename), "utf8");
+for await (const entry of glob("**/*.md", {
+	cwd: docsRoot,
+	exclude: ["**/{examples,assets,images}/**"],
+	withFileTypes: true,
+})) {
+	if (!entry.isFile()) continue;
+	const filename = path.relative(docsRoot, path.join(entry.parentPath, entry.name));
+	const text = await readFile(path.join(docsRoot, filename), "utf8");
 	for (const match of text.matchAll(/^```(json|yaml)\n([\s\S]*?)^```/gm)) {
 		try {
 			if (match[1] === "json") JSON.parse(match[2]);

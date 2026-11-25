@@ -9,32 +9,12 @@ coincide.
 
 ## Topology
 
-```
-            public HTTPS (Let's Encrypt)
-                      │
-              ┌───────▼────────┐
-              │  reverse-proxy │  (Caddy, the public UI/API entrypoint)
-              └───────┬────────┘
-                      │  private network: leitwerk
-              ┌───────▼─────────────┐
-              │ leitwerk-server │  internal name: leitwerk-server:8080
-              └───────┬─────────────┘
-        Docker Engine │ socket (start/stop/list/adopt workers)
-              ┌───────▼────────┐   ┌────────────────┐
-              │ worker (proc A)│   │ worker (proc B)│  …one per active process
-              └────────────────┘   └────────────────┘
-                  /state volume        /state volume   (server never reads them)
-```
+See [Compose topology](../../docs/admin/deploy-docker.md#compose-topology) for
+shared networking and routing. In this variant Caddy is the public UI/API
+entrypoint and terminates HTTPS with Let's Encrypt.
 
-- **Shared private network.** `leitwerk` is a user-defined bridge shared by
-  the server and every worker. Workers reach the server by the stable internal
-  name `leitwerk-server`, never a host IP or `host.docker.internal`.
-  `docker.server_url` is always config, never derived from host networking.
-- **Reverse proxy for public HTTPS and SPA delivery.** Caddy terminates public
-  UI/API HTTPS, serves the extracted SPA from `./ui` (`/srv`), and proxies
-  `/api/*`, `/auth/*`, `/ws`, and `/ext-ui/*` to `leitwerk-server:8080`. It is
-  the only public UI/API entrypoint. Merely reverse-proxying all paths to
-  Fastify does not serve the UI.
+- **Worker address.** Set `docker.server_url` explicitly; it is never derived
+  from host networking.
 - **Internal TLS (optional).** `internal_tls` secures the worker → server
   IPC and session-snapshot endpoints over the private network. The cert carries
   a SAN for `leitwerk-server`; workers trust the signing CA via

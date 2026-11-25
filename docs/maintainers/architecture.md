@@ -89,34 +89,9 @@ Provider and process behavior belongs to extensions under `extensions/`, not pri
 
 ## 6. Runtime view
 
-### Launch
+[Launch admission](../extensions/launchers-and-readiness.md) commits process creation before asynchronous worker startup. [Worker acceptance](server-worker-lifecycle.md#when-a-start-becomes-an-attempt) distinguishes work that actually started from work merely reserved for a worker. Errors park the process without moving it to a different business step, so retry remains a runtime operation rather than a graph branch.
 
-1. A UI, programmatic, watcher, or scheduled source supplies launch intent and admission/idempotency policy.
-2. The server creates a durable Launch Run, validates input, runs preparation checks, and resolves model and skill selections.
-3. Process creation and correlated scheduling/deduplication records commit atomically.
-4. Reactions run after commit and lock release; reaction failure does not erase the process.
-5. Startup proceeds asynchronously. Lease, readiness, and accepted-turn records establish startup truth; Launch Runs project them.
-
-### Turn
-
-Worker starts pass the server's readiness gate before reserving a start; see [Launchers and readiness](../extensions/launchers-and-readiness.md).
-
-1. A `TurnStartRecord` reserves one turn-record identity without counting an attempt.
-2. Worker acceptance (`worker.turn_started`) creates the `ProcessTurnRecord` and increments its attempt once.
-3. The worker executes the automatic or LLM turn. Optional LLM preparation checkpoints bounded JSON before prompting.
-4. The server records a correlated outcome or failure. LLM terminal publication requires a session snapshot upload and durable acknowledgement.
-
-See [Server and worker lifecycle](server-worker-lifecycle.md) and [LLM turn flow](llm-turn.md).
-
-### Process position and failure
-
-`selectedTurnId` identifies business position. `lifecycleStatus` is `discovered`, `active`, `waiting`, `error`, `completed`, or `aborted`. Failures preserve `selectedTurnId` and park in `error` rather than routing to a synthetic failed turn.
-
-Retry starts a new attempt or recovers an unaccepted start; Continue resumes eligible saved LLM progress. Neither adds a process-defined action.
-
-### Local session transfer
-
-An authenticated operator mints an expiring bearer grant. Claiming waits for accepted work and automatic successors to reach quiescence, reserves the process while a read-only exporter streams the workspace and primary session, and commits a local import receipt. Future local turns use local Pi configuration and credentials; see [Process workspace](process-workspace.md).
+See [LLM turn flow](llm-turn.md) for execution and [Local Pi session transfer](process-workspace.md#local-pi-session-transfer) for handing a quiescent process back to a developer.
 
 ## 7. Deployment
 

@@ -21,7 +21,7 @@ The canonical files are [compose.yaml](../examples/docker/compose.yaml), [leitwe
 - `web` (Caddy) binds `127.0.0.1:18080:8080`, serves the extracted SPA from `./ui`, and proxies `/api/*`, `/auth/*`, `/ws`, and `/ext-ui/*` to `leitwerk-server:8080`. Merely reverse-proxying all paths to Fastify does not serve the UI.
 - Worker containers attach to `leitwerk` and dial `http://leitwerk-server:8080` (never a host IP) using launcher-injected connect credentials.
 
-For a public HTTPS deployment with automatic Let's Encrypt certificates, see `deploy/docker/README.md` and `deploy/docker/docker-compose.yaml` (which use the same Caddy SPA + backend routing split on ports `80`/`443`). For repeated local restarts against `$DEPLOY_ROOT`, you can use `scripts/deploy-docker.sh`.
+For a public HTTPS deployment with automatic Let's Encrypt certificates, see `deploy/docker/README.md`.
 
 ## Prepare configuration
 
@@ -49,32 +49,9 @@ Generate the encryption key once (`set -C` refuses to overwrite an existing file
 
 Export `OPENAI_API_KEY` in the launching shell. Compose forwards it to initialize an empty encrypted credential store; an existing stored credential wins on restart.
 
-## Build images and extract the UI
-
-Keep server, worker, and UI artifacts from the same revision:
-
-```sh
-docker build -f deploy/images/Dockerfile.server -t "leitwerk-server:$REVISION" .
-docker build -f deploy/images/Dockerfile.worker-generic -t "leitwerk-worker-generic:$REVISION" .
-
-ui_source="$(docker create "leitwerk-server:$REVISION")"
-docker cp "$ui_source:/app/packages/ui/dist/." "$DEPLOY_ROOT/ui/"
-docker rm "$ui_source"
-test -f "$DEPLOY_ROOT/ui/index.html"
-
-docker image inspect "leitwerk-server:$REVISION" "leitwerk-worker-generic:$REVISION" \
-  --format '{{json .RepoTags}} {{.Id}}' > "$DEPLOY_ROOT/image-lock.txt"
-```
-
-Remove `$ui_source` manually if extraction fails partway.
-
 ## Start and verify
 
-```sh
-docker compose --project-directory "$DEPLOY_ROOT" -f "$DEPLOY_ROOT/compose.yaml" config --quiet
-docker compose --project-directory "$DEPLOY_ROOT" -f "$DEPLOY_ROOT/compose.yaml" up -d
-curl --fail --retry 30 --retry-delay 2 --retry-all-errors http://127.0.0.1:18080/api/ready
-```
+From the checkout for the revision in `.env`, run `LEITWERK_DOCKER_ROOT="$DEPLOY_ROOT" bash scripts/deploy-docker.sh` and choose to rebuild. The helper builds both images, extracts the matching SPA, records `image-lock.txt`, and starts Compose. To restart with the same artifacts, run it again and decline the rebuild.
 
 `/api/ready` returns 200 after reconciliation and extension startup; `/api/health` checks liveness only. Inspect logs with:
 
@@ -125,4 +102,4 @@ Stop the stack without deleting data:
 docker compose --project-directory "$DEPLOY_ROOT" -f "$DEPLOY_ROOT/compose.yaml" stop
 ```
 
-Running worker containers can outlive a stopped server; finish or stop active processes first when halting all work. Compose does not own dynamic worker volumes, so `docker compose down -v` is neither a backup nor a complete cleanup.
+Finish or stop active processes in Leitwerk first: their workers can outlive the server. To remove the Compose containers and network instead of just stopping them, use `down` in the same deployment directory. It does not remove dynamically created worker volumes or the bind-mounted server state. Back up retained data before deleting it separately.

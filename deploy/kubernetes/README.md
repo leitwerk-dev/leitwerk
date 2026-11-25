@@ -101,19 +101,7 @@ archives the server and process PVCs, checksums the protected result, and then
 restores service. `undeploy.sh stop` retains all durable resources; its explicit
 `purge` mode requires a checksummed backup and the full deployment id.
 
-Local Kind loop:
-
-```bash
-npm run build
-npm run k8s:kind:create
-npm run k8s:images:build
-npm run k8s:images:load
-npm run k8s:helm:deploy:kind
-npm run test:k8s:local
-npm run k8s:kind:delete
-```
-
-Override image names with `SERVER_IMAGE`, `WORKER_GENERIC_IMAGE`, and `WORKER_SPECIALIZED_IMAGE` when running the scripts. If `npm run test:k8s:local` reports that the server ServiceAccount cannot create namespaces, the deployed RBAC is stale; rerun `npm run k8s:helm:deploy:kind` before rerunning the smoke test.
+For local smoke tests, see the [Kind guide](../../docs/admin/deploy-kubernetes.md#kind).
 
 ## Resource quotas
 
