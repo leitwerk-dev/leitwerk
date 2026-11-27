@@ -1,66 +1,104 @@
 ---
 name: open-pr
-description: Open or update a Leitwerk pull request from completed changes, including validation, DCO sign-offs, and example images for UI changes. Use when asked to commit, push, and open an MR or PR in this repository.
+description: Publish a Leitwerk PR. Use when asked to commit and open a PR/MR, update an existing PR, or get a PR green.
 ---
 
-# Open a pull request
+# Publish a pull request
 
-Leitwerk uses GitHub pull requests. Treat a merge request (MR) request as a PR request here.
+Leitwerk uses GitHub pull requests; “MR” means PR here. Publication ends with
+verified hosted checks on the latest pushed head, not merely a successful push.
+The request authorizes committing, pushing, and creating/updating the PR, but not
+merging or deployment.
+
+## 1. Establish the publication scope
 
 Read [AGENTS.md](../../../AGENTS.md), [CONTRIBUTING.md](../../../CONTRIBUTING.md),
-[WRITING.md](../../../WRITING.md), and [CI requirements](../../../docs/maintainers/ci-and-releases.md) before
-preparing the contribution. These files own the repository policy.
+[WRITING.md](../../../WRITING.md), and
+[CI requirements](../../../docs/maintainers/ci-and-releases.md).
+These files own contribution and validation policy.
 
-## Prepare the changes
+Inspect the working tree, current branch, remotes, default branch, and existing
+PR. Fetch the target base and inspect divergence. Use a feature branch when on
+the default branch; preserve unrelated work. Query GitHub explicitly for the head
+branch so a resumed session updates its existing PR.
 
-- Inspect the working tree, remote, base branch, and existing PR for the branch.
-  Include the requested changes and their documentation; preserve unrelated work.
-- Use a feature branch when the checkout is on the default branch. Fetch the base
-  before choosing it, and inspect any divergence before publishing.
-- Complete the validation required by AGENTS.md. Application changes require a
-  successful `npm run test:full`; scoped exceptions follow the repository policy.
-  Run `npm run api:check` against the built output for API changes. Existing passing
-  validation can be reused when the application and test sources have not changed.
-- Review the final diff and use a Conventional Commit title for the PR. Commit
-  with `git commit -s`; every commit's DCO trailer must match its author identity.
+**Done:** repository, base/head, intended changes, unrelated work, and existing PR
+(or confirmed absence) are identified.
 
-## Include UI examples
+## 2. Prepare review evidence
 
-UI changes require example images embedded in the PR description. Capture the
-implemented interface at desktop and mobile widths with representative content.
-Include before/after images when they clarify a visual fix. Label fixture data as
-an example rather than an operator's installation.
+Review the complete base-to-head diff plus intended uncommitted changes. Align
+required documentation and configuration examples with the implemented behavior.
+Complete the validation required by repository policy. For application/API work,
+run `npm run api:check` against built output as well as the applicable full gate.
+Reuse a prior passing run only when its provenance is available and its validated
+inputs still match; a prior session's success claim alone is insufficient.
 
-Open each capture before publishing. It must show settled fonts and content,
-readable controls, and the changed area. Inspect screenshots for credentials,
-private repository details, or other unintended content. Local file links and
-temporary test artifact paths are insufficient for a hosted PR.
+For UI changes, capture representative desktop and mobile views, including the
+interaction states that explain the change. Include before/after images when they
+clarify a visual fix, and label fixture data as an example. Open each capture and
+check that content and fonts have settled, controls are readable, and no
+credentials or private details are visible. Keep screenshots out of Git; use
+reviewer-accessible hosted attachments and embed them in the PR body. If capture
+or hosting is blocked, report which evidence is missing.
 
-Use supported platform attachments when available. Otherwise, commit the reviewed
-images under `docs/images/<feature>-desktop.png` and
-`docs/images/<feature>-mobile.png`, and embed URLs pinned to the pushed commit:
+Any subsequent application edit reopens the applicable validation gate and may
+invalidate screenshots. Record blockers explicitly rather than claiming evidence
+exists.
 
-```markdown
-![Desktop example](https://raw.githubusercontent.com/OWNER/REPO/COMMIT/docs/images/FEATURE-desktop.png)
-<img src="https://raw.githubusercontent.com/OWNER/REPO/COMMIT/docs/images/FEATURE-mobile.png" alt="Mobile example" width="390">
-```
+**Done:** every intended change is reviewed; required local checks pass for the
+current inputs; UI evidence is reviewed and hosted, or its blocker is recorded.
 
-Verify that both image URLs are accessible to reviewers. If capture or hosting is
-blocked, complete the available work and report exactly which evidence is missing;
-do not claim that images were attached.
+## 3. Commit and push
 
-## Publish the PR
+Review the staged diff, run `git diff --cached --check`, and stage only intended
+files. Verify PR screenshots are absent from both the staged changes and PR
+history. Commit with `git commit -s`. Inspect every commit in the PR range for a
+DCO trailer matching its author, including commits inherited from earlier work.
+Repair sign-offs using an identity entitled to certify the contribution.
 
-Push the feature branch with its upstream. The user's request to commit, push, and
-open a PR authorizes those actions; it does not authorize merging or deployment.
+Push with an upstream. For an authorized history rewrite, record the remote head
+first and use an explicit `--force-with-lease=<ref>:<expected-sha>`; a changed lease
+requires inspecting the new remote commits before proceeding.
 
-Write a description that leads with the user-visible problem and resulting
-behavior, then adds relevant validation and the example images. Use the repository
-template when present. With `gh`, write multiline text to a temporary file and use
-`--body-file`. Update an existing PR for the branch instead of creating a duplicate;
-after an ambiguous failure, query GitHub before retrying a creation.
+**Done:** intended commits are signed off, and the remote head equals the local
+publication SHA.
 
-Read back the PR title, base/head branches, body, and checks. Distinguish local
-validation from hosted CI. Before merge, both `Full validation` and
-`Conventional PR title and DCO` must pass; pending CI does not prevent opening the
-PR. Finish with the PR link, validation status, and any missing evidence.
+## 4. Create or update the PR
+
+Use a Conventional Commit title and the repository template when present. Lead
+with the user-visible problem and resulting behavior; include relevant
+compatibility notes, precise local validation results, and hosted UI examples.
+Keep local validation separate from hosted CI status.
+
+Write multiline text to a temporary file and pass `--body-file` to `gh pr create`
+or `gh pr edit`. Update the existing PR instead of duplicating it. After an
+ambiguous creation failure, query GitHub before retrying.
+
+Read back the title, body, base/head branches, and `headRefOid`. Verify embedded
+image URLs are accessible to reviewers and depict the published behavior.
+
+**Done:** one PR targets the intended base and publication SHA, with the intended
+body and no stale evidence links.
+
+## 5. Get the published head green
+
+Watch hosted CI with `gh pr checks <number> --watch --interval 30`. On timeout,
+query status and resume watching; timeout is not a failed check. On failure,
+inspect the failing job logs, fix the cause within scope, validate, and push.
+Rerun only when evidence supports a transient failure. Any new push or rewrite
+restarts this gate for the new SHA.
+
+Finally query `gh pr view` and `gh pr checks` again. Require both `Full validation`
+and `Conventional PR title and DCO` to pass on the current head; inspect any other
+failed checks. Missing, pending, cancelled, or skipped required checks do not
+establish a green PR. If credentials, infrastructure, or an out-of-scope failure
+blocks completion, report the exact blocker and check URL.
+
+Close task-owned browser sessions and stop only servers started for this task.
+Finish with the PR link, hosted CI status, and any missing evidence. Mention
+remaining working-tree changes or merge conflicts when relevant. Leave the PR
+unmerged.
+
+**Done:** the current remote head is verified green, or the PR is explicitly
+reported as blocked with outstanding checks/evidence named.

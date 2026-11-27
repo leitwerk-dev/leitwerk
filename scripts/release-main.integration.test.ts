@@ -35,10 +35,10 @@ function repositoryCommands(root: string) {
 	};
 	const writeJson = (filename: string, contents: unknown) =>
 		write(filename, `${JSON.stringify(contents, null, "\t")}\n`);
-	const commit = (message: string) => {
+	const commit = (message: string, { push = true } = {}) => {
 		git(root, "add", "--all");
 		git(root, "commit", "--allow-empty", "-m", message);
-		git(root, "push", "origin", "main");
+		if (push) git(root, "push", "origin", "main");
 		return git(root, "rev-parse", "HEAD");
 	};
 	return { write, writeJson, commit };
@@ -185,9 +185,9 @@ describe("main release queue (real git, local registry boundary)", () => {
 	it("applies expanded release types only after the policy cutover", () => {
 		const f = fixture();
 		f.writeJson("release-policy.json", { baselineTag: "v0.4.0" });
-		f.commit("test: use legacy release policy");
-		f.commit("ci: historical tooling change");
-		f.commit("chore(deps): historical dependency update");
+		f.commit("test: use legacy release policy", { push: false });
+		f.commit("ci: historical tooling change", { push: false });
+		f.commit("chore(deps): historical dependency update", { push: false });
 		const firstSource = f.commit("fix: historical correction");
 		const first = f.requireRelease();
 		expect(first).toMatchObject({ tag: "v0.4.1", source: firstSource });

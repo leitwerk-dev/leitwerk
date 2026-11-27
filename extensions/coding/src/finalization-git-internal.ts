@@ -150,11 +150,7 @@ function repositoryGit(projectKey: string, repoPath: string) {
 		if (workingTreeStatus().length === 0) return git("rev-parse", "HEAD");
 		assertGitIdentity(identity);
 		checkedGit(["add", "--all"], "Failed to stage the completed change");
-		checkedGit(
-			["-c", "core.hooksPath=/dev/null", "commit", "--no-gpg-sign", "-m", commitMessage],
-			"Failed to commit the completed change",
-			identity,
-		);
+		checkedGit(["commit", "--no-gpg-sign", "-m", commitMessage], "Commit failed", identity);
 		const remaining = workingTreeStatus();
 		if (remaining.length > 0) {
 			throw new DeterministicGitError(`Commit left uncommitted changes: ${remaining.join(", ")}`);

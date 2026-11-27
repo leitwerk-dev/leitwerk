@@ -36,6 +36,8 @@ export interface RepositoryChangeWorkflow<TParams> {
 	variant?: "streamlined";
 	/** @public */
 	multiRepository?: boolean;
+	/** Refresh a clean, unpublished checkout against its target before implementation. @public */
+	refreshTargetBeforeImplementation?: boolean;
 	/** @public */
 	planDecision?(params: TParams): Promise<{
 		/** @internal */
@@ -271,6 +273,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				}),
 		)
 		.publish("plan");
+	const refreshTarget = config.workflow?.refreshTargetBeforeImplementation;
 	const implement = flow
 		.llm<TParams, RepositoryChangeState>("implement")
 		.description("Implement")
@@ -289,6 +292,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 					projectKey: repo.key,
 					repoPath: repo.fsPath,
 					workBranch: repo.workBranch,
+					baseBranch: refreshTarget ? repo.baseBranch : undefined,
 					gitIdentity:
 						typeof identity?.name === "string" && typeof identity.email === "string"
 							? { name: identity.name, email: identity.email }
@@ -296,7 +300,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				});
 			}),
 		}))
-		.buildPrompt((ctx) => `${buildImplementPrompt(ctx)}\n\n${reconciliationPrompt}`)
+		.buildPrompt((ctx) => `${buildImplementPrompt(ctx, refreshTarget)}\n\n${reconciliationPrompt}`)
 		.outcomeTool("implementation_ready", (tool) =>
 			tool
 				.description("Implementation and checks are complete; continue to delivery")

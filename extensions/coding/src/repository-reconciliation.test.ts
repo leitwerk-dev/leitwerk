@@ -17,8 +17,7 @@ import {
 } from "./repository-rebase/git.js";
 import {
 	prepareInitialRepository,
-	reconcilePublicationRepository,
-	reconcileRepository,
+	reconcilePublicationRepository as reconcileRepository,
 	recordRepositoryPublication,
 	retainConcurrentRebase,
 } from "./repository-reconciliation.js";
@@ -109,13 +108,12 @@ describe("repository reconciliation", { timeout: 30_000 }, () => {
 		const remote = f.commit(f.dev, "remote.txt", "developer\n");
 		f.push();
 		expect(reconcileRepository(f.input)).toEqual({
-			status: "ready",
+			status: "reconciled",
 			remoteHead: remote,
 			headSha: remote,
-			changed: true,
 		});
 		expect(git(f.local, "status", "--porcelain")).toBe("");
-		expect(reconcileRepository(f.input).changed).toBe(false);
+		expect(reconcileRepository(f.input).status).toBe("unchanged");
 	});
 
 	it("adopts a rewritten remote without resurrecting previously published commits", () => {
@@ -151,7 +149,7 @@ describe("repository reconciliation", { timeout: 30_000 }, () => {
 		f.commit(f.dev, "remote.txt", "developer\n");
 		f.push();
 		const result = reconcileRepository(f.input);
-		expect(result.status).toBe("ready");
+		expect(result.status).toBe("reconciled");
 		expect(readFileSync(join(f.local, "remote.txt"), "utf8")).toBe("developer\n");
 		expect(git(f.local, "show", "HEAD:local.txt")).toBe("committed");
 		expect(git(f.local, "log", "-1", "--format=%an%n%ae%n%cn%n%ce")).toBe(
@@ -195,7 +193,7 @@ describe("repository reconciliation", { timeout: 30_000 }, () => {
 		writeFileSync(join(f.local, "file.txt"), "remote and local\n");
 		git(f.local, "add", "file.txt");
 		git(f.local, "rebase", "--continue");
-		expect(reconcileRepository(f.input).status).toBe("ready");
+		expect(reconcileRepository(f.input).status).toBe("reconciled");
 		expect(readFileSync(join(f.local, "file.txt"), "utf8")).toBe("remote and local\n");
 		expect(git(f.local, "log", "--format=%s")).not.toContain("checkpoint");
 	});
@@ -243,14 +241,23 @@ describe("repository reconciliation", { timeout: 30_000 }, () => {
 		);
 	});
 
-	it("does not publish previously ignored files when remote ignore rules change", () => {
+	it.each(["source", "target"])("blocks files exposed by %s ignore-rule changes", (branch) => {
 		const f = fixture();
+		if (branch === "target") {
+			git(f.dev, "push", "origin", "HEAD:main", ":work");
+			git(f.local, "fetch", "origin");
+		}
 		writeFileSync(join(f.local, "ignored.txt"), "local generated data\n");
 		f.commit(f.dev, ".gitignore", "");
-		f.push();
-		expect(() => reconcileRepository(f.input)).toThrow(/Previously ignored local files/);
+		git(f.dev, "push", "origin", branch === "target" ? "HEAD:main" : "work");
+		const { baselineSha: _, ...initial } = f.input;
+		const sync = () =>
+			branch === "target"
+				? prepareInitialRepository({ ...initial, baseBranch: "main" })
+				: reconcileRepository(f.input);
+		expect(sync).toThrow(/Previously ignored local files/);
 		expect(readFileSync(join(f.local, "ignored.txt"), "utf8")).toBe("local generated data\n");
-		expect(() => reconcileRepository(f.input)).toThrow(/Previously ignored local files/);
+		expect(sync).toThrow(/Previously ignored local files/);
 	});
 
 	it("preserves leading whitespace in ignored path collision checks", () => {
@@ -299,7 +306,8 @@ describe("repository reconciliation", { timeout: 30_000 }, () => {
 		const remote = git(f.dev, "rev-parse", "HEAD");
 		expect(local).not.toBe(remote);
 		f.push();
-		expect(reconcileRepository(f.input)).toMatchObject({ status: "ready", remoteHead: remote });
+		const result = reconcileRepository(f.input);
+		expect(result).toMatchObject({ status: "reconciled", remoteHead: remote });
 		expect(git(f.local, "merge-base", "--is-ancestor", remote, "HEAD")).toBe("");
 		// Replaying may retain an empty commit for lineage, but must not duplicate the patch.
 		expect(git(f.local, "rev-parse", "HEAD^{tree}")).toBe(git(f.dev, "rev-parse", "HEAD^{tree}"));
@@ -311,7 +319,7 @@ describe("repository reconciliation", { timeout: 30_000 }, () => {
 		const f = fixture();
 		const local = f.commit(f.local, "published.txt", "published\n");
 		git(f.local, "push", "origin", "work");
-		expect(reconcileRepository(f.input)).toMatchObject({ headSha: local, changed: false });
+		expect(reconcileRepository(f.input)).toMatchObject({ headSha: local, status: "unchanged" });
 	});
 
 	it("does not replay an accepted publication after a developer rewrite and lost server acknowledgement", () => {
@@ -390,7 +398,7 @@ describe("repository reconciliation", { timeout: 30_000 }, () => {
 		writeFileSync(join(f.local, "local.txt"), "implementation\n");
 		f.commit(f.dev, "remote.txt", "developer branch\n");
 		f.push();
-		expect(reconcilePublicationRepository(initial).status).toBe("ready");
+		expect(reconcileRepository(initial).status).toBe("reconciled");
 		expect(readFileSync(join(f.local, "local.txt"), "utf8")).toBe("implementation\n");
 		expect(readFileSync(join(f.local, "remote.txt"), "utf8")).toBe("developer branch\n");
 	});
@@ -428,7 +436,7 @@ describe("repository reconciliation", { timeout: 30_000 }, () => {
 		expect(reconcileRepository(f.input).headSha).toBe(result.headSha);
 		expect(git(f.local, "show", ":file.txt")).toBe("staged");
 		expect(git(f.local, "status", "--porcelain")).toContain("?? untracked.txt");
-		expect(reconcileRepository(f.input).changed).toBe(false);
+		expect(reconcileRepository(f.input).status).toBe("unchanged");
 	});
 
 	it("preserves new staged work when a captured checkpoint is no longer current", () => {
@@ -535,7 +543,7 @@ describe("repository reconciliation", { timeout: 30_000 }, () => {
 			gitIdentity: { name: "Integration Bot", email: "integration@example.test" },
 		});
 		const reconciled = reconcileRepository(f.input);
-		expect(reconciled.status).toBe("ready");
+		expect(reconciled.status).toBe("reconciled");
 		expect(existsSync(join(f.local, "published.txt"))).toBe(false);
 		expect(readFileSync(join(f.local, "file.txt"), "utf8")).toBe("target and feature resolved\n");
 		expect(readFileSync(join(f.local, "developer.txt"), "utf8")).toBe("developer change\n");

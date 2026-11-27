@@ -115,6 +115,19 @@ lease and publishes any retained unpublished work before acknowledging feedback.
 An unchanged checkout creates no commit or push. A watcher may observe an active
 worker's new remote head, but never mutates its checkout or captured baseline.
 
+## Target-branch refresh
+
+With `refreshTargetBeforeImplementation`, preparation fast-forwards a clean,
+unpublished branch to the target and stops if ignored files become publishable.
+Checkouts with local work are preserved for reconciliation.
+
+Before the first push of an unpublished work branch, shared delivery fetches the
+target. If it advanced, delivery uses the same checkpoint and adjustment flow to
+reapply local work and require validation before pushing. A rewritten target that
+no longer contains the captured baseline stops without discarding local changes.
+After a work branch is published, target conflicts use the normal pull-request
+maintenance flow.
+
 ## Git rebase repair
 
 Provider adapters import conflict evidence and reporting helpers from
