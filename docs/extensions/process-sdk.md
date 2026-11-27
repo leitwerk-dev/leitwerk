@@ -97,6 +97,11 @@ Use `.happyPath(...)` to declare the expected successful spine for navigation. W
 
 Use `.piConfig({ appendSystemPromptTemplate?, sessionCwdTemplate? })` on `flow.process` to append Mustache-rendered instructions after the base system prompt or set a Mustache-rendered session working directory (defaults to the workspace root).
 
+Use `.runtime({ repositorySubmodules: "best_effort" })` to initialize submodules
+before handing a checkout to a turn. If an extension switches revisions itself,
+call `prepareRepositorySubmodules` after switching and surface any warning before
+using the checkout.
+
 ## Products
 
 A **product** is a named Markdown artifact published by one turn and consumed by another:

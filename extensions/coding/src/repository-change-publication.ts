@@ -5,6 +5,7 @@ import {
 	type ExternalActionSource,
 	type FlowAutomaticRunContext,
 	flow,
+	prepareRepositorySubmodules,
 	type ServerExtensionAPI,
 } from "@leitwerk-dev/process-sdk";
 import {
@@ -201,6 +202,8 @@ export interface RepositoryChangePublicationAdapter<P> {
 	};
 	/** @public */
 	namespace: string;
+	/** Prepare pinned submodules after revision reconciliation. @public */
+	prepareSubmodules?: boolean;
 	/** Reconcile a single-repository no-change outcome. @public */
 	unchanged?(ctx: PublicationContext<P>): Promise<void>;
 	/** Optional coordinated repositories; each retains independent publication state. @public */
@@ -649,6 +652,7 @@ export function createRepositoryChangePublication<P>(
 			commitMessage,
 			gitIdentity,
 			expectedRemoteHead,
+			protectSubmodules: adapter.prepareSubmodules,
 		});
 	}
 	async function reconcile(ctx: PublicationContext<P>, current: PublicationState) {
@@ -660,6 +664,7 @@ export function createRepositoryChangePublication<P>(
 			baseBranch: repo.baseBranch,
 			baselineSha: current.workBaselineSha ?? current.headSha ?? undefined,
 			gitIdentity: await adapter.identity(ctx),
+			protectSubmodules: adapter.prepareSubmodules,
 		});
 	}
 	const runRepository = async (ctx: PublicationContext<P>) => {
@@ -1102,11 +1107,21 @@ export function createRepositoryChangePublication<P>(
 			.prepare(async (ctx) => {
 				const project = ctx.repo.get(activeKey(ctx.state) ?? "repo");
 				const current = remote(ctx.state);
+				const prepareSubmodules = async () => {
+					if (!adapter.prepareSubmodules) return;
+					const message = await prepareRepositorySubmodules(project.key, project.fsPath);
+					if (message)
+						ctx.reportDiagnostic({ level: "warn", code: "repository.submodules", message });
+					return message;
+				};
+				const prepareRebase = async () => {
+					const rebase = startRebase(rebaseInput(ctx));
+					return { rebase, submoduleWarning: await prepareSubmodules() };
+				};
 				const targetRebase =
 					repairReason(ctx.state, kind) === "rebase" && !current.reconciliationRequired;
 				// Resume Git's existing target repair; it must not be mistaken for source synchronization.
-				if (targetRebase && hasPreparedRebase(rebaseInput(ctx)))
-					return { rebase: startRebase(rebaseInput(ctx)) };
+				if (targetRebase && hasPreparedRebase(rebaseInput(ctx))) return prepareRebase();
 				const report = (label: string, status: "in_progress" | "completed") =>
 					ctx.reportProgress({
 						title: "Repository reconciliation",
@@ -1123,13 +1138,26 @@ export function createRepositoryChangePublication<P>(
 						reconciliation.headSha !== current.conflict?.headSha ||
 						repositoryWorktreeIsDirty({ projectKey: project.key, repoPath: project.fsPath })
 					)
-						return { reconciliation, deferredRebase: true };
-					return { rebase: startRebase(rebaseInput(ctx)) };
+						return {
+							reconciliation,
+							deferredRebase: true,
+							submoduleWarning:
+								reconciliation.status !== "conflicts" ? await prepareSubmodules() : undefined,
+						};
+					return prepareRebase();
 				}
-				return { reconciliation };
+				return {
+					reconciliation,
+					submoduleWarning:
+						reconciliation.status !== "conflicts" ? await prepareSubmodules() : undefined,
+				};
 			})
 			.freshPrimary()
-			.prompt(revisionPrompt(kind));
+			.prompt((ctx) => {
+				const prompt = revisionPrompt(kind)(ctx);
+				const warning = asUnknownRecord(ctx.prepared)?.submoduleWarning;
+				return typeof warning === "string" ? `${prompt}\n\n${warning}` : prompt;
+			});
 		for (const [name, description] of [
 			["changes_ready", "Repository changes are ready to publish"],
 			["no_changes", "No repository change is required"],

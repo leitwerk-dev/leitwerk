@@ -122,6 +122,7 @@ export function createJiraGitLabChange(options: {
 	const { process } = createRepositoryChangeProcess<JiraGitLabParams>({
 		processId: "jira_gitlab_change_process",
 		displayName: "Jira GitLab Change",
+		runtime: { repositorySubmodules: "best_effort" },
 		paramsCodec: jiraGitLabParamsCodec,
 		publication,
 		workflow: {

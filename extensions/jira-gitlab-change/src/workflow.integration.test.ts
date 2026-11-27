@@ -35,7 +35,10 @@ const revision = "revise_from_merge_request_feedback";
 const gitSeeds = new LocalGitSeedCache();
 afterAll(() => gitSeeds.close());
 
-async function fixture(changes = [true, true], { checkout = true, published = false } = {}) {
+async function fixture(
+	changes = [true, true],
+	{ checkout = true, published = false, templates = false } = {},
+) {
 	checkout = checkout && !published;
 	const root = mkdtempSync(join(tmpdir(), "jira-workflow-"));
 	onTestFinished(() => rmSync(root, { recursive: true, force: true }));
@@ -98,6 +101,19 @@ async function fixture(changes = [true, true], { checkout = true, published = fa
 			}),
 		);
 		if (checkout) {
+			if (templates) {
+				const seed = join(workspaceRoot, `template-${key}`);
+				git.run(workspaceRoot, ["clone", repository.http_url_to_repo, seed]);
+				const directory = join(seed, ".gitlab", "merge_request_templates");
+				mkdirSync(directory, { recursive: true });
+				writeFileSync(
+					join(directory, "Default.md"),
+					`## ${key} validation\n\n- [ ] Tests verified\n`,
+				);
+				git.run(seed, ["add", ".gitlab"]);
+				git.run(seed, ["commit", "-m", "Add repository template"]);
+				git.run(seed, ["push", "origin", binding.params.baseBranch]);
+			}
 			git.run(workspaceRoot, ["clone", repository.http_url_to_repo, key]);
 			git.run(join(workspaceRoot, key), ["checkout", "-b", "feature"]);
 			if (changed) writeFileSync(join(workspaceRoot, key, "README.md"), "# Changed\n");
@@ -519,6 +535,25 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 		await f.plan();
 		expect(await f.status()).toBe("In Review");
 		expect(await f.jira.listComments("501")).toEqual([]);
+	});
+	it("uses each repository's own MR template only at creation", async () => {
+		const f = await fixture(undefined, { templates: true });
+		await f.plan();
+		f.gitlab.loseNextMergeRequestResponse = true;
+		const readTemplate = vi.spyOn(f.client, "getRepositoryFile");
+		expect((await f.deliver()).outcome).toBe("awaiting");
+		expect(readTemplate).toHaveBeenCalledTimes(2);
+		expect(f.gitlab.state.mrs).toHaveLength(2);
+		for (const [index, mr] of f.gitlab.state.mrs.entries()) {
+			expect(mr.description).toMatch(`## ${f.params.repositories[index].key} validation`);
+			expect(mr.description).toContain("- [ ] Tests verified");
+			expect(mr.description).toContain("[Leitwerk process]");
+		}
+		f.gitlab.state.mrs[0].description += "\nHuman edit";
+		readTemplate.mockClear();
+		await f.deliver();
+		expect(readTemplate).not.toHaveBeenCalled();
+		expect(f.gitlab.state.mrs[0].description).toContain("Human edit");
 	});
 	it("excludes unchanged repositories from the review boundary", async () => {
 		const f = await fixture([true, false]);

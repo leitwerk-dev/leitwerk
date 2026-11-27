@@ -12,6 +12,7 @@ import {
 	repositoryBindingMatches,
 	savePublicationReceipt,
 } from "./repository-publication-receipt.js";
+import { assertSafeSubmoduleStaging } from "./submodule-staging.js";
 
 /** @public */
 export interface GitIdentity {
@@ -117,7 +118,7 @@ function repositoryGit(projectKey: string, repoPath: string) {
 	}
 
 	function workingTreeStatus(): string[] {
-		return (gitOrNull("status", "--porcelain") ?? "")
+		return (gitOrNull("status", "--porcelain", "--ignore-submodules=dirty") ?? "")
 			.split(/\r?\n/)
 			.map((line) => line.replace(/\s+$/, ""))
 			.filter(Boolean)
@@ -234,7 +235,8 @@ export function repositoryHasChanges(
 ): boolean {
 	const { git } = repositoryGit(projectKey, repoPath);
 	return Boolean(
-		git("status", "--porcelain") || git("diff", "--name-only", `origin/${baseBranch}...HEAD`),
+		git("status", "--porcelain", "--ignore-submodules=dirty") ||
+			git("diff", "--name-only", `origin/${baseBranch}...HEAD`),
 	);
 }
 
@@ -252,6 +254,8 @@ export function commitAndPushWorkBranch(input: {
 	gitIdentity: GitIdentity;
 	/** Captured remote head; null requires branch creation. @internal */
 	expectedRemoteHead?: string | null;
+	/** Require explicit staging of submodule Git link changes. @internal */
+	protectSubmodules?: boolean;
 }) {
 	const repoPath = path.resolve(input.repoPath);
 	const { runGit, git, conflictedFiles, mergeInProgress, commitIfDirty, pushAndVerify } =
@@ -276,6 +280,7 @@ export function commitAndPushWorkBranch(input: {
 			`Cannot publish a work branch with unresolved conflicts: ${conflicts.join(", ") || "merge in progress"}`,
 		);
 	}
+	if (input.protectSubmodules) assertSafeSubmoduleStaging((args) => git(...args));
 	const headSha = commitIfDirty(input.commitMessage, input.gitIdentity);
 	return {
 		/** @public */

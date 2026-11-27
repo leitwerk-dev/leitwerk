@@ -270,6 +270,10 @@ export function createWorkerRuntime(options: WorkerRuntimeOptions): WorkerRuntim
 												command.session.processSnapshot.id,
 												command.session.projectSnapshots,
 												adapters.gitOps,
+												command.session.resolvedWorkerProcess.runtime?.repositorySubmodules ===
+													"best_effort"
+													? { signal }
+													: undefined,
 											),
 										]
 									: []),

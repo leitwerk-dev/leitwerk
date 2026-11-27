@@ -462,7 +462,14 @@ export async function bootstrapWorkerRuntime(
 		baseBranch: project.baseBranch,
 		workBranch: project.workBranch ?? "",
 	}));
-	const plan = planRunRoot(workspaceRoot, deps.instanceId, runRootProjects);
+	const plan = planRunRoot(
+		workspaceRoot,
+		deps.instanceId,
+		runRootProjects,
+		resolvedWorkerProcess?.runtime?.repositorySubmodules === "best_effort"
+			? { signal: deps.toolPreparationSignal }
+			: undefined,
+	);
 
 	const runRootPreparation =
 		resolvedWorkerProcess?.runtime?.repositoryCheckout === "none"
@@ -504,6 +511,7 @@ export async function bootstrapWorkerRuntime(
 	let loadedSkillFiles: Array<{ name: string; path: string }> = [];
 	let receipt: WorkerBootstrapReceipt;
 	const runRoot = await runRootPreparation;
+	if ("submoduleWarnings" in runRoot) diagnostics.push(...(runRoot.submoduleWarnings ?? []));
 	let preparedTools: PreparedToolEnvironment | undefined;
 	if (resolvedWorkerProcess?.runtime?.developmentTools) {
 		if (!deps.payload.developmentTools) {

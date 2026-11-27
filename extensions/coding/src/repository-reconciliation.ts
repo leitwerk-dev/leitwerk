@@ -14,6 +14,7 @@ import {
 	savePublicationReceipt,
 } from "./repository-publication-receipt.js";
 import { repositoryRecord } from "./repository-record.js";
+import { assertSafeSubmoduleStaging } from "./submodule-staging.js";
 
 /** @internal */
 export interface ReconciliationInput {
@@ -22,6 +23,7 @@ export interface ReconciliationInput {
 	workBranch: string;
 	/** Last remote baseline, not the latest observation. */
 	baselineSha: string;
+	protectSubmodules?: boolean;
 	/** Trusted project identity for replaying unpublished commits. */
 	gitIdentity?: GitIdentity;
 }
@@ -336,6 +338,7 @@ function reconcile(input: WorkBranchInput, preparing: boolean): ReconciliationRe
 			}
 			if (git(["diff", "--name-only", "--diff-filter=U"]))
 				throw new Error("Unresolved local conflicts must be repaired before reconciliation");
+			if (input.protectSubmodules) assertSafeSubmoduleStaging(git);
 			// Dirty submodule work cannot be represented by the parent's tree checkpoint.
 			if (git(["submodule", "foreach", "--quiet", "git status --porcelain"]))
 				throw new Error("Commit or preserve dirty submodule work before reconciliation");

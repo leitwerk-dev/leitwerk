@@ -2637,10 +2637,15 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 		docker?: boolean;
 		/** @internal */
 		repositoryCheckout?: "eager" | "on_demand" | "none";
+		/** Initialize pinned submodules before handing over a checkout. @public */
+		repositorySubmodules?: "best_effort";
 	}): this {
 		const runtime = {
 			...(capabilities.developmentTools === true ? { developmentTools: true } : {}),
 			...(capabilities.docker === true ? { docker: true } : {}),
+			...(capabilities.repositorySubmodules === "best_effort"
+				? { repositorySubmodules: capabilities.repositorySubmodules }
+				: {}),
 			...(capabilities.repositoryCheckout
 				? { repositoryCheckout: capabilities.repositoryCheckout }
 				: {}),

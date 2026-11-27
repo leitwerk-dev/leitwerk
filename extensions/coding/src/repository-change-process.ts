@@ -7,6 +7,8 @@ import {
 	flow,
 	humanTurn,
 	type ProcessLauncherDefinition,
+	type ProcessRuntimeCapabilities,
+	prepareRepositorySubmodules,
 	type RepositoryCredentialProject,
 	type RepositoryCredentialRequirement,
 	revisionAction,
@@ -64,6 +66,8 @@ export interface RepositoryChangeProcessConfig<TParams extends RepositoryChangeP
 	displayName: string;
 	/** @public */
 	workflow?: RepositoryChangeWorkflow<TParams>;
+	/** @public */
+	runtime?: ProcessRuntimeCapabilities;
 	/** @public */
 	paramsCodec: Codec<TParams>;
 	/** @public */
@@ -283,24 +287,50 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		.freshSeededPrimary()
 		.startFromRoot()
 		.consume("plan")
-		.prepare((ctx) => ({
-			reconciliation: ctx.repo.all().map((repo) => {
+		.prepare(async (ctx) => {
+			const reconciliation = [];
+			const submoduleWarnings: string[] = [];
+			for (const repo of ctx.repo.all()) {
 				const identity = asUnknownRecord(
 					ctx.projects.find((p) => p.key === repo.key)?.metadata?.["leitwerk.gitIdentity"],
 				);
-				return prepareInitialRepository({
+				const result = prepareInitialRepository({
 					projectKey: repo.key,
 					repoPath: repo.fsPath,
 					workBranch: repo.workBranch,
 					baseBranch: refreshTarget ? repo.baseBranch : undefined,
+					protectSubmodules: config.runtime?.repositorySubmodules === "best_effort",
 					gitIdentity:
 						typeof identity?.name === "string" && typeof identity.email === "string"
 							? { name: identity.name, email: identity.email }
 							: undefined,
 				});
-			}),
-		}))
-		.buildPrompt((ctx) => `${buildImplementPrompt(ctx, refreshTarget)}\n\n${reconciliationPrompt}`)
+				reconciliation.push(result);
+				if (
+					config.runtime?.repositorySubmodules === "best_effort" &&
+					result.status !== "conflicts"
+				) {
+					const warning = await prepareRepositorySubmodules(repo.key, repo.fsPath);
+					if (warning) {
+						ctx.reportDiagnostic({
+							level: "warn",
+							code: "repository.submodules",
+							message: warning,
+						});
+						submoduleWarnings.push(warning);
+					}
+				}
+			}
+			return { reconciliation, submoduleWarnings };
+		})
+		.buildPrompt((ctx) => {
+			const warnings = asUnknownRecord(ctx.prepared)?.submoduleWarnings;
+			return [
+				buildImplementPrompt(ctx, refreshTarget),
+				reconciliationPrompt,
+				...(Array.isArray(warnings) ? warnings : []),
+			].join("\n\n");
+		})
 		.outcomeTool("implementation_ready", (tool) =>
 			tool
 				.description("Implementation and checks are complete; continue to delivery")
@@ -412,6 +442,7 @@ ${ctx.input["simplification-plan"]}`,
 		.turn(applySimplification)
 		.turn(generateCommitMessage)
 		.use(config.publication.fragment);
+	if (config.runtime) builder.runtime(config.runtime);
 	if (config.repositoryCredentials) builder.repositoryCredentials(config.repositoryCredentials);
 	if (config.launcher) builder.launcher(config.launcher);
 	return {

@@ -331,8 +331,8 @@ export class LocalGitLabAdapter {
 					.filter(Boolean)
 					.map((line) => {
 						const [details, filePath] = line.split("\t");
-						const [, type, objectId] = details.split(" ");
-						return { path: filePath, type, id: objectId };
+						const [mode, type, objectId] = details.split(" ");
+						return { path: filePath, type, mode, id: objectId };
 					}),
 			getRepositoryFile: async (id, ref, filePath) => ({
 				file_path: filePath,

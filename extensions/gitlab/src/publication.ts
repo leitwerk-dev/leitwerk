@@ -165,6 +165,7 @@ export function createGitLabPublicationAdapter<P extends Partial<GitLabPublicati
 			register: (api, process) => registerGitLabPublicationMaintenance(api, process, adapter),
 		},
 		namespace,
+		prepareSubmodules: true,
 		label: "GitLab MR",
 		ids: {
 			deliver: "deliver_change",

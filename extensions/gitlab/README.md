@@ -107,6 +107,19 @@ conflict observations remain available.
 
 The extension contains no Renovate selection or repair policy. `./testing` exports a persistent `LocalGitLabAdapter` with real local repository ancestry for integration tests.
 
+## Merge request templates
+
+When creating a new merge request, Leitwerk reads
+`.gitlab/merge_request_templates/` from the target project's default branch.
+`Default.md` wins; without it, Leitwerk uses the sole Markdown template. If
+several exist with no default, delivery reports the ambiguity and uses the
+normal description. Templates from other projects or GitLab settings are not
+used. A repository read error is retryable, not interpreted as an absent template.
+
+The initial description keeps the template's Markdown structure and appends the
+workflow's links and recovery marker. Template quick actions are not executed.
+Reconciliation and later updates leave existing descriptions unchanged.
+
 ## Shared MR maintenance
 
 Opt in during `setupServer`. Declare external edges using

@@ -12,6 +12,7 @@ import path from "node:path";
 import {
 	clearRepositoryGitHttpsHelpers,
 	clearRepositoryGitSshWrappers,
+	prepareRepositorySubmodules,
 	repositoryGitArgs,
 	repositoryGitSubprocessEnv,
 	repositoryHttpsUrl,
@@ -118,14 +119,44 @@ export class NodeRunRootGitOps implements RunRootGitOps {
 		);
 	}
 
-	async checkout(repoDir: string, branch: string): Promise<void> {
-		await this.runGit(["checkout", branch], repoDir);
+	prepareSubmodules = prepareRepositorySubmodules;
+
+	async listSubmodulePaths(repoDir: string): Promise<string[]> {
+		if (!existsSync(repoDir)) return [];
+		const index = await this.runGit(["ls-files", "--stage", "-z"], repoDir);
+		return index
+			.split("\0")
+			.flatMap((record) =>
+				record.startsWith("160000 ") ? [record.slice(record.indexOf("\t") + 1)] : [],
+			);
 	}
 
-	async checkoutRevision(repoDir: string, revision: string): Promise<void> {
+	async checkout(repoDir: string, branch: string): Promise<void> {
+		await this.runGit(["checkout", "--no-recurse-submodules", branch], repoDir);
+	}
+
+	async checkoutRevision(
+		repoDir: string,
+		revision: string,
+		preserveSubmodules = false,
+	): Promise<void> {
 		if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(revision))
 			throw new Error("Use a captured full commit SHA");
-		if ((await this.runGit(["status", "--porcelain", "--untracked-files=all"], repoDir)).trim())
+		const status = await this.runGit(
+			[
+				"status",
+				"--porcelain",
+				"--untracked-files=all",
+				...(preserveSubmodules ? ["--ignore-submodules=all"] : []),
+			],
+			repoDir,
+		);
+		// In best-effort mode a mismatched child must not prevent reusing the
+		// parent checkout, but a staged gitlink is still a parent change.
+		const staged = preserveSubmodules
+			? await this.runGit(["diff", "--cached", "--name-only", "--ignore-submodules=none"], repoDir)
+			: "";
+		if (status.trim() || staged.trim())
 			throw new Error(
 				"Repository has local changes; preserve or remove them before retrying inspection",
 			);
@@ -134,7 +165,7 @@ export class NodeRunRootGitOps implements RunRootGitOps {
 		} catch {
 			await this.runGit(["fetch", "origin", revision], repoDir, path.basename(repoDir));
 		}
-		await this.runGit(["checkout", "--detach", revision], repoDir);
+		await this.runGit(["checkout", "--no-recurse-submodules", "--detach", revision], repoDir);
 		if ((await this.getHeadSha(repoDir)).toLowerCase() !== revision.toLowerCase())
 			throw new Error("Checkout HEAD does not match captured commit");
 	}

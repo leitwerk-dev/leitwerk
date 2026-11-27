@@ -50,11 +50,17 @@ origin, project ID, and issue IID.
 
 ## Delivery and recovery
 
+The worker initializes submodules at the checked-out revision on a best-effort
+basis. An inaccessible submodule produces a warning without blocking the parent
+checkout.
+
 The shared coding lifecycle commits and pushes, creates or reconciles one MR, and
 waits for feedback, native CI, conflicts, or a terminal outcome. Repository metadata
 starts with `{ profile, projectId }`; the server pins the MR `iid` after creation.
 A lost creation response or a restart before binding recovers the same request.
-Existing MR-bound integration tools still require the pinned IID.
+Existing MR-bound integration tools still require the pinned IID. Initial
+publication uses the [target project's repository template](../gitlab/README.md#merge-request-templates)
+when one can be selected.
 
 The process uses [shared GitLab MR maintenance](../gitlab/README.md#shared-mr-maintenance)
 for feedback, CI observations, ownership labels, fencing, and recovery. Deliver runs

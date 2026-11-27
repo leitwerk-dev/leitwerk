@@ -18,7 +18,7 @@ export interface GitOps {
 	/** @internal */
 	checkout(repoDir: string, branch: string): Promise<void>;
 	/** Refuse dirty worktrees and pin an exact commit. @internal */
-	checkoutRevision?(repoDir: string, revision: string): Promise<void>;
+	checkoutRevision?(repoDir: string, revision: string, preserveSubmodules?: boolean): Promise<void>;
 	/** @internal */
 	createBranch(repoDir: string, branchName: string, startPoint: string): Promise<void>;
 	/** @internal */
@@ -29,6 +29,14 @@ export interface GitOps {
 	readFile(repoDir: string, filePath: string): Promise<string | null>;
 	/** @internal */
 	listFiles(repoDir: string, pattern: string): Promise<string[]>;
+	/** @internal */
+	listSubmodulePaths?(repoDir: string): Promise<string[]>;
+	/** @internal */
+	prepareSubmodules?(
+		projectKey: string,
+		repoDir: string,
+		signal?: AbortSignal,
+	): Promise<string | undefined>;
 }
 
 /** @internal */
@@ -47,12 +55,14 @@ export interface RunRootPlan {
 	workspaceRoot: string;
 	instanceId: string;
 	components: ComponentCheckoutPlan[];
+	submodules?: { signal?: AbortSignal };
 }
 
 export interface MaterializeResult {
 	manifest: ComponentManifest;
 	aggregatedAgentsMdSources: string[];
 	loadedSkills: string[];
+	submoduleWarnings?: string[];
 }
 
 export interface ValidationResult {
@@ -97,11 +107,13 @@ export function planRunRoot(
 	workspaceRoot: string,
 	instanceId: string,
 	projectSnapshots: ComponentCheckoutPlan[],
+	submodules?: RunRootPlan["submodules"],
 ): RunRootPlan {
 	return {
 		workspaceRoot,
 		instanceId,
 		components: projectSnapshots.map((p) => ({ ...p })),
+		...(submodules ? { submodules } : {}),
 	};
 }
 
@@ -132,19 +144,22 @@ async function collectMaterializedEntries(
 	git: RunRootGitOps,
 	errors: string[],
 	reusable = new Map<string, ComponentManifestEntry>(),
+	pin?: { projectKey: string; revision: string },
 ): Promise<ComponentManifestEntry[]> {
 	const entries: ComponentManifestEntry[] = [];
 	for (const comp of plan.components) {
 		try {
-			const retained = reusable.get(comp.key);
-			if (retained?.revision) {
+			const entry = reusable.get(comp.key) ?? (await materializeComponentEntry(plan, comp, git));
+			const revision = pin?.projectKey === comp.key ? pin.revision : entry.revision;
+			if (revision) {
 				if (!git.checkoutRevision) throw new Error("Pinned repository checkout is unavailable");
 				const dir = componentDir(plan.workspaceRoot, comp.key);
-				await git.checkoutRevision(dir, retained.revision);
-				if ((await git.getHeadSha(dir)).toLowerCase() !== retained.revision.toLowerCase())
-					throw new Error("Recovered checkout HEAD does not match captured commit");
-			}
-			entries.push(retained ?? (await materializeComponentEntry(plan, comp, git)));
+				await git.checkoutRevision(dir, revision, !!plan.submodules);
+				const headSha = await git.getHeadSha(dir);
+				if (headSha.toLowerCase() !== revision.toLowerCase())
+					throw new Error("Checkout HEAD does not match captured commit");
+				entries.push({ ...entry, headSha, revision });
+			} else entries.push(entry);
 		} catch (e) {
 			errors.push(`${comp.key}: ${e instanceof Error ? e.message : String(e)}`);
 		}
@@ -174,8 +189,10 @@ async function gatherAgentsAndSkills(
 
 	for (const comp of plan.components) {
 		const root = componentDir(plan.workspaceRoot, comp.key);
+		const submodulePaths = plan.submodules ? ((await git.listSubmodulePaths?.(root)) ?? []) : [];
+		const belongsToParent = (file: string) => !submodulePaths.some((p) => file.startsWith(`${p}/`));
 		const agentPaths = await git.listFiles(root, AGENTS_GLOB);
-		const sortedAgentPaths = [...agentPaths].sort((a, b) => a.localeCompare(b));
+		const sortedAgentPaths = agentPaths.filter(belongsToParent).sort((a, b) => a.localeCompare(b));
 		for (const p of sortedAgentPaths) {
 			const content = await git.readFile(root, p);
 			if (content !== null) {
@@ -189,7 +206,7 @@ async function gatherAgentsAndSkills(
 		}
 
 		const skillPaths = await git.listFiles(root, SKILL_GLOB);
-		for (const p of skillPaths) {
+		for (const p of skillPaths.filter(belongsToParent)) {
 			const skillId = skillIdFromSkillPath(p);
 			if (!skillId) {
 				continue;
@@ -236,11 +253,27 @@ async function finalizeRunRoot(
 		components: entries,
 	};
 
+	const submoduleWarnings: string[] = [];
+	if (plan.submodules && errors.length === 0) {
+		for (const { key } of entries) {
+			const warning = git.prepareSubmodules
+				? await git.prepareSubmodules(
+						key,
+						componentDir(plan.workspaceRoot, key),
+						plan.submodules.signal,
+					)
+				: `Submodule preparation in ${key} is unavailable.`;
+			if (warning) submoduleWarnings.push(warning);
+		}
+	}
 	const { aggregatedAgentsMdSources, agentsMd, skillsMap } = await gatherAgentsAndSkills(plan, git);
+	const instructions = submoduleWarnings.length
+		? `${agentsMd}\n\n## Workspace preparation warnings\n\n${submoduleWarnings.map((warning) => `- ${warning}`).join("\n")}\n`
+		: agentsMd;
 	const loadedSkills = [...skillsMap.keys()].sort((a, b) => a.localeCompare(b));
 
 	try {
-		await writeAggregatedArtifacts(plan, git, manifest, agentsMd, skillsMap);
+		await writeAggregatedArtifacts(plan, git, manifest, instructions, skillsMap);
 	} catch (e) {
 		errors.push(`write: ${e instanceof Error ? e.message : String(e)}`);
 	}
@@ -256,6 +289,7 @@ async function finalizeRunRoot(
 		manifest,
 		aggregatedAgentsMdSources,
 		loadedSkills,
+		...(submoduleWarnings.length ? { submoduleWarnings } : {}),
 	};
 }
 
@@ -293,24 +327,12 @@ export async function prepareOnDemandRunRoot(
 		),
 	};
 	// Selection only omits missing components, so retained entries keep the same validation.
-	const result = await repairRunRoot(validation, selected, git);
-	if (revision !== undefined) {
-		if (!git.checkoutRevision) throw new Error("Pinned repository checkout is unavailable");
-		const dir = componentDir(plan.workspaceRoot, projectKey!);
-		await git.checkoutRevision(dir, revision);
-		const headSha = await git.getHeadSha(dir);
-		if (headSha.toLowerCase() !== revision.toLowerCase())
-			throw new Error("Checkout HEAD does not match captured commit");
-		return finalizeRunRoot(
-			selected,
-			git,
-			result.manifest.components.map((entry) =>
-				entry.key === projectKey ? { ...entry, headSha, revision } : entry,
-			),
-			[],
-		);
-	}
-	return result;
+	return repairRunRoot(
+		validation,
+		selected,
+		git,
+		projectKey && revision ? { projectKey, revision } : undefined,
+	);
 }
 
 export async function validateRunRoot(
@@ -345,6 +367,7 @@ export async function repairRunRoot(
 	validation: ValidationResult,
 	plan: RunRootPlan,
 	git: RunRootGitOps,
+	pin?: { projectKey: string; revision: string },
 ): Promise<MaterializeResult> {
 	const errors: string[] = [];
 	const reusable = new Map(
@@ -352,7 +375,7 @@ export async function repairRunRoot(
 			.filter((component) => validation.diff.unchanged.includes(component.key))
 			.map((component) => [component.key, component]),
 	);
-	const manifestEntries = await collectMaterializedEntries(plan, git, errors, reusable);
+	const manifestEntries = await collectMaterializedEntries(plan, git, errors, reusable, pin);
 
 	return finalizeRunRoot(plan, git, manifestEntries, errors);
 }

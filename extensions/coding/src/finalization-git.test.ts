@@ -89,6 +89,60 @@ describe("commitAndPushWorkBranch", () => {
 		expect(git(repoDir, "status", "--short")).toBe("");
 	});
 
+	it("requires an explicit Git link update before publishing an out-of-sync submodule", () => {
+		const { remoteDir, repoDir } = createWorkspace();
+		git(
+			repoDir,
+			"-c",
+			"protocol.file.allow=always",
+			"submodule",
+			"add",
+			"-b",
+			"main",
+			remoteDir,
+			"child",
+		);
+		git(
+			repoDir,
+			"-c",
+			"user.name=Test",
+			"-c",
+			"user.email=test@example.com",
+			"commit",
+			"-m",
+			"Add dependency",
+		);
+		const before = git(repoDir, "rev-parse", "HEAD");
+		const child = path.join(repoDir, "child");
+		git(
+			child,
+			"-c",
+			"user.name=Test",
+			"-c",
+			"user.email=test@example.com",
+			"commit",
+			"--allow-empty",
+			"-m",
+			"New dependency revision",
+		);
+		const childHead = git(child, "rev-parse", "HEAD");
+		writeFileSync(path.join(repoDir, "feature.txt"), "new change\n");
+		const publish = () =>
+			commitAndPushWorkBranch({
+				repoPath: repoDir,
+				workBranch: "feature/test",
+				commitMessage: "Publish change",
+				gitIdentity: { name: "Leitwerk Bot", email: "bot@example.test" },
+				protectSubmodules: true,
+			});
+		expect(publish).toThrow("Cannot automatically stage an out-of-sync or untracked submodule");
+		expect(git(repoDir, "rev-parse", "HEAD")).toBe(before);
+		expect(git(repoDir, "diff", "--cached")).toBe("");
+		git(repoDir, "add", "child");
+		const result = publish();
+		expect(git(remoteDir, "rev-parse", `${result.headSha}:child`)).toBe(childHead);
+	});
+
 	it("rejects an unexpected checked-out branch", () => {
 		const repoDir = mkdtempSync(path.join(tmpdir(), "coding-feature-mismatch-"));
 		onTestFinished(() => rmSync(repoDir, { recursive: true, force: true }));

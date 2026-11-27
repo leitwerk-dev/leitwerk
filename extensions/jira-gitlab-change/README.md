@@ -81,7 +81,9 @@ Admission rechecks the issue and mappings, then retains issue content, mapping
 revisions, repository identities, profile references, and branches. Subsequent
 mapping edits affect later launches once the binding is resolved. Pending startup
 captures and binds the complete repository set atomically before worker preparation.
-Workers prepare declared repository tools before readiness and turn acceptance.
+Workers initialize submodules at the checked-out revision on a best-effort basis,
+then prepare declared repository tools before readiness and turn acceptance.
+An inaccessible submodule produces a warning without blocking the parent checkout.
 The work branch is `leitwerk/jira-<installation-hash>-<issue-id>`.
 The recheck compares the issue revision and launch-relevant fields; changing
 plugin display data or viewing metadata alone does not reject an unchanged issue.
@@ -150,7 +152,9 @@ reads current labels again. An unavailable label read keeps questions enabled.
 When planning begins, the process adds its public Leitwerk URL through Jira's native
 link feature and transitions the ticket to **In Progress**. Delivery adds a native
 Jira link for each MR. MR descriptions link directly to both the Jira ticket and the
-Leitwerk process. The ticket enters **In Review** only after every changed repository
+Leitwerk process and use each target project's
+[repository template](../gitlab/README.md#merge-request-templates) when available.
+The ticket enters **In Review** only after every changed repository
 has a linked MR; repositories confirmed unchanged do not delay review. No-change
 runs, cancellation and aborted outcomes do not enter review. The workflow posts no
 automatic Jira comments, including completion summaries.
