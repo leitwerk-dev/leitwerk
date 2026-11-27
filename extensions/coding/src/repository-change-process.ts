@@ -36,6 +36,8 @@ export interface RepositoryChangeWorkflow<TParams> {
 	variant?: "streamlined";
 	/** @public */
 	multiRepository?: boolean;
+	/** Refresh a clean, unpublished checkout against its target before implementation. @public */
+	refreshTargetBeforeImplementation?: boolean;
 	/** @public */
 	planDecision?(params: TParams): Promise<{
 		/** @internal */
@@ -285,18 +287,26 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				const identity = asUnknownRecord(
 					ctx.projects.find((p) => p.key === repo.key)?.metadata?.["leitwerk.gitIdentity"],
 				);
-				return prepareInitialRepository({
-					projectKey: repo.key,
-					repoPath: repo.fsPath,
-					workBranch: repo.workBranch,
-					gitIdentity:
-						typeof identity?.name === "string" && typeof identity.email === "string"
-							? { name: identity.name, email: identity.email }
-							: undefined,
-				});
+				return prepareInitialRepository(
+					{
+						projectKey: repo.key,
+						repoPath: repo.fsPath,
+						workBranch: repo.workBranch,
+						gitIdentity:
+							typeof identity?.name === "string" && typeof identity.email === "string"
+								? { name: identity.name, email: identity.email }
+								: undefined,
+					},
+					config.workflow?.refreshTargetBeforeImplementation ? repo.baseBranch : undefined,
+				);
 			}),
 		}))
-		.buildPrompt((ctx) => `${buildImplementPrompt(ctx)}\n\n${reconciliationPrompt}`)
+		.buildPrompt((ctx) => {
+			const targetContext = config.workflow?.refreshTargetBeforeImplementation
+				? "\n\nCheck the accepted plan against the current checkout before making edits. Adapt implementation details to upstream changes without expanding the approved scope. If the plan no longer fits that scope, stop and explain why."
+				: "";
+			return `${buildImplementPrompt(ctx)}\n\n${reconciliationPrompt}${targetContext}`;
+		})
 		.outcomeTool("implementation_ready", (tool) =>
 			tool
 				.description("Implementation and checks are complete; continue to delivery")

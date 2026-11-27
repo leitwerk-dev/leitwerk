@@ -26,6 +26,8 @@ export interface ReconciliationInput {
 	gitIdentity?: GitIdentity;
 }
 
+type TargetRefresh = { baseBranch: string; cleanOnly?: boolean };
+
 /** @internal */
 export interface ReconciliationResult {
 	status: "ready" | "conflicts";
@@ -48,6 +50,7 @@ interface RecordState extends RepositoryBinding {
 		index: string;
 		work: string;
 		remote: string;
+		targetBranch?: string;
 		phase: "captured" | "rebasing" | "restoring";
 		resultHead?: string;
 		resultIndex?: string;
@@ -158,6 +161,14 @@ function ancestor(git: ReturnType<typeof repository>["git"], a: string, b: strin
 	}
 }
 
+function fetchTarget(git: ReturnType<typeof repository>["git"], branch: string): string {
+	const source = `refs/heads/${branch}`;
+	const tracking = `refs/remotes/origin/${branch}`;
+	git(["check-ref-format", source]);
+	git(["fetch", "--no-tags", "--refmap=", "origin", `+${source}:${tracking}`]);
+	return git(["rev-parse", tracking]);
+}
+
 function withLock<T>(directory: string, run: () => T): T {
 	const lock = join(directory, "leitwerk-reconciliation.lock");
 	try {
@@ -197,6 +208,10 @@ function withLock<T>(directory: string, run: () => T): T {
  * @internal
  */
 export function reconcileRepository(input: ReconciliationInput): ReconciliationResult {
+	return reconcile(input);
+}
+
+function reconcile(input: ReconciliationInput, target?: TargetRefresh): ReconciliationResult {
 	const { git, directory, read, save, binding: readBinding } = repository(input);
 	return withLock(directory, () => {
 		git(["check-ref-format", `refs/heads/${input.workBranch}`]);
@@ -204,6 +219,8 @@ export function reconcileRepository(input: ReconciliationInput): ReconciliationR
 		let record = read();
 		if (!repositoryBindingMatches(record, binding))
 			throw new Error("Repository reconciliation binding changed");
+		if (record?.operation && record.operation.targetBranch !== target?.baseBranch)
+			throw new Error("Repository reconciliation target changed; local work was retained");
 		if (record?.sourceIntegration) {
 			if (git(["branch", "--show-current"]) !== input.workBranch)
 				throw new Error("Source integration checkout branch changed; local work was retained");
@@ -231,19 +248,53 @@ export function reconcileRepository(input: ReconciliationInput): ReconciliationR
 		if (!record?.operation) {
 			assertIgnoredProtection(git, record?.protectedIgnored);
 			const ignored = ignoredPaths(git);
-			// Fetch to a private ref: remote-tracking refs are not publication leases.
-			git([
-				"fetch",
-				"--no-tags",
-				"origin",
-				`+refs/heads/${input.workBranch}:refs/leitwerk/reconcile-remote`,
-			]);
-			const remote = git(["rev-parse", "refs/leitwerk/reconcile-remote"]);
+			const protectedIgnored = [...new Set([...(record?.protectedIgnored ?? []), ...ignored])];
 			const head = git(["rev-parse", "HEAD"]);
 			let baseline = record?.baseline ?? input.baselineSha;
 			const receipt = readPublicationReceipt(directory);
 			if (!repositoryBindingMatches(receipt, binding))
 				throw new Error("Repository publication receipt binding changed");
+			let remote: string;
+			if (target) {
+				if (target.cleanOnly && (head !== baseline || git(["status", "--porcelain"])))
+					return { status: "ready", remoteHead: null, headSha: head, changed: false };
+				// Keep the pre-fetch baseline even if a rewritten target stops this attempt.
+				if (!record) {
+					record = { ...binding, baseline, protectedIgnored };
+					save(record);
+				}
+				remote = fetchTarget(git, target.baseBranch);
+				if (ancestor(git, remote, head) && ancestor(git, baseline, remote)) {
+					if (baseline !== remote)
+						save({ ...record, ...binding, baseline: remote, protectedIgnored });
+					return { status: "ready", remoteHead: null, headSha: head, changed: false };
+				}
+				if (!ancestor(git, baseline, remote))
+					throw new Error("The target branch was rewritten; local work was retained");
+				if (target.cleanOnly) {
+					if (ignoredPathsCollide(git, ignored, remote, `${head}..${head}`))
+						throw new Error("Target changes collide with ignored files; local files were retained");
+					git([
+						"-c",
+						"core.hooksPath=/dev/null",
+						"merge",
+						"--ff-only",
+						"--no-overwrite-ignore",
+						remote,
+					]);
+					save({ ...record, ...binding, baseline: remote, protectedIgnored });
+					return { status: "ready", remoteHead: null, headSha: remote, changed: true };
+				}
+			} else {
+				// Fetch to a private ref: remote-tracking refs are not publication leases.
+				git([
+					"fetch",
+					"--no-tags",
+					"origin",
+					`+refs/heads/${input.workBranch}:refs/leitwerk/reconcile-remote`,
+				]);
+				remote = git(["rev-parse", "refs/leitwerk/reconcile-remote"]);
+			}
 			if (receipt?.status === "attempting") {
 				if (remote === receipt.candidate || ancestor(git, receipt.candidate, remote)) {
 					receipt.status = "accepted";
@@ -265,8 +316,8 @@ export function reconcileRepository(input: ReconciliationInput): ReconciliationR
 				...record,
 				...binding,
 				baseline,
-				remoteSeen: true,
-				protectedIgnored: [...new Set([...(record?.protectedIgnored ?? []), ...ignored])],
+				remoteSeen: !target,
+				protectedIgnored,
 				publicationReceiptSha:
 					receipt?.status === "accepted" ? receipt.candidate : record?.publicationReceiptSha,
 			};
@@ -316,6 +367,7 @@ export function reconcileRepository(input: ReconciliationInput): ReconciliationR
 					index,
 					work,
 					remote,
+					targetBranch: target?.baseBranch,
 					phase: "captured",
 					identity: replayIdentity,
 				};
@@ -351,7 +403,7 @@ export function reconcileRepository(input: ReconciliationInput): ReconciliationR
 		if (operation.phase === "rebasing") {
 			const conflicts = (): ReconciliationResult => ({
 				status: "conflicts",
-				remoteHead: operation.remote,
+				remoteHead: target ? null : operation.remote,
 				headSha: git(["rev-parse", "HEAD"]),
 				changed: true,
 			});
@@ -442,7 +494,7 @@ export function reconcileRepository(input: ReconciliationInput): ReconciliationR
 		assertIgnoredProtection(git, record.protectedIgnored);
 		return {
 			status: "ready",
-			remoteHead: operation.remote,
+			remoteHead: target ? null : operation.remote,
 			headSha: operation.resultHead,
 			changed: true,
 		};
@@ -524,25 +576,49 @@ export function repositoryWorktreeIsDirty(
 /** Capture the baseline before the first implementation, including an unpublished branch. @internal */
 export function prepareInitialRepository(
 	input: Omit<ReconciliationInput, "baselineSha">,
+	baseBranch?: string,
 ): ReconciliationResult {
-	const { git, read, save, directory, binding } = repository(input);
-	withLock(directory, () => {
-		if (!read())
-			save({
-				...binding(input.workBranch),
-				baseline: git(["rev-parse", "HEAD"]),
-				protectedIgnored: ignoredPaths(git),
-			});
-	});
-	return reconcilePublicationRepository(input);
+	return reconcileWorkBranch(input, baseBranch ? { baseBranch, cleanOnly: true } : undefined, true);
+}
+
+function localTargetBaseline(git: ReturnType<typeof repository>["git"], branch: string): string {
+	git(["check-ref-format", `refs/heads/${branch}`]);
+	return git(["merge-base", "HEAD", `refs/remotes/origin/${branch}`]);
 }
 
 /** Missing branches are allowed only before first publication. @internal */
 export function reconcilePublicationRepository(
 	input: Omit<ReconciliationInput, "baselineSha"> & { baselineSha?: string },
+	target?: TargetRefresh,
 ): ReconciliationResult {
-	const { git, read, directory } = repository(input);
-	const record = read();
+	return reconcileWorkBranch(input, target, false);
+}
+
+function reconcileWorkBranch(
+	input: Omit<ReconciliationInput, "baselineSha"> & { baselineSha?: string },
+	target: TargetRefresh | undefined,
+	captureBaseline: boolean,
+): ReconciliationResult {
+	const { git, read, save, directory, binding } = repository(input);
+	const remote = git(["ls-remote", "--heads", "origin", `refs/heads/${input.workBranch}`]).split(
+		/\s+/,
+	)[0];
+	const record = captureBaseline
+		? withLock(directory, () => {
+				const existing = read();
+				if (existing) return existing;
+				const initial: RecordState = {
+					...binding(input.workBranch),
+					baseline:
+						!remote && target
+							? localTargetBaseline(git, target.baseBranch)
+							: git(["rev-parse", "HEAD"]),
+					protectedIgnored: ignoredPaths(git),
+				};
+				save(initial);
+				return initial;
+			})
+		: read();
 	const receipt = readPublicationReceipt(directory);
 	const baselineSha =
 		record?.baseline ??
@@ -552,22 +628,25 @@ export function reconcilePublicationRepository(
 			: (receipt?.expectedHead ??
 				(receipt?.status === "attempting" ? receipt.candidate : undefined)));
 	assertIgnoredProtection(git, record?.protectedIgnored);
-	const remote = git(["ls-remote", "--heads", "origin", `refs/heads/${input.workBranch}`]).split(
-		/\s+/,
-	)[0];
 	if (
 		!remote &&
 		!input.baselineSha &&
 		!record?.remoteSeen &&
-		!record?.operation &&
 		(!receipt || (receipt.status === "rejected" && receipt.expectedHead === null))
-	)
-		return {
-			status: "ready",
-			remoteHead: null,
-			headSha: git(["rev-parse", "HEAD"]),
-			changed: false,
-		};
+	) {
+		if (target && (!record?.operation || record.operation.targetBranch))
+			return reconcile(
+				{ ...input, baselineSha: baselineSha ?? localTargetBaseline(git, target.baseBranch) },
+				target,
+			);
+		if (!record?.operation)
+			return {
+				status: "ready",
+				remoteHead: null,
+				headSha: git(["rev-parse", "HEAD"]),
+				changed: false,
+			};
+	}
 	if (!remote)
 		throw new Error(
 			"Remote source branch is missing or its publication is uncertain; local work was retained and the branch will not be recreated automatically",

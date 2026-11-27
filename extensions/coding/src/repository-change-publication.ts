@@ -653,13 +653,16 @@ export function createRepositoryChangePublication<P>(
 	}
 	async function reconcile(ctx: PublicationContext<P>, current: PublicationState) {
 		const repo = ctx.repo.get("repo");
-		return reconcilePublicationRepository({
-			projectKey: repo.key,
-			repoPath: repo.fsPath,
-			workBranch: repo.workBranch,
-			baselineSha: current.workBaselineSha ?? current.headSha ?? undefined,
-			gitIdentity: await adapter.identity(ctx),
-		});
+		return reconcilePublicationRepository(
+			{
+				projectKey: repo.key,
+				repoPath: repo.fsPath,
+				workBranch: repo.workBranch,
+				baselineSha: current.workBaselineSha ?? current.headSha ?? undefined,
+				gitIdentity: await adapter.identity(ctx),
+			},
+			current.headSha ? undefined : { baseBranch: repo.baseBranch },
+		);
 	}
 	const runRepository = async (ctx: PublicationContext<P>) => {
 		let current = remote(ctx.state);
@@ -1069,7 +1072,7 @@ export function createRepositoryChangePublication<P>(
 			if (asUnknownRecord(ctx.prepared)?.deferredRebase)
 				return `${repository}${reconciliationPrompt}\nThe source branch or retained local work must be reconciled before the target-branch repair. Resolve any source reconciliation, then use changes_ready. Delivery will restore and validate the result before reassessing current target conflicts.`;
 			if (current.reconciliationRequired)
-				return `${repository}${reconciliationPrompt}\nValidate the reconciled repository, including retained local work, against the requested change and pending feedback: ${JSON.stringify(current.feedbackIds)}. Treat the current remote as authoritative; do not restore deliberately removed code simply to match an older plan. Use changes_ready after validation, even when no further edit is needed, so retained local changes are published. If blocked use cannot_repair.\nOriginal request for context: ${ctx.prompts?.initial ?? "Inspect the current repository and retained request"}`;
+				return `${repository}${reconciliationPrompt}\nValidate the reconciled repository, including any upstream target changes and retained local work, against the requested change and pending feedback: ${JSON.stringify(current.feedbackIds)}. Treat the current remote as authoritative; do not restore deliberately removed code simply to match an older plan. Use changes_ready after validation, even when no further edit is needed, so retained local changes are published. If blocked use cannot_repair.\nOriginal request for context: ${ctx.prompts?.initial ?? "Inspect the current repository and retained request"}`;
 			if (repairReason(ctx.state, kind) === "rebase")
 				return `${rebasePrompt} Evidence: ${JSON.stringify(current.conflict)}. Call changes_ready or no_changes when verified complete, cannot_repair when blocked.`;
 			return `${adapter.repositories ? `Repository: ${activeKey(ctx.state)}. Apply changes only to this checkout. ` : ""}${adapter.prompt(kind, current)}\n\n${reconciliationPrompt}`;

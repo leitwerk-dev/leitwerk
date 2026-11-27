@@ -126,6 +126,7 @@ export function createJiraGitLabChange(options: {
 		publication,
 		workflow: {
 			multiRepository: true,
+			refreshTargetBeforeImplementation: true,
 			async planDecision(params) {
 				const issue = await launcher.readIssue(params);
 				return {

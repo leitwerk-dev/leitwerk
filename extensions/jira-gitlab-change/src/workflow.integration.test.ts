@@ -246,6 +246,21 @@ async function fixture(changes = [true, true], { checkout = true, published = fa
 			git.run(developer, ["push", "origin", "feature"]);
 			return git.run(developer, ["rev-parse", "HEAD"]);
 		},
+		advanceTarget(file: string, content: string) {
+			const { baseBranch, repoLocator } = params.repositories[0];
+			const developer = mkdtempSync(join(root, "target-"));
+			git.run(developer, ["clone", "-b", baseBranch, repoLocator, "."]);
+			writeFileSync(join(developer, file), content);
+			git.run(developer, ["add", "."]);
+			git.run(developer, ["commit", "-m", `Update ${file}`]);
+			git.run(developer, ["push", "origin", baseBranch]);
+			return git.run(developer, ["rev-parse", "HEAD"]);
+		},
+		async prepareImplementation() {
+			const turn = required(process.turns.get("implement")).definition;
+			if (turn.kind !== "llm") throw new Error("Expected implementation");
+			return required(turn.prepare)(context("implement"));
+		},
 		async prompt(turnId: string) {
 			const turn = required(process.turns.get(turnId)).definition;
 			if (turn.kind !== "llm") throw new Error("Expected LLM turn");
@@ -324,6 +339,62 @@ async function fixture(changes = [true, true], { checkout = true, published = fa
 
 // Two real repositories and retried publication need a bounded integration budget.
 describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
+	it("refreshes the approved checkout and validates clean target drift before opening an MR", async () => {
+		const f = await fixture([false]);
+		const local = join(f.workspaceRoot, "repo_1");
+		const { baseBranch, repoLocator } = f.params.repositories[0];
+		const approvalTarget = f.advanceTarget("README.md", "# New baseline\n");
+		await f.prepareImplementation();
+		expect(f.git.run(local, ["rev-parse", "HEAD"])).toBe(approvalTarget);
+		expect(await f.prompt("implement")).toContain(
+			"Check the accepted plan against the current checkout",
+		);
+		writeFileSync(join(local, "local.txt"), "implementation\n");
+		const deliveryTarget = f.advanceTarget("upstream.txt", "upstream change\n");
+		expect((await f.deliver()).outcome).toBe("conflict_ready");
+		expect(f.gitlab.state.mrs).toHaveLength(0);
+		expect(f.git.run(local, ["ls-remote", "origin", "refs/heads/feature"])).toBe("");
+		expect(f.git.run(local, ["rev-parse", "HEAD"])).toBe(deliveryTarget);
+		expect(readFileSync(join(local, "local.txt"), "utf8")).toBe("implementation\n");
+		await f.prepareRevision();
+		await f.finishRevision("no_changes");
+		expect((await f.deliver()).outcome).toBe("awaiting");
+		expect(f.gitlab.state.mrs).toHaveLength(1);
+		expect(f.git.run(repoLocator, ["merge-base", baseBranch, "feature"])).toBe(deliveryTarget);
+		expect(f.git.run(repoLocator, ["show", "feature:local.txt"])).toBe("implementation");
+	});
+
+	it("retains a dirty checkout on implementation retry and resolves target drift without publishing it", async () => {
+		const f = await fixture([false]);
+		const local = join(f.workspaceRoot, "repo_1");
+		const { baseBranch, repoLocator } = f.params.repositories[0];
+		await f.prepareImplementation();
+		const original = f.git.run(local, ["rev-parse", "HEAD"]);
+		writeFileSync(join(local, "README.md"), "# Implementation\n");
+		const target = f.advanceTarget("README.md", "# Upstream\n");
+		await f.prepareImplementation();
+		expect(f.git.run(local, ["rev-parse", "HEAD"])).toBe(original);
+		expect(readFileSync(join(local, "README.md"), "utf8")).toBe("# Implementation\n");
+		expect((await f.deliver()).outcome).toBe("conflict_ready");
+		expect(f.gitlab.state.mrs).toHaveLength(0);
+		await f.prepareRevision();
+		expect(f.git.run(local, ["diff", "--name-only", "--diff-filter=U"])).toBe("README.md");
+		writeFileSync(join(local, "README.md"), "# Upstream and implementation\n");
+		f.git.run(local, ["add", "README.md"]);
+		f.git.run(local, ["-c", "core.editor=true", "rebase", "--continue"]);
+		await f.finishRevision("changes_ready");
+		// Restoring the checkpointed tree must be followed by validation in its final shape.
+		expect((await f.deliver()).outcome).toBe("conflict_ready");
+		expect(f.gitlab.state.mrs).toHaveLength(0);
+		await f.prepareRevision();
+		await f.finishRevision("no_changes");
+		expect((await f.deliver()).outcome).toBe("awaiting");
+		expect(f.git.run(repoLocator, ["merge-base", baseBranch, "feature"])).toBe(target);
+		expect(f.git.run(repoLocator, ["show", "feature:README.md"])).toBe(
+			"# Upstream and implementation",
+		);
+		expect(f.git.run(repoLocator, ["log", "--format=%s", "feature"])).not.toContain("checkpoint");
+	});
 	it("reconciles a developer push with retained local work and validates before publishing", async () => {
 		const f = await fixture([true]);
 		expect((await f.deliver()).outcome).toBe("awaiting");
