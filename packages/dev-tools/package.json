@@ -1,6 +1,6 @@
 {
 	"name": "@leitwerk-dev/dev-tools",
-	"version": "0.4.0",
+	"version": "0.5.9",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/leitwerk-dev/leitwerk.git",
@@ -32,12 +32,12 @@
 	},
 	"dependencies": {
 		"@jridgewell/trace-mapping": "^0.3.31",
-		"@leitwerk-dev/dev-sandbox": "0.4.0",
-		"@leitwerk-dev/domain": "0.4.0",
-		"@leitwerk-dev/extension-runtime": "0.4.0",
-		"@leitwerk-dev/protocol": "0.4.0",
-		"@leitwerk-dev/server": "0.4.0",
-		"@leitwerk-dev/ui": "0.4.0",
+		"@leitwerk-dev/dev-sandbox": "0.5.9",
+		"@leitwerk-dev/domain": "0.5.9",
+		"@leitwerk-dev/extension-runtime": "0.5.9",
+		"@leitwerk-dev/protocol": "0.5.9",
+		"@leitwerk-dev/server": "0.5.9",
+		"@leitwerk-dev/ui": "0.5.9",
 		"@microsoft/api-extractor": "^7.59.1",
 		"chokidar": "4.0.3",
 		"svelte2tsx": "^0.7.61",
