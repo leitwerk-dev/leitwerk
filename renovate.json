@@ -2,7 +2,9 @@
 	"$schema": "https://docs.renovatebot.com/renovate-schema.json",
 	"extends": ["config:best-practices", ":gitSignOff"],
 	"timezone": "Europe/Berlin",
-	"dependencyDashboard": true,
+	"dependencyDashboard": {
+		"enabled": true
+	},
 	"semanticCommits": "enabled",
 	"prCreation": "not-pending",
 	"internalChecksAsSuccess": true,
@@ -68,6 +70,15 @@
 			"description": "Apply a fourteen-day cooldown to all routine dependency updates",
 			"matchPackageNames": ["*"],
 			"minimumReleaseAge": "14 days"
+		},
+		{
+			"description": "Keep Pi packages current with a two-day cooldown",
+			"matchPackageNames": ["@earendil-works/pi-*"],
+			"groupName": "pi packages",
+			"minimumReleaseAge": "2 days",
+			"rangeStrategy": "bump",
+			"semanticCommitType": "fix",
+			"semanticCommitScope": "deps"
 		},
 		{
 			"description": "Automerge stable non-major updates after the cooldown and required checks",
