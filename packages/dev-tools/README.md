@@ -104,9 +104,7 @@ The package root exports `runDevelopment(command, options)` for repository
 wrappers. `/composition` and `/workspace` share manifest parsing and package
 discovery with the public source-development commands. Both return package metadata
 at the top level alongside the canonical `dir`; composed packages have no nested
-`packageJson` wrapper. The sandbox CLI still
-requires the source supervisor; this package does not provide installed-package
-sandbox startup.
+`packageJson` wrapper.
 
 ## Worker startup benchmark
 
