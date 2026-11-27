@@ -1905,6 +1905,7 @@ async function createManagedAgentSessionServices(input: {
 	const modelRuntime = await ModelRuntime.create({
 		authPath: path.join(input.agentDir, "auth.json"),
 		modelsPath: path.join(input.agentDir, "models.json"),
+		allowModelNetwork: true,
 	});
 	return createAgentSessionServices({
 		cwd: input.sessionCwd,
