@@ -119,11 +119,8 @@ source issue ID must match before it can be reused.
 [Generated process graph](process.mmd). Dashed edges are external triggers; terminal
 outcomes are separate from the ten registered turns.
 
-At implementation start, each clean unpublished checkout fast-forwards to its
-current target branch. Implementation checks that the approved plan still fits.
-Delivery checks the target again before the first push of an unpublished branch.
-If it advanced, delivery preserves and reapplies the local changes, then uses the
-existing adjustment turn to resolve any conflicts and validate before publishing.
+This workflow opts into [target refresh at implementation start](../coding/README.md#target-branch-refresh)
+and checks that the approved plan still fits the refreshed checkout.
 
 | Turn | Kind | Route |
 | --- | --- | --- |

@@ -6,6 +6,7 @@ export function buildImplementPrompt(
 		FlowPromptContext<unknown, StructuralProcessState, "plan">,
 		"prompts" | "input" | "repo"
 	>,
+	checkPlanFit = false,
 ): string {
 	return `Implement this requested change:
 ${ctx.prompts.initial}
@@ -19,13 +20,12 @@ Follow this plan:
 ${ctx.input.plan}
 
 Rules:
-- keep going until the change is complete; do any necessary additional passes without asking
+- ${checkPlanFit ? "Before editing, check the plan against the current checkout. Adapt without expanding the approved scope, or stop and explain why if the plan no longer fits. If it fits, " : ""}keep going until the change is complete; do any necessary additional passes without asking
 - make repository changes only inside the current working directory
 - run file edits, Git commands, and checks in the appropriate checkout
 - follow each repository’s instructions and validate every affected repository
 - leave changes uncommitted; delivery owns commits and pushes
 - do not read from or write to any original source repository path outside the process workspace
-- keep the implementation coherent and complete
 - keep the number of changed files small
 - when documenting, be sparse. Do not narrate the implementation or maintain a prose inventory of tests, helpers, internal environment variables, or cleanup mechanics.
 - publish the implementation summary when done`;

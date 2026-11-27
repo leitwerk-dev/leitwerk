@@ -653,16 +653,14 @@ export function createRepositoryChangePublication<P>(
 	}
 	async function reconcile(ctx: PublicationContext<P>, current: PublicationState) {
 		const repo = ctx.repo.get("repo");
-		return reconcilePublicationRepository(
-			{
-				projectKey: repo.key,
-				repoPath: repo.fsPath,
-				workBranch: repo.workBranch,
-				baselineSha: current.workBaselineSha ?? current.headSha ?? undefined,
-				gitIdentity: await adapter.identity(ctx),
-			},
-			current.headSha ? undefined : { baseBranch: repo.baseBranch },
-		);
+		return reconcilePublicationRepository({
+			projectKey: repo.key,
+			repoPath: repo.fsPath,
+			workBranch: repo.workBranch,
+			baseBranch: repo.baseBranch,
+			baselineSha: current.workBaselineSha ?? current.headSha ?? undefined,
+			gitIdentity: await adapter.identity(ctx),
+		});
 	}
 	const runRepository = async (ctx: PublicationContext<P>) => {
 		let current = remote(ctx.state);
@@ -684,7 +682,6 @@ export function createRepositoryChangePublication<P>(
 					projectKey: repo.key,
 					repoPath: repo.fsPath,
 					workBranch: repo.workBranch,
-					baselineSha: headSha,
 				},
 				headSha,
 			);
@@ -755,7 +752,7 @@ export function createRepositoryChangePublication<P>(
 			current.delivery.adjustment?.origin !== "rebase"
 		) {
 			const synchronized = await reconcile(ctx, current);
-			if (synchronized.changed || synchronized.status === "conflicts") return reconcileAgain();
+			if (synchronized.status !== "unchanged") return reconcileAgain();
 			// Fetch is authoritative even if the watcher has not observed a developer push yet.
 			publicationLease = synchronized.remoteHead;
 			if (current.headSha && synchronized.remoteHead && current.headSha !== synchronized.remoteHead)
@@ -1110,33 +1107,19 @@ export function createRepositoryChangePublication<P>(
 				// Resume Git's existing target repair; it must not be mistaken for source synchronization.
 				if (targetRebase && hasPreparedRebase(rebaseInput(ctx)))
 					return { rebase: startRebase(rebaseInput(ctx)) };
-				ctx.reportProgress({
-					title: "Repository reconciliation",
-					steps: [
-						{
-							id: "reconcile_source",
-							label: "Reconcile remote source and retained local work",
-							status: "in_progress",
-						},
-					],
-				});
+				const report = (label: string, status: "in_progress" | "completed") =>
+					ctx.reportProgress({
+						title: "Repository reconciliation",
+						steps: [{ id: "reconcile_source", label, status }],
+					});
+				report("Reconcile remote changes and retained local work", "in_progress");
 				const reconciliation = await reconcile(repositoryContext(ctx), current);
-				ctx.reportProgress({
-					title: "Repository reconciliation",
-					steps: [
-						{
-							id: "reconcile_source",
-							label:
-								reconciliation.status === "conflicts"
-									? "Resolve source reconciliation conflicts"
-									: "Remote source reconciled",
-							status: reconciliation.status === "conflicts" ? "in_progress" : "completed",
-						},
-					],
-				});
+				if (reconciliation.status === "conflicts")
+					report("Resolve reconciliation conflicts", "in_progress");
+				else report("Repository reconciled", "completed");
 				if (targetRebase) {
 					if (
-						reconciliation.changed ||
+						reconciliation.status !== "unchanged" ||
 						reconciliation.headSha !== current.conflict?.headSha ||
 						repositoryWorktreeIsDirty({ projectKey: project.key, repoPath: project.fsPath })
 					)

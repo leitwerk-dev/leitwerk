@@ -273,6 +273,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				}),
 		)
 		.publish("plan");
+	const refreshTarget = config.workflow?.refreshTargetBeforeImplementation;
 	const implement = flow
 		.llm<TParams, RepositoryChangeState>("implement")
 		.description("Implement")
@@ -287,26 +288,19 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				const identity = asUnknownRecord(
 					ctx.projects.find((p) => p.key === repo.key)?.metadata?.["leitwerk.gitIdentity"],
 				);
-				return prepareInitialRepository(
-					{
-						projectKey: repo.key,
-						repoPath: repo.fsPath,
-						workBranch: repo.workBranch,
-						gitIdentity:
-							typeof identity?.name === "string" && typeof identity.email === "string"
-								? { name: identity.name, email: identity.email }
-								: undefined,
-					},
-					config.workflow?.refreshTargetBeforeImplementation ? repo.baseBranch : undefined,
-				);
+				return prepareInitialRepository({
+					projectKey: repo.key,
+					repoPath: repo.fsPath,
+					workBranch: repo.workBranch,
+					baseBranch: refreshTarget ? repo.baseBranch : undefined,
+					gitIdentity:
+						typeof identity?.name === "string" && typeof identity.email === "string"
+							? { name: identity.name, email: identity.email }
+							: undefined,
+				});
 			}),
 		}))
-		.buildPrompt((ctx) => {
-			const targetContext = config.workflow?.refreshTargetBeforeImplementation
-				? "\n\nCheck the accepted plan against the current checkout before making edits. Adapt implementation details to upstream changes without expanding the approved scope. If the plan no longer fits that scope, stop and explain why."
-				: "";
-			return `${buildImplementPrompt(ctx)}\n\n${reconciliationPrompt}${targetContext}`;
-		})
+		.buildPrompt((ctx) => `${buildImplementPrompt(ctx, refreshTarget)}\n\n${reconciliationPrompt}`)
 		.outcomeTool("implementation_ready", (tool) =>
 			tool
 				.description("Implementation and checks are complete; continue to delivery")

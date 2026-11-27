@@ -117,9 +117,9 @@ worker's new remote head, but never mutates its checkout or captured baseline.
 
 ## Target-branch refresh
 
-A workflow can opt into `refreshTargetBeforeImplementation`. Implementation
-preparation fast-forwards a clean unpublished work branch to the bound target.
-A retained checkout with local work is preserved for reconciliation.
+With `refreshTargetBeforeImplementation`, preparation fast-forwards a clean,
+unpublished branch to the target and stops if ignored files become publishable.
+Checkouts with local work are preserved for reconciliation.
 
 Before the first push of an unpublished work branch, shared delivery fetches the
 target. If it advanced, delivery uses the same checkpoint and adjustment flow to
