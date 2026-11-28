@@ -77,8 +77,7 @@
 			"groupName": "pi packages",
 			"minimumReleaseAge": "2 days",
 			"rangeStrategy": "bump",
-			"semanticCommitType": "fix",
-			"semanticCommitScope": "deps"
+			"semanticCommitType": "fix"
 		},
 		{
 			"description": "Automerge stable non-major updates after the cooldown and required checks",

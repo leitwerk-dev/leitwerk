@@ -211,7 +211,7 @@ See [classification and requirements](models.md#classification-and-requirements)
 - **`components.<key>`**: Defines `repo`, `default_branch`, and optional `worker_runtime_profile`.
 - **`skill_repositories`**: List of `{ id, url, ref, label?, path? }` (`path` defaults to `skills`). Registers Git sources for operator-installed skills; launches pin active revisions. Extension-bundled [skill packs](../extensions/skill-packs.md) install automatically.
 - **`default_skills`**: Installed skill IDs automatically included in new launches (default `[]`). Combined with explicit selections and deduplicated; unavailable IDs block launch rather than auto-installing.
-- **`commit_messages`**: Defines `templates.<id>.rules`, `default_template` (or `null`), and `repositories` mapping normalized repository locators to template IDs (repository match wins over fallback; pinned at launch).
+- **`commit_messages`**: Defines `templates.<id>.rules`, optional `templates.<id>.signoff` (boolean; appends `Signed-off-by` via `git commit --signoff` on initial and repair commits), `default_template` (or `null`), and `repositories` mapping normalized repository locators to template IDs (repository match wins over fallback; pinned at launch).
 - **`notifications`**: `all` and `debug` take `{ enabled, type, url }`; `squad` takes `{ enabled, type, routing_field, routes }`. All default to disabled with `type: teams_webhook`.
 - **`sandbox`**: `{ enabled: false, profile: "" }`. For the source UI sandbox, see [Development compositions](../maintainers/development-compositions.md).
 

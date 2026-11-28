@@ -11,8 +11,8 @@ import { createFixtureProcess } from "./test-helpers/process-fixtures.js";
 const processDef = createFixtureProcess({ id: "test", entry: "run" });
 const commitMessages: CommitMessageConfig = {
 	templates: {
-		conventional: { rules: "Use Conventional Commits." },
-		concise: { rules: "Use a short subject." },
+		conventional: { rules: "Use Conventional Commits.", signoff: true },
+		concise: { rules: "Use a short subject.", signoff: false },
 	},
 	default_template: "concise",
 	repositories: { "  https://example.test/repo.git///": "conventional" },
@@ -38,7 +38,7 @@ describe("process launch commit-message policy", () => {
 			name: "normalized repository override",
 			locator: "https://example.test/repo.git/",
 			config: commitMessages,
-			expected: { templateId: "conventional", rules: "Use Conventional Commits." },
+			expected: { templateId: "conventional", rules: "Use Conventional Commits.", signoff: true },
 		},
 		{
 			name: "default template",

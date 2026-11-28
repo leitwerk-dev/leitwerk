@@ -338,6 +338,8 @@ export interface WorkerRuntimeProfileConfig {
 export interface CommitMessageTemplateConfig {
 	/** Human-readable instructions applied to generated commit messages. @internal */
 	rules: string;
+	/** Append a Git Signed-off-by trailer (`git commit --signoff`) to commits. @internal */
+	signoff?: boolean;
 }
 
 /** @internal */

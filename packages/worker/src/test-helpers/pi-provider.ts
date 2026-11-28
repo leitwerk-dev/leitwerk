@@ -12,7 +12,8 @@ import { SdkPiTreeHandleFactory } from "../pi-adapter.js";
 /** @internal */
 export async function createTempRoot(): Promise<string> {
 	const root = await mkdtemp(path.join(tmpdir(), "leitwerk-pi-provider-extension-"));
-	onTestFinished(() => rm(root, { recursive: true, force: true }));
+	// Pi can still touch auth.json during a background provider refresh.
+	onTestFinished(() => rm(root, { recursive: true, force: true, maxRetries: 3 }));
 	return root;
 }
 

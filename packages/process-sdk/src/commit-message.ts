@@ -11,4 +11,6 @@ export interface CommitMessageProjectMetadata {
 	templateId: string | null;
 	/** @internal */
 	rules: string;
+	/** @internal */
+	signoff?: boolean;
 }

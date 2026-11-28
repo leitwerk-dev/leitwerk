@@ -6,7 +6,7 @@ import {
 } from "./generate-commit-message.js";
 
 describe("commit-message generation", () => {
-	it("separates the accepted plan from launch-pinned repository rules", () => {
+	it("keeps launch-pinned rules and signoff separate from implementation evidence", () => {
 		const prompt = buildRepositoryCommitMessagesPrompt({
 			process: {} as never,
 			projects: [
@@ -14,6 +14,16 @@ describe("commit-message generation", () => {
 					key: "repo",
 					metadata: {
 						"leitwerk.commitMessage": { templateId: "conventional", rules: "Use type(scope)." },
+					},
+				} as never,
+				{
+					key: "signed",
+					metadata: {
+						"leitwerk.commitMessage": {
+							templateId: "dco",
+							rules: "Use a short subject.",
+							signoff: true,
+						},
 					},
 				} as never,
 			],
@@ -41,7 +51,7 @@ describe("commit-message generation", () => {
 		});
 		// Keep the rules separate from evidence without pinning whitespace or surrounding copy.
 		expect(prompt).toMatch(
-			/<formatting_rules>\s*repo:\s*Use type\(scope\)\.\s*<\/formatting_rules>/,
+			/<formatting_rules>\s*repo:\s*Use type\(scope\)\.\s+signed:\s*Use a short subject\.\s+Do not include a Signed-off-by trailer; Git adds it automatically\.\s*<\/formatting_rules>/,
 		);
 		expect(prompt).toMatch(
 			/<accepted_plan>\s*## Plan\s+Ship the durable behavior\.\s*<\/accepted_plan>/,

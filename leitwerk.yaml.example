@@ -63,6 +63,7 @@ commit_messages:
       rules: |
         Use Conventional Commits: type(scope): imperative summary.
         Wrap body lines at 72 characters and explain why, not how.
+      signoff: true
     concise:
       rules: "Use one imperative subject of at most 60 characters."
   default_template: concise

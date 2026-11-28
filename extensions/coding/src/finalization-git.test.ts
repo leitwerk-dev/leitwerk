@@ -62,7 +62,7 @@ describe("commitAndPushWorkBranch", () => {
 			);
 		expect(repositoryHasChanges(repoDir, "main")).toBe(true);
 	});
-	it("commits dirty work and publishes only the checked-out feature branch", () => {
+	it.each([undefined, true])("publishes only the feature branch (signoff: %s)", (signoff) => {
 		const { remoteDir, repoDir } = createWorkspace();
 		const mainSha = git(remoteDir, "rev-parse", "refs/heads/main");
 		writeFileSync(path.join(repoDir, "feature.txt"), "remote change\n");
@@ -72,14 +72,17 @@ describe("commitAndPushWorkBranch", () => {
 			workBranch: "feature/test",
 			commitMessage: "feat: publish remote change",
 			gitIdentity: { name: "Leitwerk Bot", email: "leitwerk-bot@noreply.example.test" },
+			...(signoff ? { signoff } : {}),
 		});
 
 		expect(result.pushTarget).toBe("origin/feature/test");
 		expect(git(remoteDir, "rev-parse", "refs/heads/main")).toBe(mainSha);
 		expect(git(remoteDir, "rev-parse", "refs/heads/feature/test")).toBe(result.headSha);
 		expect(git(remoteDir, "show", "refs/heads/feature/test:feature.txt")).toBe("remote change");
-		expect(git(remoteDir, "log", "-1", "--format=%s", "refs/heads/feature/test")).toBe(
-			"feat: publish remote change",
+		expect(git(remoteDir, "log", "-1", "--format=%B", "refs/heads/feature/test")).toBe(
+			signoff
+				? "feat: publish remote change\n\nSigned-off-by: Leitwerk Bot <leitwerk-bot@noreply.example.test>"
+				: "feat: publish remote change",
 		);
 		expect(
 			git(remoteDir, "log", "-1", "--format=%an%n%ae%n%cn%n%ce", "refs/heads/feature/test"),
