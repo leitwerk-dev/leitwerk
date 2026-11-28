@@ -10,7 +10,7 @@ describe("Renovate configuration", () => {
 		expect(config.extends).toEqual(
 			expect.arrayContaining(["config:best-practices", ":gitSignOff"]),
 		);
-		expect(config.dependencyDashboard).toBe(true);
+		expect(config.dependencyDashboard).toEqual({ enabled: true });
 		expect(config.semanticCommits).toBe("enabled");
 		expect(config.lockFileMaintenance).toMatchObject({
 			enabled: true,
@@ -33,8 +33,16 @@ describe("Renovate configuration", () => {
 		const development = rules.find((rule) => rule.groupName === "development tooling");
 		const actions = rules.find((rule) => rule.groupName === "CI actions");
 		const containers = rules.find((rule) => rule.groupName === "container and Helm dependencies");
+		const pi = rules.find((rule) => rule.groupName === "pi packages");
 		expect(runtime?.semanticCommitType).toBe("fix");
 		expect(containers?.semanticCommitType).toBe("fix");
+		expect(pi).toMatchObject({
+			matchPackageNames: ["@earendil-works/pi-*"],
+			minimumReleaseAge: "2 days",
+			rangeStrategy: "bump",
+			semanticCommitType: "fix",
+			semanticCommitScope: "deps",
+		});
 		expect(development?.semanticCommitType).toBe("chore");
 		expect(actions?.semanticCommitType).toBe("ci");
 	});
