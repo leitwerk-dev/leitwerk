@@ -523,9 +523,10 @@ for (const viewport of [
 		const dimensions = await preview.evaluate((element) => {
 			const clip = element.getBoundingClientRect();
 			const tops = new Set<number>();
-			for (const span of element.querySelectorAll(".thinking-line")) {
-				const range = document.createRange();
-				range.selectNodeContents(span);
+			const text = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+			const range = document.createRange();
+			for (let node = text.nextNode(); node; node = text.nextNode()) {
+				range.selectNodeContents(node);
 				for (const rect of range.getClientRects()) {
 					if (rect.width > 0 && rect.top >= clip.top - 1 && rect.bottom <= clip.bottom + 1)
 						tops.add(Math.round(rect.top));
@@ -546,9 +547,6 @@ for (const viewport of [
 		expect(await preview.evaluate((element) => element.getBoundingClientRect().height)).toBe(
 			dimensions.height,
 		);
-		await preview
-			.locator("..")
-			.screenshot({ path: `/tmp/leitwerk-reasoning-preview-${viewport.width}.png` });
 
 		const { promise: gate, resolve: release } = Promise.withResolvers<void>();
 		let captured = false;

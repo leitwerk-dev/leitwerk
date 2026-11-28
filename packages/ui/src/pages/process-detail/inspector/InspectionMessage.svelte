@@ -12,6 +12,7 @@ import { inspectionToolCall } from "./inspection-tool-call.js";
 
 let {
 	message,
+	deferLayout = true,
 	live = null,
 	messages = [],
 	toolResultsById,
@@ -20,6 +21,7 @@ let {
 	onLink,
 }: {
 	message: InspectionTraceMessage;
+	deferLayout?: boolean;
 	live?: TurnTraceSnapshot | null;
 	messages?: readonly InspectionTraceMessage[];
 	toolResultsById?: ReadonlyMap<string, InspectionTraceMessage>;
@@ -50,7 +52,7 @@ const label = $derived(
 				: message.role.replaceAll("_", " "),
 );
 </script>
-<article class="message" data-inspection-item={message.id} data-role={message.role}>
+<article class="message" class:defer-layout={deferLayout} data-inspection-item={message.id} data-role={message.role}>
   <header><h3>{label}{#if message.isError} · Failed{/if}</h3><div class="message-actions">{#if message.role === "user"}<button class="item-link" onclick={copy} aria-label="Copy input message">{copied ? "Copied" : "Copy"}</button>{/if}{#if onLink}<button class="item-link" onclick={() => onLink?.(message.id)} aria-label={`Link to ${label}`}>Link</button>{/if}</div></header>
   {#if message.id.startsWith("event:")}<p class="block-label">Recorded activity · session entry correlation unavailable</p>{/if}
   {#each message.blocks as block (block.id)}
@@ -69,7 +71,9 @@ const label = $derived(
   {/each}
 </article>
 <style>
-.message {padding:var(--space-lg) 0; border-bottom:1px solid var(--chronicle-border); min-width:0; overflow-wrap:anywhere; content-visibility:auto; contain-intrinsic-size:auto 220px;}
+.message {padding:var(--space-lg) 0; border-bottom:1px solid var(--chronicle-border); min-width:0; overflow-wrap:anywhere;}
+/* Live following needs actual message heights before scrolling to the bottom. */
+.defer-layout {content-visibility:auto; contain-intrinsic-size:auto 220px;}
 .message-actions {display:flex; gap:var(--space-sm);}
 header {display:flex; align-items:baseline; justify-content:space-between; gap:var(--space-md); margin-bottom:var(--space-sm);} h3 {margin:0; font-size:var(--type-body); font-weight:650;}
 .message-block + .message-block {margin-top:var(--space-md);} .block-label {margin:0 0 var(--space-xs); color:var(--chronicle-text-muted); font-size:var(--type-caption);}

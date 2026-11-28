@@ -155,7 +155,7 @@ function eventLabel(event: ProcessEvent) {
     {#if activity.length === 0}<p class="notice">No trace activity was recorded for this execution.</p>{/if}
     {#each activity as activityItem (activityItem.id)}
       {#if activityItem.kind === "message"}
-        <InspectionMessage message={activityItem.message} messages={trace.messages} {toolResultsById} {liveToolCallsById} live={data.live} {toolRendererIndex} onLink={item} />
+        <InspectionMessage message={activityItem.message} messages={trace.messages} deferLayout={trace.state !== "live"} {toolResultsById} {liveToolCallsById} live={data.live} {toolRendererIndex} onLink={item} />
         {#if trace.inheritedBoundary?.entryId === activityItem.message.entryId}<p class="boundary" data-inspection-boundary>Context inherited through here <span>Later activity below this boundary was not inherited.</span></p>{/if}
       {:else}
         <div class="event" data-inspection-item={activityItem.id}>
@@ -163,7 +163,7 @@ function eventLabel(event: ProcessEvent) {
         </div>
       {/if}
     {/each}
-    {#if trace.unassignedMessages?.length}<details data-disclosure-key="unassigned-session" open={unassignedOpen} ontoggle={(event) => { unassignedOpen = (event.currentTarget as HTMLDetailsElement).open; }}><summary>Unassigned session history · ownership not recorded</summary><p class="note">These messages are retained on this session branch. Their execution ownership is unknown; they are not evidence of this execution’s input or inherited context.</p>{#if unassignedOpen}{#each trace.unassignedMessages as message (message.id)}<InspectionMessage {message} messages={trace.unassignedMessages} />{/each}{/if}</details>{/if}
+    {#if trace.unassignedMessages?.length}<details data-disclosure-key="unassigned-session" open={unassignedOpen} ontoggle={(event) => { unassignedOpen = (event.currentTarget as HTMLDetailsElement).open; }}><summary>Unassigned session history · ownership not recorded</summary><p class="note">These messages are retained on this session branch. Their execution ownership is unknown; they are not evidence of this execution’s input or inherited context.</p>{#if unassignedOpen}{#each trace.unassignedMessages as message (message.id)}<InspectionMessage {message} messages={trace.unassignedMessages} deferLayout={trace.state !== "live"} />{/each}{/if}</details>{/if}
     {#each trace.annotations as annotation (annotation.id)}<InspectionEvidence label={annotation.annotationType.replaceAll("_", " ")} evidence={{state:"recorded", value:annotation.payload}} id={annotation.id} />{/each}
     {#each questions as request (request.id)}<ChronicleQuestionRequest {request} mode="trace" />{#if request.status === "open"}<button class="ui-button" onclick={onChronicle}>Answer in chronicle</button>{/if}{/each}
     {#if trace.output}<section class="section" data-inspection-item="output"><h2>Execution output</h2><ChronicleMarkdown markdown={trace.output} /></section>{/if}
