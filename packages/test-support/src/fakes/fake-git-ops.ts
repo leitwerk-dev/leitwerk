@@ -93,7 +93,10 @@ export class FakeGitOps {
 	}
 
 	/** @internal */
-	async listFiles(repoDir: string, pattern: string): Promise<string[]> {
+	prepareSubmodules = async () => undefined;
+
+	/** @internal */
+	async listFiles(repoDir: string, patterns: string[]): Promise<string[]> {
 		const normRoot = path.normalize(repoDir);
 		const prefix = normRoot + path.sep;
 		const out: string[] = [];
@@ -106,15 +109,12 @@ export class FakeGitOps {
 				continue;
 			}
 			const relPosix = rel.split(path.sep).join("/");
-			if (pattern === "**/AGENTS.md") {
-				if (relPosix.endsWith("AGENTS.md")) {
-					out.push(relPosix);
-				}
-			} else if (pattern === "**/.cursor/skills/**/SKILL.md") {
-				if (/^\.cursor\/skills\/[^/]+\/SKILL\.md$/.test(relPosix)) {
-					out.push(relPosix);
-				}
-			}
+			if (
+				(patterns.includes("**/AGENTS.md") && path.posix.basename(relPosix) === "AGENTS.md") ||
+				(patterns.includes("**/.cursor/skills/**/SKILL.md") &&
+					/^\.cursor\/skills\/[^/]+\/SKILL\.md$/.test(relPosix))
+			)
+				out.push(relPosix);
 		}
 		return out.sort((a, b) => a.localeCompare(b));
 	}

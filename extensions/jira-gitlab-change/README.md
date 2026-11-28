@@ -81,9 +81,8 @@ Admission rechecks the issue and mappings, then retains issue content, mapping
 revisions, repository identities, profile references, and branches. Subsequent
 mapping edits affect later launches once the binding is resolved. Pending startup
 captures and binds the complete repository set atomically before worker preparation.
-Workers initialize submodules at the checked-out revision on a best-effort basis,
+Workers use [best-effort submodule preparation](../../docs/maintainers/process-workspace.md#repository-management),
 then prepare declared repository tools before readiness and turn acceptance.
-An inaccessible submodule produces a warning without blocking the parent checkout.
 The work branch is `leitwerk/jira-<installation-hash>-<issue-id>`.
 The recheck compares the issue revision and launch-relevant fields; changing
 plugin display data or viewing metadata alone does not reject an unchanged issue.

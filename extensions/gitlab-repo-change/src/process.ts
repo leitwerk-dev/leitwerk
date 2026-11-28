@@ -85,7 +85,6 @@ export function createGitLabRepoChangeProcess(
 	const definition = createRepositoryChangeProcess<GitLabRepoChangeParams>({
 		processId: "gitlab_repo_change_process",
 		displayName: "GitLab Repo Change",
-		runtime: { repositorySubmodules: "best_effort" },
 		paramsCodec: gitlabRepoChangeParamsCodec,
 		launcher: launcher.launcher,
 		workflow: launcher.workflow,

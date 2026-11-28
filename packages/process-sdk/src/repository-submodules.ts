@@ -76,21 +76,12 @@ export async function prepareRepositorySubmodules(
 	const manifest = await run(["ls-files", "--stage", "--", ".gitmodules"]);
 	if (manifest.ok && !manifest.output) return undefined;
 	const safeWarning = (reason: string) => `Submodules in ${projectKey} are incomplete: ${reason}`;
-	const unavailable = (status = "") => {
-		const paths = status.split("\n").flatMap((line) => {
-			// Only include ordinary relative paths, never raw Git output.
-			const match = /^[-+U][0-9a-f]{40,64} ([\w./ -]+?)(?: \(.+\))?$/.exec(line);
-			return match && match[1].length <= 128 ? [match[1]] : [];
-		});
-		const affected = paths.length
-			? `(${paths.slice(0, 5).join(", ")}${paths.length > 5 ? ", …" : ""}) `
-			: "";
-		return safeWarning(
+	const unavailable = () =>
+		safeWarning(
 			deadline.aborted
-				? `${affected}preparation timed out.`
-				: `${affected}check repository access or transport and run git submodule status --recursive.`,
+				? "preparation timed out."
+				: "check repository access or transport and run git submodule status --recursive.",
 		);
-	};
 	if (!manifest.ok) return unavailable();
 	const unmerged = await run(["ls-files", "--unmerged", "-z"]);
 	if (!unmerged.ok) return unavailable();
@@ -104,22 +95,17 @@ export async function prepareRepositorySubmodules(
 		"--no-renames",
 		"-z",
 	]);
-	if (!staged.ok) return unavailable();
-	if (
-		/(?:^|\0):(?:160000 \d{6}|\d{6} 160000) /.test(staged.output) ||
-		!(await run(["diff", "--cached", "--quiet", "--", ".gitmodules"])).ok ||
-		!(await run(["diff", "--quiet", "--", ".gitmodules"])).ok
-	)
-		return stop.aborted
-			? unavailable()
-			: safeWarning("existing submodule configuration was left untouched.");
+	const configStatus = await run(["status", "--porcelain", "--", ".gitmodules"]);
+	if (!staged.ok || !configStatus.ok) return unavailable();
+	if (/(?:^|\0):(?:160000 \d{6}|\d{6} 160000) /.test(staged.output) || configStatus.output)
+		return safeWarning("existing submodule configuration was left untouched.");
 	const before = await run(["submodule", "status", "--recursive"]);
 	const incomplete = /^(?:[-+U])/m;
 	if (!before.ok) return unavailable();
 	if (!incomplete.test(before.output)) return undefined;
 	if (!(await run(["submodule", "foreach", "--quiet", "--recursive", preserveLocalWork])).ok)
 		return stop.aborted
-			? unavailable(before.output)
+			? unavailable()
 			: safeWarning("existing submodule work was left untouched.");
 	const update = await run([
 		"submodule",
@@ -130,7 +116,6 @@ export async function prepareRepositorySubmodules(
 		"--jobs=4",
 	]);
 	const status = await run(["submodule", "status", "--recursive"]);
-	if (!update.ok || !status.ok || incomplete.test(status.output))
-		return unavailable(status.ok ? status.output : before.output);
+	if (!update.ok || !status.ok || incomplete.test(status.output)) return unavailable();
 	return undefined;
 }

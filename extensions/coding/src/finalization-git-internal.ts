@@ -117,14 +117,7 @@ function repositoryGit(projectKey: string, repoPath: string) {
 		return result.ok ? trimToNull(result.stdout) : null;
 	}
 
-	function workingTreeStatus(): string[] {
-		return (gitOrNull("status", "--porcelain", "--ignore-submodules=dirty") ?? "")
-			.split(/\r?\n/)
-			.map((line) => line.replace(/\s+$/, ""))
-			.filter(Boolean)
-			.map((line) => line.slice(2).trim())
-			.filter(Boolean);
-	}
+	const workingTreeStatus = () => git("status", "--porcelain", "--ignore-submodules=dirty");
 
 	function conflictedFiles(): string[] {
 		return (gitOrNull("diff", "--name-only", "--diff-filter=U") ?? "")
@@ -148,14 +141,13 @@ function repositoryGit(projectKey: string, repoPath: string) {
 	}
 
 	function commitIfDirty(commitMessage: string, identity: GitIdentity): string {
-		if (workingTreeStatus().length === 0) return git("rev-parse", "HEAD");
+		if (!workingTreeStatus()) return git("rev-parse", "HEAD");
 		assertGitIdentity(identity);
 		checkedGit(["add", "--all"], "Failed to stage the completed change");
 		checkedGit(["commit", "--no-gpg-sign", "-m", commitMessage], "Commit failed", identity);
 		const remaining = workingTreeStatus();
-		if (remaining.length > 0) {
-			throw new DeterministicGitError(`Commit left uncommitted changes: ${remaining.join(", ")}`);
-		}
+		if (remaining)
+			throw new DeterministicGitError(`Commit left uncommitted changes:\n${remaining}`);
 		return git("rev-parse", "HEAD");
 	}
 
@@ -224,7 +216,15 @@ function repositoryGit(projectKey: string, repoPath: string) {
 		return pushTarget;
 	}
 
-	return { runGit, git, conflictedFiles, mergeInProgress, commitIfDirty, pushAndVerify };
+	return {
+		runGit,
+		git,
+		workingTreeStatus,
+		conflictedFiles,
+		mergeInProgress,
+		commitIfDirty,
+		pushAndVerify,
+	};
 }
 
 /** Inspect staged, unstaged, untracked, and already committed unpublished changes. @public */
@@ -233,11 +233,8 @@ export function repositoryHasChanges(
 	baseBranch: string,
 	projectKey = "repo",
 ): boolean {
-	const { git } = repositoryGit(projectKey, repoPath);
-	return Boolean(
-		git("status", "--porcelain", "--ignore-submodules=dirty") ||
-			git("diff", "--name-only", `origin/${baseBranch}...HEAD`),
-	);
+	const { git, workingTreeStatus } = repositoryGit(projectKey, repoPath);
+	return Boolean(workingTreeStatus() || git("diff", "--name-only", `origin/${baseBranch}...HEAD`));
 }
 
 /** Commit the current workspace change and non-force push only the feature branch. */

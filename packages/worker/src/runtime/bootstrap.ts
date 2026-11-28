@@ -56,8 +56,6 @@ import {
 	planRunRoot,
 	prepareOnDemandRunRoot,
 	type RunRootGitOps,
-	repairRunRoot,
-	validateRunRoot,
 } from "../workspace/run-root.js";
 import type { WorkerRuntimeScheduler } from "./adapters.js";
 
@@ -479,11 +477,7 @@ export async function bootstrapWorkerRuntime(
 				}))
 			: resolvedWorkerProcess?.runtime?.repositoryCheckout === "on_demand"
 				? prepareOnDemandRunRoot(plan, deps.gitOps)
-				: deps.payload.resume
-					? validateRunRoot(workspaceRoot, runRootProjects, deps.gitOps).then((validation) =>
-							repairRunRoot(validation, plan, deps.gitOps),
-						)
-					: materializeRunRoot(plan, deps.gitOps);
+				: materializeRunRoot(plan, deps.gitOps, deps.payload.resume);
 
 	const resolvedPiConfig = llmPayload
 		? resolveProcessPiConfig({

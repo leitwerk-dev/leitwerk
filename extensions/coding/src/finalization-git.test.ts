@@ -12,6 +12,20 @@ function git(cwd: string, ...args: string[]): string {
 	return runGit(cwd, args);
 }
 
+function commit(repo: string, message: string, ...options: string[]) {
+	git(
+		repo,
+		"-c",
+		"user.name=Test",
+		"-c",
+		"user.email=test@example.com",
+		"commit",
+		"-m",
+		message,
+		...options,
+	);
+}
+
 function createTemplate(templateRoot: string) {
 	const remoteDir = path.join(templateRoot, "remote.git");
 	git(templateRoot, "init", "--bare", remoteDir);
@@ -49,17 +63,7 @@ describe("commitAndPushWorkBranch", () => {
 		expect(repositoryHasChanges(repoDir, "main")).toBe(false);
 		writeFileSync(path.join(repoDir, kind === "untracked" ? "new.txt" : "README.md"), "Changed\n");
 		if (kind === "staged" || kind === "committed") git(repoDir, "add", ".");
-		if (kind === "committed")
-			git(
-				repoDir,
-				"-c",
-				"user.name=Test",
-				"-c",
-				"user.email=test@example.com",
-				"commit",
-				"-m",
-				"change",
-			);
+		if (kind === "committed") commit(repoDir, "change");
 		expect(repositoryHasChanges(repoDir, "main")).toBe(true);
 	});
 	it("commits dirty work and publishes only the checked-out feature branch", () => {
@@ -102,29 +106,10 @@ describe("commitAndPushWorkBranch", () => {
 			remoteDir,
 			"child",
 		);
-		git(
-			repoDir,
-			"-c",
-			"user.name=Test",
-			"-c",
-			"user.email=test@example.com",
-			"commit",
-			"-m",
-			"Add dependency",
-		);
+		commit(repoDir, "Add dependency");
 		const before = git(repoDir, "rev-parse", "HEAD");
 		const child = path.join(repoDir, "child");
-		git(
-			child,
-			"-c",
-			"user.name=Test",
-			"-c",
-			"user.email=test@example.com",
-			"commit",
-			"--allow-empty",
-			"-m",
-			"New dependency revision",
-		);
+		commit(child, "New dependency revision", "--allow-empty");
 		const childHead = git(child, "rev-parse", "HEAD");
 		writeFileSync(path.join(repoDir, "feature.txt"), "new change\n");
 		const publish = () =>

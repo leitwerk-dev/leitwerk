@@ -59,6 +59,7 @@ the existing process flow.
 `createRepositoryChangePublication()` builds shared delivery, feedback, CI/rebase
 repair, and operator turns for Forgejo, GitHub, and GitLab. Adapters supply provider
 operations, evidence sources, repair tools/prompts, and pinned identities.
+Set `prepareSubmodules` on the adapter to enable checkout preparation and staging protection.
 `sourceCancelled`, `reconcileAll`, and `reconcileTerminal` receive
 `PublicationReconciliationContext`: process, projects, params, state, and integration
 calls, without worker filesystem access. Cursors and receipts remain namespaced;

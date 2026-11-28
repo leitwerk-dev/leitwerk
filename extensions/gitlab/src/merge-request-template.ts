@@ -13,22 +13,23 @@ export async function mergeRequestBody(
 	body: string,
 	ctx: Pick<IntegrationToolExecutionContext, "signal" | "reportProgress">,
 ): Promise<string> {
-	const { listRepositoryTree, getRepositoryFile } = client;
-	if (!listRepositoryTree || !getRepositoryFile)
+	if (!client.getRepositoryFile || !client.listRepositoryTree)
 		throw new Error("GitLab repository template lookup is unavailable");
 
 	const { default_branch: branch } = await client.getProject(projectId, ctx.signal);
 	if (!branch) throw new Error("GitLab repository has no default branch for template lookup");
 	const { commit } = await client.getBranch(projectId, branch, ctx.signal);
-	const list = (path: string) =>
-		listRepositoryTree.call(client, projectId, commit.id, path, ctx.signal);
+	const list = client.listRepositoryTree.bind(client, projectId, commit.id);
 	// Check parent trees explicitly: a 404 alone also means an inaccessible ref or repository.
 	const hasTree = (entries: Awaited<ReturnType<typeof list>>, path: string) =>
 		entries.some((entry) => entry.type === "tree" && entry.path === path);
-	if (!hasTree(await list(""), ".gitlab") || !hasTree(await list(".gitlab"), directory))
+	if (
+		!hasTree(await list("", ctx.signal), ".gitlab") ||
+		!hasTree(await list(".gitlab", ctx.signal), directory)
+	)
 		return body;
 
-	const candidates = (await list(directory)).filter(
+	const candidates = (await list(directory, ctx.signal)).filter(
 		({ path, type, mode }) =>
 			type === "blob" &&
 			mode !== "120000" &&
@@ -47,13 +48,7 @@ export async function mergeRequestBody(
 			});
 		return body;
 	}
-	const file = await getRepositoryFile.call(
-		client,
-		projectId,
-		commit.id,
-		template.path,
-		ctx.signal,
-	);
+	const file = await client.getRepositoryFile(projectId, commit.id, template.path, ctx.signal);
 	if (file.file_path !== template.path || file.encoding !== "base64")
 		throw new Error("Invalid GitLab merge request template response");
 	const markdown = new TextDecoder("utf-8", { fatal: true }).decode(

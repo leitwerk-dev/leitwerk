@@ -7,8 +7,6 @@ import {
 	planRunRoot,
 	type RunRootGitOps,
 	RunRootPreparationError,
-	repairRunRoot,
-	validateRunRoot,
 } from "./run-root.js";
 
 describe("materializeRunRoot", () => {
@@ -112,79 +110,7 @@ describe("materializeRunRoot", () => {
 	});
 });
 
-describe("validateRunRoot", () => {
-	it.each([null, "", "{", "{}"])("rejects absent or invalid manifest %j", async (raw) => {
-		const git = new FakeGitOps(new Map());
-		if (raw !== null) await git.writeFile("/work/invalid", ".leitwerk/components.json", raw);
-		expect(await validateRunRoot("/work/invalid", [], git)).toEqual({
-			valid: false,
-			diff: { stale: [], missing: [], extra: [], unchanged: [] },
-			existingManifest: null,
-		});
-	});
-
-	it("detects stale, missing, and extra components", async () => {
-		const ws = path.join("/", "v", "ws");
-		const git: RunRootGitOps = new FakeGitOps(new Map());
-		const existing = {
-			version: 1 as const,
-			instanceId: "a",
-			createdAt: "t",
-			components: [
-				{
-					key: "ok",
-					repoLocator: "https://same.git",
-					baseBranch: "main",
-					workBranch: "f",
-					clonedAt: "c",
-					headSha: "h",
-				},
-				{
-					key: "stale",
-					repoLocator: "https://old.git",
-					baseBranch: "main",
-					workBranch: "f",
-					clonedAt: "c",
-					headSha: "h",
-				},
-				{
-					key: "extra",
-					repoLocator: "https://x.git",
-					baseBranch: "main",
-					workBranch: "f",
-					clonedAt: "c",
-					headSha: "h",
-				},
-			],
-		};
-		await git.writeFile(ws, path.join(".leitwerk", "components.json"), serializeManifest(existing));
-
-		const server = [
-			{
-				key: "ok",
-				repoLocator: "https://same.git",
-				baseBranch: "main",
-				workBranch: "f",
-			},
-			{
-				key: "stale",
-				repoLocator: "https://new.git",
-				baseBranch: "main",
-				workBranch: "f",
-			},
-			{ key: "missing", repoLocator: "https://m.git", baseBranch: "main", workBranch: "f" },
-		];
-
-		const v = await validateRunRoot(ws, server, git);
-		expect(v.valid).toBe(false);
-		expect(v.diff.stale).toEqual(["stale"]);
-		expect(v.diff.missing).toEqual(["missing"]);
-		expect(v.diff.extra).toEqual(["extra"]);
-		expect(v.diff.unchanged).toEqual(["ok"]);
-	});
-});
-
-describe("repairRunRoot", () => {
+describe("materializeRunRoot with retained checkouts", () => {
 	it("fails preparation when an empty resumed workspace cannot be repaired", async () => {
 		const ws = path.join("/", "r", "failed");
 		const git: RunRootGitOps = new FakeGitOps(new Map());
@@ -196,11 +122,8 @@ describe("repairRunRoot", () => {
 				workBranch: "feature",
 			},
 		];
-		const validation = await validateRunRoot(ws, projects, git);
-
-		expect(validation.diff.missing).toEqual(["repo"]);
 		await expect(
-			repairRunRoot(validation, planRunRoot(ws, "ag-resumed", projects), git),
+			materializeRunRoot(planRunRoot(ws, "ag-resumed", projects), git, true),
 		).rejects.toThrow(/Workspace preparation failed: repo: unknown repo/);
 	});
 
@@ -263,11 +186,8 @@ describe("repairRunRoot", () => {
 			},
 		];
 
-		const validation = await validateRunRoot(ws, server, git);
-		expect(validation.diff.stale).toEqual(["stale"]);
-
 		const plan = planRunRoot(ws, "a2", server);
-		const repaired = await repairRunRoot(validation, plan, git);
+		const repaired = await materializeRunRoot(plan, git, true);
 
 		const staleEntry = repaired.manifest.components.find((c) => c.key === "stale");
 		expect(staleEntry?.repoLocator).toBe("https://new.git");

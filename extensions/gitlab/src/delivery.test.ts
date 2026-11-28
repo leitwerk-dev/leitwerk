@@ -8,7 +8,7 @@ import type {
 } from "@leitwerk-dev/process-sdk";
 import { createInMemoryExternalWriteLog, createToolCollector } from "@leitwerk-dev/test-support";
 import { LocalGit } from "@leitwerk-dev/test-support/local-git";
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { GitLabClient } from "./client.js";
 import { registerGitLabDeliveryTools } from "./delivery-tools.js";
 import { LocalGitLabAdapter } from "./testing.js";
@@ -67,7 +67,11 @@ it("recovers remote MR creation before local binding and preserves existing MR-b
 	const root = mkdtempSync(path.join(tmpdir(), "gitlab-delivery-"));
 	onTestFinished(() => rmSync(root, { recursive: true, force: true }));
 	const git = new LocalGit(root);
-	const bare = git.seed({ owner: "team", name: "repo" }).bare;
+	const { bare } = git.seed({
+		owner: "team",
+		name: "repo",
+		files: { ".gitlab/merge_request_templates/Default.md": "## Validation\n" },
+	});
 	git.run(bare, ["branch", "feature", "main"]);
 	let adapter = new LocalGitLabAdapter(root);
 	adapter.addProject("team/repo", bare);
@@ -97,7 +101,8 @@ it("recovers remote MR creation before local binding and preserves existing MR-b
 		},
 	};
 	let writes = createInMemoryExternalWriteLog();
-	const integration = { profiles: () => ["team"], client: () => adapter.client() };
+	let client = adapter.client();
+	const integration = { profiles: () => ["team"], client: () => client };
 	const collector = () => {
 		const { api, tools } = createToolCollector(writes);
 		registerGitLabDeliveryTools(api, integration, projects);
@@ -122,6 +127,10 @@ it("recovers remote MR creation before local binding and preserves existing MR-b
 	);
 	expect(adapter.state.mrs).toHaveLength(1);
 	adapter = new LocalGitLabAdapter(root);
+	expect(adapter.state.mrs[0].description).toContain("## Validation\n\nDescription");
+	adapter.state.mrs[0].description += "\nHuman edit";
+	client = adapter.client();
+	const readTemplate = vi.spyOn(client, "getRepositoryFile");
 	writes = createInMemoryExternalWriteLog();
 	tools = collector();
 	await expect(
@@ -132,6 +141,8 @@ it("recovers remote MR creation before local binding and preserves existing MR-b
 	await expect(tools.get("gitlab_get_changes")?.execute(ctx(), {})).resolves.toEqual([]);
 	await tools.get("gitlab_ensure_merge_request")?.execute(ctx(), args);
 	expect(adapter.state.mrs).toHaveLength(1);
+	expect(adapter.state.mrs[0].description).toContain("Human edit");
+	expect(readTemplate).not.toHaveBeenCalled();
 	await expect(
 		tools
 			.get("gitlab_add_issue_comment")

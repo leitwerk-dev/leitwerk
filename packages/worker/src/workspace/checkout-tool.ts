@@ -35,11 +35,7 @@ export function createCheckoutTool(
 		executionMode: "sequential",
 		async execute(args) {
 			if (typeof args.projectKey !== "string") throw new Error("projectKey is required");
-			if (
-				args.revision !== undefined &&
-				(typeof args.revision !== "string" ||
-					!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(args.revision))
-			)
+			if (args.revision !== undefined && typeof args.revision !== "string")
 				throw new Error("Use a captured full commit SHA");
 			const plan = planRunRoot(
 				workspaceRoot,
@@ -52,12 +48,7 @@ export function createCheckoutTool(
 				})),
 				submodules,
 			);
-			const result = await prepareOnDemandRunRoot(
-				plan,
-				git,
-				args.projectKey,
-				args.revision as string | undefined,
-			);
+			const result = await prepareOnDemandRunRoot(plan, git, args.projectKey, args.revision);
 			const entry = result.manifest.components.find(
 				(component) => component.key === args.projectKey,
 			);
@@ -65,7 +56,7 @@ export function createCheckoutTool(
 			const repositoryPath = path.join(workspaceRoot, entry.key);
 			return {
 				...entry,
-				headSha: await git.getHeadSha(repositoryPath),
+				headSha: entry.revision ? entry.headSha : await git.getHeadSha(repositoryPath),
 				path: repositoryPath,
 				...(result.submoduleWarnings ? { warnings: result.submoduleWarnings } : {}),
 				instructions:

@@ -121,16 +121,6 @@ export class NodeRunRootGitOps implements RunRootGitOps {
 
 	prepareSubmodules = prepareRepositorySubmodules;
 
-	async listSubmodulePaths(repoDir: string): Promise<string[]> {
-		if (!existsSync(repoDir)) return [];
-		const index = await this.runGit(["ls-files", "--stage", "-z"], repoDir);
-		return index
-			.split("\0")
-			.flatMap((record) =>
-				record.startsWith("160000 ") ? [record.slice(record.indexOf("\t") + 1)] : [],
-			);
-	}
-
 	async checkout(repoDir: string, branch: string): Promise<void> {
 		await this.runGit(["checkout", "--no-recurse-submodules", branch], repoDir);
 	}
@@ -139,7 +129,7 @@ export class NodeRunRootGitOps implements RunRootGitOps {
 		repoDir: string,
 		revision: string,
 		preserveSubmodules = false,
-	): Promise<void> {
+	): Promise<string> {
 		if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(revision))
 			throw new Error("Use a captured full commit SHA");
 		const status = await this.runGit(
@@ -166,8 +156,10 @@ export class NodeRunRootGitOps implements RunRootGitOps {
 			await this.runGit(["fetch", "origin", revision], repoDir, path.basename(repoDir));
 		}
 		await this.runGit(["checkout", "--no-recurse-submodules", "--detach", revision], repoDir);
-		if ((await this.getHeadSha(repoDir)).toLowerCase() !== revision.toLowerCase())
+		const head = await this.getHeadSha(repoDir);
+		if (head.toLowerCase() !== revision.toLowerCase())
 			throw new Error("Checkout HEAD does not match captured commit");
+		return head;
 	}
 
 	async createBranch(repoDir: string, branchName: string, startPoint: string): Promise<void> {
@@ -190,19 +182,23 @@ export class NodeRunRootGitOps implements RunRootGitOps {
 		return (await this.runGit(["rev-parse", "HEAD"], repoDir)).trim();
 	}
 
-	async listFiles(repoDir: string, pattern: string): Promise<string[]> {
-		const absoluteRoot = path.resolve(repoDir);
-		if (!existsSync(absoluteRoot)) {
-			return [];
-		}
-		return (
-			await fg(pattern, {
-				cwd: absoluteRoot,
-				dot: true,
-				onlyFiles: true,
-				ignore: ["**/.git/**"],
-			})
-		).sort((a, b) => a.localeCompare(b));
+	async listFiles(
+		repoDir: string,
+		patterns: string[],
+		excludeSubmodules = false,
+	): Promise<string[]> {
+		const cwd = path.resolve(repoDir);
+		if (!existsSync(cwd)) return [];
+		const files = await fg(patterns, { cwd, dot: true, onlyFiles: true, ignore: ["**/.git/**"] });
+		const index = excludeSubmodules ? await this.runGit(["ls-files", "--stage", "-z"], cwd) : "";
+		const gitlinks = index
+			.split("\0")
+			.flatMap((entry) =>
+				entry.startsWith("160000 ") ? [`${entry.slice(entry.indexOf("\t") + 1)}/`] : [],
+			);
+		return files
+			.filter((file) => !gitlinks.some((link) => file.startsWith(link)))
+			.sort((a, b) => a.localeCompare(b));
 	}
 }
 

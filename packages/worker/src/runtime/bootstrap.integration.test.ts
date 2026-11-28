@@ -59,6 +59,7 @@ function noProjectGitOps(): RunRootGitOps {
 	return {
 		async clone() {},
 		async checkout() {},
+		prepareSubmodules: async () => undefined,
 		async createBranch() {},
 		async branchExists() {
 			return false;

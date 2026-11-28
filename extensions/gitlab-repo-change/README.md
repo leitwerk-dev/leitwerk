@@ -50,9 +50,7 @@ origin, project ID, and issue IID.
 
 ## Delivery and recovery
 
-The worker initializes submodules at the checked-out revision on a best-effort
-basis. An inaccessible submodule produces a warning without blocking the parent
-checkout.
+The worker opts into [best-effort submodule preparation](../../docs/maintainers/process-workspace.md#repository-management).
 
 The shared coding lifecycle commits and pushes, creates or reconciles one MR, and
 waits for feedback, native CI, conflicts, or a terminal outcome. Repository metadata

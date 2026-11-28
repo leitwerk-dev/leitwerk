@@ -15,7 +15,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { deserializeManifest } from "./manifest.js";
 import { NodeRunRootGitOps } from "./node-run-root-git-ops.js";
-import { materializeRunRoot, planRunRoot } from "./run-root.js";
+import { materializeRunRoot, planRunRoot, prepareOnDemandRunRoot } from "./run-root.js";
 
 // Real git subprocesses (clone, commit, push) make this case slow under the
 // full parallel suite; raise the timeout so spawn contention does not flake it.
@@ -223,7 +223,6 @@ it("pins shared checkouts at captured commits, fetches later captured commits, a
 		"Updated component instructions",
 	);
 	git(initial.path, "checkout", "--detach", captured);
-	const { prepareOnDemandRunRoot } = await import("./run-root.js");
 	await prepareOnDemandRunRoot(
 		planRunRoot(workspace, "instance", [
 			{ key: "monitor", repoLocator: source, baseBranch: "main", workBranch: "main" },
@@ -309,12 +308,7 @@ esac
 	);
 	const localHead = git(depPath, "rev-parse", "HEAD").trim();
 	writeFileSync(path.join(depPath, "local.txt"), "preserve this");
-	const { repairRunRoot, validateRunRoot } = await import("./run-root.js");
-	const retained = await repairRunRoot(
-		await validateRunRoot(workspace, plan.components, ops),
-		plan,
-		ops,
-	);
+	const retained = await materializeRunRoot(plan, ops, true);
 	expect(retained.submoduleWarnings).toEqual([expect.stringContaining("left untouched")]);
 	expect(git(depPath, "rev-parse", "HEAD").trim()).toBe(localHead);
 	expect(readFileSync(path.join(depPath, "local.txt"), "utf8")).toBe("preserve this");
@@ -330,7 +324,6 @@ it("returns a pinned checkout with a safe warning when a submodule transport is 
 	addSubmodule(source, "dependency", dependency, git(dependency, "rev-parse", "HEAD").trim());
 	const revision = git(source, "rev-parse", "HEAD").trim();
 	const workspace = createTempDir("submodule-unavailable");
-	const { prepareOnDemandRunRoot } = await import("./run-root.js");
 	const plan = planRunRoot(
 		workspace,
 		"instance",

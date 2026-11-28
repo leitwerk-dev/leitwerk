@@ -16,21 +16,15 @@ import {
 import { repositoryRecord } from "./repository-record.js";
 import { assertSafeSubmoduleStaging } from "./submodule-staging.js";
 
-/** @internal */
-export interface ReconciliationInput {
-	projectKey: string;
-	repoPath: string;
-	workBranch: string;
+type RepositoryLocation = { projectKey: string; repoPath: string };
+type WorkBranch = RepositoryLocation & { workBranch: string };
+type ReconciliationInput = WorkBranch & {
 	/** Last remote baseline, not the latest observation. */
-	baselineSha: string;
+	baselineSha?: string;
+	baseBranch?: string;
 	protectSubmodules?: boolean;
 	/** Trusted project identity for replaying unpublished commits. */
 	gitIdentity?: GitIdentity;
-}
-
-type WorkBranchInput = Omit<ReconciliationInput, "baselineSha"> & {
-	baselineSha?: string;
-	baseBranch?: string;
 };
 
 /** @internal */
@@ -62,7 +56,7 @@ interface RecordState extends RepositoryBinding {
 	};
 }
 
-function repository(input: Pick<ReconciliationInput, "projectKey" | "repoPath">) {
+function repository(input: RepositoryLocation) {
 	function git(args: string[], extra: NodeJS.ProcessEnv = {}): string {
 		const output = execFileSync(resolveGitBinary(), repositoryGitArgs(args), {
 			cwd: input.repoPath,
@@ -202,7 +196,7 @@ function withLock<T>(directory: string, run: () => T): T {
  * They are retained under private refs and removed from HEAD before publication.
  * A conflicted rebase is deliberately left in place for the existing adjustment turn.
  */
-function reconcile(input: WorkBranchInput, preparing: boolean): ReconciliationResult {
+function reconcile(input: ReconciliationInput, preparing: boolean): ReconciliationResult {
 	const { git, directory, read, save, binding: readBinding } = repository(input);
 	return withLock(directory, () => {
 		git(["check-ref-format", `refs/heads/${input.workBranch}`]);
@@ -507,10 +501,7 @@ function reconcile(input: WorkBranchInput, preparing: boolean): ReconciliationRe
 }
 
 /** Reject ignored-file collisions before a target checkout/rebase can overwrite them. @internal */
-export function assertReconciliationTargetSafe(
-	input: Pick<ReconciliationInput, "repoPath" | "projectKey">,
-	targetSha: string,
-): void {
+export function assertReconciliationTargetSafe(input: RepositoryLocation, targetSha: string): void {
 	const { git, read } = repository(input);
 	assertIgnoredProtection(git, read()?.protectedIgnored);
 	if (ignoredPathsCollide(git, ignoredPaths(git), targetSha, `${targetSha}..HEAD`))
@@ -519,7 +510,8 @@ export function assertReconciliationTargetSafe(
 
 /** Preserve a target rebase as a net local delta when its source lease changes. @internal */
 export function retainConcurrentRebase(
-	input: ReconciliationInput & {
+	input: WorkBranch & {
+		baselineSha: string;
 		rebasedHead: string;
 		targetBase: string;
 		gitIdentity: GitIdentity;
@@ -572,29 +564,24 @@ export function retainConcurrentRebase(
 }
 
 /** @internal */
-export function repositoryWorktreeIsDirty(
-	input: Pick<ReconciliationInput, "repoPath" | "projectKey">,
-): boolean {
+export function repositoryWorktreeIsDirty(input: RepositoryLocation): boolean {
 	return Boolean(repository(input).git(["status", "--porcelain"]));
 }
 
 /** Capture the baseline before the first implementation, including an unpublished branch. @internal */
 export function prepareInitialRepository(
-	input: Omit<WorkBranchInput, "baselineSha">,
+	input: Omit<ReconciliationInput, "baselineSha">,
 ): ReconciliationResult {
 	return reconcile(input, true);
 }
 
 /** Missing branches are allowed only before first publication. @internal */
-export function reconcilePublicationRepository(input: WorkBranchInput): ReconciliationResult {
+export function reconcilePublicationRepository(input: ReconciliationInput): ReconciliationResult {
 	return reconcile(input, false);
 }
 
 /** Record only a remotely verified publication, including recovery after a lost reply. @internal */
-export function recordRepositoryPublication(
-	input: Omit<ReconciliationInput, "baselineSha" | "gitIdentity">,
-	headSha: string,
-): void {
+export function recordRepositoryPublication(input: WorkBranch, headSha: string): void {
 	const { directory, read, save, binding: readBinding } = repository(input);
 	withLock(directory, () => {
 		const old = read();

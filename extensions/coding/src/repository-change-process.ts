@@ -7,8 +7,6 @@ import {
 	flow,
 	humanTurn,
 	type ProcessLauncherDefinition,
-	type ProcessRuntimeCapabilities,
-	prepareRepositorySubmodules,
 	type RepositoryCredentialProject,
 	type RepositoryCredentialRequirement,
 	revisionAction,
@@ -20,6 +18,7 @@ import {
 } from "./repository-change-state-internal.js";
 import { prepareInitialRepository, reconciliationPrompt } from "./repository-reconciliation.js";
 import { codingPurposes } from "./settings.js";
+import { prepareSubmodules } from "./submodule-staging.js";
 import { prepareRepositoryCommitMessageEvidence } from "./turns/commit-message-evidence.js";
 import {
 	buildRepositoryCommitMessagesPrompt,
@@ -67,8 +66,6 @@ export interface RepositoryChangeProcessConfig<TParams extends RepositoryChangeP
 	/** @public */
 	workflow?: RepositoryChangeWorkflow<TParams>;
 	/** @public */
-	runtime?: ProcessRuntimeCapabilities;
-	/** @public */
 	paramsCodec: Codec<TParams>;
 	/** @public */
 	launcher?: ProcessLauncherDefinition<TParams>;
@@ -91,6 +88,8 @@ export interface RepositoryChangeProcessConfig<TParams extends RepositoryChangeP
 		fragment: FlowFragmentBuilder<TParams, RepositoryChangeState>;
 		/** @public */
 		happyPath?: readonly string[];
+		/** @internal */
+		prepareSubmodules?: boolean;
 	};
 }
 
@@ -278,6 +277,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		)
 		.publish("plan");
 	const refreshTarget = config.workflow?.refreshTargetBeforeImplementation;
+	const prepareDependencies = config.publication.prepareSubmodules;
 	const implement = flow
 		.llm<TParams, RepositoryChangeState>("implement")
 		.description("Implement")
@@ -288,7 +288,6 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		.startFromRoot()
 		.consume("plan")
 		.prepare(async (ctx) => {
-			const reconciliation = [];
 			const submoduleWarnings: string[] = [];
 			for (const repo of ctx.repo.all()) {
 				const identity = asUnknownRecord(
@@ -299,38 +298,26 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 					repoPath: repo.fsPath,
 					workBranch: repo.workBranch,
 					baseBranch: refreshTarget ? repo.baseBranch : undefined,
-					protectSubmodules: config.runtime?.repositorySubmodules === "best_effort",
+					protectSubmodules: prepareDependencies,
 					gitIdentity:
 						typeof identity?.name === "string" && typeof identity.email === "string"
 							? { name: identity.name, email: identity.email }
 							: undefined,
 				});
-				reconciliation.push(result);
-				if (
-					config.runtime?.repositorySubmodules === "best_effort" &&
-					result.status !== "conflicts"
-				) {
-					const warning = await prepareRepositorySubmodules(repo.key, repo.fsPath);
-					if (warning) {
-						ctx.reportDiagnostic({
-							level: "warn",
-							code: "repository.submodules",
-							message: warning,
-						});
-						submoduleWarnings.push(warning);
-					}
+				if (prepareDependencies && result.status !== "conflicts") {
+					const warning = await prepareSubmodules(repo, ctx);
+					if (warning) submoduleWarnings.push(warning);
 				}
 			}
-			return { reconciliation, submoduleWarnings };
+			return { submoduleWarnings };
 		})
-		.buildPrompt((ctx) => {
-			const warnings = asUnknownRecord(ctx.prepared)?.submoduleWarnings;
-			return [
+		.buildPrompt((ctx) =>
+			[
 				buildImplementPrompt(ctx, refreshTarget),
 				reconciliationPrompt,
-				...(Array.isArray(warnings) ? warnings : []),
-			].join("\n\n");
-		})
+				...(ctx.prepared?.submoduleWarnings ?? []),
+			].join("\n\n"),
+		)
 		.outcomeTool("implementation_ready", (tool) =>
 			tool
 				.description("Implementation and checks are complete; continue to delivery")
@@ -442,7 +429,7 @@ ${ctx.input["simplification-plan"]}`,
 		.turn(applySimplification)
 		.turn(generateCommitMessage)
 		.use(config.publication.fragment);
-	if (config.runtime) builder.runtime(config.runtime);
+	if (prepareDependencies) builder.runtime({ repositorySubmodules: "best_effort" });
 	if (config.repositoryCredentials) builder.repositoryCredentials(config.repositoryCredentials);
 	if (config.launcher) builder.launcher(config.launcher);
 	return {

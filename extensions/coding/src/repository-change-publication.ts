@@ -5,7 +5,6 @@ import {
 	type ExternalActionSource,
 	type FlowAutomaticRunContext,
 	flow,
-	prepareRepositorySubmodules,
 	type ServerExtensionAPI,
 } from "@leitwerk-dev/process-sdk";
 import {
@@ -31,6 +30,7 @@ import {
 	retainConcurrentRebase,
 } from "./repository-reconciliation.js";
 import { codingPurposes } from "./settings.js";
+import { prepareSubmodules } from "./submodule-staging.js";
 
 export {
 	createPullRequestChangeProcess,
@@ -1061,26 +1061,6 @@ export function createRepositoryChangePublication<P>(
 		return kind === "feedback" && remote(state).repairReason === "rebase" ? "rebase" : kind;
 	}
 
-	function revisionPrompt(kind: "feedback" | "ci") {
-		return (ctx: {
-			state: RepositoryChangeState;
-			prepared?: unknown;
-			prompts?: { initial: string };
-		}) => {
-			const current = remote(ctx.state);
-			const repository = adapter.repositories
-				? `Repository: ${activeKey(ctx.state)}. Apply changes only to this checkout. `
-				: "";
-			if (asUnknownRecord(ctx.prepared)?.deferredRebase)
-				return `${repository}${reconciliationPrompt}\nThe source branch or retained local work must be reconciled before the target-branch repair. Resolve any source reconciliation, then use changes_ready. Delivery will restore and validate the result before reassessing current target conflicts.`;
-			if (current.reconciliationRequired)
-				return `${repository}${reconciliationPrompt}\nValidate the reconciled repository, including any upstream target changes and retained local work, against the requested change and pending feedback: ${JSON.stringify(current.feedbackIds)}. Treat the current remote as authoritative; do not restore deliberately removed code simply to match an older plan. Use changes_ready after validation, even when no further edit is needed, so retained local changes are published. If blocked use cannot_repair.\nOriginal request for context: ${ctx.prompts?.initial ?? "Inspect the current repository and retained request"}`;
-			if (repairReason(ctx.state, kind) === "rebase")
-				return `${rebasePrompt} Evidence: ${JSON.stringify(current.conflict)}. Call changes_ready or no_changes when verified complete, cannot_repair when blocked.`;
-			return `${adapter.repositories ? `Repository: ${activeKey(ctx.state)}. Apply changes only to this checkout. ` : ""}${adapter.prompt(kind, current)}\n\n${reconciliationPrompt}`;
-		};
-	}
-
 	function revisionTurn(id: string, kind: "feedback" | "ci") {
 		const turn = flow
 			.llm<P, RepositoryChangeState>(id)
@@ -1107,16 +1087,11 @@ export function createRepositoryChangePublication<P>(
 			.prepare(async (ctx) => {
 				const project = ctx.repo.get(activeKey(ctx.state) ?? "repo");
 				const current = remote(ctx.state);
-				const prepareSubmodules = async () => {
-					if (!adapter.prepareSubmodules) return;
-					const message = await prepareRepositorySubmodules(project.key, project.fsPath);
-					if (message)
-						ctx.reportDiagnostic({ level: "warn", code: "repository.submodules", message });
-					return message;
-				};
+				const prepareDependencies = () =>
+					adapter.prepareSubmodules ? prepareSubmodules(project, ctx) : undefined;
 				const prepareRebase = async () => {
-					const rebase = startRebase(rebaseInput(ctx));
-					return { rebase, submoduleWarning: await prepareSubmodules() };
+					startRebase(rebaseInput(ctx));
+					return { deferredRebase: false, submoduleWarning: await prepareDependencies() };
 				};
 				const targetRebase =
 					repairReason(ctx.state, kind) === "rebase" && !current.reconciliationRequired;
@@ -1132,31 +1107,34 @@ export function createRepositoryChangePublication<P>(
 				if (reconciliation.status === "conflicts")
 					report("Resolve reconciliation conflicts", "in_progress");
 				else report("Repository reconciled", "completed");
-				if (targetRebase) {
-					if (
-						reconciliation.status !== "unchanged" ||
-						reconciliation.headSha !== current.conflict?.headSha ||
-						repositoryWorktreeIsDirty({ projectKey: project.key, repoPath: project.fsPath })
-					)
-						return {
-							reconciliation,
-							deferredRebase: true,
-							submoduleWarning:
-								reconciliation.status !== "conflicts" ? await prepareSubmodules() : undefined,
-						};
+				if (
+					targetRebase &&
+					reconciliation.status === "unchanged" &&
+					reconciliation.headSha === current.conflict?.headSha &&
+					!repositoryWorktreeIsDirty({ projectKey: project.key, repoPath: project.fsPath })
+				)
 					return prepareRebase();
-				}
 				return {
-					reconciliation,
+					deferredRebase: targetRebase,
 					submoduleWarning:
-						reconciliation.status !== "conflicts" ? await prepareSubmodules() : undefined,
+						reconciliation.status !== "conflicts" ? await prepareDependencies() : undefined,
 				};
 			})
 			.freshPrimary()
-			.prompt((ctx) => {
-				const prompt = revisionPrompt(kind)(ctx);
-				const warning = asUnknownRecord(ctx.prepared)?.submoduleWarning;
-				return typeof warning === "string" ? `${prompt}\n\n${warning}` : prompt;
+			.buildPrompt((ctx) => {
+				const current = remote(ctx.state);
+				const repository = adapter.repositories
+					? `Repository: ${activeKey(ctx.state)}. Apply changes only to this checkout. `
+					: "";
+				let prompt: string;
+				if (ctx.prepared?.deferredRebase)
+					prompt = `${repository}${reconciliationPrompt}\nThe source branch or retained local work must be reconciled before the target-branch repair. Resolve any source reconciliation, then use changes_ready. Delivery will restore and validate the result before reassessing current target conflicts.`;
+				else if (current.reconciliationRequired)
+					prompt = `${repository}${reconciliationPrompt}\nValidate the reconciled repository, including any upstream target changes and retained local work, against the requested change and pending feedback: ${JSON.stringify(current.feedbackIds)}. Treat the current remote as authoritative; do not restore deliberately removed code simply to match an older plan. Use changes_ready after validation, even when no further edit is needed, so retained local changes are published. If blocked use cannot_repair.\nOriginal request for context: ${ctx.prompts.initial || "Inspect the current repository and retained request"}`;
+				else if (repairReason(ctx.state, kind) === "rebase")
+					prompt = `${rebasePrompt} Evidence: ${JSON.stringify(current.conflict)}. Call changes_ready or no_changes when verified complete, cannot_repair when blocked.`;
+				else prompt = `${repository}${adapter.prompt(kind, current)}\n\n${reconciliationPrompt}`;
+				return [prompt, ctx.prepared?.submoduleWarning].filter(Boolean).join("\n\n");
 			});
 		for (const [name, description] of [
 			["changes_ready", "Repository changes are ready to publish"],
@@ -1264,5 +1242,7 @@ export function createRepositoryChangePublication<P>(
 
 		/** @public */
 		happyPath: [ids.deliver],
+		/** @internal */
+		prepareSubmodules: adapter.prepareSubmodules,
 	};
 }

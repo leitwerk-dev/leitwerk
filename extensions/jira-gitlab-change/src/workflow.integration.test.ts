@@ -84,7 +84,15 @@ async function fixture(
 		const key = `repo_${index + 1}`;
 		const repository = gitlab.addProject(
 			`team/${key}`,
-			checkout ? gitSeeds.copy(git, { owner: "team", name: key }) : join(root, `${key}.git`),
+			checkout
+				? gitSeeds.copy(git, {
+						owner: "team",
+						name: key,
+						files: templates
+							? { ".gitlab/merge_request_templates/Default.md": `## ${key} validation\n` }
+							: undefined,
+					})
+				: join(root, `${key}.git`),
 		);
 		const binding = await resolveGitLabLaunchProject(client, "team", repository, "feature", key);
 		repositories.push({ ...binding.params, key, origin: "jira", sshProfile: "test" });
@@ -101,19 +109,6 @@ async function fixture(
 			}),
 		);
 		if (checkout) {
-			if (templates) {
-				const seed = join(workspaceRoot, `template-${key}`);
-				git.run(workspaceRoot, ["clone", repository.http_url_to_repo, seed]);
-				const directory = join(seed, ".gitlab", "merge_request_templates");
-				mkdirSync(directory, { recursive: true });
-				writeFileSync(
-					join(directory, "Default.md"),
-					`## ${key} validation\n\n- [ ] Tests verified\n`,
-				);
-				git.run(seed, ["add", ".gitlab"]);
-				git.run(seed, ["commit", "-m", "Add repository template"]);
-				git.run(seed, ["push", "origin", binding.params.baseBranch]);
-			}
 			git.run(workspaceRoot, ["clone", repository.http_url_to_repo, key]);
 			git.run(join(workspaceRoot, key), ["checkout", "-b", "feature"]);
 			if (changed) writeFileSync(join(workspaceRoot, key, "README.md"), "# Changed\n");
@@ -509,7 +504,7 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 		).toBe(true);
 	});
 	it("stays In Progress after partial publication, then links all MRs and enters review on retry", async () => {
-		const f = await fixture();
+		const f = await fixture(undefined, { templates: true });
 		await f.plan();
 		const create = f.client.createMergeRequest;
 		let unavailable = true;
@@ -526,6 +521,7 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 		expect(await f.status()).toBe("In Review");
 		expect(await f.jira.listRemoteLinks("501")).toHaveLength(3);
 		for (const mr of f.gitlab.state.mrs) {
+			expect(mr.description).toMatch(`## repo_${mr.project_id} validation`);
 			expect(mr.description).toContain("[APP-1](https://jira.test/context/browse/APP-1)");
 			expect(mr.description).toContain(
 				"[Leitwerk process](https://leitwerk.test/app/processes/process)",
@@ -535,25 +531,6 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 		await f.plan();
 		expect(await f.status()).toBe("In Review");
 		expect(await f.jira.listComments("501")).toEqual([]);
-	});
-	it("uses each repository's own MR template only at creation", async () => {
-		const f = await fixture(undefined, { templates: true });
-		await f.plan();
-		f.gitlab.loseNextMergeRequestResponse = true;
-		const readTemplate = vi.spyOn(f.client, "getRepositoryFile");
-		expect((await f.deliver()).outcome).toBe("awaiting");
-		expect(readTemplate).toHaveBeenCalledTimes(2);
-		expect(f.gitlab.state.mrs).toHaveLength(2);
-		for (const [index, mr] of f.gitlab.state.mrs.entries()) {
-			expect(mr.description).toMatch(`## ${f.params.repositories[index].key} validation`);
-			expect(mr.description).toContain("- [ ] Tests verified");
-			expect(mr.description).toContain("[Leitwerk process]");
-		}
-		f.gitlab.state.mrs[0].description += "\nHuman edit";
-		readTemplate.mockClear();
-		await f.deliver();
-		expect(readTemplate).not.toHaveBeenCalled();
-		expect(f.gitlab.state.mrs[0].description).toContain("Human edit");
 	});
 	it("excludes unchanged repositories from the review boundary", async () => {
 		const f = await fixture([true, false]);

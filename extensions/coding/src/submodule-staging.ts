@@ -1,3 +1,15 @@
+import { prepareRepositorySubmodules, type TurnDiagnosticReport } from "@leitwerk-dev/process-sdk";
+
+/** @internal */
+export async function prepareSubmodules(
+	repo: { key: string; fsPath: string },
+	ctx: { reportDiagnostic(report: TurnDiagnosticReport): void },
+) {
+	const message = await prepareRepositorySubmodules(repo.key, repo.fsPath);
+	if (message) ctx.reportDiagnostic({ level: "warn", code: "repository.submodules", message });
+	return message;
+}
+
 // A failed refresh can leave a retained submodule at its previous commit. Do
 // not let a parent-wide git add turn that checkout into a pointer change.
 /** @internal */
