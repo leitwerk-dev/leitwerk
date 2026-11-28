@@ -38,14 +38,16 @@ let {
 	onReady = () => {},
 }: Props = $props();
 const refreshKey = $derived(
-	JSON.stringify([
-		detail?.timeline.turns.find(
-			(turn) => target.scope === "execution" && turn.id === target.turnRecordId,
-		)?.status,
-		detail?.session.signature,
-		$wsStore.reconnectCount,
-	]),
+	detail
+		? JSON.stringify([
+				detail.timeline.turns.find(
+					(turn) => target.scope === "execution" && turn.id === target.turnRecordId,
+				)?.status ?? null,
+				detail.session.signature ?? null,
+			])
+		: null,
 );
+const reconnectCount = $derived($wsStore.reconnectCount);
 const data = createInspectionData({
 	get instanceId() {
 		return instanceId;
@@ -55,6 +57,9 @@ const data = createInspectionData({
 	},
 	get refreshKey() {
 		return refreshKey;
+	},
+	get reconnectCount() {
+		return reconnectCount;
 	},
 	ready() {
 		onReady();
@@ -114,9 +119,9 @@ const sections = $derived(
   <div class="inspector-scroll" data-role="inspector-scroll" role="region" tabindex="0" aria-label="Inspector evidence">
     {#if error && detail}<p role="status">Couldn't refresh process details: {error}. Showing the last loaded details.</p>{/if}
     {#if target.scope === "invalid"}<p role="status">{target.reason}</p>
-    {:else if !detail}<p role="status">{error ?? "Loading process…"}</p>
     {:else if target.scope === "execution"}
       <ExecutionDetails {target} {data} toolRendererIndex={renderers} questions={detail?.questionRequests.filter(request => request.turnRecordId === target.turnRecordId) ?? []} {onNavigate} onChronicle={() => onChronicle({turnRecordId:target.turnRecordId})} {onReady} />
+    {:else if !detail}<p role="status">{error ?? "Loading process…"}</p>
     {:else}<ProcessReference {detail} {target} {onNavigate} {onChronicle} {onShowSummary} {onReady} />{/if}
   </div>
 </section>

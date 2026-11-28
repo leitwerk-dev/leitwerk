@@ -3,23 +3,23 @@ import type {
 	InspectionModelInput,
 	ProcessTurnRecord,
 } from "@leitwerk-dev/domain";
-import type {
-	ExecutionInspectionConfiguration,
-	ExecutionInspectionContext,
-	ExecutionInspectionSummary,
-	ExecutionInspectionTrace,
-	InspectionTargetState,
+import {
+	buildUsageSnapshotsByTurnRecordId,
+	createLiveTurnProjection,
+	type ExecutionInspectionConfiguration,
+	type ExecutionInspectionContext,
+	type ExecutionInspectionSummary,
+	type ExecutionInspectionTrace,
+	type InspectionTargetState,
+	type TurnTraceSnapshot,
 } from "@leitwerk-dev/protocol";
 import { createInspectionLineage } from "./process-inspection.js";
 import { buildInspectionTraceMessages } from "./process-inspection-trace.js";
-import { ProcessUiSnapshotAssembler } from "./process-ui-snapshot-presenter.js";
+import type { ProcessUiSnapshotAssembler } from "./process-ui-snapshot-presenter.js";
 
 /** One server-owned adapter for compact facts and on-demand inspection evidence. @internal */
 export class ProcessInspectionReader {
-	private readonly history: ProcessUiSnapshotAssembler;
-	constructor(private readonly deps: ConstructorParameters<typeof ProcessUiSnapshotAssembler>[0]) {
-		this.history = new ProcessUiSnapshotAssembler(deps);
-	}
+	constructor(private readonly deps: ConstructorParameters<typeof ProcessUiSnapshotAssembler>[0]) {}
 	private selected(instanceId: string, turnRecordId: string) {
 		if (!this.deps.processes.getById(instanceId)) return null;
 		const record = this.deps.turnRecords.getById(turnRecordId);
@@ -206,8 +206,10 @@ export class ProcessInspectionReader {
 	): Promise<ExecutionInspectionTrace | null> {
 		// Keep every durable fact at the same boundary as the reasoning history.
 		// Session storage is asynchronous and can advance independently.
+		const record = this.selected(instanceId, turnRecordId);
+		if (!record) return null;
 		const lineageSnapshot = this.lineageSnapshot(instanceId);
-		const captures = this.deps.executionInspections.list(instanceId, turnRecordId);
+		const captures = this.deps.executionInspections.listForTrace(instanceId, turnRecordId);
 		const annotations = this.deps.turnAnnotations
 			.listByInstance(instanceId)
 			.filter((annotation) =>
@@ -216,13 +218,29 @@ export class ProcessInspectionReader {
 						reference.kind === "turn_record" && reference.turnRecordId === turnRecordId,
 				),
 			);
-		const evidence = await this.history.readReasoningEvidence({
-			instanceId,
-			turnRecordId,
-			includeSession: true,
-		});
-		if (!evidence?.session) return null;
-		const { detail: history, turnRecord: record, events, session } = evidence;
+		const throughEventSequence = this.deps.events.latestSequence(instanceId);
+		const live = record.status === "running";
+		const liveSignature = live
+			? (this.deps.turnSummaries.getSession(instanceId)?.signature ?? null)
+			: null;
+		let events = live
+			? this.deps.events.listByTurnRecord(instanceId, turnRecordId)
+			: this.deps.events.listByTurnRecordExcludingTypes(instanceId, turnRecordId, [
+					"pi.stream.delta",
+				]);
+		if (!live && target.itemId?.startsWith("event:")) {
+			const seq = Number(target.itemId.slice(6));
+			if (Number.isSafeInteger(seq) && !events.some((event) => event.eventSequence === seq)) {
+				const targeted = this.deps.events.getByInstanceSequence(instanceId, seq);
+				if (targeted && targeted.data.turnRecordId === turnRecordId) {
+					events = [...events, targeted].sort(
+						(a, b) => (a.eventSequence ?? 0) - (b.eventSequence ?? 0),
+					);
+				}
+			}
+		}
+		const summaryUsage = !live ? (this.deps.turnSummaries.get(turnRecordId)?.usage ?? null) : null;
+		const session = await this.deps.sessionReader.readSessionTree(instanceId);
 		const lineage = createInspectionLineage({ ...lineageSnapshot, tree: session.piTree });
 		const messages = buildInspectionTraceMessages({
 			tree: session.piTree,
@@ -231,6 +249,28 @@ export class ProcessInspectionReader {
 			events,
 			owner: lineage.owner,
 		});
+		let reasoning: TurnTraceSnapshot;
+		if (live) {
+			reasoning = createLiveTurnProjection(events).snapshot();
+		} else if (messages.length === 0) {
+			// Fallback when a committed/failed turn has no session entries uploaded yet.
+			events = this.deps.events
+				.listByTurnRecord(instanceId, turnRecordId)
+				.filter((event) => (event.eventSequence ?? 0) <= throughEventSequence);
+			reasoning = createLiveTurnProjection(events).snapshot();
+			reasoning.usage ??=
+				summaryUsage ?? buildUsageSnapshotsByTurnRecordId(events)[record.id] ?? null;
+		} else {
+			// Committed turns with session messages render from `messages`; avoid duplicating
+			// multi-megabyte reasoning/tool payloads inside `reasoning`.
+			reasoning = {
+				assistant: { text: "", thinking: "", lastUpdatedAt: null },
+				toolCalls: [],
+				traceItems: [],
+				usage: summaryUsage ?? buildUsageSnapshotsByTurnRecordId(events)[record.id] ?? null,
+				piInput: null,
+			};
+		}
 		let targetState: InspectionTargetState | null = null;
 		let inheritedBoundary: ExecutionInspectionTrace["inheritedBoundary"] = null;
 		const unavailable = {
@@ -285,7 +325,12 @@ export class ProcessInspectionReader {
 			} else targetState = unavailable;
 		}
 		return {
-			...history,
+			instanceId,
+			turnRecordId,
+			sessionSignature: live ? liveSignature : (session.signature ?? null),
+			state: live ? "live" : "committed",
+			throughEventSequence,
+			reasoning,
 			messages,
 			unassignedMessages: buildInspectionTraceMessages({
 				tree: session.piTree,

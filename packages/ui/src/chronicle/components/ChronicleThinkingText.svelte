@@ -1,5 +1,5 @@
 <script lang="ts">
-import { splitChronicleLines } from "../lib/formatting.js";
+import { normalizeChronicleLineEndings, normalizeChronicleText } from "../lib/formatting.js";
 
 interface Props {
 	text: string;
@@ -9,14 +9,12 @@ interface Props {
 
 let { text, trim = false, variant = "default" }: Props = $props();
 
-const lines = $derived(splitChronicleLines(text, { trim }));
+const normalizedText = $derived(
+	trim ? normalizeChronicleText(text) : normalizeChronicleLineEndings(text),
+);
 </script>
 
-<p class="thinking-copy" data-variant={variant}>
-	{#each lines as line, index (`thinking-line-${index}`)}
-		<span class="thinking-line">{line.length > 0 ? line : "\u00a0"}</span>
-	{/each}
-</p>
+<p class="thinking-copy" data-variant={variant}>{normalizedText}</p>
 
 <style>
 	.thinking-copy {
@@ -24,6 +22,8 @@ const lines = $derived(splitChronicleLines(text, { trim }));
 		font-family: inherit;
 		font-size: var(--type-body-sm);
 		line-height: 1.72;
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
 	}
 
 	.thinking-copy[data-variant="default"] {
@@ -32,16 +32,8 @@ const lines = $derived(splitChronicleLines(text, { trim }));
 	}
 
 	.thinking-copy[data-variant="preview"] {
-		display: grid;
-		gap: 0;
 		line-height: inherit;
 		max-width: 64ch;
 		color: color-mix(in srgb, var(--chronicle-text-muted) 82%, var(--chronicle-text) 18%);
-	}
-
-	.thinking-line {
-		display: block;
-		white-space: pre-wrap;
-		overflow-wrap: anywhere;
 	}
 </style>

@@ -1,4 +1,8 @@
-import type { InspectionTraceMessage, TurnTraceSnapshot } from "@leitwerk-dev/protocol";
+import type {
+	InspectionTraceMessage,
+	TurnTraceSnapshot,
+	TurnTraceToolCallSnapshot,
+} from "@leitwerk-dev/protocol";
 
 /** Correlate retained outcomes without inferring success from a missing live projection. @internal */
 export function inspectionToolCall(
@@ -6,12 +10,18 @@ export function inspectionToolCall(
 	timestamp: string,
 	messages: readonly InspectionTraceMessage[],
 	live: TurnTraceSnapshot | null,
+	indexes?: {
+		toolResultsById?: ReadonlyMap<string, InspectionTraceMessage>;
+		liveToolCallsById?: ReadonlyMap<string, TurnTraceToolCallSnapshot>;
+	},
 ) {
-	const recorded = live?.toolCalls.find((tool) => tool.toolCallId === call.id);
+	const recorded =
+		indexes?.liveToolCallsById?.get(call.id) ??
+		live?.toolCalls.find((tool) => tool.toolCallId === call.id);
 	if (recorded) return recorded;
-	const result = messages.find(
-		(message) => message.role === "toolResult" && message.toolCallId === call.id,
-	);
+	const result =
+		indexes?.toolResultsById?.get(call.id) ??
+		messages.find((message) => message.role === "toolResult" && message.toolCallId === call.id);
 	return {
 		toolCallId: call.id,
 		toolName: call.name,

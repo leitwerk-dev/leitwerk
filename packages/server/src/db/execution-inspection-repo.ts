@@ -3,11 +3,30 @@ import type {
 	ExecutionInspectionCapture,
 	ExecutionInspectionRecord,
 	InspectionContextObservation,
+	InspectionMessage,
 } from "@leitwerk-dev/domain";
 import type { InspectionConfigurationRevision } from "@leitwerk-dev/protocol";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { LeitwerkDb } from "./database.js";
 import { executionInspections, inspectionContents } from "./schema.js";
+
+/** Narrow capture projection sufficient for execution trace assembly without unpacking prompts or tools. @internal */
+export type TraceInspectionCapture = Pick<
+	ExecutionInspectionRecord,
+	"id" | "workerLeaseId" | "timestamp"
+> & {
+	/** @internal */
+	fact:
+		| Extract<ExecutionInspectionCapture["fact"], { kind: "entry_link" }>
+		| {
+				/** @internal */
+				kind: "model_input";
+				/** @internal */
+				messages: InspectionMessage[];
+		  };
+};
+
+const DIGEST_BATCH_SIZE = 500;
 
 /** Immutable content and incremental observation references. No session ancestry is copied. @internal */
 export function createExecutionInspectionRepo(db: LeitwerkDb) {
@@ -23,21 +42,48 @@ export function createExecutionInspectionRepo(db: LeitwerkDb) {
 		}
 		return Object.fromEntries(Object.entries(record).map(([key, item]) => [key, pack(item)]));
 	}
-	function unpack(value: unknown): unknown {
-		if (Array.isArray(value)) return value.map(unpack);
+	function collectDigests(value: unknown, digests: Set<string>): void {
+		if (Array.isArray(value)) {
+			for (const item of value) collectDigests(item, digests);
+			return;
+		}
+		if (!value || typeof value !== "object") return;
+		const record = value as Record<string, unknown>;
+		if (typeof record.contentDigest === "string") {
+			digests.add(record.contentDigest);
+			return;
+		}
+		for (const item of Object.values(record)) collectDigests(item, digests);
+	}
+	function loadContents(digests: ReadonlySet<string>): Map<string, unknown> {
+		const loaded = new Map<string, unknown>();
+		if (digests.size === 0) return loaded;
+		const all = [...digests];
+		for (let i = 0; i < all.length; i += DIGEST_BATCH_SIZE) {
+			const batch = all.slice(i, i + DIGEST_BATCH_SIZE);
+			const rows = db
+				.select()
+				.from(inspectionContents)
+				.where(inArray(inspectionContents.digest, batch))
+				.all();
+			for (const row of rows) {
+				loaded.set(row.digest, JSON.parse(row.contentJson));
+			}
+		}
+		return loaded;
+	}
+	function unpackWith(value: unknown, contents: ReadonlyMap<string, unknown>): unknown {
+		if (Array.isArray(value)) return value.map((item) => unpackWith(item, contents));
 		if (!value || typeof value !== "object") return value;
 		const record = value as Record<string, unknown>;
 		if (typeof record.contentDigest === "string") {
-			const row = db
-				.select()
-				.from(inspectionContents)
-				.where(eq(inspectionContents.digest, record.contentDigest))
-				.get();
-			return row
-				? { state: record.state, value: JSON.parse(row.contentJson) }
+			return contents.has(record.contentDigest)
+				? { state: record.state, value: contents.get(record.contentDigest) }
 				: { state: "unavailable", reason: "Recorded content is unavailable" };
 		}
-		return Object.fromEntries(Object.entries(record).map(([key, item]) => [key, unpack(item)]));
+		return Object.fromEntries(
+			Object.entries(record).map(([key, item]) => [key, unpackWith(item, contents)]),
+		);
 	}
 	return {
 		/** Model identities without loading retained prompts or message contents. @internal */
@@ -103,7 +149,7 @@ export function createExecutionInspectionRepo(db: LeitwerkDb) {
 		},
 		/** Expanded evidence is read only on demand. @internal */
 		list(instanceId: string, turnRecordId: string): ExecutionInspectionRecord[] {
-			return db
+			const rows = db
 				.select()
 				.from(executionInspections)
 				.where(
@@ -113,18 +159,81 @@ export function createExecutionInspectionRepo(db: LeitwerkDb) {
 					),
 				)
 				.orderBy(asc(executionInspections.sequence))
-				.all()
-				.map((row) => ({
-					version: 1,
-					id: row.id,
-					sequence: row.sequence,
-					instanceId: row.instanceId,
-					turnRecordId: row.turnRecordId,
-					startRecordId: row.startRecordId,
-					workerLeaseId: row.workerLeaseId,
-					timestamp: row.capturedAt,
-					fact: unpack(JSON.parse(row.factJson)) as ExecutionInspectionCapture["fact"],
-				}));
+				.all();
+			const parsed = rows.map((row) => ({
+				row,
+				fact: JSON.parse(row.factJson) as unknown,
+			}));
+			const digests = new Set<string>();
+			for (const entry of parsed) collectDigests(entry.fact, digests);
+			const contents = loadContents(digests);
+			return parsed.map(({ row, fact }) => ({
+				version: 1,
+				id: row.id,
+				sequence: row.sequence,
+				instanceId: row.instanceId,
+				turnRecordId: row.turnRecordId,
+				startRecordId: row.startRecordId,
+				workerLeaseId: row.workerLeaseId,
+				timestamp: row.capturedAt,
+				fact: unpackWith(fact, contents) as ExecutionInspectionCapture["fact"],
+			}));
+		},
+		/** Trace evidence: entry links and user prompt fallbacks only, without unpacking prompts, tools, or non-user messages. @internal */
+		listForTrace(instanceId: string, turnRecordId: string): TraceInspectionCapture[] {
+			const rows = db
+				.select()
+				.from(executionInspections)
+				.where(
+					and(
+						eq(executionInspections.instanceId, instanceId),
+						eq(executionInspections.turnRecordId, turnRecordId),
+						sql`json_extract(${executionInspections.factJson}, '$.kind') IN ('entry_link', 'model_input')`,
+					),
+				)
+				.orderBy(asc(executionInspections.sequence))
+				.all();
+			const parsed: Array<{
+				row: typeof executionInspections.$inferSelect;
+				kind: "entry_link" | "model_input";
+				fact: Record<string, unknown>;
+			}> = [];
+			const digests = new Set<string>();
+			const seenUserEntries = new Set<string>();
+			for (const row of rows) {
+				const fact = JSON.parse(row.factJson) as Record<string, unknown>;
+				if (fact.kind === "entry_link") {
+					parsed.push({ row, kind: "entry_link", fact });
+				} else if (fact.kind === "model_input" && Array.isArray(fact.messages)) {
+					const userMessages = fact.messages.filter((message) => {
+						if (!message || typeof message !== "object") return false;
+						const record = message as Record<string, unknown>;
+						if (record.role !== "user" || typeof record.entryId !== "string") return false;
+						if (seenUserEntries.has(record.entryId)) return false;
+						seenUserEntries.add(record.entryId);
+						return true;
+					});
+					if (userMessages.length === 0) continue;
+					collectDigests(userMessages, digests);
+					parsed.push({
+						row,
+						kind: "model_input",
+						fact: { kind: "model_input", messages: userMessages },
+					});
+				}
+			}
+			const contents = loadContents(digests);
+			return parsed.map(({ row, kind, fact }) => ({
+				id: row.id,
+				workerLeaseId: row.workerLeaseId,
+				timestamp: row.capturedAt,
+				fact: (kind === "entry_link"
+					? fact
+					: {
+							kind: "model_input",
+							messages: unpackWith(fact.messages, contents) as InspectionMessage[],
+						}) as TraceInspectionCapture["fact"],
+			}));
 		},
 		/** Small origin/product references for compact lineage without loading prompts. @internal */
 		listContextFacts(instanceId: string, turnRecordIds?: string[]): InspectionContextObservation[] {

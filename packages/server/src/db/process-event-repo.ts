@@ -1,7 +1,18 @@
 import type { ProcessEvent } from "@leitwerk-dev/domain";
 import { applyEventToCompactTurnSummary, emptyCompactTurnSummary } from "@leitwerk-dev/protocol";
 import type { SQL } from "drizzle-orm";
-import { and, asc, desc, eq, getTableColumns, gte, inArray, like, sql } from "drizzle-orm";
+import {
+	and,
+	asc,
+	desc,
+	eq,
+	getTableColumns,
+	gte,
+	inArray,
+	like,
+	notInArray,
+	sql,
+} from "drizzle-orm";
 import type { LeitwerkDb } from "./database.js";
 import { generateId, now } from "./repo-helpers.js";
 import * as s from "./schema.js";
@@ -186,6 +197,42 @@ export function createProcessEventRepo(db: LeitwerkDb) {
 				.orderBy(asc(s.processEvents.eventSequence))
 				.all()
 				.map(rowToProcessEvent);
+		},
+		/** @internal */
+		listByTurnRecordExcludingTypes(
+			instanceId: string,
+			turnRecordId: string,
+			excludedEventTypes: readonly string[],
+		): ProcessEvent[] {
+			const excluded = excludedEventTypes.filter((eventType) => eventType.trim() !== "");
+			return db
+				.select()
+				.from(s.processEvents)
+				.where(
+					and(
+						eq(s.processEvents.instanceId, instanceId),
+						eq(s.processEvents.turnRecordId, turnRecordId),
+						excluded.length > 0 ? notInArray(s.processEvents.eventType, excluded) : undefined,
+					),
+				)
+				.orderBy(asc(s.processEvents.eventSequence))
+				.all()
+				.map(rowToProcessEvent);
+		},
+		/** @internal */
+		getByInstanceSequence(instanceId: string, eventSequence: number): ProcessEvent | null {
+			const row = db
+				.select()
+				.from(s.processEvents)
+				.where(
+					and(
+						eq(s.processEvents.instanceId, instanceId),
+						eq(s.processEvents.eventSequence, eventSequence),
+					),
+				)
+				.limit(1)
+				.get();
+			return row ? rowToProcessEvent(row) : null;
 		},
 		/** @internal */
 		latestByTurnRecordEventType(
