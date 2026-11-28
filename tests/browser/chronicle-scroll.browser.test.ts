@@ -274,15 +274,18 @@ function buildLargePlanMarkdown() {
 	].join("\n");
 }
 
-function createRepositoryChangePlanThenImplementReasoningProcess(label: string) {
+function createRepositoryChangePlanThenImplementReasoningProcess(
+	label: string,
+	waitingForApproval = false,
+) {
 	if (!ctx) {
 		throw new Error("Server context not initialized");
 	}
 
 	const process = ctx.deps.processes.create({
 		processId: browserRepositoryChangeProcessId,
-		selectedTurnId: "implement",
-		lifecycleStatus: "active",
+		selectedTurnId: waitingForApproval ? "plan_decision" : "implement",
+		lifecycleStatus: waitingForApproval ? "waiting" : "active",
 		externalId: label,
 		title: "Desktop scroll repro · repository change",
 		stateJson: JSON.stringify(createEmptyStructuralProcessState()),
@@ -319,6 +322,9 @@ function createRepositoryChangePlanThenImplementReasoningProcess(label: string) 
 		anchoredAt: new Date(Date.now() - 19 * 60_000).toISOString(),
 	});
 
+	const runningTurnId = `trn_implement_running_${process.id}`;
+	if (waitingForApproval) return { process, runningTurnId };
+
 	ctx.deps.turnRecords.create({
 		id: `trn_plan_decision_${process.id}`,
 		instanceId: process.id,
@@ -334,7 +340,6 @@ function createRepositoryChangePlanThenImplementReasoningProcess(label: string) 
 		endedAt: new Date(Date.now() - 18 * 60_000).toISOString(),
 	});
 
-	const runningTurnId = `trn_implement_running_${process.id}`;
 	const startedAt = new Date(Date.now() - 60_000).toISOString();
 	createAcceptedLlmTurn({
 		id: runningTurnId,
@@ -1064,6 +1069,68 @@ async function expectChronicleOverflow(chronicleScroll: Locator) {
 	const metrics = await getScrollMetrics(chronicleScroll);
 	expect(metrics.scrollHeight).toBeGreaterThan(metrics.clientHeight);
 	return metrics;
+}
+
+for (const width of [1440, 390]) {
+	test(`keeps approval options keyboard accessible and inline at ${width}px`, async ({ page }) => {
+		await page.setViewportSize({ width, height: 900 });
+		const { process } = createRepositoryChangePlanThenImplementReasoningProcess(
+			`PLAN-APPROVAL-${width}`,
+			true,
+		);
+		let submissions = 0;
+		page.on("request", (request) => {
+			if (
+				request.method() === "POST" &&
+				request.url().endsWith(`/processes/${process.id}/actions/approve_plan`)
+			)
+				submissions++;
+		});
+		await page.goto(`/processes/${process.id}`);
+		const card = page.getByRole("region", { name: "Process decision" });
+		const caret = card.getByRole("button", { name: "Approval options" });
+		const approval = card.getByRole("button", { name: "Approve plan", exact: true });
+		const revision = card.getByRole("button", { name: "Request revision", exact: true });
+		const model = card.getByLabel("Next-turn model", { exact: true });
+		await expect(approval).toBeVisible();
+		await expect(revision).toBeVisible();
+		await caret.focus();
+		await caret.press("Enter");
+		await expect(caret).toHaveAttribute("aria-expanded", "true");
+		await expect(model).toBeVisible();
+		await expect(caret).toBeFocused();
+		const layout = await card.evaluate((element) => {
+			const style = getComputedStyle(element);
+			const row = element
+				.querySelector('[aria-label="Available actions"]')
+				?.getBoundingClientRect();
+			const form = element.querySelector("form")?.getBoundingClientRect();
+			const sides = ["top", "right", "bottom", "left"];
+			return {
+				sidesAreOnePixel: sides.every(
+					(side) => style.getPropertyValue(`border-${side}-width`) === "1px",
+				),
+				borderColors: sides.map((side) => style.getPropertyValue(`border-${side}-color`)),
+				formBelowRow: Boolean(row && form && form.top >= row.bottom),
+				fits: element.scrollWidth <= element.clientWidth,
+			};
+		});
+		expect(layout.sidesAreOnePixel).toBe(true);
+		expect(new Set(layout.borderColors).size).toBe(1);
+		expect(layout.formBelowRow).toBe(true);
+		expect(layout.fits).toBe(true);
+		await expect(card.getByText("Action required", { exact: true })).toHaveCount(0);
+		await caret.press("Space");
+		await expect(caret).toHaveAttribute("aria-expanded", "false");
+		await expect(model).toBeHidden();
+		await caret.press("Space");
+		const cancel = card.getByRole("button", { name: "Cancel", exact: true });
+		await cancel.focus();
+		await cancel.press("Enter");
+		await expect(caret).toBeFocused();
+		await expect(caret).toHaveAttribute("aria-expanded", "false");
+		expect(submissions).toBe(0);
+	});
 }
 
 test.describe("chronicle scroll behavior", () => {

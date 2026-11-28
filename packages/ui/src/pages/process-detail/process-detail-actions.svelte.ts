@@ -2,7 +2,11 @@ import type {
 	ProcessActionModelPreview,
 	ProcessActionSummary,
 } from "@leitwerk-dev/protocol/http-contracts";
-import { findQuickActionField } from "../../chronicle/lib/action-bindings.js";
+import {
+	type ApprovalConfirmation,
+	findQuickActionField,
+	supportsSplitApproval,
+} from "../../chronicle/lib/action-bindings.js";
 import {
 	buildLauncherScheduleTimeString,
 	localScheduleDateTimePartsToIso,
@@ -72,6 +76,7 @@ export function createProcessDetailActions(args: {
 	reload: () => Promise<void>;
 }) {
 	const mutations = createProcessDetailMutations();
+	let actionSubmissionMode = $state<"defaults" | "settings" | null>(null);
 	let actionFormState = $state<ActionFormState | null>(null);
 	let observedProcessId = $state<string | null>(null);
 	let openActionModelPreviewState = $state<KeyedActionModelPreview | null>(null);
@@ -93,7 +98,38 @@ export function createProcessDetailActions(args: {
 		return lifecycleStatus === "completed" || lifecycleStatus === "aborted";
 	});
 	const scheduledActionDetail = $derived(args.detail?.scheduledAction ?? null);
-	const availableActions = $derived(isTerminalProcess ? [] : (args.detail?.actions ?? []));
+	const liveActions = $derived(isTerminalProcess ? [] : (args.detail?.actions ?? []));
+	const decisionKey = $derived.by(() => {
+		const detail = args.detail;
+		return JSON.stringify([
+			detail?.process.id,
+			detail?.process.selectedTurnId,
+			detail?.process.planRevision,
+			detail?.timeline.turns.at(-1)?.id,
+		]);
+	});
+	let approvalReceipt = $state<{
+		decisionKey: string;
+		confirmation: ApprovalConfirmation;
+		leftDecision: boolean;
+	} | null>(null);
+	const approvalConfirmation = $derived(
+		approvalReceipt &&
+			!scheduledActionDetail &&
+			(liveActions.length === 0 ||
+				(!approvalReceipt.leftDecision && approvalReceipt.decisionKey === decisionKey))
+			? approvalReceipt.confirmation
+			: null,
+	);
+	const availableActions = $derived(approvalConfirmation ? [] : liveActions);
+	$effect(() => {
+		if (!approvalReceipt) return;
+		if (scheduledActionDetail || (liveActions.length > 0 && !approvalConfirmation)) {
+			approvalReceipt = null;
+		} else if (liveActions.length === 0) {
+			approvalReceipt.leftDecision = true;
+		}
+	});
 	const editingScheduledActionId = $derived(actionFormState?.editingScheduledActionId ?? null);
 	const selectedActionId = $derived(actionFormState?.actionId ?? null);
 	const openActionFormId = $derived(
@@ -263,6 +299,7 @@ export function createProcessDetailActions(args: {
 		drafts.reset();
 		mutations.reset();
 		actionFormState = null;
+		approvalReceipt = null;
 		openActionModelPreviewState = null;
 		openActionModelPreviewLoadingKey = null;
 		actionModelPreviewInput = null;
@@ -271,7 +308,7 @@ export function createProcessDetailActions(args: {
 
 	function setSelectedAction(actionId: string, presentation: ActionFormState["presentation"]) {
 		const action = actionSectionActions.find((candidate) => candidate.id === actionId);
-		if (!action) return;
+		if (!action || mutations.isAnyBusy()) return;
 		mutations.clearErrors();
 		if (presentation === "expanded") snapshotActionModelPreview(action);
 		const editingId =
@@ -288,7 +325,11 @@ export function createProcessDetailActions(args: {
 	}
 
 	function collapseActionForm() {
-		if (!actionFormState) return;
+		if (!actionFormState || mutations.isAnyBusy()) return;
+		const action = openActionForModelPreview;
+		if (action && supportsSplitApproval(action, Boolean(editingScheduledActionId))) {
+			drafts.discardActionDraft(action.id);
+		}
 		mutations.clearErrors();
 		actionFormState = selectedActionFormState(
 			actionFormState.actionId,
@@ -337,11 +378,27 @@ export function createProcessDetailActions(args: {
 		};
 	}
 
-	async function submitActionDecision(action: ProcessActionSummary) {
-		const opts = buildActionRunOptions(action);
+	async function submitActionDecision(
+		action: ProcessActionSummary,
+		mode?: "defaults" | "settings",
+	) {
+		if (
+			mutations.isAnyBusy() ||
+			!actionSectionActions.some((candidate) => candidate.id === action.id)
+		)
+			return;
 		const scheduledAction = scheduledActionDetail;
 		const isEditingScheduledAction =
 			scheduledAction !== null && editingScheduledActionId === scheduledAction.id;
+		const splitApproval = supportsSplitApproval(action, isEditingScheduledAction);
+		if (mode && !splitApproval) return;
+		const useDefaults = mode === "defaults";
+		const opts = useDefaults
+			? { schedule: { mode: "now" as const } }
+			: buildActionRunOptions(action);
+		const submittedDecisionKey = decisionKey;
+		const submittedInstanceId = args.instanceId;
+		actionSubmissionMode = mode ?? null;
 		await mutations.runMutation(
 			actionMutationKey(action.id),
 			async () => {
@@ -351,12 +408,30 @@ export function createProcessDetailActions(args: {
 						schedule: opts.schedule ?? { mode: "now" },
 					});
 				} else {
-					await postProcessAction(
-						args.instanceId,
+					if (
+						mode === "settings" &&
+						drafts.getActionModelOverrideValue(action.id).trim() &&
+						!opts.nextTurnModelProfileId
+					) {
+						throw new Error("The selected model cannot be used until its preview is available.");
+					}
+					const result = await postProcessAction(
+						submittedInstanceId,
 						action.id,
-						drafts.buildActionPayload(action),
+						useDefaults ? {} : drafts.buildActionPayload(action),
 						opts,
 					);
+					if (args.instanceId !== submittedInstanceId) return;
+					if (splitApproval && result.kind === "success") {
+						approvalReceipt = {
+							decisionKey: submittedDecisionKey,
+							leftDecision: false,
+							confirmation: {
+								usedDefaults: !opts.nextTurnModelProfileId,
+								warning: result.warning,
+							},
+						};
+					}
 				}
 				actionFormState = null;
 				drafts.reset();
@@ -471,6 +546,12 @@ export function createProcessDetailActions(args: {
 	}
 
 	return {
+		get actionSubmissionMode() {
+			return actionSubmissionMode;
+		},
+		get approvalConfirmation() {
+			return approvalConfirmation;
+		},
 		get editingScheduledActionId() {
 			return editingScheduledActionId;
 		},

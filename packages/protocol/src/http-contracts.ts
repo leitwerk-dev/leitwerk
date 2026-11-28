@@ -23,6 +23,7 @@ import {
 	type ProcessTurnType,
 	type QuestionAnswerDraft,
 	type SerializedProcessGraph,
+	type TurnAcceptanceState,
 	type TurnProgressReport,
 	trimToNull,
 	type WorkerLease,
@@ -247,6 +248,8 @@ export interface ProcessActionSummary {
 	supportsScheduling: boolean;
 	/** @internal */
 	supportsNextTurnModelOverride: boolean;
+	/** @internal */
+	acceptanceState?: TurnAcceptanceState;
 	/** @internal */
 	form?: ProcessActionFormDefinition;
 }

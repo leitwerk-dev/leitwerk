@@ -110,6 +110,8 @@ export interface VisibleProcessActionSummary {
 	/** @internal */
 	form?: ProcessActionDefinition["form"];
 	/** @internal */
+	acceptanceState?: TurnAcceptanceState;
+	/** @internal */
 	preview: ResolvedActionPreview | null;
 }
 
@@ -454,6 +456,7 @@ export function buildProcessActionRegistry(
 					label: turnAction.label ?? action.label,
 					description: turnAction.description ?? null,
 					form: action.form,
+					acceptanceState: turnAction.acceptanceState,
 					preview: resolveActionPreviewForProcess(processDef, ctx.process, action, action.id),
 				});
 			}

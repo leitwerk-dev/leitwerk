@@ -3,7 +3,13 @@ import type {
 	ProcessActionFieldDefinition,
 	ProcessActionSummary,
 } from "@leitwerk-dev/protocol/http-contracts";
-import { type ActionSectionController, findQuickActionField } from "../lib/action-bindings.js";
+import {
+	type ActionSectionController,
+	findQuickActionField,
+	supportsSplitApproval,
+} from "../lib/action-bindings.js";
+
+import ApprovalConfirmation from "./ApprovalConfirmation.svelte";
 
 interface Props {
 	actionSectionController: ActionSectionController;
@@ -89,7 +95,11 @@ async function submitSelectedAction(event: SubmitEvent) {
 	if (!selectedAction || needsDetailedForm || !validateQuickField(selectedAction)) {
 		return;
 	}
-	await actionBindings.submitActionDecision(selectedAction);
+	if (isSplitApproval(selectedAction)) {
+		await actionBindings.submitActionDecision(selectedAction, "defaults");
+	} else {
+		await actionBindings.submitActionDecision(selectedAction);
+	}
 }
 
 function handleComposerKeydown(event: KeyboardEvent) {
@@ -107,9 +117,13 @@ function openDetails() {
 	onOpenDetails(selectedAction.id);
 }
 
+function isSplitApproval(action: ProcessActionSummary) {
+	return supportsSplitApproval(action, Boolean(actionBindings.editingScheduledActionId));
+}
+
 function submitLabel(action: ProcessActionSummary): string {
 	if (actionBindings.actionBusyId === action.id) {
-		return quickField ? "Sending…" : "Working…";
+		return isSplitApproval(action) ? "Approving…" : quickField ? "Sending…" : "Working…";
 	}
 	return quickField ? "Send" : (action.form?.submitLabel ?? action.label);
 }
@@ -119,7 +133,12 @@ function submitAccessibleLabel(action: ProcessActionSummary): string {
 }
 </script>
 
-{#if selectedAction}
+{#if actionBindings.approvalConfirmation}
+	<div class="compact-confirmation">
+		<ApprovalConfirmation confirmation={actionBindings.approvalConfirmation} />
+		{#if onViewContext}<button type="button" class="view-context" onclick={onViewContext}>View context</button>{/if}
+	</div>
+{:else if selectedAction}
 	<section
 		class="compact-action-composer"
 		data-section="compact-action-composer"
@@ -194,7 +213,7 @@ function submitAccessibleLabel(action: ProcessActionSummary): string {
 					class="submit-button"
 					data-pressable="true"
 					disabled={actionBindings.actionBusyId !== null}
-					aria-label={submitAccessibleLabel(selectedAction)}
+					aria-label={actionBindings.actionBusyId === selectedAction.id && isSplitApproval(selectedAction) ? "Approving…" : submitAccessibleLabel(selectedAction)}
 				>
 					{submitLabel(selectedAction)}
 				</button>
@@ -208,6 +227,8 @@ function submitAccessibleLabel(action: ProcessActionSummary): string {
 {/if}
 
 <style>
+	.compact-confirmation { display: grid; gap: var(--space-2xs); }
+	.compact-confirmation .view-context { justify-self: end; }
 	.compact-action-composer {
 		container-type: inline-size;
 		flex: 0 0 auto;

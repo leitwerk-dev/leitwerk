@@ -11,9 +11,10 @@ import { tick } from "svelte";
 import FormFieldRenderer from "../../components/FormFieldRenderer.svelte";
 import ScheduleDateTimePicker from "../../components/ScheduleDateTimePicker.svelte";
 import { formatLocalDateTime, formatRelativeTime } from "../../lib/format.js";
-import type { ActionSectionController } from "../lib/action-bindings.js";
+import { type ActionSectionController, supportsSplitApproval } from "../lib/action-bindings.js";
 import { buildActionModelDisplay } from "../lib/action-model-display.js";
 import { describeActionPreview as describeSharedActionPreview } from "../lib/action-preview.js";
+import ApprovalConfirmation from "./ApprovalConfirmation.svelte";
 import ModelPolicyDetails from "./ModelPolicyDetails.svelte";
 import ModelProfileOptions from "./ModelProfileOptions.svelte";
 
@@ -51,9 +52,10 @@ const actions = $derived(actionBindings.actionSectionActions);
 const openAction = $derived(
 	actions.find((action) => action.id === actionBindings.openActionFormId) ?? null,
 );
-const showOpenActionPanel = $derived(Boolean(openAction));
+const hasSplitApproval = $derived(actions.some(isSplitApproval));
+const approvalOptionsOpen = $derived(Boolean(openAction && isSplitApproval(openAction)));
 const sectionTitle = $derived.by(() => {
-	if (openAction) {
+	if (openAction && !hasSplitApproval) {
 		return openAction.label;
 	}
 	if (actions.length > 0) {
@@ -63,7 +65,7 @@ const sectionTitle = $derived.by(() => {
 	return "Waiting for an update";
 });
 const sectionDescription = $derived.by(() => {
-	if (openAction?.description) {
+	if (openAction?.description && !hasSplitApproval) {
 		return openAction.description;
 	}
 	if (selectedTurn?.commentary) {
@@ -93,7 +95,7 @@ $effect(() => {
 $effect(() => {
 	const currentActionId = openAction?.id ?? null;
 	fieldErrors = {};
-	if (!currentActionId || !sectionElement) {
+	if (!currentActionId || !sectionElement || approvalOptionsOpen) {
 		return;
 	}
 	void tick().then(() => {
@@ -213,7 +215,11 @@ async function handleActionFormSubmit(event: SubmitEvent) {
 		await focusFirstInvalidField();
 		return;
 	}
-	await actionBindings.submitActionDecision(openAction);
+	if (approvalOptionsOpen) {
+		await actionBindings.submitActionDecision(openAction, "settings");
+	} else {
+		await actionBindings.submitActionDecision(openAction);
+	}
 }
 
 async function handleActionClick(action: ProcessActionSummary) {
@@ -245,8 +251,18 @@ function shouldShowActionModelOverride(action: ProcessActionSummary): boolean {
 	);
 }
 
-function isPrimaryActionChoice(actionIndex: number): boolean {
-	return actions.length > 1 && actionIndex === 0;
+function isSplitApproval(action: ProcessActionSummary): boolean {
+	return supportsSplitApproval(action, Boolean(actionBindings.editingScheduledActionId));
+}
+
+function approvalPanelId(action: ProcessActionSummary): string {
+	return actionBindings.actionFieldDomId(action.id, "approval-options");
+}
+
+async function cancelApprovalOptions(action: ProcessActionSummary) {
+	actionBindings.collapseActionForm();
+	await tick();
+	document.getElementById(`${approvalPanelId(action)}-toggle`)?.focus();
 }
 
 function scheduleRunAtFieldId(actionId: string): string {
@@ -322,43 +338,31 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 	class="action-section"
 	class:is-embedded={embedded}
 	class:is-focused={isFocused}
-	class:has-open-form={showOpenActionPanel}
+	class:has-confirmation={Boolean(actionBindings.approvalConfirmation)}
 	bind:this={sectionElement}
 	data-anchor-id={anchorId}
 	data-focused={isFocused ? "true" : "false"}
 	data-section="leaf-outcome-actions"
-	data-action-state={actions.length > 0 ? "required" : "external-trigger"}
+	data-action-state={actionBindings.approvalConfirmation ? "approved" : actions.length > 0 ? "required" : "external-trigger"}
 	data-action-shortcut-target="true"
-	aria-label={actions.length > 0 ? "Action required" : "External trigger status"}
+	aria-label={actionBindings.approvalConfirmation ? "Approval result" : actions.length > 0 ? "Process decision" : "External trigger status"}
 	tabindex="-1"
 >
-	{#if !embedded}
+	{#if actionBindings.approvalConfirmation}
+		<ApprovalConfirmation confirmation={actionBindings.approvalConfirmation} />
+	{:else if !embedded}
 	<div class="action-header">
 		<div class="action-header-copy">
-			<div class="action-status-row" aria-label={actions.length > 0 ? "Action required" : "External trigger"}>
-				<span class="action-status-dot" aria-hidden="true"></span>
-				<span>{actions.length > 0 ? "Action required" : selectedTurn?.readiness ? "Waiting for a condition" : "Waiting for an event"}</span>
-			</div>
 			<h3>{sectionTitle}</h3>
 			<p class="action-description">{sectionDescription}</p>
 		</div>
-		{#if showOpenActionPanel && openAction}
-			<div class="action-header-controls">
-				<button
-					type="button"
-					class="secondary-button"
-					data-pressable="true"
-					disabled={actionBindings.actionBusyId !== null}
-					onclick={() => actionBindings.collapseActionForm()}
-				>
-					Hide form
-				</button>
-			</div>
+		{#if openAction && !hasSplitApproval}
+			<div class="action-header-controls">{@render hideFormButton()}</div>
 		{/if}
 	</div>
 	{/if}
 
-	{#if selectedTurn?.readiness}
+	{#if selectedTurn?.readiness && !actionBindings.approvalConfirmation}
 		<div data-section="turn-readiness" role="status">
 			<p class="action-description">{selectedTurn.readiness.message ?? "This step will continue when its condition is met."}</p>
 			<p class="action-description">{selectedTurn.readiness.nextCheckAt ? `Next check: ${formatLocalDateTime(selectedTurn.readiness.nextCheckAt)}.` : "Checking readiness…"}</p>
@@ -366,16 +370,32 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 	{/if}
 
 	{#if actions.length > 0}
-		<div class="action-row" role="group" aria-label="Available actions">
+		<div class="action-row" class:has-split={hasSplitApproval} role="group" aria-label="Available actions">
 			{#each actions as action, actionIndex (action.id)}
+				{@const primary = isSplitApproval(action) || (!hasSplitApproval && actions.length > 1 && actionIndex === 0)}
+				{#if isSplitApproval(action)}
+					<div class="split-approval">
+						<button type="button" class="is-primary-choice approve-defaults" data-action-id={action.id}
+							data-action-priority="primary" data-supports-next-turn-model="true" data-pressable="true"
+							disabled={actionBindings.actionBusyId !== null}
+							onclick={() => actionBindings.submitActionDecision(action, "defaults")}
+						>{actionBindings.actionBusyId === action.id && actionBindings.actionSubmissionMode === "defaults" ? "Approving…" : action.label}</button>
+						<button type="button" class="is-primary-choice approval-caret"
+							id={`${approvalPanelId(action)}-toggle`}
+							aria-label="Approval options" aria-expanded={openAction?.id === action.id}
+							aria-controls={approvalPanelId(action)} disabled={actionBindings.actionBusyId !== null}
+							onclick={() => openAction?.id === action.id ? actionBindings.collapseActionForm() : actionBindings.expandActionForm(action.id)}
+						><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg></button>
+					</div>
+				{:else}
 				<button
 					type="button"
-					class:is-primary-choice={isPrimaryActionChoice(actionIndex)}
+					class:is-primary-choice={primary}
 					class:active={actionBindings.selectedActionId === action.id}
 					class:busy={actionBindings.actionBusyId === action.id}
 					disabled={actionBindings.actionBusyId !== null}
 					data-action-id={action.id}
-					data-action-priority={isPrimaryActionChoice(actionIndex) ? "primary" : "secondary"}
+					data-action-priority={primary ? "primary" : "secondary"}
 					data-supports-scheduling={action.supportsScheduling ? "true" : undefined}
 					data-supports-next-turn-model={
 						action.supportsNextTurnModelOverride ? "true" : undefined
@@ -383,33 +403,30 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 					data-pressable="true"
 					onclick={() => handleActionClick(action)}
 				>
-					<span class="action-button-copy">
-						<span>{action.label}</span>
-						{#if action.supportsScheduling || action.supportsNextTurnModelOverride}
-							<span class="action-capability-badges" aria-hidden="true">
-								{#if action.supportsScheduling}
-									<span class="action-capability-badge" data-action-capability="schedule">
-										Later
-									</span>
-								{/if}
-								{#if action.supportsNextTurnModelOverride}
-									<span class="action-capability-badge" data-action-capability="model">
-										Model
-									</span>
-								{/if}
-							</span>
-						{/if}
-					</span>
+					{action.label}
 				</button>
+				{/if}
 			{/each}
 		</div>
+	{/if}
+
+	{#if hasSplitApproval}
+		{#each actions.filter(isSplitApproval) as action (action.id)}
+			<div id={approvalPanelId(action)} hidden={openAction?.id !== action.id}>
+				{#if openAction?.id === action.id}{@render actionForm(openAction, true)}{/if}
+			</div>
+		{/each}
+	{/if}
+
+	{#if actionBindings.actionError}
+		<p class="action-error" role="alert">{actionBindings.actionError}</p>
 	{/if}
 
 	{#if externalTriggers.length > 0}
 		<details class="external-trigger-card" data-section="external-triggers" bind:open={eventsExpanded}>
 			<summary class="external-trigger-heading">
 				<span class="external-trigger-summary-copy">
-					<span class="external-trigger-title">{actions.length > 0 ? "Events that can continue this process" : "Waiting for an event"}</span>
+					<span class="external-trigger-title">{actions.length > 0 || actionBindings.approvalConfirmation ? "Events that can continue this process" : "Waiting for an event"}</span>
 					<span class="external-trigger-count">{externalTriggers.length} {externalTriggers.length === 1 ? "monitored event type" : "monitored event types"}</span>
 					{#if failedListenerCount > 0}<span class="external-trigger-error">{failedListenerCount} {failedListenerCount === 1 ? "listener error" : "listener errors"}</span>{/if}
 				</span>
@@ -442,18 +459,30 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 		</details>
 	{/if}
 
-	{#if actionBindings.actionError}
-		<p class="action-error" role="alert">{actionBindings.actionError}</p>
-	{/if}
+	{#if openAction && !approvalOptionsOpen}{@render actionForm(openAction, false)}{/if}
+</section>
 
-	{#if showOpenActionPanel && openAction}
+{#snippet hideFormButton()}
+	<button type="button" class="secondary-button" data-pressable="true" disabled={actionBindings.actionBusyId !== null} onclick={() => actionBindings.collapseActionForm()}>Hide form</button>
+{/snippet}
+
+{#snippet actionForm(openAction: ProcessActionSummary, approval: boolean)}
+	{@const runLater = openAction.supportsScheduling && actionBindings.getActionScheduleMode(openAction.id) === "once"}
+	{@const submitting = actionBindings.actionBusyId === openAction.id && actionBindings.actionSubmissionMode !== "defaults"}
+	{@const submitLabel = runLater
+		? (submitting ? "Saving schedule…" : "Schedule action")
+		: submitting
+			? (approval ? "Approving…" : "Running action…")
+			: (approval ? "Approve with settings" : openAction.form?.submitLabel ?? openAction.label)}
 		<form
 			class="action-form"
+			class:approval-settings={approval}
 			data-action-form-id={openAction.id}
 			novalidate
 			aria-busy={actionBindings.actionBusyId === openAction.id}
 			onsubmit={handleActionFormSubmit}
 		>
+			{#if !approval}
 			<div class="action-form-header">
 				<div>
 					<h4>{openAction.form?.title ?? openAction.label}</h4>
@@ -466,6 +495,8 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 				</div>
 			</div>
 
+			{/if}
+			<fieldset class="action-form-fields" disabled={actionBindings.actionBusyId !== null}>
 			{#if modelConfiguration.availableProfiles.length > 0 && shouldShowActionModelOverride(openAction)}
 				{@const actionModelDisplay = getActionModelDisplay(openAction)}
 				<div class="action-field-list model-override-list">
@@ -525,27 +556,27 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 					<div class="action-field-group">
 						<p class="field-label">When to run</p>
 						<div class="schedule-choice-row" role="radiogroup" aria-label="When to run">
-							<label class="schedule-choice" data-selected={actionBindings.getActionScheduleMode(openAction.id) === "now"}>
+							<label class="schedule-choice" data-selected={!runLater}>
 								<input
 									type="radio"
 									name={`schedule-${openAction.id}`}
-									checked={actionBindings.getActionScheduleMode(openAction.id) === "now"}
+									checked={!runLater}
 									onchange={() => actionBindings.setActionScheduleMode(openAction.id, "now")}
 								/>
 								<span>Run now</span>
 							</label>
-							<label class="schedule-choice" data-selected={actionBindings.getActionScheduleMode(openAction.id) === "once"}>
+							<label class="schedule-choice" data-selected={runLater}>
 								<input
 									type="radio"
 									name={`schedule-${openAction.id}`}
-									checked={actionBindings.getActionScheduleMode(openAction.id) === "once"}
+									checked={runLater}
 									onchange={() => actionBindings.setActionScheduleMode(openAction.id, "once")}
 								/>
 								<span>Run later</span>
 							</label>
 						</div>
 					</div>
-					{#if actionBindings.getActionScheduleMode(openAction.id) === "once"}
+					{#if runLater}
 						{@const scheduledAtParts = actionBindings.getActionScheduledAtLocalParts(openAction.id)}
 						<div class="action-field-group">
 							<label class="field-label" for={scheduleRunAtFieldId(openAction.id)}>
@@ -575,7 +606,7 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 				</div>
 			{/if}
 
-			{#if openAction.form}
+			{#if openAction.form?.fields.length}
 				<div class="action-field-list">
 					{#each openAction.form.fields as field (field.id)}
 						<FormFieldRenderer
@@ -595,20 +626,19 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 				</div>
 			{/if}
 
+			</fieldset>
 			<div class="action-form-footer">
-				<button type="submit" class="primary-button" data-pressable="true" disabled={actionBindings.actionBusyId !== null}>
-					{actionBindings.actionBusyId === openAction.id
-						? openAction.supportsScheduling && actionBindings.getActionScheduleMode(openAction.id) === "once"
-							? "Saving schedule…"
-							: "Running action…"
-						: openAction.supportsScheduling && actionBindings.getActionScheduleMode(openAction.id) === "once"
-							? "Schedule action"
-							: openAction.form?.submitLabel ?? openAction.label}
+				{#if approval}
+					<button type="button" class="secondary-button" data-pressable="true" disabled={actionBindings.actionBusyId !== null} onclick={() => cancelApprovalOptions(openAction)}>Cancel</button>
+				{:else if hasSplitApproval}
+					{@render hideFormButton()}
+				{/if}
+				<button type="submit" class="primary-button" data-pressable="true" disabled={actionBindings.actionBusyId !== null || Boolean(approval && actionBindings.getActionModelOverrideValue(openAction.id) && actionBindings.openActionModelPreview?.kind !== "llm_turn")}>
+					{submitLabel}
 				</button>
 			</div>
 		</form>
-	{/if}
-</section>
+{/snippet}
 
 <style>
 	.action-section {
@@ -623,18 +653,13 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 	}
 
 	.action-section[data-action-state="required"] {
-		border-color: color-mix(in srgb, var(--chronicle-accent) 40%, var(--chronicle-border) 60%);
-		background: color-mix(in srgb, white 91%, var(--chronicle-accent-soft) 9%);
+		border-color: #c3cedd;
+		background: #f6f8fc;
 	}
 
-	.action-section.is-focused,
-	.action-section.has-open-form {
-		border-color: color-mix(in srgb, var(--chronicle-accent) 50%, var(--chronicle-border) 50%);
-		background: color-mix(in srgb, white 90%, var(--chronicle-accent-soft) 10%);
-	}
-
-	.action-section.is-focused {
-		box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--chronicle-accent) 14%, transparent 86%);
+	.action-section.is-focused:focus-visible {
+		outline: 2px solid var(--chronicle-accent);
+		outline-offset: 2px;
 	}
 
 	.action-header {
@@ -655,26 +680,6 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 		gap: var(--space-xs);
 		flex-wrap: wrap;
 		justify-content: flex-end;
-	}
-
-	.action-status-row { display: inline-flex; align-items: center; gap: 6px; width: fit-content; color: var(--chronicle-attention); font-size: var(--type-body-sm); font-weight: 600; line-height: 1.4; }
-
-	.action-status-dot {
-		width: 8px;
-		height: 8px;
-		border-radius: 999px;
-		background: var(--chronicle-attention);
-	}
-
-	.action-section[data-action-state="external-trigger"] .action-status-row {
-		border-color: color-mix(in srgb, var(--chronicle-attention) 32%, var(--chronicle-border) 68%);
-		background: color-mix(in srgb, white 88%, var(--chronicle-attention) 12%);
-		color: color-mix(in srgb, var(--chronicle-attention) 78%, var(--chronicle-text) 22%);
-	}
-
-	.action-section[data-action-state="external-trigger"] .action-status-dot {
-		background: var(--chronicle-attention);
-		box-shadow: 0 0 0 3px color-mix(in srgb, var(--chronicle-attention) 14%, transparent 86%);
 	}
 
 	.action-header h3,
@@ -712,7 +717,24 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 		gap: var(--space-sm);
 	}
 
+	.action-row.has-split {
+		display: flex;
+		flex-wrap: wrap;
+	}
+
+	.split-approval { display: inline-flex; }
+	.action-row .approve-defaults { border-start-end-radius: 0; border-end-end-radius: 0; }
+	.action-row .approval-caret {
+		width: 44px;
+		padding: 0;
+		border-start-start-radius: 0;
+		border-end-start-radius: 0;
+		border-inline-start-color: color-mix(in srgb, currentColor 35%, transparent);
+	}
+	.approval-caret[aria-expanded="true"] svg { transform: rotate(180deg); }
+
 	.action-section.is-embedded { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; gap: 0; }
+	.action-section.has-confirmation { padding: 0; border: 0; background: transparent; }
 	.external-trigger-card { border-top: 1px solid var(--chronicle-border); }
 	.external-trigger-heading { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); min-height: 36px; padding: var(--space-2xs) 0; list-style: none; font-size: var(--type-body-sm); color: var(--chronicle-text-muted); cursor: pointer; }
 	.external-trigger-heading::-webkit-details-marker { display: none; }
@@ -764,48 +786,6 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 		text-align: center;
 	}
 
-	.action-button-copy {
-		display: inline-flex;
-		flex-direction: column;
-		align-items: center;
-		gap: var(--space-2xs);
-	}
-
-	/* Capability hints describe what an action supports (scheduling, model
-	   override). They are annotations, not separate controls, so they are
-	   styled as faint micro-labels rather than interactive pills. */
-	.action-capability-badges {
-		display: none;
-		align-items: center;
-		gap: var(--space-xs);
-	}
-
-	.action-capability-badge {
-		display: inline-flex;
-		align-items: center;
-		font-size: 10px;
-		font-weight: 700;
-		letter-spacing: 0.07em;
-		text-transform: uppercase;
-		color: var(--chronicle-text-faint);
-	}
-
-	.action-capability-badge + .action-capability-badge {
-		position: relative;
-		padding-inline-start: calc(var(--space-xs) + 1px);
-	}
-
-	.action-capability-badge + .action-capability-badge::before {
-		content: "";
-		position: absolute;
-		inset-inline-start: 0;
-		top: 50%;
-		width: 1px;
-		height: 9px;
-		transform: translateY(-50%);
-		background: color-mix(in srgb, var(--chronicle-text-faint) 50%, transparent 50%);
-	}
-
 	.action-row button.active {
 		border-color: color-mix(in srgb, var(--chronicle-accent) 26%, var(--chronicle-border-strong) 74%);
 		background: color-mix(in srgb, white 92%, var(--chronicle-accent-soft) 8%);
@@ -820,14 +800,6 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 
 	.action-row button.is-primary-choice.active {
 		background: color-mix(in srgb, var(--chronicle-text) 82%, var(--chronicle-accent) 18%);
-	}
-
-	.action-row button.is-primary-choice .action-capability-badge {
-		color: color-mix(in srgb, var(--chronicle-text-on-accent) 68%, transparent 32%);
-	}
-
-	.action-row button.is-primary-choice .action-capability-badge + .action-capability-badge::before {
-		background: color-mix(in srgb, var(--chronicle-text-on-accent) 34%, transparent 66%);
 	}
 
 	.action-row button:hover,
@@ -860,6 +832,11 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 		border-radius: var(--radius-lg);
 		background: color-mix(in srgb, white 94%, var(--chronicle-accent-soft) 6%);
 	}
+
+	.action-form-fields { display: grid; gap: var(--space-md); min-inline-size: 0; margin: 0; padding: 0; border: 0; }
+	.approval-settings { padding: 0; border: 0; background: transparent; }
+	.approval-settings .action-form-footer { gap: var(--space-xs); padding: 0; border: 0; flex-wrap: wrap; }
+	.approval-settings .model-override-list { margin: 0; }
 
 	.action-form-header {
 		display: flex;
@@ -945,8 +922,11 @@ function presentExternalTriggerSignal(signal: ProcessExternalTriggerSignal) {
 		outline: none;
 	}
 
+	.action-field-group select:focus-visible { outline: 2px solid var(--chronicle-accent); outline-offset: 2px; }
+
 	.action-form-footer {
 		display: flex;
+		gap: var(--space-xs);
 		justify-content: flex-end;
 		padding-top: var(--space-sm);
 		border-top: 1px solid color-mix(in srgb, var(--chronicle-accent) 14%, var(--chronicle-border) 86%);
