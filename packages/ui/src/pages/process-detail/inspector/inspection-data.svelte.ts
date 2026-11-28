@@ -19,11 +19,15 @@ class InspectionData {
 export function createInspectionData(args: {
 	get instanceId(): string;
 	get target(): NonNullable<InspectorRoute>;
-	get refreshKey(): string;
+	get refreshKey(): string | null;
+	get reconnectCount(): number;
 	ready(): void;
 }) {
 	const data = new InspectionData();
 	let selected = "";
+	let lastLoadedKey = "";
+	let lastRefreshKey: string | null = null;
+	let lastReconnectCount: number | null = null;
 	let controller: AbortController | null = null;
 	let history: ReasoningHistory | null = null;
 	const unsubscribe = subscribeReasoningFrames((frame) => {
@@ -92,11 +96,36 @@ export function createInspectionData(args: {
 		}
 	}
 	$effect(() => {
-		args.target;
-		args.instanceId;
-		args.refreshKey;
+		const target = args.target;
+		const instanceId = args.instanceId;
+		const refreshKey = args.refreshKey;
+		const reconnectCount = args.reconnectCount;
+		const requestKey = `${instanceId}\0${JSON.stringify(target)}`;
 		untrack(() => {
-			void load();
+			if (requestKey !== lastLoadedKey) {
+				lastLoadedKey = requestKey;
+				lastRefreshKey = refreshKey;
+				lastReconnectCount = reconnectCount;
+				void load();
+				return;
+			}
+			if (lastReconnectCount !== reconnectCount) {
+				lastReconnectCount = reconnectCount;
+				lastRefreshKey = refreshKey;
+				void load();
+				return;
+			}
+			if (refreshKey === null) return;
+			if (lastRefreshKey === null) {
+				// First detail snapshot arrived after initial cold-load fetch started;
+				// record its baseline without aborting and re-fetching the in-flight trace.
+				lastRefreshKey = refreshKey;
+				return;
+			}
+			if (refreshKey !== lastRefreshKey) {
+				lastRefreshKey = refreshKey;
+				void load();
+			}
 		});
 	});
 	onDestroy(() => {

@@ -10,7 +10,31 @@ import type {
 	InspectionTraceMessage,
 	PiSessionContentBlock,
 } from "@leitwerk-dev/protocol";
+import type { TraceInspectionCapture } from "./db/execution-inspection-repo.js";
 import type { ReadonlyPiSessionTree } from "./pi-session-tree.js";
+
+function fingerprintBlock(safe: PiSessionContentBlock): string {
+	const hash = createHash("sha256");
+	hash.update(safe.type);
+	hash.update("\0");
+	if (safe.type === "text") {
+		hash.update(safe.text);
+	} else if (safe.type === "thinking") {
+		hash.update(safe.thinking);
+		if (safe.redacted) hash.update("\0redacted");
+	} else if (safe.type === "toolCall") {
+		hash.update(safe.id);
+		hash.update("\0");
+		hash.update(safe.name);
+		hash.update("\0");
+		hash.update(JSON.stringify(safe.arguments));
+	} else if (safe.type === "image") {
+		hash.update(safe.mimeType);
+		hash.update("\0");
+		hash.update(safe.data);
+	}
+	return hash.digest("hex");
+}
 
 function blocks(messageId: string, content: unknown): InspectionTraceBlock[] {
 	const raw =
@@ -54,7 +78,7 @@ function blocks(messageId: string, content: unknown): InspectionTraceBlock[] {
 				type: "text",
 				text: `[Unsupported recorded ${String(block.type ?? "content")} block]`,
 			};
-		const fingerprint = createHash("sha256").update(JSON.stringify(safe)).digest("hex");
+		const fingerprint = fingerprintBlock(safe);
 		const occurrence = occurrences.get(fingerprint) ?? 0;
 		occurrences.set(fingerprint, occurrence + 1);
 		const id = createHash("sha256")
@@ -71,7 +95,7 @@ export function buildInspectionTraceMessages(input: {
 	record: ProcessTurnRecord;
 	scope?: "execution" | "unassigned_branch";
 	owner(entryId: string): string | null;
-	captures: readonly ExecutionInspectionRecord[];
+	captures: readonly (ExecutionInspectionRecord | TraceInspectionCapture)[];
 	events: readonly ProcessEvent[];
 }): InspectionTraceMessage[] {
 	const messages: InspectionTraceMessage[] = [];
@@ -82,6 +106,31 @@ export function buildInspectionTraceMessages(input: {
 			? input.tree.getBranch(input.record.resultPiEntryId)
 			: []
 		: input.tree.entries;
+	const entryLinksByEntryId = new Map<string, { workerLeaseId: string; piTurnId: string }>();
+	for (const item of input.captures) {
+		if (
+			item.fact.kind === "entry_link" &&
+			item.fact.piTurnId &&
+			!entryLinksByEntryId.has(item.fact.entryId)
+		) {
+			entryLinksByEntryId.set(item.fact.entryId, {
+				workerLeaseId: item.workerLeaseId,
+				piTurnId: item.fact.piTurnId,
+			});
+		}
+	}
+	const eventsByLeaseTurn = new Map<string, ProcessEvent[]>();
+	if (entryLinksByEntryId.size > 0 && input.events.length > 0) {
+		for (const event of input.events) {
+			const leaseId = event.data.workerLeaseId;
+			const turnId = event.data.turnId;
+			if (typeof leaseId !== "string" || typeof turnId !== "string") continue;
+			const key = `${leaseId}\0${turnId}`;
+			const bucket = eventsByLeaseTurn.get(key);
+			if (bucket) bucket.push(event);
+			else eventsByLeaseTurn.set(key, [event]);
+		}
+	}
 	for (const entry of entries) {
 		if (unassigned) {
 			if (input.owner(entry.id) !== null || !["message", "custom_message"].includes(entry.type))
@@ -103,28 +152,37 @@ export function buildInspectionTraceMessages(input: {
 						};
 		const record = message as unknown as Record<string, unknown>;
 		const id = `entry:${entry.id}`;
-		const link = input.captures.find(
-			(item) => item.fact.kind === "entry_link" && item.fact.entryId === entry.id,
-		);
-		const piTurnId = link?.fact.kind === "entry_link" ? link.fact.piTurnId : null;
+		const link = entryLinksByEntryId.get(entry.id);
+		const candidateEvents = link
+			? (eventsByLeaseTurn.get(`${link.workerLeaseId}\0${link.piTurnId}`) ?? [])
+			: [];
+		const toolCallIds =
+			candidateEvents.length > 0 && message.role === "assistant" && Array.isArray(record.content)
+				? new Set(
+						record.content.flatMap((block) =>
+							block &&
+							typeof block === "object" &&
+							block.type === "toolCall" &&
+							typeof block.id === "string"
+								? [block.id]
+								: [],
+						),
+					)
+				: null;
 		const aliases =
-			link && piTurnId
-				? input.events
+			candidateEvents.length > 0
+				? candidateEvents
 						.filter((event) => {
-							if (event.data.workerLeaseId !== link.workerLeaseId || event.data.turnId !== piTurnId)
-								return false;
 							if (message.role === "assistant")
 								return (
 									event.eventType === "pi.stream.delta" ||
-									(["pi.tool.call", "pi.tool.started"].includes(event.eventType) &&
-										Array.isArray(record.content) &&
-										record.content.some(
-											(block) => block.type === "toolCall" && block.id === event.data.toolCallId,
-										))
+									((event.eventType === "pi.tool.call" || event.eventType === "pi.tool.started") &&
+										typeof event.data.toolCallId === "string" &&
+										(toolCallIds?.has(event.data.toolCallId) ?? false))
 								);
 							return (
 								message.role === "toolResult" &&
-								["pi.tool.result", "pi.tool.completed"].includes(event.eventType) &&
+								(event.eventType === "pi.tool.result" || event.eventType === "pi.tool.completed") &&
 								event.data.toolCallId === record.toolCallId
 							);
 						})

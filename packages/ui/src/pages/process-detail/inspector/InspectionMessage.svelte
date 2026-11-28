@@ -1,5 +1,9 @@
 <script lang="ts">
-import type { InspectionTraceMessage, TurnTraceSnapshot } from "@leitwerk-dev/protocol";
+import type {
+	InspectionTraceMessage,
+	TurnTraceSnapshot,
+	TurnTraceToolCallSnapshot,
+} from "@leitwerk-dev/protocol";
 import type { ToolCallRendererDefinition } from "@leitwerk-dev/protocol/tool-renderer-contract";
 import ChronicleMarkdown from "../../../chronicle/components/ChronicleMarkdown.svelte";
 import ChronicleThinkingText from "../../../chronicle/components/ChronicleThinkingText.svelte";
@@ -10,12 +14,16 @@ let {
 	message,
 	live = null,
 	messages = [],
+	toolResultsById,
+	liveToolCallsById,
 	toolRendererIndex = {},
 	onLink,
 }: {
 	message: InspectionTraceMessage;
 	live?: TurnTraceSnapshot | null;
 	messages?: readonly InspectionTraceMessage[];
+	toolResultsById?: ReadonlyMap<string, InspectionTraceMessage>;
+	liveToolCallsById?: ReadonlyMap<string, TurnTraceToolCallSnapshot>;
 	toolRendererIndex?: Record<string, ToolCallRendererDefinition>;
 	onLink?: (id: string) => void;
 } = $props();
@@ -53,7 +61,7 @@ const label = $derived(
       {:else if block.content.type === "text"}
         {#if message.role === "toolResult"}<pre>{block.content.text}</pre>{:else}<ChronicleMarkdown markdown={block.content.text} />{/if}
       {:else if block.content.type === "toolCall"}
-        <ChronicleToolCallItem toolCall={inspectionToolCall(block.content, message.timestamp, messages, live)} {toolRendererIndex} />
+        <ChronicleToolCallItem toolCall={inspectionToolCall(block.content, message.timestamp, messages, live, { toolResultsById, liveToolCallsById })} {toolRendererIndex} />
       {:else if block.content.type === "image"}
         {#if ["image/png", "image/jpeg", "image/webp", "image/gif"].includes(block.content.mimeType)}<img src={`data:${block.content.mimeType};base64,${block.content.data}`} alt="Recorded model input" />{:else}<p>Recorded image format is not supported for display.</p>{/if}
       {/if}
@@ -61,7 +69,7 @@ const label = $derived(
   {/each}
 </article>
 <style>
-.message {padding:var(--space-lg) 0; border-bottom:1px solid var(--chronicle-border); min-width:0; overflow-wrap:anywhere;}
+.message {padding:var(--space-lg) 0; border-bottom:1px solid var(--chronicle-border); min-width:0; overflow-wrap:anywhere; content-visibility:auto; contain-intrinsic-size:auto 220px;}
 .message-actions {display:flex; gap:var(--space-sm);}
 header {display:flex; align-items:baseline; justify-content:space-between; gap:var(--space-md); margin-bottom:var(--space-sm);} h3 {margin:0; font-size:var(--type-body); font-weight:650;}
 .message-block + .message-block {margin-top:var(--space-md);} .block-label {margin:0 0 var(--space-xs); color:var(--chronicle-text-muted); font-size:var(--type-caption);}

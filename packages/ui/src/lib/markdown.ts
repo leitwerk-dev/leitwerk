@@ -35,9 +35,20 @@ function createMarkdownRenderer(options: { rich: boolean }): MarkdownIt {
 
 const markdownRenderer = createMarkdownRenderer({ rich: false });
 const richMarkdownRenderer = createMarkdownRenderer({ rich: true });
+let cachedSanitizerWindow: typeof globalThis.window | null = null;
+let cachedHtmlSanitizer: ReturnType<typeof createDOMPurify> | null = null;
+
+function getHtmlSanitizer(): ReturnType<typeof createDOMPurify> {
+	const currentWindow = globalThis.window;
+	if (!cachedHtmlSanitizer || cachedSanitizerWindow !== currentWindow) {
+		cachedSanitizerWindow = currentWindow;
+		cachedHtmlSanitizer = createDOMPurify(currentWindow);
+	}
+	return cachedHtmlSanitizer;
+}
 
 function sanitizeRenderedHtml(renderedHtml: string): string {
-	const htmlSanitizer = createDOMPurify(globalThis.window);
+	const htmlSanitizer = getHtmlSanitizer();
 	if (!htmlSanitizer.isSupported || typeof htmlSanitizer.sanitize !== "function") {
 		throw new Error("renderMarkdownToHtml requires a DOM-capable environment for DOMPurify");
 	}

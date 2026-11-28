@@ -30,6 +30,7 @@ export function registerProcessDetailRoutes(app: FastifyInstance, deps: RouteDep
 		const section = req.query.section ?? "summary";
 		if (!["summary", "trace", "context", "configuration"].includes(section))
 			return reply.code(400).send({ error: "Unknown inspection section" });
+		const startedAt = performance.now();
 		const body =
 			section === "trace"
 				? await inspection.trace(instanceId, turnRecordId, req.query)
@@ -38,6 +39,10 @@ export function registerProcessDetailRoutes(app: FastifyInstance, deps: RouteDep
 					: section === "configuration"
 						? inspection.configuration(instanceId, turnRecordId)
 						: inspection.summary(instanceId, turnRecordId);
+		reply.header(
+			"Server-Timing",
+			`inspection-${section};dur=${(performance.now() - startedAt).toFixed(1)}`,
+		);
 		return body ?? reply.code(404).send({ error: "Execution not found in this process" });
 	});
 

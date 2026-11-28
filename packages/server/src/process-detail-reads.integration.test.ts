@@ -669,3 +669,156 @@ it("keeps timeline presentation while leaving large source payloads in diagnosti
 	});
 	expect(deps.turnAnnotations.listByInstance(process.id)[0]?.payload.event).toEqual({ source });
 });
+
+it("avoids N+1 content unpacking, delta event floods, and duplicate payloads when reading a committed trace", async () => {
+	const { deps, db, source } = fixture;
+	const { process, turn, leaseId } = createRunningTurn();
+	const startRecordId = turn.turnStartRecordId;
+	if (!startRecordId) throw new Error("Expected turnStartRecordId");
+	const sharedSystemPrompt = "System prompt ".repeat(200);
+	const sharedTools = [{ name: "read", description: "Read file", parameters: {} }];
+	for (let step = 0; step < 5; step++) {
+		deps.executionInspections.append({
+			version: 1,
+			id: `model-input-${step}`,
+			instanceId: process.id,
+			turnRecordId: turn.id,
+			startRecordId,
+			workerLeaseId: leaseId,
+			timestamp: `2026-09-09T00:00:0${step}Z`,
+			fact: {
+				kind: "model_input",
+				boundaryEntryId: null,
+				model: { provider: "anthropic", id: "claude", thinkingLevel: "high" },
+				systemPrompt: { state: "recorded", value: sharedSystemPrompt },
+				appendedInstructions: { state: "recorded", value: [] },
+				contextFiles: { state: "recorded", value: [] },
+				tools: { state: "recorded", value: sharedTools },
+				messages: [
+					{
+						entryId: "entry-user",
+						role: "user",
+						content: { state: "recorded", value: "Analyze performance" },
+					},
+					{
+						entryId: `entry-assistant-${step}`,
+						role: "assistant",
+						content: { state: "recorded", value: `Step ${step} response` },
+					},
+				],
+			},
+		});
+	}
+	deps.executionInspections.append({
+		version: 1,
+		id: "link-assistant",
+		instanceId: process.id,
+		turnRecordId: turn.id,
+		startRecordId,
+		workerLeaseId: leaseId,
+		timestamp: "2026-09-09T00:00:10Z",
+		fact: {
+			kind: "entry_link",
+			entryId: "entry-assistant",
+			piTurnId: "pi-turn-1",
+			role: "assistant",
+		},
+	});
+	const deltaEvents = [];
+	for (let i = 0; i < 50; i++) {
+		deltaEvents.push(
+			deps.events.create({
+				instanceId: process.id,
+				eventType: "pi.stream.delta",
+				data: {
+					turnRecordId: turn.id,
+					workerLeaseId: leaseId,
+					turnId: "pi-turn-1",
+					streamType: "thinking",
+					text: `chunk-${i} `,
+				},
+			}),
+		);
+	}
+	const outcomeEvent = deps.events.create({
+		instanceId: process.id,
+		eventType: "turn.outcome",
+		data: { turnRecordId: turn.id, result: "done" },
+	});
+	await source.writeSnapshot(
+		process.id,
+		[
+			{ type: "session", version: 3, id: "sess", timestamp: "2026-09-09T00:00:00Z", cwd: "/tmp" },
+			{
+				type: "custom_message",
+				id: "entry-user",
+				parentId: null,
+				timestamp: "2026-09-09T00:00:01Z",
+				customType: "leitwerk",
+				content: "Analyze performance",
+				display: true,
+				details: { kind: "turn_prompt", startRecordId },
+			},
+			{
+				type: "message",
+				id: "entry-assistant",
+				parentId: "entry-user",
+				timestamp: "2026-09-09T00:00:10Z",
+				message: {
+					role: "assistant",
+					content: [
+						{ type: "thinking", thinking: "Deep reasoning trace" },
+						{ type: "text", text: "Done" },
+					],
+				},
+			},
+		]
+			.map((entry) => JSON.stringify(entry))
+			.join("\n"),
+	);
+	deps.turnRecords.update(turn.id, {
+		status: "succeeded",
+		resultPiEntryId: "entry-assistant",
+		endedAt: "2026-09-09T00:00:11Z",
+	});
+
+	const listSpy = vi.spyOn(deps.executionInspections, "list");
+	const fullEventsSpy = vi.spyOn(deps.events, "listByTurnRecord");
+	const reader = new ProcessInspectionReader(deps);
+	const trace = await reader.trace(process.id, turn.id, { itemId: "reasoning" });
+
+	expect(listSpy).not.toHaveBeenCalled();
+	expect(fullEventsSpy).not.toHaveBeenCalled();
+	expect(trace?.state).toBe("committed");
+	expect(trace?.messages.map((m) => m.entryId)).toEqual(["entry-user", "entry-assistant"]);
+	expect(trace?.target).toEqual({
+		state: "available",
+		itemId: trace?.messages[1]?.blocks[0]?.id,
+	});
+	// Operational events are kept, while raw stream deltas are excluded on committed turns.
+	expect(trace?.events.map((event) => event.id)).toEqual([outcomeEvent.id]);
+	// Reasoning payload is not duplicated when committed session messages are present.
+	expect(trace?.reasoning.assistant.thinking).toBe("");
+	expect(trace?.reasoning.traceItems).toEqual([]);
+
+	// Deep links targeting a specific stream delta event still resolve to its committed message.
+	const targetedDelta = deltaEvents[10];
+	const targetedTrace = await reader.trace(process.id, turn.id, {
+		itemId: `event:${targetedDelta.eventSequence}`,
+	});
+	expect(targetedTrace?.target).toEqual({
+		state: "available",
+		itemId: "entry:entry-assistant",
+	});
+
+	// Full list() batches inspection_contents lookups instead of issuing one SELECT per digest.
+	const prepareSpy = vi.spyOn(db.$client, "prepare");
+	const fullCaptures = deps.executionInspections.list(process.id, turn.id);
+	const contentSelects = prepareSpy.mock.results.filter(
+		(result) =>
+			result.type === "return" && result.value.sourceSQL.includes('from "inspection_contents"'),
+	);
+	prepareSpy.mockRestore();
+	expect(fullCaptures).toHaveLength(6);
+	expect(contentSelects).toHaveLength(1);
+});

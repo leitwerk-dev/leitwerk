@@ -30,12 +30,25 @@ let {
 let root: HTMLDivElement | undefined = $state();
 let following = $state(false);
 let newActivity = $state(false);
+let unassignedOpen = $state(false);
 let positioned = "";
 const trace = $derived(data.expanded.trace);
 const context = $derived(data.expanded.context);
 const configuration = $derived(data.expanded.configuration);
 const activity = $derived(
 	trace ? inspectionActivity(trace, data.live?.events ?? [], data.live) : [],
+);
+const toolResultsById = $derived(
+	new Map(
+		(trace?.messages ?? []).flatMap((message) =>
+			message.role === "toolResult" && message.toolCallId
+				? ([[message.toolCallId, message]] as const)
+				: [],
+		),
+	),
+);
+const liveToolCallsById = $derived(
+	new Map((data.live?.toolCalls ?? []).map((tool) => [tool.toolCallId, tool] as const)),
 );
 const scroller = () => root?.closest<HTMLElement>('[data-role="inspector-scroll"]') ?? null;
 const selectedKey = $derived(JSON.stringify(target));
@@ -44,6 +57,7 @@ $effect(() => {
 	untrack(() => {
 		following = false;
 		newActivity = false;
+		unassignedOpen = false;
 		positioned = "";
 	});
 });
@@ -78,9 +92,13 @@ $effect(() => {
 			const message = activity.find(
 				(item) => item.kind === "message" && item.message.aliases.includes(targetId),
 			);
-			const selected = [
-				...(root?.querySelectorAll<HTMLElement>("[data-inspection-item]") ?? []),
-			].find((el) => el.dataset.inspectionItem === (message?.id ?? targetId));
+			const lookupId = message?.id ?? targetId;
+			const selected =
+				typeof CSS !== "undefined" && typeof CSS.escape === "function"
+					? root?.querySelector<HTMLElement>(`[data-inspection-item="${CSS.escape(lookupId)}"]`)
+					: [...(root?.querySelectorAll<HTMLElement>("[data-inspection-item]") ?? [])].find(
+							(el) => el.dataset.inspectionItem === lookupId,
+						);
 			selected?.scrollIntoView?.({ block: "start" });
 		}
 	});
@@ -137,7 +155,7 @@ function eventLabel(event: ProcessEvent) {
     {#if activity.length === 0}<p class="notice">No trace activity was recorded for this execution.</p>{/if}
     {#each activity as activityItem (activityItem.id)}
       {#if activityItem.kind === "message"}
-        <InspectionMessage message={activityItem.message} messages={trace.messages} live={data.live} {toolRendererIndex} onLink={item} />
+        <InspectionMessage message={activityItem.message} messages={trace.messages} {toolResultsById} {liveToolCallsById} live={data.live} {toolRendererIndex} onLink={item} />
         {#if trace.inheritedBoundary?.entryId === activityItem.message.entryId}<p class="boundary" data-inspection-boundary>Context inherited through here <span>Later activity below this boundary was not inherited.</span></p>{/if}
       {:else}
         <div class="event" data-inspection-item={activityItem.id}>
@@ -145,7 +163,7 @@ function eventLabel(event: ProcessEvent) {
         </div>
       {/if}
     {/each}
-    {#if trace.unassignedMessages?.length}<details data-disclosure-key="unassigned-session"><summary>Unassigned session history · ownership not recorded</summary><p class="note">These messages are retained on this session branch. Their execution ownership is unknown; they are not evidence of this execution’s input or inherited context.</p>{#each trace.unassignedMessages as message (message.id)}<InspectionMessage {message} messages={trace.unassignedMessages} />{/each}</details>{/if}
+    {#if trace.unassignedMessages?.length}<details data-disclosure-key="unassigned-session" open={unassignedOpen} ontoggle={(event) => { unassignedOpen = (event.currentTarget as HTMLDetailsElement).open; }}><summary>Unassigned session history · ownership not recorded</summary><p class="note">These messages are retained on this session branch. Their execution ownership is unknown; they are not evidence of this execution’s input or inherited context.</p>{#if unassignedOpen}{#each trace.unassignedMessages as message (message.id)}<InspectionMessage {message} messages={trace.unassignedMessages} />{/each}{/if}</details>{/if}
     {#each trace.annotations as annotation (annotation.id)}<InspectionEvidence label={annotation.annotationType.replaceAll("_", " ")} evidence={{state:"recorded", value:annotation.payload}} id={annotation.id} />{/each}
     {#each questions as request (request.id)}<ChronicleQuestionRequest {request} mode="trace" />{#if request.status === "open"}<button class="ui-button" onclick={onChronicle}>Answer in chronicle</button>{/if}{/each}
     {#if trace.output}<section class="section" data-inspection-item="output"><h2>Execution output</h2><ChronicleMarkdown markdown={trace.output} /></section>{/if}

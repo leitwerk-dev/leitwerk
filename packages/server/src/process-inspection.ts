@@ -15,24 +15,30 @@ interface LineageInput {
 	tree?: ReadonlyPiSessionTree;
 }
 
-/** Recorded start receipts remain usable for executions predating inspection capture. */
-function preparedStart(input: LineageInput, record: ProcessTurnRecord): PreparedTurnStart | null {
-	const supplied = input.observations.find(
-		(item) => item.turnRecordId === record.id && item.fact.kind === "supplied_context",
-	);
-	if (supplied?.fact.kind === "supplied_context" && supplied.fact.origin)
-		return supplied.fact.origin;
-	const receipt = input.leases.find(
-		(lease) => lease.id === record.acceptedWorkerLeaseId,
-	)?.bootstrapReceipt;
-	return receipt?.kind === "llm" && receipt.startRecordId === record.turnStartRecordId
-		? receipt.preparedStart
-		: null;
-}
-
 /** Pure ownership and ancestry projection; current workflow definitions are not an input. @internal */
 export function createInspectionLineage(input: LineageInput) {
 	const records = new Map(input.records.map((record) => [record.id, record]));
+	const leasesById = new Map(input.leases.map((lease) => [lease.id, lease]));
+	const suppliedOrigins = new Map<string, PreparedTurnStart>();
+	for (const item of input.observations) {
+		if (
+			item.fact.kind === "supplied_context" &&
+			item.fact.origin &&
+			!suppliedOrigins.has(item.turnRecordId)
+		) {
+			suppliedOrigins.set(item.turnRecordId, item.fact.origin);
+		}
+	}
+	const preparedStart = (record: ProcessTurnRecord): PreparedTurnStart | null => {
+		const supplied = suppliedOrigins.get(record.id);
+		if (supplied) return supplied;
+		const receipt = record.acceptedWorkerLeaseId
+			? leasesById.get(record.acceptedWorkerLeaseId)?.bootstrapReceipt
+			: undefined;
+		return receipt?.kind === "llm" && receipt.startRecordId === record.turnStartRecordId
+			? receipt.preparedStart
+			: null;
+	};
 	const starts = new Map(
 		input.records
 			.filter((record) => record.turnStartRecordId)
@@ -40,7 +46,7 @@ export function createInspectionLineage(input: LineageInput) {
 	);
 	const candidates = new Map<string, Set<string>>();
 	const boundaryFor = (record: ProcessTurnRecord): string | null => {
-		const prepared = preparedStart(input, record);
+		const prepared = preparedStart(record);
 		return prepared?.forkPiEntryId ?? record.forkPiEntryId;
 	};
 	const claim = (entryId: string, recordId: string) => {
@@ -75,7 +81,7 @@ export function createInspectionLineage(input: LineageInput) {
 	for (const record of input.records) {
 		if (!record.resultPiEntryId || !input.tree?.getEntry(record.resultPiEntryId)) continue;
 		const branch = input.tree.getBranch(record.resultPiEntryId);
-		const prepared = preparedStart(input, record);
+		const prepared = preparedStart(record);
 		const boundary = prepared?.forkPiEntryId ?? record.forkPiEntryId;
 		const boundaryIndex = boundary ? branch.findIndex((entry) => entry.id === boundary) : -1;
 		const promptIndex = branch.findIndex((entry) => {
@@ -117,7 +123,7 @@ export function createInspectionLineage(input: LineageInput) {
 				summary: none.reason,
 			};
 		}
-		const prepared = preparedStart(input, record);
+		const prepared = preparedStart(record);
 		const boundaryId = boundaryFor(record);
 		let conversation: InspectionEvidence<InspectionBoundary | null> = unknown;
 		if (boundaryId)
