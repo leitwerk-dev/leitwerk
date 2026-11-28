@@ -2,6 +2,10 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import {
+	clearRepositoryGitSshWrappers,
+	setRepositoryGitSshWrapper,
+} from "@leitwerk-dev/process-sdk";
 import { resetGitBinaryCache, resolveGitBinary } from "@leitwerk-dev/process-sdk/git-binary";
 import {
 	WORKER_IPC_CONNECT_TOKEN_ENV,
@@ -11,7 +15,7 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { deserializeManifest } from "./manifest.js";
 import { NodeRunRootGitOps } from "./node-run-root-git-ops.js";
-import { materializeRunRoot, planRunRoot } from "./run-root.js";
+import { materializeRunRoot, planRunRoot, prepareOnDemandRunRoot } from "./run-root.js";
 
 // Real git subprocesses (clone, commit, push) make this case slow under the
 // full parallel suite; raise the timeout so spawn contention does not flake it.
@@ -53,6 +57,7 @@ function createSourceRepo(): string {
 }
 
 afterEach(() => {
+	clearRepositoryGitSshWrappers();
 	resetGitBinaryCache();
 	while (tempDirs.length > 0) {
 		const dir = tempDirs.pop();
@@ -218,7 +223,6 @@ it("pins shared checkouts at captured commits, fetches later captured commits, a
 		"Updated component instructions",
 	);
 	git(initial.path, "checkout", "--detach", captured);
-	const { prepareOnDemandRunRoot } = await import("./run-root.js");
 	await prepareOnDemandRunRoot(
 		planRunRoot(workspace, "instance", [
 			{ key: "monitor", repoLocator: source, baseBranch: "main", workBranch: "main" },
@@ -234,4 +238,106 @@ it("pins shared checkouts at captured commits, fetches later captured commits, a
 	await expect(tool.execute({ projectKey: "monitor", revision: "main" })).rejects.toThrow(
 		"full commit",
 	);
+});
+
+function addSubmodule(repo: string, name: string, url: string, sha: string) {
+	git(repo, "config", "-f", ".gitmodules", `submodule.${name}.path`, name);
+	git(repo, "config", "-f", ".gitmodules", `submodule.${name}.url`, url);
+	git(repo, "add", ".gitmodules");
+	git(repo, "update-index", "--add", "--cacheinfo", `160000,${sha},${name}`);
+	git(repo, "commit", "-m", `Add ${name} dependency`);
+}
+
+it("prepares nested submodules at the selected checkout and preserves retained edits", async () => {
+	const source = createSourceRepo();
+	const dependency = createSourceRepo();
+	const nested = createSourceRepo();
+	writeFileSync(path.join(nested, "nested.txt"), "nested");
+	git(nested, "add", "nested.txt");
+	git(nested, "commit", "-m", "Nested content");
+	const nestedHead = git(nested, "rev-parse", "HEAD").trim();
+	addSubmodule(dependency, "nested", "ssh://git@forge.test/nested.git", nestedHead);
+	const dependencyHead = git(dependency, "rev-parse", "HEAD").trim();
+	git(source, "switch", "-c", "target");
+	addSubmodule(source, "dependency", "ssh://git@forge.test/dependency.git", dependencyHead);
+	git(source, "switch", "main");
+
+	const workspace = createTempDir("submodule-workspace");
+	const wrapper = path.join(workspace, "ssh");
+	writeFileSync(
+		wrapper,
+		`#!/bin/sh
+for last; do :; done
+case "$last" in
+  "git-upload-pack '/nested.git'") exec git-upload-pack "${nested}";;
+  "git-upload-pack '/dependency.git'") exec git-upload-pack "${dependency}";;
+  *) exit 1;;
+esac
+`,
+		{ mode: 0o700 },
+	);
+	setRepositoryGitSshWrapper("repo", wrapper);
+
+	const ops = new NodeRunRootGitOps();
+	const plan = planRunRoot(
+		workspace,
+		"instance",
+		[{ key: "repo", repoLocator: source, baseBranch: "target", workBranch: "work" }],
+		{},
+	);
+	const result = await materializeRunRoot(plan, ops);
+	const checkout = path.join(workspace, "repo");
+	const depPath = path.join(checkout, "dependency");
+	expect(result.submoduleWarnings).toBeUndefined();
+	expect(git(depPath, "rev-parse", "HEAD").trim()).toBe(dependencyHead);
+	expect(git(path.join(depPath, "nested"), "rev-parse", "HEAD").trim()).toBe(nestedHead);
+	expect(readFileSync(path.join(depPath, "nested", "nested.txt"), "utf8")).toBe("nested");
+	expect(result.aggregatedAgentsMdSources).toEqual(["repo/AGENTS.md"]);
+	expect(result.loadedSkills).toEqual(["alpha"]);
+
+	git(
+		depPath,
+		"-c",
+		"user.email=test@example.com",
+		"-c",
+		"user.name=Test User",
+		"commit",
+		"--allow-empty",
+		"-m",
+		"Unpublished submodule commit",
+	);
+	const localHead = git(depPath, "rev-parse", "HEAD").trim();
+	writeFileSync(path.join(depPath, "local.txt"), "preserve this");
+	const retained = await materializeRunRoot(plan, ops, true);
+	expect(retained.submoduleWarnings).toEqual([expect.stringContaining("left untouched")]);
+	expect(git(depPath, "rev-parse", "HEAD").trim()).toBe(localHead);
+	expect(readFileSync(path.join(depPath, "local.txt"), "utf8")).toBe("preserve this");
+	expect(readFileSync(path.join(workspace, "AGENTS.md"), "utf8")).toContain(
+		"Workspace preparation warnings",
+	);
+});
+
+it("returns a pinned checkout with a safe warning when a submodule transport is not allowed", async () => {
+	const source = createSourceRepo();
+	const dependency = createSourceRepo();
+	const original = git(source, "rev-parse", "HEAD").trim();
+	addSubmodule(source, "dependency", dependency, git(dependency, "rev-parse", "HEAD").trim());
+	const revision = git(source, "rev-parse", "HEAD").trim();
+	const workspace = createTempDir("submodule-unavailable");
+	const plan = planRunRoot(
+		workspace,
+		"instance",
+		[{ key: "repo", repoLocator: source, baseBranch: "main", workBranch: "main" }],
+		{},
+	);
+	const ops = new NodeRunRootGitOps();
+	const first = await prepareOnDemandRunRoot(plan, ops, "repo", original);
+	expect(first.submoduleWarnings).toBeUndefined();
+	const second = await prepareOnDemandRunRoot(plan, ops, "repo", revision);
+	expect(second.manifest.components[0]?.headSha).toBe(revision);
+	expect(second.submoduleWarnings).toEqual([
+		expect.stringContaining("check repository access or transport"),
+	]);
+	expect(second.submoduleWarnings?.join()).not.toContain(dependency);
+	expect(existsSync(path.join(workspace, "repo", "dependency", "AGENTS.md"))).toBe(false);
 });

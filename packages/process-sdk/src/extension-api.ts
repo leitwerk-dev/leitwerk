@@ -944,6 +944,8 @@ export interface RepositoryCredentialRegistrar {
 export interface ProcessRuntimeCapabilities {
 	/** Choose eager clones, on-demand checkout, or no local checkout. @public */
 	readonly repositoryCheckout?: "eager" | "on_demand" | "none";
+	/** Initialize pinned submodules before handing over a checkout; warn rather than fail. @public */
+	readonly repositorySubmodules?: "best_effort";
 	/** Install repository-declared development tools with mise before accepting work. @internal */
 	readonly developmentTools?: boolean;
 	/** Require a Docker CLI connected to a private or explicitly acknowledged daemon. @public */

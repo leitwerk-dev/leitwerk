@@ -7,6 +7,7 @@ import {
 	stringArg,
 } from "@leitwerk-dev/process-sdk";
 import type { GitLabIntegration } from "./capability.js";
+import { mergeRequestBody } from "./merge-request-template.js";
 import {
 	ensureGitLabSeenReaction,
 	resolveGitLabBinding,
@@ -55,17 +56,25 @@ export function registerGitLabDeliveryTools(
 				);
 			const request = await ctx.externalWrites.ensure(identity, {
 				reconcile: async () => (await find()) ?? null,
-				execute: () =>
-					client.createMergeRequest(
+				execute: async () => {
+					const title = stringArg(args, "title");
+					const body = await mergeRequestBody(
+						client,
+						binding.projectId,
+						stringArg(args, "body"),
+						ctx,
+					);
+					return client.createMergeRequest(
 						binding.projectId,
 						{
-							title: stringArg(args, "title"),
-							description: `${stringArg(args, "body")}\n\n${marker}`,
+							title,
+							description: `${body}\n\n${marker}`,
 							source_branch: workBranch,
 							target_branch: project.baseBranch,
 						},
 						ctx.signal,
-					),
+					);
+				},
 				toMetadata: (mr) => ({ iid: mr.iid, url: mr.web_url }),
 			});
 			const latest = projects.getByInstanceAndKey(ctx.process.id, project.key);

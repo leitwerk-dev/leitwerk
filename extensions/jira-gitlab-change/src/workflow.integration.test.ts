@@ -35,7 +35,10 @@ const revision = "revise_from_merge_request_feedback";
 const gitSeeds = new LocalGitSeedCache();
 afterAll(() => gitSeeds.close());
 
-async function fixture(changes = [true, true], { checkout = true, published = false } = {}) {
+async function fixture(
+	changes = [true, true],
+	{ checkout = true, published = false, templates = false } = {},
+) {
 	checkout = checkout && !published;
 	const root = mkdtempSync(join(tmpdir(), "jira-workflow-"));
 	onTestFinished(() => rmSync(root, { recursive: true, force: true }));
@@ -81,7 +84,15 @@ async function fixture(changes = [true, true], { checkout = true, published = fa
 		const key = `repo_${index + 1}`;
 		const repository = gitlab.addProject(
 			`team/${key}`,
-			checkout ? gitSeeds.copy(git, { owner: "team", name: key }) : join(root, `${key}.git`),
+			checkout
+				? gitSeeds.copy(git, {
+						owner: "team",
+						name: key,
+						files: templates
+							? { ".gitlab/merge_request_templates/Default.md": `## ${key} validation\n` }
+							: undefined,
+					})
+				: join(root, `${key}.git`),
 		);
 		const binding = await resolveGitLabLaunchProject(client, "team", repository, "feature", key);
 		repositories.push({ ...binding.params, key, origin: "jira", sshProfile: "test" });
@@ -493,7 +504,7 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 		).toBe(true);
 	});
 	it("stays In Progress after partial publication, then links all MRs and enters review on retry", async () => {
-		const f = await fixture();
+		const f = await fixture(undefined, { templates: true });
 		await f.plan();
 		const create = f.client.createMergeRequest;
 		let unavailable = true;
@@ -510,6 +521,7 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 		expect(await f.status()).toBe("In Review");
 		expect(await f.jira.listRemoteLinks("501")).toHaveLength(3);
 		for (const mr of f.gitlab.state.mrs) {
+			expect(mr.description).toMatch(`## repo_${mr.project_id} validation`);
 			expect(mr.description).toContain("[APP-1](https://jira.test/context/browse/APP-1)");
 			expect(mr.description).toContain(
 				"[Leitwerk process](https://leitwerk.test/app/processes/process)",

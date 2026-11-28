@@ -18,6 +18,7 @@ import {
 } from "./repository-change-state-internal.js";
 import { prepareInitialRepository, reconciliationPrompt } from "./repository-reconciliation.js";
 import { codingPurposes } from "./settings.js";
+import { prepareSubmodules } from "./submodule-staging.js";
 import { prepareRepositoryCommitMessageEvidence } from "./turns/commit-message-evidence.js";
 import {
 	buildRepositoryCommitMessagesPrompt,
@@ -87,6 +88,8 @@ export interface RepositoryChangeProcessConfig<TParams extends RepositoryChangeP
 		fragment: FlowFragmentBuilder<TParams, RepositoryChangeState>;
 		/** @public */
 		happyPath?: readonly string[];
+		/** @internal */
+		prepareSubmodules?: boolean;
 	};
 }
 
@@ -274,6 +277,7 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		)
 		.publish("plan");
 	const refreshTarget = config.workflow?.refreshTargetBeforeImplementation;
+	const prepareDependencies = config.publication.prepareSubmodules;
 	const implement = flow
 		.llm<TParams, RepositoryChangeState>("implement")
 		.description("Implement")
@@ -283,24 +287,37 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 		.freshSeededPrimary()
 		.startFromRoot()
 		.consume("plan")
-		.prepare((ctx) => ({
-			reconciliation: ctx.repo.all().map((repo) => {
+		.prepare(async (ctx) => {
+			const submoduleWarnings: string[] = [];
+			for (const repo of ctx.repo.all()) {
 				const identity = asUnknownRecord(
 					ctx.projects.find((p) => p.key === repo.key)?.metadata?.["leitwerk.gitIdentity"],
 				);
-				return prepareInitialRepository({
+				const result = prepareInitialRepository({
 					projectKey: repo.key,
 					repoPath: repo.fsPath,
 					workBranch: repo.workBranch,
 					baseBranch: refreshTarget ? repo.baseBranch : undefined,
+					protectSubmodules: prepareDependencies,
 					gitIdentity:
 						typeof identity?.name === "string" && typeof identity.email === "string"
 							? { name: identity.name, email: identity.email }
 							: undefined,
 				});
-			}),
-		}))
-		.buildPrompt((ctx) => `${buildImplementPrompt(ctx, refreshTarget)}\n\n${reconciliationPrompt}`)
+				if (prepareDependencies && result.status !== "conflicts") {
+					const warning = await prepareSubmodules(repo, ctx);
+					if (warning) submoduleWarnings.push(warning);
+				}
+			}
+			return { submoduleWarnings };
+		})
+		.buildPrompt((ctx) =>
+			[
+				buildImplementPrompt(ctx, refreshTarget),
+				reconciliationPrompt,
+				...(ctx.prepared?.submoduleWarnings ?? []),
+			].join("\n\n"),
+		)
 		.outcomeTool("implementation_ready", (tool) =>
 			tool
 				.description("Implementation and checks are complete; continue to delivery")
@@ -412,6 +429,7 @@ ${ctx.input["simplification-plan"]}`,
 		.turn(applySimplification)
 		.turn(generateCommitMessage)
 		.use(config.publication.fragment);
+	if (prepareDependencies) builder.runtime({ repositorySubmodules: "best_effort" });
 	if (config.repositoryCredentials) builder.repositoryCredentials(config.repositoryCredentials);
 	if (config.launcher) builder.launcher(config.launcher);
 	return {

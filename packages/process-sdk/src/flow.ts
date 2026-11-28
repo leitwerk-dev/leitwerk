@@ -21,7 +21,6 @@ import type {
 	LlmModelPurpose,
 	LlmOutcomeSubmission,
 	LlmTurnDefinition,
-	LlmTurnPreparationContext,
 	OutcomeParameterContext,
 	ProcessEffectPlan,
 	ProcessHumanTurnActionSpec,
@@ -46,6 +45,7 @@ import type {
 	ProcessActionDefinition,
 	ProcessLauncherAPI,
 	ProcessLauncherDefinition,
+	ProcessRuntimeCapabilities,
 	ProcessWatcherAPI,
 	ProcessWatcherDefinition,
 	ServerProcessAPI,
@@ -2630,17 +2630,13 @@ export class FlowProcessBuilder<TParams = unknown, TState = unknown> extends Flo
 	}
 
 	/** Declare runner-provided process runtime capabilities. @public */
-	runtime(capabilities: {
-		/** @internal */
-		developmentTools?: boolean;
-		/** @public */
-		docker?: boolean;
-		/** @internal */
-		repositoryCheckout?: "eager" | "on_demand" | "none";
-	}): this {
+	runtime(capabilities: ProcessRuntimeCapabilities): this {
 		const runtime = {
 			...(capabilities.developmentTools === true ? { developmentTools: true } : {}),
 			...(capabilities.docker === true ? { docker: true } : {}),
+			...(capabilities.repositorySubmodules === "best_effort"
+				? { repositorySubmodules: capabilities.repositorySubmodules }
+				: {}),
 			...(capabilities.repositoryCheckout
 				? { repositoryCheckout: capabilities.repositoryCheckout }
 				: {}),

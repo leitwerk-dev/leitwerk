@@ -12,6 +12,7 @@ import path from "node:path";
 import {
 	clearRepositoryGitHttpsHelpers,
 	clearRepositoryGitSshWrappers,
+	prepareRepositorySubmodules,
 	repositoryGitArgs,
 	repositoryGitSubprocessEnv,
 	repositoryHttpsUrl,
@@ -118,14 +119,34 @@ export class NodeRunRootGitOps implements RunRootGitOps {
 		);
 	}
 
+	prepareSubmodules = prepareRepositorySubmodules;
+
 	async checkout(repoDir: string, branch: string): Promise<void> {
-		await this.runGit(["checkout", branch], repoDir);
+		await this.runGit(["checkout", "--no-recurse-submodules", branch], repoDir);
 	}
 
-	async checkoutRevision(repoDir: string, revision: string): Promise<void> {
+	async checkoutRevision(
+		repoDir: string,
+		revision: string,
+		preserveSubmodules = false,
+	): Promise<string> {
 		if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(revision))
 			throw new Error("Use a captured full commit SHA");
-		if ((await this.runGit(["status", "--porcelain", "--untracked-files=all"], repoDir)).trim())
+		const status = await this.runGit(
+			[
+				"status",
+				"--porcelain",
+				"--untracked-files=all",
+				...(preserveSubmodules ? ["--ignore-submodules=all"] : []),
+			],
+			repoDir,
+		);
+		// In best-effort mode a mismatched child must not prevent reusing the
+		// parent checkout, but a staged gitlink is still a parent change.
+		const staged = preserveSubmodules
+			? await this.runGit(["diff", "--cached", "--name-only", "--ignore-submodules=none"], repoDir)
+			: "";
+		if (status.trim() || staged.trim())
 			throw new Error(
 				"Repository has local changes; preserve or remove them before retrying inspection",
 			);
@@ -134,9 +155,11 @@ export class NodeRunRootGitOps implements RunRootGitOps {
 		} catch {
 			await this.runGit(["fetch", "origin", revision], repoDir, path.basename(repoDir));
 		}
-		await this.runGit(["checkout", "--detach", revision], repoDir);
-		if ((await this.getHeadSha(repoDir)).toLowerCase() !== revision.toLowerCase())
+		await this.runGit(["checkout", "--no-recurse-submodules", "--detach", revision], repoDir);
+		const head = await this.getHeadSha(repoDir);
+		if (head.toLowerCase() !== revision.toLowerCase())
 			throw new Error("Checkout HEAD does not match captured commit");
+		return head;
 	}
 
 	async createBranch(repoDir: string, branchName: string, startPoint: string): Promise<void> {
@@ -159,19 +182,23 @@ export class NodeRunRootGitOps implements RunRootGitOps {
 		return (await this.runGit(["rev-parse", "HEAD"], repoDir)).trim();
 	}
 
-	async listFiles(repoDir: string, pattern: string): Promise<string[]> {
-		const absoluteRoot = path.resolve(repoDir);
-		if (!existsSync(absoluteRoot)) {
-			return [];
-		}
-		return (
-			await fg(pattern, {
-				cwd: absoluteRoot,
-				dot: true,
-				onlyFiles: true,
-				ignore: ["**/.git/**"],
-			})
-		).sort((a, b) => a.localeCompare(b));
+	async listFiles(
+		repoDir: string,
+		patterns: string[],
+		excludeSubmodules = false,
+	): Promise<string[]> {
+		const cwd = path.resolve(repoDir);
+		if (!existsSync(cwd)) return [];
+		const files = await fg(patterns, { cwd, dot: true, onlyFiles: true, ignore: ["**/.git/**"] });
+		const index = excludeSubmodules ? await this.runGit(["ls-files", "--stage", "-z"], cwd) : "";
+		const gitlinks = index
+			.split("\0")
+			.flatMap((entry) =>
+				entry.startsWith("160000 ") ? [`${entry.slice(entry.indexOf("\t") + 1)}/`] : [],
+			);
+		return files
+			.filter((file) => !gitlinks.some((link) => file.startsWith(link)))
+			.sort((a, b) => a.localeCompare(b));
 	}
 }
 

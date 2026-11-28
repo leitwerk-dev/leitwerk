@@ -21,13 +21,6 @@ export interface ComponentManifestEntry extends ComponentCheckoutPlan {
 	revision?: string;
 }
 
-export interface ManifestDiff {
-	stale: string[];
-	missing: string[];
-	extra: string[];
-	unchanged: string[];
-}
-
 export function serializeManifest(manifest: ComponentManifest): string {
 	return JSON.stringify(manifest, null, 2);
 }
@@ -86,42 +79,4 @@ export function deserializeManifest(
 		return { ok: false, error: formatManifestValidationError(result.issues) };
 	}
 	return { ok: true, manifest: result.output };
-}
-
-export function diffManifest(
-	existing: ComponentManifest,
-	serverProjects: ComponentCheckoutPlan[],
-): ManifestDiff {
-	const stale: string[] = [];
-	const missing: string[] = [];
-	const extra: string[] = [];
-	const unchanged: string[] = [];
-
-	const byKey = new Map(existing.components.map((c) => [c.key, c]));
-	const serverByKey = new Map(serverProjects.map((p) => [p.key, p]));
-
-	for (const p of serverProjects) {
-		const m = byKey.get(p.key);
-		if (!m) {
-			missing.push(p.key);
-			continue;
-		}
-		if (
-			m.repoLocator === p.repoLocator &&
-			m.baseBranch === p.baseBranch &&
-			m.workBranch === p.workBranch
-		) {
-			unchanged.push(p.key);
-		} else {
-			stale.push(p.key);
-		}
-	}
-
-	for (const c of existing.components) {
-		if (!serverByKey.has(c.key)) {
-			extra.push(c.key);
-		}
-	}
-
-	return { stale, missing, extra, unchanged };
 }

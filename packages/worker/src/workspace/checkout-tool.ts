@@ -1,7 +1,12 @@
 import path from "node:path";
 import type { ProcessProject } from "@leitwerk-dev/domain";
 import type { PiCustomTool } from "@leitwerk-dev/process-sdk";
-import { planRunRoot, prepareOnDemandRunRoot, type RunRootGitOps } from "./run-root.js";
+import {
+	planRunRoot,
+	prepareOnDemandRunRoot,
+	type RunRootGitOps,
+	type RunRootPlan,
+} from "./run-root.js";
 
 /** @internal */
 export function createCheckoutTool(
@@ -9,6 +14,7 @@ export function createCheckoutTool(
 	instanceId: string,
 	projects: readonly ProcessProject[],
 	git: RunRootGitOps,
+	submodules?: RunRootPlan["submodules"],
 ): PiCustomTool {
 	return {
 		name: "checkout_repository",
@@ -29,11 +35,7 @@ export function createCheckoutTool(
 		executionMode: "sequential",
 		async execute(args) {
 			if (typeof args.projectKey !== "string") throw new Error("projectKey is required");
-			if (
-				args.revision !== undefined &&
-				(typeof args.revision !== "string" ||
-					!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(args.revision))
-			)
+			if (args.revision !== undefined && typeof args.revision !== "string")
 				throw new Error("Use a captured full commit SHA");
 			const plan = planRunRoot(
 				workspaceRoot,
@@ -44,13 +46,9 @@ export function createCheckoutTool(
 					baseBranch: project.baseBranch,
 					workBranch: project.workBranch || project.baseBranch,
 				})),
+				submodules,
 			);
-			const result = await prepareOnDemandRunRoot(
-				plan,
-				git,
-				args.projectKey,
-				args.revision as string | undefined,
-			);
+			const result = await prepareOnDemandRunRoot(plan, git, args.projectKey, args.revision);
 			const entry = result.manifest.components.find(
 				(component) => component.key === args.projectKey,
 			);
@@ -58,8 +56,9 @@ export function createCheckoutTool(
 			const repositoryPath = path.join(workspaceRoot, entry.key);
 			return {
 				...entry,
-				headSha: await git.getHeadSha(repositoryPath),
+				headSha: entry.revision ? entry.headSha : await git.getHeadSha(repositoryPath),
 				path: repositoryPath,
+				...(result.submoduleWarnings ? { warnings: result.submoduleWarnings } : {}),
 				instructions:
 					"Read this repository's AGENTS.md before inspection; revalidate any wiki guidance against this revision. This checkout is retained, not automatically updated to the remote head.",
 			};

@@ -635,6 +635,8 @@ export class GitLabClient {
 			/** @internal */
 			type: string;
 			/** @internal */
+			mode?: string;
+			/** @internal */
 			id: string;
 		}[]
 	> {

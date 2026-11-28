@@ -111,6 +111,7 @@ export type {
 	ProcessLaunchPlan,
 	ProcessLaunchProjectConfig,
 	ProcessLeafOutcomeDefinition,
+	ProcessRuntimeCapabilities,
 	ProcessTitleSourceField,
 	ProcessTurnBinding,
 	ProcessWatcherDefinition,
@@ -319,6 +320,7 @@ export {
 	parseRepositoryIssueCancelledConfig,
 	parseRepositoryPullRequestConfig,
 } from "./repository-source-config.js";
+export { prepareRepositorySubmodules } from "./repository-submodules.js";
 export type { RepositoryIssue, RepositoryPullRequest } from "./repository-types.js";
 export * from "./scoped-settings.js";
 export type {

@@ -39,6 +39,8 @@ export interface ResolvedWorkerProcess<TParams = unknown, TState = unknown> {
 		/** @internal */
 		readonly repositoryCheckout?: "eager" | "on_demand" | "none";
 		/** @internal */
+		readonly repositorySubmodules?: "best_effort";
+		/** @internal */
 		readonly docker: boolean;
 	};
 	/** @internal */
@@ -108,6 +110,9 @@ export function buildWorkerRuntimeDefinition<TParams = unknown, TState = unknown
 			developmentTools: extensionProcess.runtime?.developmentTools === true,
 			...(extensionProcess.runtime?.repositoryCheckout
 				? { repositoryCheckout: extensionProcess.runtime.repositoryCheckout }
+				: {}),
+			...(extensionProcess.runtime?.repositorySubmodules
+				? { repositorySubmodules: extensionProcess.runtime.repositorySubmodules }
 				: {}),
 			docker: extensionProcess.runtime?.docker === true,
 		},

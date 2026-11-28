@@ -102,6 +102,12 @@ Public UI/API HTTPS is terminated by a reverse proxy in front of the server. Opt
 
 Owning extensions authorize an HTTPS origin and the server narrows credentials to the exact project repository URL (rejecting userinfo, query strings, fragments, and ambiguous paths). Credentials travel only in authenticated `worker.start`, live outside checkouts in a `0700` temp directory (`0600` files), and are removed on shutdown or failed bootstrap. A single-repo Git credential helper answers only `get` for the exact host, port, and path; tokens never enter clone URLs, argv, Git config, or ordinary tool environments.
 
+Submodule preparation does not extend HTTPS credential scope. Public HTTPS
+submodules can be fetched anonymously. Private submodules require an authorized
+transport, such as a managed SSH profile whose pinned hosts and key permit access.
+Preparation disables local-file and custom transports and does not use ambient
+credential helpers or follow HTTP redirects.
+
 ### Docker registry credentials {#docker-registry-credentials}
 
 Operator-owned `docker_registries.process_bindings` deliver credentials only to code-defined `runtime.docker` processes, resolved fresh per physical start (never selectable from process params). Workers write an ephemeral `0700`/`0600` `config.json` exposed via `DOCKER_CONFIG` and `HELM_REGISTRY_CONFIG`, delete it on exit or failed bootstrap, and keep it outside process volumes and exports. Bindings govern delivery, not registry-side permissions.
