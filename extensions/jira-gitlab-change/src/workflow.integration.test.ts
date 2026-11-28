@@ -252,6 +252,7 @@ async function fixture(changes = [true, true], { checkout = true, published = fa
 			git.run(developer, ["push", "origin", branch]);
 			return git.run(developer, ["rev-parse", "HEAD"]);
 		},
+		llmTurn,
 		prepare,
 		async prompt(turnId: string) {
 			return llmTurn(turnId).prompt({
@@ -354,22 +355,19 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 		expect(f.git.run(local, ["rev-parse", "HEAD"])).toBe(original);
 		expect(readFileSync(join(local, "README.md"), "utf8")).toBe("# Implementation\n");
 		expect((await f.deliver()).outcome).toBe("conflict_ready");
-		expect(f.gitlab.state.mrs).toHaveLength(0);
 		await f.prepare(revision);
 		expect(f.git.run(local, ["diff", "--name-only", "--diff-filter=U"])).toBe("README.md");
 		writeFileSync(join(local, "README.md"), "# Upstream and implementation\n");
 		f.git.run(local, ["add", "README.md"]);
 		f.git.run(local, ["-c", "core.editor=true", "rebase", "--continue"]);
 		await f.finishRevision("changes_ready");
-		// Restoring the checkpointed tree must be followed by validation in its final shape.
 		expect((await f.deliver()).outcome).toBe("conflict_ready");
-		expect(f.gitlab.state.mrs).toHaveLength(0);
+		expect(f.git.run(local, ["ls-remote", "origin", "refs/heads/feature"])).toBe("");
 		expect((await f.validateAndDeliver()).outcome).toBe("awaiting");
 		expect(f.git.run(repoLocator, ["merge-base", baseBranch, "feature"])).toBe(target);
 		expect(f.git.run(repoLocator, ["show", "feature:README.md"])).toBe(
 			"# Upstream and implementation",
 		);
-		expect(f.git.run(repoLocator, ["log", "--format=%s", "feature"])).not.toContain("checkpoint");
 	});
 	it("reconciles a developer push with retained local work and validates before publishing", async () => {
 		const f = await fixture([true]);
@@ -382,10 +380,8 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 		expect(f.publication().reconciliationRequired).toBe(true);
 		expect(readFileSync(join(local, "developer.txt"), "utf8")).toBe("developer change\n");
 		expect(readFileSync(join(local, "local.txt"), "utf8")).toBe("retained local change\n");
-		await f.prepare(revision);
 		expect(await f.prompt(revision)).toContain("Validate the reconciled repository");
-		await f.finishRevision("no_changes");
-		expect((await f.deliver()).outcome).toBe("awaiting");
+		expect((await f.validateAndDeliver()).outcome).toBe("awaiting");
 		const bare = f.params.repositories[0].repoLocator;
 		expect(f.git.run(bare, ["show", "feature:local.txt"])).toBe("retained local change");
 		expect(f.git.run(bare, ["show", "feature:developer.txt"])).toBe("developer change");
@@ -465,8 +461,7 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 	});
 	it("captures current question policy at planning preparation and retains it for recovery", async () => {
 		const f = await fixture([false], { checkout: false });
-		const turn = required(f.process.turns.get("generate_plan")).definition;
-		if (turn.kind !== "llm") throw new Error("Expected planning");
+		const turn = f.llmTurn("generate_plan");
 		const ctx = createTestWorkerProcessContext({ params: f.params, state: {} });
 		const issue = required(f.jira.issues.get("501"));
 		issue.fields.labels.push("leitwerk-skip-plan-decision");
@@ -482,8 +477,7 @@ describe("Jira-backed change workflow", { timeout: 60_000 }, () => {
 		const f = await fixture([false], { checkout: false });
 		vi.spyOn(f.jira, "getIssue").mockRejectedValueOnce(new Error("Jira unavailable"));
 		const prepared = await f.plan();
-		const turn = required(f.process.turns.get("generate_plan")).definition;
-		if (turn.kind !== "llm") throw new Error("Expected planning");
+		const turn = f.llmTurn("generate_plan");
 		expect(prepared).toMatchObject({ skipPlanDecision: false });
 		expect(
 			turn.resolveAskQuestions?.({

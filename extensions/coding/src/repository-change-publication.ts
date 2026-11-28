@@ -24,7 +24,7 @@ import {
 import { type ConflictEvidence, conflictKey, validateConflict } from "./repository-rebase/index.js";
 import { rebasePrompt } from "./repository-rebase/prompt.js";
 import {
-	reconcilePublicationRepository,
+	reconcileRepository,
 	reconciliationPrompt,
 	recordRepositoryPublication,
 	repositoryWorktreeIsDirty,
@@ -660,7 +660,7 @@ export function createRepositoryChangePublication<P>(
 	}
 	async function reconcile(ctx: PublicationContext<P>, current: PublicationState) {
 		const repo = ctx.repo.get("repo");
-		return reconcilePublicationRepository({
+		return reconcileRepository({
 			projectKey: repo.key,
 			repoPath: repo.fsPath,
 			workBranch: repo.workBranch,
@@ -670,6 +670,7 @@ export function createRepositoryChangePublication<P>(
 		});
 	}
 	const runRepository = async (ctx: PublicationContext<P>) => {
+		const repo = ctx.repo.get("repo");
 		let current = remote(ctx.state);
 		const update = (patch: Parameters<typeof patchRemote>[1]) => {
 			current = { ...current, ...patch, delivery: { ...current.delivery, ...patch.delivery } };
@@ -683,7 +684,6 @@ export function createRepositoryChangePublication<P>(
 				reconciliationCycles: 0,
 				pipeline: changed ? null : current.pipeline,
 			});
-			const repo = ctx.repo.get("repo");
 			recordRepositoryPublication(
 				{
 					projectKey: repo.key,
@@ -743,11 +743,7 @@ export function createRepositoryChangePublication<P>(
 		if (
 			!current.headSha &&
 			(adapter.repositories || adapter.unchanged) &&
-			!repositoryHasChanges(
-				ctx.repo.get("repo").fsPath,
-				ctx.repo.get("repo").baseBranch,
-				ctx.repo.get("repo").key,
-			)
+			!repositoryHasChanges(repo.fsPath, repo.baseBranch, repo.key)
 		) {
 			update({ noChanges: true });
 			await adapter.unchanged?.(ctx);
@@ -771,7 +767,7 @@ export function createRepositoryChangePublication<P>(
 			try {
 				published = await commitWorkBranch(
 					ctx,
-					ctx.state.finalization.commitMessages?.[ctx.repo.get("repo").key] ??
+					ctx.state.finalization.commitMessages?.[repo.key] ??
 						ctx.state.finalization.generatedCommitMessage ??
 						"",
 					publicationLease,
@@ -802,9 +798,9 @@ export function createRepositoryChangePublication<P>(
 			let adjustmentPublished = false;
 			if (adjustment.publishRequired || adjustment.origin === "rebase" || adapter.maintenance) {
 				ctx.reportProgress(deliveryProgress(current, adapter.label, "publish_adjustment"));
-				if (adapter.maintenance)
+				if (adjustment.origin === "rebase" && adapter.maintenance)
 					await ctx.callIntegrationTool(adapter.maintenance.ownershipTool, {
-						projectKey: ctx.repo.get("repo").key,
+						projectKey: repo.key,
 					});
 				let published: { headSha: string };
 				try {
@@ -818,11 +814,10 @@ export function createRepositoryChangePublication<P>(
 				} catch (error) {
 					if (error instanceof ConcurrentRebaseSourceError) {
 						if (error.published) return reconcileAgain();
-						const project = ctx.repo.get("repo");
 						retainConcurrentRebase({
-							projectKey: project.key,
-							repoPath: project.fsPath,
-							workBranch: project.workBranch,
+							projectKey: repo.key,
+							repoPath: repo.fsPath,
+							workBranch: repo.workBranch,
 							baselineSha: error.repair.originalHead,
 							rebasedHead: error.repair.headSha,
 							targetBase: error.repair.baseSha,

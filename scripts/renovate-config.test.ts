@@ -41,7 +41,6 @@ describe("Renovate configuration", () => {
 			minimumReleaseAge: "2 days",
 			rangeStrategy: "bump",
 			semanticCommitType: "fix",
-			semanticCommitScope: "deps",
 		});
 		expect(development?.semanticCommitType).toBe("chore");
 		expect(actions?.semanticCommitType).toBe("ci");

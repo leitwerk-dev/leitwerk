@@ -16,8 +16,7 @@ import {
 	verifyRebase,
 } from "./repository-rebase/git.js";
 import {
-	prepareInitialRepository,
-	reconcilePublicationRepository as reconcileRepository,
+	reconcileRepository,
 	recordRepositoryPublication,
 	retainConcurrentRebase,
 } from "./repository-reconciliation.js";
@@ -253,7 +252,7 @@ describe("repository reconciliation", { timeout: 30_000 }, () => {
 		const { baselineSha: _, ...initial } = f.input;
 		const sync = () =>
 			branch === "target"
-				? prepareInitialRepository({ ...initial, baseBranch: "main" })
+				? reconcileRepository({ ...initial, baseBranch: "main" }, "prepare")
 				: reconcileRepository(f.input);
 		expect(sync).toThrow(/Previously ignored local files/);
 		expect(readFileSync(join(f.local, "ignored.txt"), "utf8")).toBe("local generated data\n");
@@ -394,7 +393,7 @@ describe("repository reconciliation", { timeout: 30_000 }, () => {
 		const f = fixture();
 		git(f.dev, "push", "origin", ":work");
 		const { baselineSha: _baseline, ...initial } = f.input;
-		expect(prepareInitialRepository(initial).remoteHead).toBeNull();
+		expect(reconcileRepository(initial, "prepare").remoteHead).toBeNull();
 		writeFileSync(join(f.local, "local.txt"), "implementation\n");
 		f.commit(f.dev, "remote.txt", "developer branch\n");
 		f.push();

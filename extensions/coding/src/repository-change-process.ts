@@ -16,7 +16,7 @@ import {
 	type RepositoryChangeState,
 	repositoryChangeStateCodec,
 } from "./repository-change-state-internal.js";
-import { prepareInitialRepository, reconciliationPrompt } from "./repository-reconciliation.js";
+import { reconcileRepository, reconciliationPrompt } from "./repository-reconciliation.js";
 import { codingPurposes } from "./settings.js";
 import { prepareRepositoryCommitMessageEvidence } from "./turns/commit-message-evidence.js";
 import {
@@ -288,16 +288,19 @@ export function createRepositoryChangeProcess<TParams extends RepositoryChangePa
 				const identity = asUnknownRecord(
 					ctx.projects.find((p) => p.key === repo.key)?.metadata?.["leitwerk.gitIdentity"],
 				);
-				return prepareInitialRepository({
-					projectKey: repo.key,
-					repoPath: repo.fsPath,
-					workBranch: repo.workBranch,
-					baseBranch: refreshTarget ? repo.baseBranch : undefined,
-					gitIdentity:
-						typeof identity?.name === "string" && typeof identity.email === "string"
-							? { name: identity.name, email: identity.email }
-							: undefined,
-				});
+				return reconcileRepository(
+					{
+						projectKey: repo.key,
+						repoPath: repo.fsPath,
+						workBranch: repo.workBranch,
+						baseBranch: refreshTarget ? repo.baseBranch : undefined,
+						gitIdentity:
+							typeof identity?.name === "string" && typeof identity.email === "string"
+								? { name: identity.name, email: identity.email }
+								: undefined,
+					},
+					"prepare",
+				);
 			}),
 		}))
 		.buildPrompt((ctx) => `${buildImplementPrompt(ctx, refreshTarget)}\n\n${reconciliationPrompt}`)

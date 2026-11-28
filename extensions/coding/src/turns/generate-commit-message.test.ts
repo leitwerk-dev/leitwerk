@@ -6,7 +6,7 @@ import {
 } from "./generate-commit-message.js";
 
 describe("commit-message generation", () => {
-	it("separates the accepted plan from launch-pinned repository rules", () => {
+	it("keeps launch-pinned rules and signoff separate from implementation evidence", () => {
 		const prompt = buildRepositoryCommitMessagesPrompt({
 			process: {} as never,
 			projects: [
@@ -14,6 +14,16 @@ describe("commit-message generation", () => {
 					key: "repo",
 					metadata: {
 						"leitwerk.commitMessage": { templateId: "conventional", rules: "Use type(scope)." },
+					},
+				} as never,
+				{
+					key: "signed",
+					metadata: {
+						"leitwerk.commitMessage": {
+							templateId: "dco",
+							rules: "Use a short subject.",
+							signoff: true,
+						},
 					},
 				} as never,
 			],
@@ -41,7 +51,7 @@ describe("commit-message generation", () => {
 		});
 		// Keep the rules separate from evidence without pinning whitespace or surrounding copy.
 		expect(prompt).toMatch(
-			/<formatting_rules>\s*repo:\s*Use type\(scope\)\.\s*<\/formatting_rules>/,
+			/<formatting_rules>\s*repo:\s*Use type\(scope\)\.\s+signed:\s*Use a short subject\.\s+Do not include a Signed-off-by trailer; Git adds it automatically\.\s*<\/formatting_rules>/,
 		);
 		expect(prompt).toMatch(
 			/<accepted_plan>\s*## Plan\s+Ship the durable behavior\.\s*<\/accepted_plan>/,
@@ -50,31 +60,6 @@ describe("commit-message generation", () => {
 			/<implementation_summary>\s*Implemented the behavior and its compatibility adjustment\.\s*<\/implementation_summary>/,
 		);
 		expect(prompt).toContain("+compatibility adjustment");
-	});
-
-	it("tells the model not to fabricate a Signed-off-by trailer when signoff is pinned", () => {
-		const prompt = buildRepositoryCommitMessagesPrompt({
-			process: {} as never,
-			projects: [
-				{
-					key: "repo",
-					metadata: {
-						"leitwerk.commitMessage": {
-							templateId: "dco",
-							rules: "Use type(scope).",
-							signoff: true,
-						},
-					},
-				} as never,
-			],
-			params: {},
-			state: {},
-			prompts: { initial: "" },
-			input: { plan: "## Plan", "implementation-summary": "Done." },
-			prepared: { repositories: [] },
-			repo: {} as never,
-		});
-		expect(prompt).toContain("Do not include a Signed-off-by trailer; Git adds it automatically.");
 	});
 
 	it.each([
