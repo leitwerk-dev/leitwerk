@@ -709,12 +709,20 @@ describe("generic review integration", () => {
 			expect.arrayContaining([
 				expect.objectContaining({
 					id: "approve_plan",
+					acceptanceState: "accepted",
 					supportsScheduling: true,
 					supportsNextTurnModelOverride: true,
 					preview: expect.objectContaining({
 						kind: "turn",
 						turnId: "implement",
 						turnKind: "llm",
+					}),
+				}),
+				expect.objectContaining({
+					id: "request_revision",
+					acceptanceState: "requires_changes",
+					form: expect.objectContaining({
+						fields: expect.arrayContaining([expect.objectContaining({ required: true })]),
 					}),
 				}),
 			]),

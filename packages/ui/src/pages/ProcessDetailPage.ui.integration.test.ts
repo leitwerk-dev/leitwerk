@@ -1107,6 +1107,15 @@ function createActionRequiredDetailWithMultipleActions(): ProcessDetailData {
 	return detail;
 }
 
+function createSplitApprovalDetail() {
+	const detail = createActionRequiredDetailWithMultipleActions();
+	const [approve, revise] = detail.actions;
+	if (!approve || !revise) throw new Error("Expected two actions");
+	approve.acceptanceState = "accepted";
+	setSingleTextareaActionForm(revise, "Revision notes", { required: true });
+	return detail;
+}
+
 function createActionRequiredDetailWithPromptForms(): ProcessDetailData {
 	const detail = createActionRequiredDetailWithMultipleActions();
 	const approve = detail.actions[0];
@@ -3872,12 +3881,17 @@ describe("ProcessDetailPage", () => {
 		).toBeNull();
 	});
 
-	it("uses the shared 24-hour picker when scheduling a live action", async () => {
+	it.each([
+		["ordinary", createActionRequiredDetail, '[data-action-id="approve_patch"]'],
+		["split approval", createSplitApprovalDetail, '[aria-label="Approval options"]'],
+	] as const)("uses the shared scheduling controls for a %s action", async (_, createDetail, opener) => {
 		vi.setSystemTime(new Date(2026, 3, 24, 18, 45, 0, 0));
-		const { target } = await mountSubject(createActionRequiredDetail());
+		const pending = Promise.withResolvers<{ kind: "scheduled"; scheduledAction: null }>();
+		mockPostProcessAction.mockReturnValueOnce(pending.promise);
+		const { target } = await mountSubject(createDetail());
 		await flushUi();
 
-		target.querySelector<HTMLButtonElement>('[data-action-id="approve_patch"]')?.click();
+		target.querySelector<HTMLButtonElement>(opener)?.click();
 		await flushUi();
 		const scheduleRadios = target.querySelectorAll<HTMLInputElement>(
 			'input[name="schedule-approve_patch"]',
@@ -3917,13 +3931,14 @@ describe("ProcessDetailPage", () => {
 		minuteSelect.dispatchEvent(new Event("change", { bubbles: true }));
 		await flushUi();
 
-		target
-			.querySelector<HTMLButtonElement>(
-				'form[data-action-form-id="approve_patch"] button[type="submit"]',
-			)
-			?.click();
+		const submit = target.querySelector<HTMLButtonElement>(
+			'form[data-action-form-id="approve_patch"] button[type="submit"]',
+		);
+		if (!submit) throw new Error("Expected schedule submit button");
+		expect(submit.textContent?.trim()).toBe("Schedule action");
+		submit.click();
 		await flushUi();
-
+		expect(submit.textContent?.trim()).toBe("Saving schedule…");
 		expect(mockPostProcessAction).toHaveBeenCalledWith(
 			"agt_1",
 			"approve_patch",
@@ -3935,6 +3950,9 @@ describe("ProcessDetailPage", () => {
 				},
 			}),
 		);
+		pending.resolve({ kind: "scheduled", scheduledAction: null });
+		await flushUi();
+		expect(target.querySelector('[data-section="approval-confirmation"]')).toBeNull();
 	});
 
 	it("prefills and submits the shared 24-hour picker when editing a scheduled action", async () => {
@@ -4146,6 +4164,164 @@ describe("ProcessDetailPage", () => {
 			{ message: "Finish without another turn." },
 			expect.not.objectContaining({ nextTurnModelProfileId: expect.anything() }),
 		);
+	});
+
+	it("approves immediately with defaults, locks conflicting actions, and confirms after refresh", async () => {
+		const detail = createSplitApprovalDetail();
+		const pending = Promise.withResolvers<{ kind: "success"; warning: string }>();
+		mockPostProcessAction.mockReturnValueOnce(pending.promise);
+		const { target } = await mountSubject(detail);
+		await flushUi();
+		const approve = target.querySelector<HTMLButtonElement>('[data-action-id="approve_patch"]');
+		const revise = target.querySelector<HTMLButtonElement>('[data-action-id="request_revision"]');
+		const caret = target.querySelector<HTMLButtonElement>('[aria-label="Approval options"]');
+		if (!approve || !revise || !caret) throw new Error("Expected the decision controls");
+		expect(target.querySelector("form[data-action-form-id]")).toBeNull();
+		approve.click();
+		await flushUi();
+		expect(approve.textContent?.trim()).toBe("Approving…");
+		for (const button of [approve, revise, caret]) {
+			expect(button.disabled).toBe(true);
+			button.click();
+		}
+		expect(mockPostProcessAction.mock.calls).toEqual([
+			["agt_1", "approve_patch", {}, { schedule: { mode: "now" } }],
+		]);
+		pending.resolve({ kind: "success", warning: "The action was saved, but dispatch failed." });
+		await flushUi();
+		expect(mockFetchProcessDetail.mock.calls.length).toBeGreaterThan(1);
+		expect(target.querySelector('[data-action-id="approve_patch"]')).toBeNull();
+		const result = target.querySelector('[data-section="approval-announcement"][role="status"]');
+		expect(result?.textContent).toContain("Approved using default settings.");
+		expect(result?.textContent).toContain("The action was saved, but dispatch failed.");
+
+		mockFetchProcessDetail.mockResolvedValue({
+			...detail,
+			process: { ...detail.process, planRevision: detail.process.planRevision + 1 },
+		});
+		mockWs.set({ status: "disconnected", serverVersion: null, reconnectCount: 1 });
+		await flushUi();
+		expect(target.querySelector('[data-section="approval-confirmation"]')).toBeNull();
+		expect(target.querySelector('[data-action-id="approve_patch"]')).not.toBeNull();
+	});
+
+	it("toggles and cancels approval options without applying them, then submits defaults even with a draft open", async () => {
+		mockPostProcessAction.mockResolvedValue({ kind: "success" });
+		const { target } = await mountSubject(createSplitApprovalDetail());
+		await flushUi();
+		const caret = target.querySelector<HTMLButtonElement>('[aria-label="Approval options"]');
+		if (!caret) throw new Error("Expected the options toggle");
+		const panel = document.getElementById(caret.getAttribute("aria-controls") ?? "");
+		const modelSelect = () => panel?.querySelector<HTMLSelectElement>("select");
+		const selectOverride = () => {
+			const model = modelSelect();
+			if (!model) throw new Error("Expected the model selector");
+			model.value = "gpt-5-mini";
+			model.dispatchEvent(new Event("change", { bubbles: true }));
+		};
+		expect(caret.getAttribute("aria-expanded")).toBe("false");
+		caret.click();
+		await flushUi();
+		expect(caret.getAttribute("aria-expanded")).toBe("true");
+		expect(modelSelect()?.textContent).toContain("claude-sonnet-4");
+		selectOverride();
+		caret.click();
+		await flushUi();
+		expect(panel?.hidden).toBe(true);
+		caret.click();
+		await flushUi();
+		expect(modelSelect()?.value).toBe("");
+		selectOverride();
+		const cancel = Array.from(panel?.querySelectorAll("button") ?? []).find(
+			(button) => button.textContent?.trim() === "Cancel",
+		);
+		cancel?.click();
+		await flushUi();
+		expect(caret.getAttribute("aria-expanded")).toBe("false");
+		expect(document.activeElement).toBe(caret);
+		expect(mockPostProcessAction).not.toHaveBeenCalled();
+		caret.click();
+		await flushUi();
+		expect(modelSelect()?.value).toBe("");
+		selectOverride();
+		target.querySelector<HTMLButtonElement>('[data-action-id="approve_patch"]')?.click();
+		await flushUi();
+		expect(mockPostProcessAction.mock.calls).toEqual([
+			["agt_1", "approve_patch", {}, { schedule: { mode: "now" } }],
+		]);
+	});
+
+	it("waits for model preview, then preserves the advanced override after rejection", async () => {
+		const preview = Promise.withResolvers<ProcessActionModelPreview>();
+		mockFetchProcessActionModelPreview.mockReset().mockReturnValue(preview.promise);
+		mockPostProcessAction.mockRejectedValueOnce(new Error("The model is temporarily unavailable"));
+		mockPostProcessAction.mockResolvedValueOnce({ kind: "success" });
+		const { target } = await mountSubject(createSplitApprovalDetail(), {
+			preserveActionModelPreviewMock: true,
+		});
+		await flushUi();
+		target.querySelector<HTMLButtonElement>('[aria-label="Approval options"]')?.click();
+		await flushUi();
+		const form = target.querySelector<HTMLFormElement>('form[data-action-form-id="approve_patch"]');
+		const model = form?.querySelector("select");
+		const submit = form?.querySelector<HTMLButtonElement>('button[type="submit"]');
+		if (!model || !submit || !form) throw new Error("Expected approval options");
+		model.value = "gpt-5-mini";
+		model.dispatchEvent(new Event("change", { bubbles: true }));
+		await flushUi();
+		expect(submit.disabled).toBe(true);
+		form.dispatchEvent(new Event("submit", { cancelable: true }));
+		await flushUi();
+		expect(mockPostProcessAction).not.toHaveBeenCalled();
+		preview.resolve(createActionModelPreview());
+		await flushUi();
+		submit.click();
+		await flushUi();
+		expect(target.querySelector('[role="alert"]')?.textContent).toContain(
+			"temporarily unavailable",
+		);
+		expect(model.value).toBe("gpt-5-mini");
+		expect(submit.disabled).toBe(false);
+		submit.click();
+		await flushUi();
+		expect(mockPostProcessAction).toHaveBeenCalledTimes(2);
+		for (const call of mockPostProcessAction.mock.calls) {
+			expect(call).toEqual([
+				"agt_1",
+				"approve_patch",
+				{},
+				{
+					nextTurnModelProfileId: "gpt-5-mini",
+					schedule: { mode: "now" },
+				},
+			]);
+		}
+		expect(target.querySelector('[data-section="approval-confirmation"]')?.textContent).toContain(
+			"Approved with settings.",
+		);
+	});
+
+	it("keeps required revision notes and submits the revision instead of approving", async () => {
+		mockPostProcessAction.mockResolvedValue({ kind: "success" });
+		const { target } = await mountSubject(createSplitApprovalDetail());
+		await flushUi();
+		target.querySelector<HTMLButtonElement>('[data-action-id="request_revision"]')?.click();
+		await flushUi();
+		const form = target.querySelector('form[data-action-form-id="request_revision"]');
+		const notes = form?.querySelector("textarea");
+		const submit = form?.querySelector<HTMLButtonElement>('button[type="submit"]');
+		if (!notes || !submit) throw new Error("Expected revision controls");
+		submit.click();
+		await flushUi();
+		expect(form?.textContent).toContain("Revision notes is required.");
+		expect(mockPostProcessAction).not.toHaveBeenCalled();
+		notes.value = "Add a rollback plan.";
+		notes.dispatchEvent(new Event("input", { bubbles: true }));
+		submit.click();
+		await flushUi();
+		expect(mockPostProcessAction.mock.calls).toEqual([
+			["agt_1", "request_revision", { message: "Add a rollback plan." }, {}],
+		]);
 	});
 
 	it("shows the resolved next-turn model in the live action form", async () => {

@@ -25,6 +25,7 @@ import {
 } from "../lib/chronicle-selectable-items.js";
 import type { ChronicleTicketArtifact } from "../lib/chronicle-ticket-artifact.js";
 import { groupRetryChains } from "../lib/retry-groups.js";
+import ApprovalConfirmation from "./ApprovalConfirmation.svelte";
 import ChronicleActionSection from "./ChronicleActionSection.svelte";
 import ChronicleLeafOutcomePlaceholder from "./ChronicleLeafOutcomePlaceholder.svelte";
 import ChronicleLeafOutcomeSection from "./ChronicleLeafOutcomeSection.svelte";
@@ -195,6 +196,7 @@ const waitingTurn = $derived.by(() => {
 		recovery ||
 		startupRecovery ||
 		processError ||
+		actionBindings.approvalConfirmation ||
 		actionBindings.actionSectionActions.length > 0 ||
 		externalTriggers.length === 0 ||
 		!selectedTurn
@@ -213,6 +215,7 @@ const hasTrailingProcessSection = $derived(
 		recovery !== null ||
 		startupRecovery !== null ||
 		processError !== null ||
+		Boolean(actionBindings.approvalConfirmation) ||
 		selectedTurn?.readiness !== undefined ||
 		actionBindings.actionSectionActions.length > 0 ||
 		externalTriggers.length > 0,
@@ -379,6 +382,9 @@ function shouldRenderActionSection(item: ChronicleTimelineItem): boolean {
 
 <div class="chronicle-flow" class:has-terminal-summary={hasTerminalSummary} data-section="chronicle-flow">
 	<ChronicleStartupHistory {startup} />
+	{#if actionBindings.approvalConfirmation && (recovery || startupRecovery || processError)}
+		<ApprovalConfirmation confirmation={actionBindings.approvalConfirmation} />
+	{/if}
 	{#each retryGroups as group, groupIndex (chronicleItemKey(group[0], groupIndex))}
 		{#if group.length > 1 && group[0].kind === "turn_cluster"}
 			<details data-section="retry-history">

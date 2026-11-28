@@ -15,7 +15,7 @@ export function buildActionSummaryForProcess(
 	deps: Pick<ProcessOperatorAttentionDeps, "processActionRegistry">,
 	process: ProcessInstance,
 	action: Pick<VisibleProcessActionSummary, "id" | "label" | "form"> &
-		Partial<Pick<VisibleProcessActionSummary, "description" | "preview">> & {
+		Partial<Pick<VisibleProcessActionSummary, "description" | "preview" | "acceptanceState">> & {
 			supportsScheduling?: boolean;
 		},
 ): ProcessActionSummary {
@@ -42,6 +42,7 @@ export function buildActionSummaryForProcess(
 		id: action.id,
 		label: action.label,
 		description: action.description ?? null,
+		...(action.acceptanceState ? { acceptanceState: action.acceptanceState } : {}),
 		preview: buildProcessActionPreviewSummary(preview, turnDef),
 		supportsScheduling,
 		supportsNextTurnModelOverride: Boolean(hasPurePlan && turnDef && isLlmTurnDefinition(turnDef)),

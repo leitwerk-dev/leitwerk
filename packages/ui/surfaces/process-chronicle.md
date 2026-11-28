@@ -24,6 +24,8 @@ The shared entry header establishes the sequence: icon, title and recorded metad
 
 The detailed inline action section owns the action form. When available actions are outside the reading viewport, the bottom composer presents the same selection, feedback draft, runtime settings, and preview state. It consumes space below the chronicle scroll area. It is absent while an open question needs an answer.
 
+Fieldless approvals with next-turn model support use a split button: the main segment runs immediately with resolved defaults, and the Approval options caret opens inline settings above monitored events. Cancel discards approval settings; actions that need input still open their forms. A uniform cool outline marks the pending decision, and a compact confirmation replaces its controls after approval.
+
 The composer names the waiting decision and provides View context. The action selector uses the process's available actions, such as Adjust; a suitable text field supplies feedback. Send submits quick feedback using the selected action's accessible label and current runtime options. Actions without a quick field use their own submit label. Options opens scheduling and model controls in the detailed form; actions with complex fields use Open details.
 
 Required-field and submission errors appear inline. Pending submission disables the controls. Switching between the composer and detailed form preserves entered feedback and selection. Command/Ctrl+Enter submits quick feedback. On narrow screens, the action and Options occupy the first row, with feedback and Send below; wide composers place these controls in one row.

@@ -34,6 +34,8 @@ For the original request and launch settings, open **Inspect process** and choos
 2. If a form opens, fill in the requested details. When **Next-turn model** is available, you can choose the model for the step this action starts.
 3. Submit the form to run the action. To delay an action that offers **When to run**, choose **Run later**, set **Run at**, and click **Schedule action**. Use **Edit** or **Cancel** on the **Scheduled action** card if plans change.
 
+When **Approve plan** has a separate **Approval options** caret, click the main button to continue immediately with the resolved defaults. Open the caret to review or change the next-turn model, then choose **Approve with settings** to run now. If the action offers **Run later**, follow step 3 to schedule it instead. **Cancel** discards those changes without approving. Choose **Request revision** to send feedback instead.
+
 ## Review issue drafts
 
 When the Chronicle shows **Review issue**, check where the issue will be filed and expand **All issue fields** to see the details.

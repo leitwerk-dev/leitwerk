@@ -10,6 +10,10 @@ import ChronicleFlow from "../../chronicle/components/ChronicleFlow.svelte";
 import ChronicleTerminalSummary from "../../chronicle/components/ChronicleTerminalSummary.svelte";
 import ChronicleTurnRail from "../../chronicle/components/ChronicleTurnRail.svelte";
 import CompactActionComposer from "../../chronicle/components/CompactActionComposer.svelte";
+import {
+	approvalConfirmationDetail,
+	approvalConfirmationTitle,
+} from "../../chronicle/lib/action-bindings.js";
 import type { ChronicleProjection } from "../../chronicle/lib/chronicle-projection.js";
 import {
 	CHRONICLE_ACTION_SECTION_ANCHOR_ID,
@@ -165,7 +169,8 @@ const activeQuickNavItem = $derived(
 
 const showCompactActionComposer = $derived(
 	chronicleScroll.showJumpToLatest &&
-		actionsController.actionSectionActions.length > 0 &&
+		(actionsController.actionSectionActions.length > 0 ||
+			Boolean(actionsController.approvalConfirmation)) &&
 		!detail?.questionRequests.some((request) => request.status === "open"),
 );
 
@@ -320,6 +325,12 @@ function handleWindowKeydown(event: KeyboardEvent) {
 		aria-labelledby={headingId}
 	>
 		<h2 id={headingId} class="sr-only">Process timeline</h2>
+		<p class="sr-only" role="status" aria-live="polite" aria-atomic="true" data-section="approval-announcement">
+			{#if actionsController.approvalConfirmation}
+				{approvalConfirmationTitle(actionsController.approvalConfirmation)}
+				{approvalConfirmationDetail(actionsController.approvalConfirmation)}
+			{/if}
+		</p>
 		<!-- svelte-ignore a11y_no_noninteractive_element_interactions -- selection preserves native copy behavior -->
 		<div
 			class="chronicle-scroll"
@@ -374,7 +385,7 @@ function handleWindowKeydown(event: KeyboardEvent) {
 					</div>
 				{/if}
 
-				{#if projection.timelineItems.length === 0 && startup.attempts.length === 0 && !startupRecovery && !processError && !selectedTurn?.readiness}
+				{#if projection.timelineItems.length === 0 && startup.attempts.length === 0 && !startupRecovery && !processError && !selectedTurn?.readiness && !actionsController.approvalConfirmation && actionsController.actionSectionActions.length === 0}
 					<div class="empty-state" data-section="chronicle-empty-state">
 						<p>
 							This process has not recorded activity yet. As the worker plans, acts, and saves results, the timeline will fill in here.

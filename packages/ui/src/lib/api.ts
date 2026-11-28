@@ -744,7 +744,7 @@ export async function fetchProcessRetryConfig(instanceId: string): Promise<Proce
 }
 
 export type ProcessActionSubmitResult =
-	| { kind: "success" }
+	| { kind: "success"; warning?: string }
 	| { kind: "scheduled"; scheduledAction: ScheduledActionDetail | null };
 
 export async function fetchProcessActionModelPreview(
@@ -780,10 +780,10 @@ export async function postProcessAction(
 		error: `Couldn't run "${formatDefinition(actionId)}"`,
 		malformed: "Malformed process action response",
 	});
-	if (body.scheduledAction) {
-		return { kind: "scheduled", scheduledAction: body.scheduledAction };
+	if (body.kind === "scheduled" || body.scheduledAction) {
+		return { kind: "scheduled", scheduledAction: body.scheduledAction ?? null };
 	}
-	return { kind: "success" };
+	return { kind: "success", ...(body.error ? { warning: body.error } : {}) };
 }
 
 export async function updateScheduledLaunch(
@@ -831,8 +831,8 @@ export async function updateScheduledAction(
 		nextTurnModelProfileId?: string | null;
 		schedule: ScheduleConfigInput;
 	},
-): Promise<ProcessActionSubmitResult> {
-	const body = await requestJson<ScheduledActionMutationResponseBody>({
+): Promise<void> {
+	await requestJson<ScheduledActionMutationResponseBody>({
 		path: `/api/future-executions/${encodeURIComponent(futureExecutionId)}/action`,
 		init: jsonRequestInit("PUT", {
 			input,
@@ -842,10 +842,6 @@ export async function updateScheduledAction(
 		error: "Couldn't update this scheduled action",
 		malformed: "Malformed scheduled action update response",
 	});
-	if (body.scheduledAction) {
-		return { kind: "scheduled", scheduledAction: body.scheduledAction };
-	}
-	return { kind: "success" };
 }
 
 export async function deleteFutureExecution(futureExecutionId: string): Promise<void> {

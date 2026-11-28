@@ -18,7 +18,33 @@ export function findQuickActionField(
 	return field && (field.kind === "text" || field.kind === "textarea") ? field : null;
 }
 
+/** Split approval is only available for live, fieldless acceptance actions. */
+export function supportsSplitApproval(action: ProcessActionSummary, editingSchedule = false) {
+	return (
+		!editingSchedule &&
+		action.acceptanceState === "accepted" &&
+		!action.form?.fields.length &&
+		action.supportsNextTurnModelOverride
+	);
+}
+
+export interface ApprovalConfirmation {
+	usedDefaults: boolean;
+	warning?: string;
+}
+
+export function approvalConfirmationTitle(confirmation: ApprovalConfirmation) {
+	return confirmation.usedDefaults ? "Approved using default settings." : "Approved with settings.";
+}
+
+export function approvalConfirmationDetail(confirmation: ApprovalConfirmation) {
+	return confirmation.warning ?? "The process will continue on the next turn.";
+}
+
 export interface ActionSectionController {
+	readonly approvalConfirmation?: ApprovalConfirmation | null;
+	readonly editingScheduledActionId?: string | null;
+	readonly actionSubmissionMode?: "defaults" | "settings" | null;
 	readonly actionSectionActions: readonly ProcessActionSummary[];
 	readonly openActionModelPreview: ProcessActionModelPreview | null;
 	readonly openActionModelPreviewLoading: boolean;
@@ -49,7 +75,10 @@ export interface ActionSectionController {
 	selectAction: (actionId: string) => void;
 	expandActionForm: (actionId: string) => void;
 	collapseActionForm: () => void;
-	submitActionDecision: (action: ProcessActionSummary) => Promise<void> | void;
+	submitActionDecision: (
+		action: ProcessActionSummary,
+		mode?: "defaults" | "settings",
+	) => Promise<void> | void;
 }
 
 export interface ScheduledActionController {

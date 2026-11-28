@@ -76,6 +76,12 @@ export function createProcessDetailActionDrafts(args: {
 		return drafts[actionId] ?? {};
 	}
 
+	function discardActionDraft(actionId: string) {
+		const next = { ...drafts };
+		delete next[actionId];
+		drafts = next;
+	}
+
 	function setDraft(actionId: string, updater: (draft: ActionDraft) => ActionDraft) {
 		drafts = {
 			...drafts,
@@ -197,6 +203,7 @@ export function createProcessDetailActionDrafts(args: {
 	}
 
 	return {
+		discardActionDraft,
 		getActionFieldValue,
 		setActionFieldValue,
 		buildActionPayload,
