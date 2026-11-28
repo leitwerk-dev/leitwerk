@@ -52,6 +52,31 @@ describe("commit-message generation", () => {
 		expect(prompt).toContain("+compatibility adjustment");
 	});
 
+	it("tells the model not to fabricate a Signed-off-by trailer when signoff is pinned", () => {
+		const prompt = buildRepositoryCommitMessagesPrompt({
+			process: {} as never,
+			projects: [
+				{
+					key: "repo",
+					metadata: {
+						"leitwerk.commitMessage": {
+							templateId: "dco",
+							rules: "Use type(scope).",
+							signoff: true,
+						},
+					},
+				} as never,
+			],
+			params: {},
+			state: {},
+			prompts: { initial: "" },
+			input: { plan: "## Plan", "implementation-summary": "Done." },
+			prepared: { repositories: [] },
+			repo: {} as never,
+		});
+		expect(prompt).toContain("Do not include a Signed-off-by trailer; Git adds it automatically.");
+	});
+
 	it.each([
 		["repo"],
 		["repo_1", "repo_2"],

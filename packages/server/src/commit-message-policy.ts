@@ -17,10 +17,10 @@ export function resolveCommitMessageMetadata(
 		([locator]) => normalizeRepositoryLocator(locator) === normalizedLocator,
 	)?.[1];
 	const templateId = override ?? config?.default_template ?? null;
+	const template = templateId ? config?.templates[templateId] : undefined;
 	return {
 		templateId,
-		rules:
-			(templateId ? config?.templates[templateId]?.rules : undefined) ??
-			BUILT_IN_COMMIT_MESSAGE_RULES,
+		rules: template?.rules ?? BUILT_IN_COMMIT_MESSAGE_RULES,
+		...(template?.signoff ? { signoff: true } : {}),
 	};
 }

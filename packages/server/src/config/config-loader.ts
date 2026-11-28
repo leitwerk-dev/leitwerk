@@ -248,7 +248,13 @@ const configSchema = v.looseObject({
 	skill_repositories: v.optional(v.array(skillRepositorySchema)),
 	commit_messages: v.optional(
 		v.strictObject({
-			templates: v.record(v.string(), v.strictObject({ rules: v.pipe(v.string(), v.nonEmpty()) })),
+			templates: v.record(
+				v.string(),
+				v.strictObject({
+					rules: v.pipe(v.string(), v.nonEmpty()),
+					signoff: v.optional(v.boolean()),
+				}),
+			),
 			default_template: v.optional(v.nullable(v.pipe(v.string(), v.nonEmpty()))),
 			repositories: v.record(v.string(), v.pipe(v.string(), v.nonEmpty())),
 		}),

@@ -146,11 +146,15 @@ function repositoryGit(projectKey: string, repoPath: string) {
 		}
 	}
 
-	function commitIfDirty(commitMessage: string, identity: GitIdentity): string {
+	function commitIfDirty(commitMessage: string, identity: GitIdentity, signoff = false): string {
 		if (workingTreeStatus().length === 0) return git("rev-parse", "HEAD");
 		assertGitIdentity(identity);
 		checkedGit(["add", "--all"], "Failed to stage the completed change");
-		checkedGit(["commit", "--no-gpg-sign", "-m", commitMessage], "Commit failed", identity);
+		checkedGit(
+			["commit", "--no-gpg-sign", ...(signoff ? ["--signoff"] : []), "-m", commitMessage],
+			"Commit failed",
+			identity,
+		);
 		const remaining = workingTreeStatus();
 		if (remaining.length > 0) {
 			throw new DeterministicGitError(`Commit left uncommitted changes: ${remaining.join(", ")}`);
@@ -250,6 +254,8 @@ export function commitAndPushWorkBranch(input: {
 	commitMessage: string;
 	/** @public */
 	gitIdentity: GitIdentity;
+	/** Append a Git Signed-off-by trailer (`git commit --signoff`). @public */
+	signoff?: boolean;
 	/** Captured remote head; null requires branch creation. @internal */
 	expectedRemoteHead?: string | null;
 }) {
@@ -276,7 +282,7 @@ export function commitAndPushWorkBranch(input: {
 			`Cannot publish a work branch with unresolved conflicts: ${conflicts.join(", ") || "merge in progress"}`,
 		);
 	}
-	const headSha = commitIfDirty(input.commitMessage, input.gitIdentity);
+	const headSha = commitIfDirty(input.commitMessage, input.gitIdentity, input.signoff === true);
 	return {
 		/** @public */
 		headSha,

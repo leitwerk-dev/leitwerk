@@ -1,6 +1,7 @@
 import { asUnknownRecord } from "@leitwerk-dev/domain";
 import {
 	type AutomaticOutcomeBuilder,
+	COMMIT_MESSAGE_PROJECT_METADATA_KEY,
 	type ExtensionProcessDefinition,
 	type ExternalActionSource,
 	type FlowAutomaticRunContext,
@@ -639,6 +640,11 @@ export function createRepositoryChangePublication<P>(
 		expectedRemoteHead = remote(ctx.state).headSha,
 	) {
 		const repo = ctx.repo.get("repo");
+		const commitMessageMetadata = asUnknownRecord(
+			ctx.projects.find((candidate) => candidate.key === repo.key)?.metadata?.[
+				COMMIT_MESSAGE_PROJECT_METADATA_KEY
+			],
+		);
 		const gitIdentity = await adapter.identity(ctx);
 		if (adapter.maintenance)
 			await ctx.callIntegrationTool(adapter.maintenance.ownershipTool, { projectKey: repo.key });
@@ -648,6 +654,7 @@ export function createRepositoryChangePublication<P>(
 			workBranch: repo.workBranch,
 			commitMessage,
 			gitIdentity,
+			signoff: commitMessageMetadata?.signoff === true,
 			expectedRemoteHead,
 		});
 	}

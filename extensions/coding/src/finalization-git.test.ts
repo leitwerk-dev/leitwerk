@@ -86,7 +86,27 @@ describe("commitAndPushWorkBranch", () => {
 		).toBe(
 			"Leitwerk Bot\nleitwerk-bot@noreply.example.test\nLeitwerk Bot\nleitwerk-bot@noreply.example.test",
 		);
+		expect(git(remoteDir, "log", "-1", "--format=%B", "refs/heads/feature/test")).not.toContain(
+			"Signed-off-by:",
+		);
 		expect(git(repoDir, "status", "--short")).toBe("");
+	});
+
+	it("appends a DCO Signed-off-by trailer when signoff is enabled", () => {
+		const { remoteDir, repoDir } = createWorkspace();
+		writeFileSync(path.join(repoDir, "feature.txt"), "signed change\n");
+
+		commitAndPushWorkBranch({
+			repoPath: repoDir,
+			workBranch: "feature/test",
+			commitMessage: "feat: publish signed change",
+			gitIdentity: { name: "Leitwerk Bot", email: "leitwerk-bot@noreply.example.test" },
+			signoff: true,
+		});
+
+		expect(git(remoteDir, "log", "-1", "--format=%B", "refs/heads/feature/test")).toBe(
+			"feat: publish signed change\n\nSigned-off-by: Leitwerk Bot <leitwerk-bot@noreply.example.test>",
+		);
 	});
 
 	it("rejects an unexpected checked-out branch", () => {

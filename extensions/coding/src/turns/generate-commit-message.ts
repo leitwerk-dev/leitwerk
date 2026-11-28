@@ -28,9 +28,13 @@ function commitMessageRules(project?: ProcessProject): string {
 	const pinned = project?.metadata?.[COMMIT_MESSAGE_PROJECT_METADATA_KEY] as
 		| Partial<CommitMessageProjectMetadata>
 		| undefined;
-	return typeof pinned?.rules === "string" && pinned.rules.trim()
-		? pinned.rules
-		: BUILT_IN_COMMIT_MESSAGE_RULES;
+	const rules =
+		typeof pinned?.rules === "string" && pinned.rules.trim()
+			? pinned.rules
+			: BUILT_IN_COMMIT_MESSAGE_RULES;
+	return pinned?.signoff === true
+		? `${rules}\nDo not include a Signed-off-by trailer; Git adds it automatically.`
+		: rules;
 }
 
 /** @internal */
