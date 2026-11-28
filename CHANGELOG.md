@@ -1,5 +1,110 @@
 # Changelog
 
+## 0.5.10 (2026-11-28)
+
+chore(config): update Renovate rules for Pi packages and migrate config (#245)
+
+Source: 67163e0548d1434be7d7f4d8de03cfdf4c74845b
+Previous release: v0.5.9
+
+## 0.5.9 (2026-11-27)
+
+fix(deps): update runtime npm dependencies (#193)
+
+Source: b69ad18c51698359cd8372df7f140d1ac0a4d56b
+Previous release: v0.5.8
+
+## 0.5.8 (2026-11-27)
+
+fix(deps): update Pi dependencies to 1.7.0 (#244)
+
+Source: d5aa32afaf0ff59c637f5442f410a851f82ffe15
+Previous release: v0.5.7
+
+## 0.5.7 (2026-11-27)
+
+fix(coding): refresh the target before implementation and first publication (#241)
+
+Source: 78d96a533f555f41ecbcc26e87ba75413bc5bcf9
+Previous release: v0.5.6
+
+## 0.5.6 (2026-11-27)
+
+fix(deps): update caddy docker tag to v2.11.9 (#240)
+
+Source: 840ca5354023cd007d3f4ff1b032857ae1e1fc98
+Previous release: v0.5.5
+
+## 0.5.5 (2026-11-25)
+
+feat(dev-tools): improve the extension development loop (#236)
+
+Source: 2249aa658cf5ec649d635ab6f7ee94541355d35c
+Previous release: v0.5.4
+
+## 0.5.4 (2026-11-25)
+
+feat(models): classify profiles and select eligible models deterministically (#231)
+
+Source: 3d23ee52a97f4814ad6d30ae7c0ab3b8372fa336
+Previous release: v0.5.3
+
+## 0.5.3 (2026-11-21)
+
+chore(deps): update dependency mkdocs-material to v9.8.1 (#237)
+
+Source: e9c4862ed637b0865396128fd4981fd9e6d61204
+Previous release: v0.5.2
+
+## 0.5.2 (2026-11-20)
+
+chore(deps): update npm to v10.9.10 (#234)
+
+Source: 798dc03cc6525dbeb9991cc68b606e94fa62a240
+Previous release: v0.5.1
+
+## 0.5.1 (2026-11-20)
+
+fix(deps): update caddy docker tag to v2.11.8 (#235)
+
+Source: 8fd28d594f9b463a33e9523ef86d92dbe1fa9d73
+Previous release: v0.5.0
+
+## 0.5.0 (2026-11-11)
+
+chore(deps)!: update Pi and release non-doc changes (#232)
+
+Source: ff06d7fa54f52a6e7324901e4b1bb2c275f1230d
+Previous release: v0.4.4
+
+## 0.4.4 (2026-11-10)
+
+feat(launchers): expose configuration readiness before launch (#229)
+
+Source: 0b162a3acf667dbbcbe5311e504256897f581f67
+Previous release: v0.4.3
+
+## 0.4.3 (2026-11-06)
+
+feat(auth): add OIDC admission policies and user information (#224)
+
+Source: a17461738062f486a020daadd68676a881ef8e36
+Previous release: v0.4.2
+
+## 0.4.2 (2026-11-03)
+
+fix(gitlab): support globally labeled merge request discovery (#222)
+
+Source: 6720e88b8d8ebcd79d2caca0b679744c95b0938d
+Previous release: v0.4.1
+
+## 0.4.1 (2026-11-02)
+
+fix(kubernetes): reclaim terminal process storage safely (#217)
+
+Source: c8ed293c3df904b554d9304959c5cc8fae9c80c8
+Previous release: v0.4.0
+
 ## [0.4.0](https://github.com/leitwerk-dev/leitwerk/compare/v0.3.1...v0.4.0) (2026-10-13)
 
 
